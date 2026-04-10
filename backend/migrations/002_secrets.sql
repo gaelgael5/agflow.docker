@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS secrets (
     agent_id        UUID NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (var_name, scope, agent_id)
+    UNIQUE NULLS NOT DISTINCT (var_name, scope, agent_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_secrets_var_name ON secrets(var_name);

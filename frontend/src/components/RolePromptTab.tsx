@@ -19,6 +19,19 @@ export function RolePromptTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      <p
+        style={{
+          fontSize: "13px",
+          color: "#555",
+          background: "#f5f5f5",
+          padding: "0.75rem",
+          borderRadius: "4px",
+          borderLeft: "3px solid #4f46e5",
+          margin: 0,
+        }}
+      >
+        {t("roles.prompt.explanation")}
+      </p>
       <div>
         <button type="button" onClick={onRegenerate} disabled={regenerating}>
           {regenerating

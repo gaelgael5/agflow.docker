@@ -16,25 +16,30 @@ export function useRoles() {
     queryFn: () => rolesApi.list(),
   });
 
+  const invalidateAll = (id?: string) => {
+    qc.invalidateQueries({ queryKey: ROLES_KEY });
+    if (id) qc.invalidateQueries({ queryKey: ["role", id] });
+  };
+
   const createMutation = useMutation({
     mutationFn: (payload: RoleCreate) => rolesApi.create(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ROLES_KEY }),
+    onSuccess: (data) => invalidateAll(data.id),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: RoleUpdate }) =>
       rolesApi.update(id, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ROLES_KEY }),
+    onSuccess: (_data, variables) => invalidateAll(variables.id),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => rolesApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ROLES_KEY }),
+    onSuccess: (_data, id) => invalidateAll(id),
   });
 
   const generateMutation = useMutation({
     mutationFn: (id: string) => rolesApi.generatePrompts(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ROLES_KEY }),
+    onSuccess: (_data, id) => invalidateAll(id),
   });
 
   return {

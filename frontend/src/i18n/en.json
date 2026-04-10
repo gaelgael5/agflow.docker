@@ -69,11 +69,6 @@
       "id": "ID (slug)",
       "display_name": "Display name",
       "description": "Description",
-      "llm_type": "LLM type",
-      "llm_single": "Single",
-      "llm_multi": "Multi",
-      "temperature": "Temperature",
-      "max_tokens": "Max tokens",
       "service_types": "Service types",
       "service_documentation": "Documentation",
       "service_code": "Code",
@@ -88,10 +83,11 @@
       "placeholder": "You are an assistant that acts as..."
     },
     "prompt": {
+      "explanation": "These prompts are automatically assembled by Claude from identity + ROLES + MISSIONS + COMPETENCES. The identity is the raw text you edit; the prompts below are the compiled version injected into agents. Click \"Regenerate\" to rebuild them.",
       "regenerate_button": "Regenerate prompts",
       "generating": "Generating…",
-      "agent_title": "Agent prompt (2nd person)",
-      "orchestrator_title": "Orchestrator prompt (3rd person)",
+      "agent_title": "Compiled agent prompt (2nd person)",
+      "orchestrator_title": "Compiled orchestrator prompt (3rd person)",
       "empty": "Not generated yet. Click \"Regenerate prompts\"."
     },
     "sidebar": {

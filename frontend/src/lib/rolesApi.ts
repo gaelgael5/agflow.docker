@@ -1,15 +1,11 @@
 import { api } from "./api";
 
-export type LLMType = "single" | "multi";
 export type Section = "roles" | "missions" | "competences";
 
 export interface RoleSummary {
   id: string;
   display_name: string;
   description: string;
-  llm_type: LLMType;
-  temperature: number;
-  max_tokens: number;
   service_types: string[];
   identity_md: string;
   prompt_agent_md: string;
@@ -42,9 +38,6 @@ export interface RoleCreate {
   id: string;
   display_name: string;
   description?: string;
-  llm_type?: LLMType;
-  temperature?: number;
-  max_tokens?: number;
   service_types?: string[];
   identity_md?: string;
 }
@@ -52,9 +45,6 @@ export interface RoleCreate {
 export interface RoleUpdate {
   display_name?: string;
   description?: string;
-  llm_type?: LLMType;
-  temperature?: number;
-  max_tokens?: number;
   service_types?: string[];
   identity_md?: string;
 }

@@ -69,9 +69,6 @@ export function RolesPage() {
       payload: {
         display_name: draftRole.display_name,
         description: draftRole.description,
-        llm_type: draftRole.llm_type,
-        temperature: draftRole.temperature,
-        max_tokens: draftRole.max_tokens,
         service_types: draftRole.service_types,
         identity_md: draftRole.identity_md,
       },

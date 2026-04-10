@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import type { LLMType, RoleSummary } from "@/lib/rolesApi";
+import type { RoleSummary } from "@/lib/rolesApi";
 
 interface Props {
   role: RoleSummary;
@@ -28,7 +28,14 @@ export function RoleGeneralTab({ role, onChange }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div
+      style={{
+        maxWidth: 640,
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+      }}
+    >
       <div>
         <label>
           <strong>{t("roles.general.id")}</strong>
@@ -58,42 +65,6 @@ export function RoleGeneralTab({ role, onChange }: Props) {
             value={role.description}
             onChange={(e) => onChange({ description: e.target.value })}
             style={{ display: "block", width: "100%", minHeight: "80px" }}
-          />
-        </label>
-      </div>
-      <div style={{ display: "flex", gap: "1rem" }}>
-        <label>
-          <strong>{t("roles.general.llm_type")}</strong>
-          <select
-            value={role.llm_type}
-            onChange={(e) => onChange({ llm_type: e.target.value as LLMType })}
-            style={{ display: "block" }}
-          >
-            <option value="single">{t("roles.general.llm_single")}</option>
-            <option value="multi">{t("roles.general.llm_multi")}</option>
-          </select>
-        </label>
-        <label>
-          <strong>{t("roles.general.temperature")}</strong>
-          <input
-            type="number"
-            step="0.1"
-            min="0"
-            max="2"
-            value={role.temperature}
-            onChange={(e) => onChange({ temperature: parseFloat(e.target.value) })}
-            style={{ display: "block", width: "100px" }}
-          />
-        </label>
-        <label>
-          <strong>{t("roles.general.max_tokens")}</strong>
-          <input
-            type="number"
-            step="256"
-            min="1"
-            value={role.max_tokens}
-            onChange={(e) => onChange({ max_tokens: parseInt(e.target.value, 10) })}
-            style={{ display: "block", width: "120px" }}
           />
         </label>
       </div>

@@ -6,7 +6,7 @@ from typing import Any, AsyncIterator
 import httpx
 import structlog
 
-from agflow.schemas.catalogs import TestResult
+from agflow.schemas.catalogs import ProbeResult
 
 _log = structlog.get_logger(__name__)
 _DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
@@ -33,7 +33,7 @@ async def probe(
     base_url: str,
     api_key: str | None,
     client: httpx.AsyncClient | None = None,
-) -> TestResult:
+) -> ProbeResult:
     """Test connectivity to a registry via GET {base_url}/health."""
     url = base_url.rstrip("/") + "/health"
     try:
@@ -41,11 +41,11 @@ async def probe(
             response = await c.get(url, headers=_headers(api_key))
     except httpx.HTTPError as exc:
         _log.warning("discovery.probe.error", error=str(exc))
-        return TestResult(ok=False, detail=f"Connection error: {exc}")
+        return ProbeResult(ok=False, detail=f"Connection error: {exc}")
 
     if response.status_code == 200:
-        return TestResult(ok=True, detail=f"HTTP 200 from {url}")
-    return TestResult(
+        return ProbeResult(ok=True, detail=f"HTTP 200 from {url}")
+    return ProbeResult(
         ok=False, detail=f"HTTP {response.status_code} — {response.text[:200]}"
     )
 

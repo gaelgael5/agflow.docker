@@ -47,7 +47,7 @@ class DiscoveryServiceSummary(BaseModel):
     updated_at: datetime
 
 
-class TestResult(BaseModel):
+class ProbeResult(BaseModel):
     ok: bool
     detail: str
 

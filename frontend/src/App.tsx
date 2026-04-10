@@ -3,6 +3,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { SecretsPage } from "./pages/SecretsPage";
 import { RolesPage } from "./pages/RolesPage";
+import { DockerfilesPage } from "./pages/DockerfilesPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -30,6 +31,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <RolesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dockerfiles"
+        element={
+          <ProtectedRoute>
+            <DockerfilesPage />
           </ProtectedRoute>
         }
       />

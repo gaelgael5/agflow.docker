@@ -19,6 +19,8 @@ export function HomePage() {
         <Link to="/secrets">{t("secrets.page_title")}</Link>
         {" • "}
         <Link to="/roles">{t("roles.page_title")}</Link>
+        {" • "}
+        <Link to="/dockerfiles">{t("dockerfiles.page_title")}</Link>
       </nav>
       <button type="button" onClick={handleLogout}>
         {t("home.logout")}

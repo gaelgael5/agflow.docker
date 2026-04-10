@@ -49,5 +49,65 @@
     "error_duplicate": "Ce nom de variable existe déjà",
     "error_generic": "Une erreur est survenue",
     "loading": "Chargement…"
+  },
+  "roles": {
+    "page_title": "Rôles (personnalités d'agents)",
+    "page_subtitle": "Identité, facettes, missions et compétences composables",
+    "add_button": "+ Ajouter un rôle",
+    "delete_button": "Supprimer le rôle",
+    "no_roles": "Aucun rôle — crée ton premier rôle",
+    "select_role": "Sélectionne un rôle",
+    "tab_general": "Général",
+    "tab_identity": "Identité",
+    "tab_prompt": "Prompt",
+    "tab_chat": "Chat",
+    "chat_placeholder": "Co-construction avec LLM — disponible dans une phase future",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "saved": "Enregistré",
+    "general": {
+      "id": "ID (slug)",
+      "display_name": "Nom d'affichage",
+      "description": "Description",
+      "llm_type": "Type LLM",
+      "llm_single": "Single",
+      "llm_multi": "Multi",
+      "temperature": "Temperature",
+      "max_tokens": "Max tokens",
+      "service_types": "Types de services",
+      "service_documentation": "Documentation",
+      "service_code": "Code",
+      "service_design": "Maquette/Design",
+      "service_automation": "Automatisme",
+      "service_task_list": "Liste de tâches",
+      "service_specs": "Spécifications",
+      "service_contract": "Contrat"
+    },
+    "identity": {
+      "label": "Texte d'identité (2e personne)",
+      "placeholder": "Tu es un assistant qui agit en tant que..."
+    },
+    "prompt": {
+      "regenerate_button": "Régénérer les prompts",
+      "generating": "Génération en cours…",
+      "agent_title": "Prompt agent (2e personne)",
+      "orchestrator_title": "Prompt orchestrateur (3e personne)",
+      "empty": "Pas encore généré. Clique sur « Régénérer les prompts »."
+    },
+    "sidebar": {
+      "roles_section": "ROLES",
+      "missions_section": "MISSIONS",
+      "competences_section": "COMPETENCES",
+      "add_document": "+ Ajouter",
+      "new_document_name": "Nom du document",
+      "protected": "Verrouillé",
+      "unlock": "Déverrouiller"
+    },
+    "errors": {
+      "missing_anthropic_key": "ANTHROPIC_API_KEY manquante dans Module 0 (Secrets). Ajoute-la avant de générer les prompts.",
+      "duplicate_id": "Un rôle avec cet ID existe déjà",
+      "protected": "Document verrouillé — déverrouille-le pour modifier",
+      "generic": "Une erreur est survenue"
+    }
   }
 }

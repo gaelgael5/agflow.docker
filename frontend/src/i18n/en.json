@@ -49,5 +49,65 @@
     "error_duplicate": "This variable name already exists",
     "error_generic": "An error occurred",
     "loading": "Loading…"
+  },
+  "roles": {
+    "page_title": "Roles (agent personalities)",
+    "page_subtitle": "Identity, facets, missions and competences — composable",
+    "add_button": "+ Add role",
+    "delete_button": "Delete role",
+    "no_roles": "No roles — create your first role",
+    "select_role": "Select a role",
+    "tab_general": "General",
+    "tab_identity": "Identity",
+    "tab_prompt": "Prompt",
+    "tab_chat": "Chat",
+    "chat_placeholder": "LLM co-building — available in a future phase",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "general": {
+      "id": "ID (slug)",
+      "display_name": "Display name",
+      "description": "Description",
+      "llm_type": "LLM type",
+      "llm_single": "Single",
+      "llm_multi": "Multi",
+      "temperature": "Temperature",
+      "max_tokens": "Max tokens",
+      "service_types": "Service types",
+      "service_documentation": "Documentation",
+      "service_code": "Code",
+      "service_design": "Design",
+      "service_automation": "Automation",
+      "service_task_list": "Task list",
+      "service_specs": "Specs",
+      "service_contract": "Contract"
+    },
+    "identity": {
+      "label": "Identity text (2nd person)",
+      "placeholder": "You are an assistant that acts as..."
+    },
+    "prompt": {
+      "regenerate_button": "Regenerate prompts",
+      "generating": "Generating…",
+      "agent_title": "Agent prompt (2nd person)",
+      "orchestrator_title": "Orchestrator prompt (3rd person)",
+      "empty": "Not generated yet. Click \"Regenerate prompts\"."
+    },
+    "sidebar": {
+      "roles_section": "ROLES",
+      "missions_section": "MISSIONS",
+      "competences_section": "COMPETENCES",
+      "add_document": "+ Add",
+      "new_document_name": "Document name",
+      "protected": "Locked",
+      "unlock": "Unlock"
+    },
+    "errors": {
+      "missing_anthropic_key": "ANTHROPIC_API_KEY is missing from Module 0 (Secrets). Add it before generating prompts.",
+      "duplicate_id": "A role with this ID already exists",
+      "protected": "Document locked — unlock it to edit",
+      "generic": "An error occurred"
+    }
   }
 }

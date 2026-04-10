@@ -32,9 +32,6 @@ async def test_create_and_get_role() -> None:
         role_id="analyst",
         display_name="Analyst",
         description="Extracts requirements",
-        llm_type="single",
-        temperature=0.2,
-        max_tokens=8000,
         service_types=["specs", "code"],
         identity_md="Tu es un analyste.",
     )
@@ -68,13 +65,15 @@ async def test_list_roles_sorted_by_display_name() -> None:
 
 @pytest.mark.asyncio
 async def test_update_role_partial() -> None:
-    await roles_service.create(role_id="upd", display_name="Old", temperature=0.1)
+    await roles_service.create(
+        role_id="upd", display_name="Old", description="old desc"
+    )
 
     updated = await roles_service.update(
-        "upd", display_name="New", temperature=0.7
+        "upd", display_name="New", description="new desc"
     )
     assert updated.display_name == "New"
-    assert updated.temperature == 0.7
+    assert updated.description == "new desc"
 
 
 @pytest.mark.asyncio

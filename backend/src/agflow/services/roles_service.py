@@ -7,14 +7,14 @@ import asyncpg
 import structlog
 
 from agflow.db.pool import fetch_all, fetch_one, get_pool
-from agflow.schemas.roles import LLMType, RoleSummary
+from agflow.schemas.roles import RoleSummary
 
 _log = structlog.get_logger(__name__)
 
 _ROLE_COLS = (
-    "id, display_name, description, llm_type, temperature, max_tokens, "
-    "service_types, identity_md, prompt_agent_md, prompt_orchestrator_md, "
-    "runtime_config, created_at, updated_at"
+    "id, display_name, description, service_types, identity_md, "
+    "prompt_agent_md, prompt_orchestrator_md, runtime_config, "
+    "created_at, updated_at"
 )
 
 
@@ -34,9 +34,6 @@ def _row_to_summary(row: dict[str, Any]) -> RoleSummary:
         id=row["id"],
         display_name=row["display_name"],
         description=row["description"],
-        llm_type=row["llm_type"],
-        temperature=float(row["temperature"]),
-        max_tokens=row["max_tokens"],
         service_types=list(row["service_types"]),
         identity_md=row["identity_md"],
         prompt_agent_md=row["prompt_agent_md"],
@@ -51,9 +48,6 @@ async def create(
     role_id: str,
     display_name: str,
     description: str = "",
-    llm_type: LLMType = "single",
-    temperature: float = 0.3,
-    max_tokens: int = 4096,
     service_types: list[str] | None = None,
     identity_md: str = "",
 ) -> RoleSummary:
@@ -61,18 +55,14 @@ async def create(
         row = await fetch_one(
             f"""
             INSERT INTO roles (
-                id, display_name, description, llm_type, temperature,
-                max_tokens, service_types, identity_md
+                id, display_name, description, service_types, identity_md
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING {_ROLE_COLS}
             """,
             role_id,
             display_name,
             description,
-            llm_type,
-            temperature,
-            max_tokens,
             service_types or [],
             identity_md,
         )
@@ -103,9 +93,6 @@ async def update(role_id: str, **fields: Any) -> RoleSummary:
     allowed = {
         "display_name",
         "description",
-        "llm_type",
-        "temperature",
-        "max_tokens",
         "service_types",
         "identity_md",
         "runtime_config",

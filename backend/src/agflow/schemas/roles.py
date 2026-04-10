@@ -6,7 +6,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-LLMType = Literal["single", "multi"]
 Section = Literal["roles", "missions", "competences"]
 
 _ALLOWED_SERVICE_TYPES = {
@@ -24,9 +23,6 @@ class RoleCreate(BaseModel):
     id: str = Field(min_length=1, max_length=128)
     display_name: str = Field(min_length=1, max_length=200)
     description: str = ""
-    llm_type: LLMType = "single"
-    temperature: float = Field(default=0.3, ge=0, le=2)
-    max_tokens: int = Field(default=4096, gt=0)
     service_types: list[str] = Field(default_factory=list)
     identity_md: str = ""
 
@@ -52,9 +48,6 @@ class RoleCreate(BaseModel):
 class RoleUpdate(BaseModel):
     display_name: str | None = None
     description: str | None = None
-    llm_type: LLMType | None = None
-    temperature: float | None = Field(default=None, ge=0, le=2)
-    max_tokens: int | None = Field(default=None, gt=0)
     service_types: list[str] | None = None
     identity_md: str | None = None
     runtime_config: dict | None = None
@@ -74,9 +67,6 @@ class RoleSummary(BaseModel):
     id: str
     display_name: str
     description: str
-    llm_type: LLMType
-    temperature: float
-    max_tokens: int
     service_types: list[str]
     identity_md: str
     prompt_agent_md: str

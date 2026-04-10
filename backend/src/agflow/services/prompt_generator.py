@@ -11,6 +11,7 @@ from agflow.services import secrets_service
 _log = structlog.get_logger(__name__)
 
 CLAUDE_MODEL = "claude-sonnet-4-5"
+DEFAULT_MAX_TOKENS = 4096
 
 
 class MissingAnthropicKeyError(Exception):
@@ -100,7 +101,7 @@ async def generate_prompts(
     _log.info("prompt_generator.agent.start", role_id=role.id)
     agent_response = await client.messages.create(
         model=CLAUDE_MODEL,
-        max_tokens=role.max_tokens,
+        max_tokens=DEFAULT_MAX_TOKENS,
         messages=[
             {
                 "role": "user",
@@ -113,7 +114,7 @@ async def generate_prompts(
     _log.info("prompt_generator.orchestrator.start", role_id=role.id)
     orch_response = await client.messages.create(
         model=CLAUDE_MODEL,
-        max_tokens=role.max_tokens,
+        max_tokens=DEFAULT_MAX_TOKENS,
         messages=[
             {
                 "role": "user",

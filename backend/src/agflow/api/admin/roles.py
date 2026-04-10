@@ -35,9 +35,6 @@ async def create_role(payload: RoleCreate) -> RoleSummary:
             role_id=payload.id,
             display_name=payload.display_name,
             description=payload.description,
-            llm_type=payload.llm_type,
-            temperature=payload.temperature,
-            max_tokens=payload.max_tokens,
             service_types=payload.service_types,
             identity_md=payload.identity_md,
         )

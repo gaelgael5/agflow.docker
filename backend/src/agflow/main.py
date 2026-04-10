@@ -6,6 +6,7 @@ from typing import AsyncIterator
 import structlog
 from fastapi import FastAPI
 
+from agflow.api.admin.auth import router as admin_auth_router
 from agflow.api.health import router as health_router
 from agflow.config import get_settings
 from agflow.logging_setup import configure_logging
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(health_router)
+    app.include_router(admin_auth_router)
     return app
 
 

@@ -14,7 +14,7 @@ os.environ.setdefault(
     "postgresql://agflow:agflow_dev@192.168.10.82:5432/agflow",
 )
 os.environ.setdefault("JWT_SECRET", "test-secret-key")
-os.environ.setdefault("ADMIN_EMAIL", "admin@test.local")
+os.environ.setdefault("ADMIN_EMAIL", "admin@example.com")
 os.environ["ADMIN_PASSWORD_HASH"] = _TEST_ADMIN_HASH
 
 from agflow.main import create_app  # noqa: E402

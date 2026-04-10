@@ -104,5 +104,38 @@
       "protected": "Document verrouillé — déverrouille-le pour modifier",
       "generic": "Une erreur est survenue"
     }
+  },
+  "dockerfiles": {
+    "page_title": "Dockerfiles (runtimes des agents)",
+    "page_subtitle": "Images Docker des agents CLI — une par agent",
+    "add_button": "+ Ajouter un dockerfile",
+    "delete_button": "Supprimer",
+    "save_button": "Enregistrer",
+    "build_button": "Compiler",
+    "new_file_button": "+ Nouveau fichier",
+    "no_dockerfiles": "Aucun dockerfile — crée ton premier",
+    "select_dockerfile": "Sélectionne un dockerfile",
+    "no_files": "Aucun fichier",
+    "current_hash": "Hash courant",
+    "status": {
+      "never_built": "🔴 Jamais compilé",
+      "up_to_date": "🟢 Image à jour",
+      "outdated": "🟠 Image obsolète",
+      "failed": "🔴 Dernier build échoué",
+      "building": "🔵 Build en cours…"
+    },
+    "build_modal": {
+      "title": "Build — {{dockerfile}}",
+      "image_tag": "Image tag",
+      "logs": "Logs",
+      "close": "Fermer",
+      "running": "En cours…",
+      "success": "Succès",
+      "failed": "Échec"
+    },
+    "new_dockerfile_id_prompt": "Identifiant du dockerfile (slug)",
+    "new_dockerfile_name_prompt": "Nom d'affichage",
+    "new_file_prompt": "Nom du fichier (ex: Dockerfile)",
+    "confirm_delete": "Supprimer \"{{name}}\" ?"
   }
 }

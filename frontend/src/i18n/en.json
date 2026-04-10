@@ -104,5 +104,38 @@
       "protected": "Document locked — unlock it to edit",
       "generic": "An error occurred"
     }
+  },
+  "dockerfiles": {
+    "page_title": "Dockerfiles (agent runtimes)",
+    "page_subtitle": "Docker images for CLI agents — one per agent",
+    "add_button": "+ Add dockerfile",
+    "delete_button": "Delete",
+    "save_button": "Save",
+    "build_button": "Build",
+    "new_file_button": "+ New file",
+    "no_dockerfiles": "No dockerfiles — create your first",
+    "select_dockerfile": "Select a dockerfile",
+    "no_files": "No files",
+    "current_hash": "Current hash",
+    "status": {
+      "never_built": "🔴 Never built",
+      "up_to_date": "🟢 Image up to date",
+      "outdated": "🟠 Image outdated",
+      "failed": "🔴 Last build failed",
+      "building": "🔵 Building…"
+    },
+    "build_modal": {
+      "title": "Build — {{dockerfile}}",
+      "image_tag": "Image tag",
+      "logs": "Logs",
+      "close": "Close",
+      "running": "Running…",
+      "success": "Success",
+      "failed": "Failed"
+    },
+    "new_dockerfile_id_prompt": "Dockerfile id (slug)",
+    "new_dockerfile_name_prompt": "Display name",
+    "new_file_prompt": "File name (e.g. Dockerfile)",
+    "confirm_delete": "Delete \"{{name}}\"?"
   }
 }

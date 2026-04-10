@@ -44,6 +44,8 @@ async def test_run_migrations_is_idempotent() -> None:
 
 @pytest.mark.asyncio
 async def test_migration_002_creates_secrets_table() -> None:
+    await execute("DROP TABLE IF EXISTS role_documents CASCADE")
+    await execute("DROP TABLE IF EXISTS roles CASCADE")
     await execute("DROP TABLE IF EXISTS secrets CASCADE")
     await execute("DROP TABLE IF EXISTS schema_migrations CASCADE")
 
@@ -61,4 +63,39 @@ async def test_migration_002_creates_secrets_table() -> None:
     )
     assert row is not None
     assert row["data_type"] == "bytea"
+    await close_pool()
+
+
+@pytest.mark.asyncio
+async def test_migrations_003_and_004_create_roles_tables() -> None:
+    await execute("DROP TABLE IF EXISTS role_documents CASCADE")
+    await execute("DROP TABLE IF EXISTS roles CASCADE")
+    await execute("DROP TABLE IF EXISTS secrets CASCADE")
+    await execute("DROP TABLE IF EXISTS schema_migrations CASCADE")
+
+    applied = await run_migrations(_MIGRATIONS_DIR)
+
+    assert "003_roles" in applied
+    assert "004_role_documents" in applied
+
+    tables = await fetch_all(
+        """
+        SELECT table_name FROM information_schema.tables
+        WHERE table_name IN ('roles', 'role_documents')
+        ORDER BY table_name
+        """
+    )
+    names = [t["table_name"] for t in tables]
+    assert "roles" in names
+    assert "role_documents" in names
+
+    fk = await fetch_one(
+        """
+        SELECT confrelid::regclass::text AS ref
+        FROM pg_constraint
+        WHERE conname LIKE 'role_documents_role_id_fkey%'
+        """
+    )
+    assert fk is not None
+    assert "roles" in fk["ref"]
     await close_pool()

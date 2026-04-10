@@ -1,0 +1,21 @@
+{
+  "app": {
+    "title": "agflow.docker"
+  },
+  "login": {
+    "title": "Login",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "error_invalid": "Invalid credentials"
+  },
+  "home": {
+    "welcome": "Welcome to agflow.docker",
+    "logout": "Log out"
+  },
+  "status": {
+    "missing": "Variable missing",
+    "empty": "Variable present but empty",
+    "ok": "Variable set"
+  }
+}

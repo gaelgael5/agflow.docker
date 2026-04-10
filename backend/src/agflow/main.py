@@ -7,6 +7,7 @@ import structlog
 from fastapi import FastAPI
 
 from agflow.api.admin.auth import router as admin_auth_router
+from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
 from agflow.api.admin.roles import router as admin_roles_router
 from agflow.api.admin.secrets import router as admin_secrets_router
 from agflow.api.health import router as health_router
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_auth_router)
     app.include_router(admin_secrets_router)
     app.include_router(admin_roles_router)
+    app.include_router(admin_dockerfiles_router)
     return app
 
 

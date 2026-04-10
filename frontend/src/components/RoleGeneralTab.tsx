@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { RoleSummary } from "@/lib/rolesApi";
+import { MarkdownEditor } from "./MarkdownEditor";
 
 interface Props {
   role: RoleSummary;
@@ -67,6 +68,15 @@ export function RoleGeneralTab({ role, onChange }: Props) {
             style={{ display: "block", width: "100%", minHeight: "80px" }}
           />
         </label>
+      </div>
+      <div>
+        <strong>{t("roles.identity.label")}</strong>
+        <MarkdownEditor
+          value={role.identity_md}
+          onChange={(v) => onChange({ identity_md: v })}
+          placeholder={t("roles.identity.placeholder")}
+          minHeight={240}
+        />
       </div>
       <div>
         <strong>{t("roles.general.service_types")}</strong>

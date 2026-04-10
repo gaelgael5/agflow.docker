@@ -7,12 +7,11 @@ import {
 } from "@/hooks/useRoleDocuments";
 import { RoleSidebar } from "@/components/RoleSidebar";
 import { RoleGeneralTab } from "@/components/RoleGeneralTab";
-import { RoleIdentityTab } from "@/components/RoleIdentityTab";
 import { RolePromptTab } from "@/components/RolePromptTab";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
 import type { RoleSummary, Section } from "@/lib/rolesApi";
 
-type Tab = "general" | "identity" | "prompt" | "chat";
+type Tab = "general" | "prompt" | "chat";
 
 export function RolesPage() {
   const { t } = useTranslation();
@@ -188,7 +187,7 @@ export function RolesPage() {
           />
           <main style={{ flex: 1, padding: "1.5rem", overflowY: "auto" }}>
             <nav style={{ marginBottom: "1rem", display: "flex", gap: "1rem" }}>
-              {(["general", "identity", "prompt", "chat"] as Tab[]).map((name) => (
+              {(["general", "prompt", "chat"] as Tab[]).map((name) => (
                 <button
                   key={name}
                   type="button"
@@ -224,23 +223,6 @@ export function RolesPage() {
                     <RoleGeneralTab
                       role={currentRole}
                       onChange={handleRoleFieldChange}
-                    />
-                    {draftRole && (
-                      <button
-                        type="button"
-                        onClick={handleSaveRole}
-                        style={{ marginTop: "1rem" }}
-                      >
-                        {t("roles.save")}
-                      </button>
-                    )}
-                  </>
-                )}
-                {tab === "identity" && (
-                  <>
-                    <RoleIdentityTab
-                      value={currentRole.identity_md}
-                      onChange={(v) => handleRoleFieldChange({ identity_md: v })}
                     />
                     {draftRole && (
                       <button

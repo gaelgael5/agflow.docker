@@ -15,15 +15,9 @@ router = APIRouter(prefix="/api/admin/auth", tags=["admin-auth"])
 async def login(payload: LoginRequest) -> LoginResponse:
     settings = get_settings()
     if payload.email.lower() != settings.admin_email.lower():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
-        )
-    if not bcrypt.checkpw(
-        payload.password.encode(), settings.admin_password_hash.encode()
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not bcrypt.checkpw(payload.password.encode(), settings.admin_password_hash.encode()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     token = encode_token(settings.admin_email)
     return LoginResponse(access_token=token)
 

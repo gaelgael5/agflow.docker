@@ -21,9 +21,7 @@ async def run_migrations(migrations_dir: Path) -> list[str]:
     rows = await fetch_all("SELECT version FROM schema_migrations")
     applied_versions = {r["version"] for r in rows}
 
-    all_files = sorted(
-        p for p in migrations_dir.glob("*.sql") if _VERSION_RE.match(p.name)
-    )
+    all_files = sorted(p for p in migrations_dir.glob("*.sql") if _VERSION_RE.match(p.name))
 
     newly_applied: list[str] = []
     pool = await get_pool()
@@ -34,12 +32,9 @@ async def run_migrations(migrations_dir: Path) -> list[str]:
             continue
         sql = path.read_text(encoding="utf-8")
         _log.info("migrations.apply", version=version)
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute(sql)
-                await conn.execute(
-                    "INSERT INTO schema_migrations(version) VALUES ($1)", version
-                )
+        async with pool.acquire() as conn, conn.transaction():
+            await conn.execute(sql)
+            await conn.execute("INSERT INTO schema_migrations(version) VALUES ($1)", version)
         newly_applied.append(version)
 
     return newly_applied

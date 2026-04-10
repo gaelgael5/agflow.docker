@@ -10,7 +10,7 @@ os.environ.setdefault("JWT_SECRET", "test-secret-key-abc")
 os.environ.setdefault("ADMIN_EMAIL", "a@b.c")
 os.environ.setdefault("ADMIN_PASSWORD_HASH", "x")
 
-from agflow.auth.jwt import InvalidTokenError, decode_token, encode_token  # noqa: E402
+from agflow.auth.jwt import InvalidTokenError, decode_token, encode_token
 
 
 def test_encode_decode_roundtrip() -> None:

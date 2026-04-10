@@ -9,18 +9,14 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def require_admin(
-    creds: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),  # noqa: B008
 ) -> str:
     if creds is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
     try:
         payload = decode_token(creds.credentials)
     except InvalidTokenError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(

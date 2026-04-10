@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 import structlog
 from fastapi import FastAPI

@@ -7,8 +7,8 @@ import pytest
 
 os.environ["DATABASE_URL"] = "postgresql://agflow:agflow_dev@192.168.10.82:5432/agflow"
 
-from agflow.db.migrations import run_migrations  # noqa: E402
-from agflow.db.pool import close_pool, execute, fetch_all, fetch_one  # noqa: E402
+from agflow.db.migrations import run_migrations
+from agflow.db.pool import close_pool, execute, fetch_all, fetch_one
 
 _MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
 
@@ -20,9 +20,7 @@ async def test_run_migrations_creates_schema_migrations_table() -> None:
     applied = await run_migrations(_MIGRATIONS_DIR)
 
     assert "001_init" in applied
-    row = await fetch_one(
-        "SELECT version FROM schema_migrations WHERE version = $1", "001_init"
-    )
+    row = await fetch_one("SELECT version FROM schema_migrations WHERE version = $1", "001_init")
     assert row is not None
     assert row["version"] == "001_init"
     await close_pool()

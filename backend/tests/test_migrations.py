@@ -68,6 +68,9 @@ async def test_migration_002_creates_secrets_table() -> None:
 
 @pytest.mark.asyncio
 async def test_migrations_003_and_004_create_roles_tables() -> None:
+    await execute("DROP TABLE IF EXISTS dockerfile_builds CASCADE")
+    await execute("DROP TABLE IF EXISTS dockerfile_files CASCADE")
+    await execute("DROP TABLE IF EXISTS dockerfiles CASCADE")
     await execute("DROP TABLE IF EXISTS role_documents CASCADE")
     await execute("DROP TABLE IF EXISTS roles CASCADE")
     await execute("DROP TABLE IF EXISTS secrets CASCADE")
@@ -98,4 +101,32 @@ async def test_migrations_003_and_004_create_roles_tables() -> None:
     )
     assert fk is not None
     assert "roles" in fk["ref"]
+    await close_pool()
+
+
+@pytest.mark.asyncio
+async def test_migrations_007_008_009_create_dockerfiles_tables() -> None:
+    await execute("DROP TABLE IF EXISTS dockerfile_builds CASCADE")
+    await execute("DROP TABLE IF EXISTS dockerfile_files CASCADE")
+    await execute("DROP TABLE IF EXISTS dockerfiles CASCADE")
+    await execute("DROP TABLE IF EXISTS role_documents CASCADE")
+    await execute("DROP TABLE IF EXISTS roles CASCADE")
+    await execute("DROP TABLE IF EXISTS secrets CASCADE")
+    await execute("DROP TABLE IF EXISTS schema_migrations CASCADE")
+
+    applied = await run_migrations(_MIGRATIONS_DIR)
+
+    assert "007_dockerfiles" in applied
+    assert "008_dockerfile_files" in applied
+    assert "009_dockerfile_builds" in applied
+
+    rows = await fetch_all(
+        """
+        SELECT table_name FROM information_schema.tables
+        WHERE table_name IN ('dockerfiles', 'dockerfile_files', 'dockerfile_builds')
+        ORDER BY table_name
+        """
+    )
+    names = [r["table_name"] for r in rows]
+    assert set(names) == {"dockerfile_builds", "dockerfile_files", "dockerfiles"}
     await close_pool()

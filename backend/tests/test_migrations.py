@@ -28,6 +28,7 @@ async def test_run_migrations_creates_schema_migrations_table() -> None:
 
 @pytest.mark.asyncio
 async def test_run_migrations_is_idempotent() -> None:
+    await execute("DROP TABLE IF EXISTS secrets CASCADE")
     await execute("DROP TABLE IF EXISTS schema_migrations CASCADE")
 
     first = await run_migrations(_MIGRATIONS_DIR)
@@ -38,4 +39,26 @@ async def test_run_migrations_is_idempotent() -> None:
     rows = await fetch_all("SELECT version FROM schema_migrations")
     versions = [r["version"] for r in rows]
     assert versions.count("001_init") == 1
+    await close_pool()
+
+
+@pytest.mark.asyncio
+async def test_migration_002_creates_secrets_table() -> None:
+    await execute("DROP TABLE IF EXISTS secrets CASCADE")
+    await execute("DROP TABLE IF EXISTS schema_migrations CASCADE")
+
+    applied = await run_migrations(_MIGRATIONS_DIR)
+
+    assert "001_init" in applied
+    assert "002_secrets" in applied
+
+    row = await fetch_one(
+        """
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = 'secrets' AND column_name = 'value_encrypted'
+        """
+    )
+    assert row is not None
+    assert row["data_type"] == "bytea"
     await close_pool()

@@ -37,6 +37,10 @@ services:
     container_name: agflow-backend
     restart: unless-stopped
     env_file: .env
+    # Mount host Docker socket so the backend can run `docker build` via aiodocker
+    # (Module 1 — dockerfile builds). Test machine only; not safe for multi-tenant prod.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

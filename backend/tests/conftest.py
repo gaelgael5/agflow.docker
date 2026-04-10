@@ -16,6 +16,7 @@ os.environ.setdefault(
 os.environ.setdefault("JWT_SECRET", "test-secret-key")
 os.environ.setdefault("ADMIN_EMAIL", "admin@example.com")
 os.environ["ADMIN_PASSWORD_HASH"] = _TEST_ADMIN_HASH
+os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
 from agflow.main import create_app  # noqa: E402
 

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     jwt_secret: str
     admin_email: str
     admin_password_hash: str
+    secrets_master_key: str
 
     redis_url: str = "redis://localhost:6379/0"
     environment: str = "dev"

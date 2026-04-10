@@ -1,0 +1,63 @@
+from __future__ import annotations
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from agflow.auth.dependencies import require_admin
+from agflow.schemas.catalogs import (
+    MCPInstallPayload,
+    MCPParametersUpdate,
+    MCPServerSummary,
+)
+from agflow.services import mcp_catalog_service
+
+router = APIRouter(
+    prefix="/api/admin/mcp-catalog",
+    tags=["admin-mcp-catalog"],
+    dependencies=[Depends(require_admin)],
+)
+
+
+@router.get("", response_model=list[MCPServerSummary])
+async def list_mcps() -> list[MCPServerSummary]:
+    return await mcp_catalog_service.list_all()
+
+
+@router.post(
+    "", response_model=MCPServerSummary, status_code=status.HTTP_201_CREATED
+)
+async def install_mcp(payload: MCPInstallPayload) -> MCPServerSummary:
+    try:
+        return await mcp_catalog_service.install(
+            discovery_service_id=payload.discovery_service_id,
+            package_id=payload.package_id,
+        )
+    except mcp_catalog_service.DuplicateMCPServerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+
+
+@router.put("/{mcp_id}", response_model=MCPServerSummary)
+async def update_mcp_parameters(
+    mcp_id: UUID, payload: MCPParametersUpdate
+) -> MCPServerSummary:
+    try:
+        return await mcp_catalog_service.update_parameters(
+            mcp_id, payload.parameters
+        )
+    except mcp_catalog_service.MCPServerNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+
+@router.delete("/{mcp_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_mcp(mcp_id: UUID) -> None:
+    try:
+        await mcp_catalog_service.delete(mcp_id)
+    except mcp_catalog_service.MCPServerNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc

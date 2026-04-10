@@ -7,9 +7,12 @@ import structlog
 from fastapi import FastAPI
 
 from agflow.api.admin.auth import router as admin_auth_router
+from agflow.api.admin.discovery_services import router as admin_discovery_router
 from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
+from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
 from agflow.api.admin.roles import router as admin_roles_router
 from agflow.api.admin.secrets import router as admin_secrets_router
+from agflow.api.admin.skills_catalog import router as admin_skills_catalog_router
 from agflow.api.health import router as health_router
 from agflow.config import get_settings
 from agflow.logging_setup import configure_logging
@@ -36,6 +39,9 @@ def create_app() -> FastAPI:
     app.include_router(admin_secrets_router)
     app.include_router(admin_roles_router)
     app.include_router(admin_dockerfiles_router)
+    app.include_router(admin_discovery_router)
+    app.include_router(admin_mcp_catalog_router)
+    app.include_router(admin_skills_catalog_router)
     return app
 
 

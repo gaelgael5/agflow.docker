@@ -106,13 +106,19 @@ async def test_migrations_003_and_004_create_roles_tables() -> None:
 
 @pytest.mark.asyncio
 async def test_migrations_007_008_009_create_dockerfiles_tables() -> None:
-    await execute("DROP TABLE IF EXISTS dockerfile_builds CASCADE")
-    await execute("DROP TABLE IF EXISTS dockerfile_files CASCADE")
-    await execute("DROP TABLE IF EXISTS dockerfiles CASCADE")
-    await execute("DROP TABLE IF EXISTS role_documents CASCADE")
-    await execute("DROP TABLE IF EXISTS roles CASCADE")
-    await execute("DROP TABLE IF EXISTS secrets CASCADE")
-    await execute("DROP TABLE IF EXISTS schema_migrations CASCADE")
+    for t in [
+        "skills",
+        "mcp_servers",
+        "discovery_services",
+        "dockerfile_builds",
+        "dockerfile_files",
+        "dockerfiles",
+        "role_documents",
+        "roles",
+        "secrets",
+        "schema_migrations",
+    ]:
+        await execute(f"DROP TABLE IF EXISTS {t} CASCADE")
 
     applied = await run_migrations(_MIGRATIONS_DIR)
 
@@ -129,4 +135,41 @@ async def test_migrations_007_008_009_create_dockerfiles_tables() -> None:
     )
     names = [r["table_name"] for r in rows]
     assert set(names) == {"dockerfile_builds", "dockerfile_files", "dockerfiles"}
+    await close_pool()
+
+
+@pytest.mark.asyncio
+async def test_migrations_010_011_012_create_catalogs_tables() -> None:
+    for t in [
+        "skills",
+        "mcp_servers",
+        "discovery_services",
+        "dockerfile_builds",
+        "dockerfile_files",
+        "dockerfiles",
+        "role_documents",
+        "roles",
+        "secrets",
+        "schema_migrations",
+    ]:
+        await execute(f"DROP TABLE IF EXISTS {t} CASCADE")
+
+    applied = await run_migrations(_MIGRATIONS_DIR)
+
+    assert "010_discovery_services" in applied
+    assert "011_mcp_servers" in applied
+    assert "012_skills" in applied
+
+    rows = await fetch_all(
+        """
+        SELECT table_name FROM information_schema.tables
+        WHERE table_name IN ('discovery_services', 'mcp_servers', 'skills')
+        ORDER BY table_name
+        """
+    )
+    assert [r["table_name"] for r in rows] == [
+        "discovery_services",
+        "mcp_servers",
+        "skills",
+    ]
     await close_pool()

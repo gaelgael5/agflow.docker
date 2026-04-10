@@ -1,181 +1,197 @@
-# LandGraph — Instructions Claude Code
+# agflow.docker — Instructions Claude Code
 
 ## Projet
 
-Plateforme multi-agent (Python/LangGraph) orchestrant 13 agents IA pour le cycle de vie logiciel.
-Stack : FastAPI + PostgreSQL (pgvector) + Redis + Docker Compose, sur Proxmox LXC 110 (Ubuntu 24).
+Plateforme d'instanciation d'agents IA packagés en Docker (claude-code, aider, codex, gemini, goose, mistral, open-code). Panneau d'administration en 7 modules (M0 Secrets, M1 Dockerfiles, M2 Rôles, M3 Catalogues MCP+Skills, M4 Composition, M5 API publique, M6 Supervision). Spec complète : `specs/home.md`.
 
-**Standard de qualité** : on privilégie le code propre et bien fait, jamais la rapidité au détriment de la rigueur. Pas de raccourcis, pas de "c'est pas grave", pas de "on simplifiera plus tard". Chaque tâche est faite correctement ou pas du tout.
+**Standard de qualité** : code propre et bien fait, jamais la rapidité au détriment de la rigueur. Pas de raccourcis, pas de "c'est pas grave", pas de "on simplifiera plus tard". Chaque tâche est faite correctement ou pas du tout.
+
+## Stack technique
+
+- **Backend** : Python 3.12 + FastAPI + asyncpg (**pas SQLAlchemy**) + structlog JSON + pytest
+- **Frontend** : Vite + React 18 + TypeScript strict + react-router-dom + TanStack Query + Tailwind + shadcn/ui + i18next + Vitest
+- **BDD** : PostgreSQL 16 + pgcrypto (secrets) — source de vérité unique
+- **MOM** : Redis Streams (`redis.asyncio`) avec consumer groups — bus central de toutes les comms agents
+- **Docker runtime** : aiodocker (pas de subprocess)
+- **Reverse proxy prod** : Caddy (SSL géré par Cloudflare Tunnel en front)
+- **Registre externe MCP** : `https://mcp.yoops.org/api/v1`
+
+## Dev & cible
+
+- **Développement** : local Windows (uv + node), tests connectés à l'infra LXC 201 (Postgres/Redis hébergés sur `192.168.10.82`)
+- **Intégration / cible MVP** : LXC 201 (`agflow-docker-test`, 192.168.10.82) — Docker 29.4 + Compose v5.1 déjà installés
+- **Prod future** : à définir quand le MVP vertical sera validé
 
 ## Commandes essentielles
 
 ```bash
-# Build & Deploy
-docker compose build                           # Build tous les services
-docker compose build langgraph-api              # Build un seul service
-docker compose up -d                            # Lancer la stack
-docker compose down                             # Stopper la stack
-./restart.sh                                    # Restart rapide (stop + up)
-./build.sh                                      # Full rebuild + restart
-./update.sh                                     # Git pull + rebuild
+# Infra dépendances (Postgres + Redis) sur LXC 201
+ssh pve "pct exec 201 -- bash -c 'cd /root/agflow.docker && docker compose up -d'"
 
-# Logs & Debug
-docker compose logs -f langgraph-api            # Logs API (gateway + agents)
-docker compose logs -f discord-bot              # Logs bot Discord
-docker compose logs -f hitl-console             # Logs console HITL
-docker compose exec langgraph-api bash          # Shell dans le container API
+# Backend local (Windows)
+cd backend && uv sync
+cd backend && uv run uvicorn agflow.main:app --reload    # :8000
+cd backend && uv run pytest -v                            # Tests Python
+cd backend && uv run ruff check src/ tests/               # Lint
+cd backend && uv run ruff format src/ tests/              # Format
 
-# Tests
-docker compose exec langgraph-api python -m pytest          # Tests unitaires
-docker compose exec langgraph-api python -m pytest -x -v    # Verbose, stop au 1er fail
+# Frontend local (Windows)
+cd frontend && npm install
+cd frontend && npm run dev                                # :5173 avec proxy /api -> :8000
+cd frontend && npm test                                   # Vitest
+cd frontend && npx tsc --noEmit                           # TS strict check
+cd frontend && npm run lint                               # ESLint
+cd frontend && npm run format                             # Prettier
 
-# Base de données
-docker compose exec langgraph-postgres psql -U langgraph -d langgraph
+# Migrations DB
+cd backend && uv run python -m agflow.db.migrations       # Applique migrations en attente
+
+# Build & déploiement LXC 201
+./scripts/deploy.sh                                       # Build images + push + compose up -d
 ```
 
-## Navigation du code
-
-**Règle d'or** : `team_resolver.py` est la SOURCE UNIQUE pour résoudre les chemins de fichiers. Ne jamais hardcoder un chemin vers config/.
+## Layout du code
 
 ```
-agents/shared/       → Modules partagés (tout le runtime : base_agent, channels, workflow_engine...)
-agents/gateway.py    → API FastAPI (point d'entrée)
-agents/orchestrator.py → Noeud LangGraph (routing)
-config/              → Config racine (teams.json, llm_providers.json, mcp_servers.json)
-config/Team1/        → Config équipe (agents_registry.json, Workflow.json, prompts .md)
-Shared/              → Catalogue agents, prompts localisés, cultures
-hitl/                → Console HITL (server.py + static/)
-web/                 → Dashboard admin (server.py + static/)
+agflow.docker/
+├── backend/
+│   ├── pyproject.toml
+│   ├── src/agflow/
+│   │   ├── main.py              # FastAPI app + lifespan
+│   │   ├── config.py            # Pydantic Settings
+│   │   ├── logging_setup.py     # structlog JSON
+│   │   ├── api/                 # Routers FastAPI
+│   │   │   ├── health.py
+│   │   │   ├── admin/           # Endpoints /api/admin/*
+│   │   │   └── public/          # Endpoints /api/v1/*   (phases futures)
+│   │   ├── auth/                # JWT + dépendances FastAPI
+│   │   ├── db/                  # asyncpg pool + migrations runner
+│   │   ├── docker/              # aiodocker wrappers           (phases futures)
+│   │   ├── mom/                 # Redis Streams producer/consumer (phases futures)
+│   │   ├── services/            # Logique métier                (phases futures)
+│   │   └── schemas/             # DTOs Pydantic
+│   ├── migrations/              # SQL bruts numérotés (001_*.sql, 002_*.sql…)
+│   └── tests/
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── src/
+│       ├── pages/               # 1 page par module admin
+│       ├── components/          # Composants réutilisables (dont StatusIndicator)
+│       ├── hooks/
+│       ├── lib/                 # api client, i18n
+│       └── i18n/                # fr.json, en.json
+├── docs/
+│   ├── patterns/                # Design patterns (ref transversale)
+│   ├── python-dev-rules.md      # Règles Python SOLID
+│   ├── tests-python.md          # Couverture tests
+│   ├── sonarQube.md             # Qualité code
+│   └── superpowers/plans/       # Plans de développement exécutés
+├── specs/
+│   ├── home.md                  # Spec produit complète (541 lignes, 7 modules)
+│   └── plans/                   # Plans techniques (brainstorm, archi)
+├── scripts/
+│   ├── infra/                   # LXC Proxmox setup (00-create-lxc.sh, 01-install-docker.sh)
+│   └── deploy.sh                # Déploiement LXC 201
+├── docker-compose.yml           # Dev : postgres + redis (exécuté sur LXC 201)
+└── docker-compose.prod.yml      # Prod : stack complète
 ```
-
-**Pas de fichier Python par agent.** Tous les agents sont définis dans `agents_registry.json` et exécutés via `BaseAgent`. Pour ajouter un agent : ajouter au registry + créer le prompt .md.
 
 ## Conventions de code
 
-- **Python 3.11+**, async/await partout (FastAPI + LangGraph sont async)
-- **Canaux factorisés** : toujours utiliser `channels.py` (get_default_channel), jamais appeler Discord/SMTP directement
-- **Résolution fichiers** : toujours passer par `team_resolver`, jamais de path en dur
-- **LLM** : toujours via `llm_provider.py` (factory multi-provider), jamais instancier un ChatAnthropic directement
-- **MCP** : config dans `mcp_servers.json` + `agent_mcp_access.json`, jamais hardcoder une commande MCP
-- **State** : tout le state LangGraph passe par `state.py`, pas de globals
-- **Imports** : les modules shared s'importent avec `from agents.shared.xxx import ...`
-- **Logs** : utiliser `logging.getLogger(__name__)`, pas de print()
-- **Prompts/messages** : jamais de texte utilisateur dans le code Python — les prompts vont dans `Shared/Models/{culture}/` ou `Shared/Prompts/{culture}/`, les messages i18n dans `messages.json`
-- **Règles Python** : voir @docs/python-dev-rules.md pour les règles détaillées (SOLID, classes, méthodes, récursivité, nommage)
-- **Tests** : voir @docs/tests-python.md pour les règles de couverture, quoi tester, quand tester
-- **SonarQube** : voir @docs/sonarQube.md — contrôle qualité automatique, sessions de correction sur demande explicite uniquement
+### Python (backend)
+- Python 3.12+, async/await partout
+- **Pas de SQLAlchemy** — asyncpg direct avec helpers `fetch_one` / `fetch_all` / `execute` dans `db/pool.py`
+- Pydantic v2 pour les DTOs, Pydantic Settings pour la config
+- Logs structurés via `structlog.get_logger(__name__)` — **jamais** `print()`
+- `type` hints partout, `from __future__ import annotations` en tête de fichier
+- Fichiers max 300 lignes ; classes SRP ; méthodes 5-15 lignes
+- Règles détaillées : `@docs/python-dev-rules.md`
+- Règles tests : `@docs/tests-python.md`
 
-## Utilisation des outils
+### TypeScript (frontend)
+- `strict: true`, `noUncheckedIndexedAccess: true`
+- Composants fonctionnels + hooks, pas de classes
+- React Query pour tout appel API, pas de `useEffect + fetch` direct
+- i18n sur **tous** les labels affichés — `useTranslation()`, jamais de string brute
+- Fichiers max 300 lignes
+- Props typées via `interface`, exports nommés
 
-### Context7 — documentation live
-- **Quand** : AVANT d'écrire du code qui utilise LangGraph, LangChain, FastAPI, Pydantic, ou toute lib externe
-- **Pourquoi** : les API évoluent vite, ne te fie pas à ta mémoire pour les signatures, paramètres ou patterns
-- **Comment** : interroge Context7 pour la version à jour, puis code en t'appuyant sur la réponse
-- Particulièrement critique pour : les StateGraph LangGraph, les tools LangChain, les modèles Pydantic v2, les dépendances FastAPI
+### Base de données
+- Migrations = fichiers SQL numérotés dans `backend/migrations/` (ex: `001_init.sql`, `002_secrets.sql`)
+- Schéma géré en SQL brut, pas d'ORM
+- Extensions requises : `pgcrypto` (secrets), `uuid-ossp` (ids)
+- Toute nouvelle table → migration SQL + test de migration
 
-### Serena — navigation et compréhension du code
-- **Quand** : avant un refactor, pour comprendre les dépendances entre modules, ou pour trouver tous les usages d'une fonction/classe
-- **Pourquoi** : plus fiable que grep pour la navigation sémantique (comprend les imports, classes, héritages)
-- **Comment** : utilise Serena pour cartographier les impacts avant de proposer un plan de modification
-- Cas typiques : "quels modules appellent team_resolver ?", "qui hérite de BaseAgent ?", "où est utilisé workflow_engine.get_deliverables_to_dispatch ?"
+### Tests
+- **Backend** : pytest + pytest-asyncio ; fixture `client` (TestClient httpx)
+- **Frontend** : Vitest + React Testing Library ; `describe`/`it`, pas de `test`
+- **TDD** : test rouge → impl → test vert → commit
+- Couverture minimale par zone : voir `docs/tests-python.md`
 
-### Code review — /review, /pr-review
-- **Quand** : avant de me présenter un changement multi-fichiers (>3 fichiers ou >100 lignes)
-- **Pourquoi** : détecte les régressions, incohérences et problèmes de style avant que je les voie
-- **Comment** : lance /review, corrige les problèmes détectés, puis présente-moi le résultat propre
-
-### Commits — /commit
-- **Quand** : quand je demande explicitement de committer (jamais de ta propre initiative)
-- **Comment** : message en français, descriptif, format conventionnel
-
-### Security guidance
-- **Quand** : si tu modifies du code lié à l'auth (HITL JWT, MCP HMAC, Google OAuth), aux endpoints exposés, ou au .env
-- **Pourquoi** : ce projet expose des APIs (gateway 8123, HITL 8090, MCP SSE) — les failles de sécurité sont critiques
-- **Comment** : le plugin vérifie automatiquement, mais sois proactif sur les patterns d'auth et de validation d'input
-
-### Memory MCP
-- **Quand** : une décision d'architecture importante est prise en session (ex: "on utilise pgvector pour le RAG", "le dispatch se fait par livrable pas par agent")
-- **Pourquoi** : complément à LESSONS.md — LESSONS = erreurs corrigées, Memory = décisions prises
-- **Ne jamais stocker** : secrets, tokens, mots de passe, données sensibles
-
-### Playwright — tests E2E (quand disponible)
-- **Quand** : pour tester les interfaces web (dashboard admin, HITL console) après modification frontend
-- **Comment** : naviguer vers les pages modifiées, vérifier que les éléments clés sont présents et fonctionnels
-
-### Qodo — tests unitaires
-- **Quand** : après ajout d'une feature ou refactor d'un module Python dans agents/shared/
-- **Comment** : générer ou mettre à jour les tests pour le module modifié
+### Indicateurs visuels secrets (convention spec)
+Partout où un secret est référencé par nom de variable d'env, afficher son statut via le composant `StatusIndicator` :
+- 🔴 Rouge : variable manquante (non déclarée dans les secrets)
+- 🟠 Orange : variable présente mais valeur vide
+- 🟢 Vert : variable présente et remplie
 
 ## Règles de workflow
 
+### Cycle de l'architecte
+**Cadrer → Comprendre → Planifier → Agir.** L'utilisateur est architecte. Une question n'est pas une commande d'exécution. Une discussion n'est pas un feu vert. Ne JAMAIS sauter d'étape.
+
 ### Livraison
-- **Ne livre jamais le code ni en test ni sur git sans une demande explicite de ma part**
-- Ne modifie pas `.env` sauf si je le demande
-- Commit messages en français
-
-### Planification (selon complexité)
-- **Fix mineur** (typo, une ligne) : exécute directement
-- **Feature / modification** : propose un plan en 3-5 points, attends ma validation
-- **Refactor cross-module / nouveau système** : analyse les fichiers concernés, propose un plan détaillé avec la liste des fichiers à modifier, attends ma validation
-- **Doute sur l'intention ou le scope** : demande une clarification AVANT de planifier
-
-### Règle fondamentale : suivre le cycle de l'architecte
-L'utilisateur est architecte. Son mode de fonctionnement est : **Cadrer → Comprendre → Planifier → Agir**.
-- **Cadrer** : quand il pose une question ou soulève un sujet, c'est du cadrage. Répondre à la question, pas coder.
-- **Comprendre** : quand il creuse un sujet, c'est de la compréhension. Expliquer, proposer des options, discuter.
-- **Planifier** : quand il valide la direction, on fait le plan ensemble. Proposer, attendre sa validation.
-- **Agir** : quand il dit "fais-le" / "vas-y" / "code" / "implémente" / "déploie", là on code.
-
-**Ne JAMAIS sauter d'étape.** Une question n'est pas une commande d'exécution. Une discussion n'est pas un feu vert. Si tu as un doute sur l'étape en cours, demande.
+- Ne livre **jamais** le code ni en test ni sur git sans demande explicite
+- Ne modifie pas `.env` sauf si demandé
+- Commit messages en français, format conventionnel (`feat:`, `fix:`, `chore:`, `docs:`, `test:`…)
 
 ### Vérification avant validation
-Avant de déclarer une tâche terminée, **toutes** ces étapes sont obligatoires, quelle que soit la taille du changement :
-1. Le code s'exécute sans erreur (lance le build ou le linter)
-2. Le cas nominal fonctionne (teste manuellement ou via test)
-3. Les imports ajoutés existent réellement dans le projet
-4. Pas de régression sur les fichiers modifiés (lance les tests liés)
-5. Si modification frontend (hitl/static, web/static) : vérifie que la page charge sans erreur console
-
-**Ne dis jamais "c'est fait" sans avoir exécuté ces vérifications. Aucune exception.**
-Si une vérification échoue, corrige AVANT de me présenter le résultat.
-
-### Gestion du contexte
-- Avant une exploration large (>5 fichiers) : utilise un subagent Task() et renvoie un résumé structuré
-- Après chaque tâche complétée : /clear avant de passer à la suivante
-- Si la conversation dépasse ~50% du contexte : /compact manuellement
+Avant de déclarer une tâche terminée, **toutes** ces étapes sont obligatoires :
+1. Le code s'exécute sans erreur (lint + build)
+2. Le cas nominal fonctionne (test unitaire ou manuel)
+3. Les imports ajoutés existent réellement
+4. Pas de régression sur les fichiers modifiés
+5. Si modification frontend : la page charge sans erreur console
 
 ### Discipline d'exécution
 - Exécute directement, ne décris pas ce que tu vas faire — fais-le
-- N'explique pas les étapes intermédiaires. Rapporte uniquement ce qui a changé et le résultat final
-- Termine TOUTES les étapes d'un plan avant de faire un résumé. Ne t'arrête pas au milieu
-- Ne prends jamais de raccourci "pour simplifier" — si le plan prévoit 5 étapes, fais les 5
-- Si tu rencontres un problème en cours de route, signale-le et propose une solution — ne l'ignore pas silencieusement
+- N'explique pas les étapes intermédiaires. Rapporte uniquement le résultat final
+- Termine TOUTES les étapes d'un plan avant de faire un résumé
+- Pas de raccourci "pour simplifier"
+- Si tu rencontres un problème, signale-le et propose une solution — ne l'ignore pas silencieusement
+
+## Outils Claude Code
+
+### Context7 — documentation live
+**Quand** : avant d'écrire du code qui utilise FastAPI, Pydantic v2, asyncpg, aiodocker, redis-py, React Query, Vite, React Router, i18next, Tailwind, etc. Les API évoluent, ne te fie pas à ta mémoire.
+
+### Serena — navigation sémantique
+**Quand** : avant un refactor, pour comprendre les dépendances entre modules, ou pour trouver tous les usages d'une fonction/classe.
+
+### Superpowers skills
+- `writing-plans` : rédiger un plan d'implémentation TDD avant de coder
+- `executing-plans` / `subagent-driven-development` : exécuter un plan tâche par tâche
+- `systematic-debugging` : méthode pour debug un bug ou test qui échoue
+- `test-driven-development` : discipline TDD rigoureuse
+- `brainstorming` : explorer le design avant d'écrire quoi que ce soit
+- `verification-before-completion` : vérifier que le travail est réellement fini avant de le dire
+
+### /review
+**Quand** : avant de présenter un changement multi-fichiers (>3 fichiers ou >100 lignes).
+
+### /commit
+**Quand** : quand l'utilisateur demande explicitement de committer. Format français conventionnel.
 
 ## Auto-amélioration
 
-Quand je te corrige ou que tu fais une erreur :
-- Ajoute une leçon dans `LESSONS.md` à la racine
-- Format : `- [module concerné] description courte de l'erreur et de la bonne pratique`
-- Relis @LESSONS.md en début de tâche qui touche un module mentionné
-- Ne dépasse pas 50 lignes — si le fichier grossit, consolide les leçons similaires
-
-## Documentation de référence
-
-Pour les détails, consulte les docs spécialisées (uniquement quand pertinent pour la tâche) :
-
-- @docs/architecture.md — Stack Docker, services, ports, infra Proxmox
-- @docs/gateway-api.md — Endpoints, flux d'un message, thread persistence
-- @docs/workflow-engine.md — Phases, parallel groups, dispatch par livrables, catégories
-- @docs/agents.md — Registry, champs, hiérarchie routing, BaseAgent
-- @docs/channels.md — Interface MessageChannel, implémentations Discord/Email
-- @docs/hitl.md — Console HITL, auth locale/Google OAuth, endpoints, rôles
-- @docs/llm-providers.md — 17 providers, throttling, override par env
-- @docs/mcp.md — Catalogue, lazy install, SSE server, auth HMAC
-- @docs/env-vars.md — Variables d'environnement et configuration
-- @docs/changelog.md — Historique terminé + roadmap à faire
+Quand tu fais une erreur ou que l'utilisateur te corrige :
+- Ajoute une leçon dans `LESSONS.md`
+- Format : `- [module] description courte de l'erreur et de la bonne pratique`
+- Relis `@LESSONS.md` en début de tâche qui touche un module mentionné
+- Ne dépasse pas 50 lignes — consolide les leçons similaires
 
 ## Notifications de skills
 
-Quand tu invoques une compétence (skill) via l'outil Skill, affiche systématiquement un marqueur visuel **avant** d'exécuter la skill :
+Quand tu invoques une skill via l'outil Skill, affiche systématiquement un marqueur visuel **avant** d'exécuter :
 
 > **`🟢 SKILL`** → _nom-de-la-skill_ — raison en une phrase

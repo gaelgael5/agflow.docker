@@ -17,6 +17,8 @@ export function HomePage() {
       <h1>{t("home.welcome")}</h1>
       <nav style={{ marginBottom: "1rem" }}>
         <Link to="/secrets">{t("secrets.page_title")}</Link>
+        {" • "}
+        <Link to="/roles">{t("roles.page_title")}</Link>
       </nav>
       <button type="button" onClick={handleLogout}>
         {t("home.logout")}

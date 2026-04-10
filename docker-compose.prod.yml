@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?postgres password required}
+      POSTGRES_DB: ${POSTGRES_DB:-agflow}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 5
+    networks: [agflow]
+
+  redis:
+    image: redis:7-alpine
+    container_name: agflow-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+    networks: [agflow]
+
+  backend:
+    image: agflow-backend:latest
+    container_name: agflow-backend
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [agflow]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 5
+
+  frontend:
+    image: agflow-frontend:latest
+    container_name: agflow-frontend
+    restart: unless-stopped
+    depends_on: [backend]
+    networks: [agflow]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: agflow-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [frontend, backend]
+    networks: [agflow]
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  agflow:
+    driver: bridge

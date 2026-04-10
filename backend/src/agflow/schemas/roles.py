@@ -69,7 +69,6 @@ class RoleSummary(BaseModel):
     description: str
     service_types: list[str]
     identity_md: str
-    prompt_agent_md: str
     prompt_orchestrator_md: str
     runtime_config: dict
     created_at: datetime

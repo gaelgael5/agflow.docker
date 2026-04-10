@@ -13,8 +13,7 @@ _log = structlog.get_logger(__name__)
 
 _ROLE_COLS = (
     "id, display_name, description, service_types, identity_md, "
-    "prompt_agent_md, prompt_orchestrator_md, runtime_config, "
-    "created_at, updated_at"
+    "prompt_orchestrator_md, runtime_config, created_at, updated_at"
 )
 
 
@@ -36,7 +35,6 @@ def _row_to_summary(row: dict[str, Any]) -> RoleSummary:
         description=row["description"],
         service_types=list(row["service_types"]),
         identity_md=row["identity_md"],
-        prompt_agent_md=row["prompt_agent_md"],
         prompt_orchestrator_md=row["prompt_orchestrator_md"],
         runtime_config=runtime_config or {},
         created_at=row["created_at"],
@@ -123,20 +121,17 @@ async def update(role_id: str, **fields: Any) -> RoleSummary:
 
 async def update_prompts(
     role_id: str,
-    prompt_agent_md: str,
     prompt_orchestrator_md: str,
 ) -> RoleSummary:
     row = await fetch_one(
         f"""
         UPDATE roles SET
-            prompt_agent_md = $2,
-            prompt_orchestrator_md = $3,
+            prompt_orchestrator_md = $2,
             updated_at = NOW()
         WHERE id = $1
         RETURNING {_ROLE_COLS}
         """,
         role_id,
-        prompt_agent_md,
         prompt_orchestrator_md,
     )
     if row is None:

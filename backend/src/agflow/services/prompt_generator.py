@@ -20,14 +20,18 @@ class MissingAnthropicKeyError(Exception):
 
 @dataclass
 class GeneratedPrompts:
-    prompt_agent_md: str
     prompt_orchestrator_md: str
 
 
 def assemble_source_markdown(
     role: RoleSummary, documents: list[DocumentSummary]
 ) -> str:
-    """Concatenate identity + all documents grouped by section into one markdown."""
+    """Concatenate identity + all documents grouped by section into one markdown.
+
+    This is the 2nd-person source-of-truth. It's used both as input to
+    `generate_prompts` (to produce the 3rd-person orchestrator description) and
+    as the final "agent prompt" injected into the agent container at launch.
+    """
     parts: list[str] = []
     parts.append("# Identité")
     parts.append("")
@@ -54,27 +58,15 @@ def assemble_source_markdown(
     return "\n".join(parts)
 
 
-_AGENT_PROMPT_TEMPLATE = """\
-Tu es un assembleur de prompts. Voici la description d'un agent IA \
-sous forme d'identité + facettes. Compose un prompt système cohérent à \
-la deuxième personne du singulier ("Tu es...", "Tu analyses...") qui \
-fusionne tout ce contenu en un texte clair, direct et actionnable. \
-N'ajoute pas de méta-commentaire, de titre, ni de balises — retourne \
-uniquement le prompt final en markdown.
+_ORCHESTRATOR_PROMPT_TEMPLATE = """\
+Tu reformules la description d'un agent IA (écrite à la deuxième personne \
+du singulier : identité + rôles + missions + compétences) en une description \
+à la troisième personne, utilisée par un orchestrateur pour décider quand \
+dispatcher cet agent. Garde le sens exact, réécris en "Il est...", \
+"Il analyse...", etc. Ne change pas les capacités décrites. Retourne \
+uniquement la description finale en markdown, sans méta-commentaire ni balises.
 
 Source :
-
-{source}
-"""
-
-_ORCHESTRATOR_PROMPT_TEMPLATE = """\
-Tu reformules un prompt système d'agent IA (écrit à la deuxième personne \
-du singulier) en une description à la troisième personne, utilisée par un \
-orchestrateur pour décider quand dispatcher cet agent. Garde le sens exact, \
-réécris en "Il est...", "Il analyse...", etc. Ne change pas les capacités \
-décrites. Retourne uniquement la description finale.
-
-Prompt original :
 
 {source}
 """
@@ -88,7 +80,7 @@ async def _get_anthropic_client() -> anthropic.AsyncAnthropic:
 async def generate_prompts(
     role: RoleSummary, documents: list[DocumentSummary]
 ) -> GeneratedPrompts:
-    """Generate 2nd-person and 3rd-person prompt variants using Claude."""
+    """Generate the 3rd-person orchestrator description from the assembled source."""
     try:
         client = await _get_anthropic_client()
     except secrets_service.SecretNotFoundError as exc:
@@ -98,34 +90,18 @@ async def generate_prompts(
 
     source = assemble_source_markdown(role, documents)
 
-    _log.info("prompt_generator.agent.start", role_id=role.id)
-    agent_response = await client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=DEFAULT_MAX_TOKENS,
-        messages=[
-            {
-                "role": "user",
-                "content": _AGENT_PROMPT_TEMPLATE.format(source=source),
-            }
-        ],
-    )
-    agent_text = agent_response.content[0].text  # type: ignore[union-attr]
-
     _log.info("prompt_generator.orchestrator.start", role_id=role.id)
-    orch_response = await client.messages.create(
+    response = await client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=DEFAULT_MAX_TOKENS,
         messages=[
             {
                 "role": "user",
-                "content": _ORCHESTRATOR_PROMPT_TEMPLATE.format(source=agent_text),
+                "content": _ORCHESTRATOR_PROMPT_TEMPLATE.format(source=source),
             }
         ],
     )
-    orch_text = orch_response.content[0].text  # type: ignore[union-attr]
+    orch_text = response.content[0].text  # type: ignore[union-attr]
 
     _log.info("prompt_generator.done", role_id=role.id)
-    return GeneratedPrompts(
-        prompt_agent_md=agent_text,
-        prompt_orchestrator_md=orch_text,
-    )
+    return GeneratedPrompts(prompt_orchestrator_md=orch_text)

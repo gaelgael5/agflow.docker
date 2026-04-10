@@ -50,7 +50,6 @@ describe("RolesPage", () => {
         description: "",
         service_types: [],
         identity_md: "",
-        prompt_agent_md: "",
         prompt_orchestrator_md: "",
         runtime_config: {},
         created_at: "2026-04-10",

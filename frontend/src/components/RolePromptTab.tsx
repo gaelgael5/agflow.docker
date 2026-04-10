@@ -45,20 +45,6 @@ export function RolePromptTab({
         )}
       </div>
       <div>
-        <h3>{t("roles.prompt.agent_title")}</h3>
-        {role.prompt_agent_md ? (
-          <MarkdownEditor
-            value={role.prompt_agent_md}
-            onChange={() => {}}
-            readOnly
-          />
-        ) : (
-          <p style={{ color: "#888", fontStyle: "italic" }}>
-            {t("roles.prompt.empty")}
-          </p>
-        )}
-      </div>
-      <div>
         <h3>{t("roles.prompt.orchestrator_title")}</h3>
         {role.prompt_orchestrator_md ? (
           <MarkdownEditor

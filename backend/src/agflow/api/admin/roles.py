@@ -102,7 +102,6 @@ async def generate_prompts_endpoint(role_id: str) -> RoleSummary:
 
     return await roles_service.update_prompts(
         role_id,
-        prompt_agent_md=generated.prompt_agent_md,
         prompt_orchestrator_md=generated.prompt_orchestrator_md,
     )
 

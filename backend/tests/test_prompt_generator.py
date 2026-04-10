@@ -24,7 +24,6 @@ def _make_role() -> RoleSummary:
         description="",
         service_types=[],
         identity_md="Tu es un analyste rigoureux.",
-        prompt_agent_md="",
         prompt_orchestrator_md="",
         runtime_config={},
         created_at=datetime(2026, 4, 10),
@@ -72,7 +71,7 @@ def test_assemble_source_markdown_orders_sections() -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_prompts_calls_anthropic_twice() -> None:
+async def test_generate_prompts_calls_anthropic_once() -> None:
     role = _make_role()
     docs = [_make_doc("roles", "r1", "Tu analyses.")]
 
@@ -88,8 +87,6 @@ async def test_generate_prompts_calls_anthropic_twice() -> None:
 
     async def _fake_create(**kwargs: object) -> _FakeMessage:
         call_count["n"] += 1
-        if call_count["n"] == 1:
-            return _FakeMessage("Tu es un assistant qui analyse.")
         return _FakeMessage("Il est un assistant qui analyse.")
 
     fake_messages = type("M", (), {"create": staticmethod(_fake_create)})()
@@ -101,9 +98,8 @@ async def test_generate_prompts_calls_anthropic_twice() -> None:
     ):
         result = await prompt_generator.generate_prompts(role, docs)
 
-    assert result.prompt_agent_md.startswith("Tu es")
     assert result.prompt_orchestrator_md.startswith("Il est")
-    assert call_count["n"] == 2
+    assert call_count["n"] == 1
 
 
 @pytest.mark.asyncio

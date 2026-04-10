@@ -40,7 +40,7 @@ async def test_create_and_get_role() -> None:
     assert summary.display_name == "Analyst"
     assert summary.service_types == ["specs", "code"]
     assert summary.identity_md == "Tu es un analyste."
-    assert summary.prompt_agent_md == ""
+    assert summary.prompt_orchestrator_md == ""
 
     again = await roles_service.get_by_id("analyst")
     assert again.display_name == "Analyst"
@@ -98,8 +98,6 @@ async def test_update_prompts() -> None:
 
     updated = await roles_service.update_prompts(
         "p",
-        prompt_agent_md="Tu es un assistant.",
         prompt_orchestrator_md="Il est un assistant.",
     )
-    assert updated.prompt_agent_md == "Tu es un assistant."
     assert updated.prompt_orchestrator_md == "Il est un assistant."

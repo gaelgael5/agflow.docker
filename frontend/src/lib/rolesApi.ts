@@ -8,7 +8,6 @@ export interface RoleSummary {
   description: string;
   service_types: string[];
   identity_md: string;
-  prompt_agent_md: string;
   prompt_orchestrator_md: string;
   runtime_config: Record<string, unknown>;
   created_at: string;

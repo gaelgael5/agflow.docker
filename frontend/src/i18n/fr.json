@@ -83,12 +83,11 @@
       "placeholder": "Tu es un assistant qui agit en tant que..."
     },
     "prompt": {
-      "explanation": "Ces prompts sont assemblés automatiquement par Claude à partir de l'identité + ROLES + MISSIONS + COMPETENCES. L'identité est le texte brut que tu édites ; les prompts ci-dessous sont la version compilée injectée dans les agents. Clique sur « Régénérer » pour relancer l'assemblage.",
-      "regenerate_button": "Régénérer les prompts",
+      "explanation": "Le prompt orchestrateur est une reformulation en 3e personne de ton identité + ROLES + MISSIONS + COMPETENCES. Il sert à l'orchestrateur pour décider quand dispatcher cet agent. Le prompt agent 2e personne injecté dans le container est simplement l'identité + les documents concaténés à la volée au lancement — pas stocké ici.",
+      "regenerate_button": "Régénérer le prompt orchestrateur",
       "generating": "Génération en cours…",
-      "agent_title": "Prompt agent compilé (2e personne)",
-      "orchestrator_title": "Prompt orchestrateur compilé (3e personne)",
-      "empty": "Pas encore généré. Clique sur « Régénérer les prompts »."
+      "orchestrator_title": "Prompt orchestrateur (3e personne)",
+      "empty": "Pas encore généré. Clique sur « Régénérer le prompt orchestrateur »."
     },
     "sidebar": {
       "roles_section": "ROLES",

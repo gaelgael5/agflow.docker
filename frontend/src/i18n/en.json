@@ -83,12 +83,11 @@
       "placeholder": "You are an assistant that acts as..."
     },
     "prompt": {
-      "explanation": "These prompts are automatically assembled by Claude from identity + ROLES + MISSIONS + COMPETENCES. The identity is the raw text you edit; the prompts below are the compiled version injected into agents. Click \"Regenerate\" to rebuild them.",
-      "regenerate_button": "Regenerate prompts",
+      "explanation": "The orchestrator prompt is a 3rd-person reformulation of your identity + ROLES + MISSIONS + COMPETENCES. It's used by the orchestrator to decide when to dispatch this agent. The 2nd-person agent prompt injected into the container is simply identity + documents concatenated at launch time — not stored here.",
+      "regenerate_button": "Regenerate orchestrator prompt",
       "generating": "Generating…",
-      "agent_title": "Compiled agent prompt (2nd person)",
-      "orchestrator_title": "Compiled orchestrator prompt (3rd person)",
-      "empty": "Not generated yet. Click \"Regenerate prompts\"."
+      "orchestrator_title": "Orchestrator prompt (3rd person)",
+      "empty": "Not generated yet. Click \"Regenerate orchestrator prompt\"."
     },
     "sidebar": {
       "roles_section": "ROLES",

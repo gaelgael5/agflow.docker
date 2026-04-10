@@ -154,7 +154,6 @@ async def test_generate_prompts_uses_mocked_anthropic(client: AsyncClient) -> No
     )
 
     mock_result = prompt_generator.GeneratedPrompts(
-        prompt_agent_md="Tu es un assistant rigoureux et direct.",
         prompt_orchestrator_md="Il est un assistant rigoureux et direct.",
     )
 
@@ -169,8 +168,8 @@ async def test_generate_prompts_uses_mocked_anthropic(client: AsyncClient) -> No
 
     assert res.status_code == 200, res.text
     body = res.json()
-    assert body["prompt_agent_md"].startswith("Tu es")
     assert body["prompt_orchestrator_md"].startswith("Il est")
+    assert "prompt_agent_md" not in body
 
 
 @pytest.mark.asyncio

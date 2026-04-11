@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  BookMarked,
+  Copy,
+  Eye,
+  FileCode2,
+  Plus,
+  PlugZap,
+  Save,
+  Trash2,
+  UserRoundCog,
+  X,
+} from "lucide-react";
 import { useDockerfiles } from "@/hooks/useDockerfiles";
 import { useRoles } from "@/hooks/useRoles";
 import { useMCPCatalog, useSkillsCatalog } from "@/hooks/useCatalogs";
@@ -14,7 +27,30 @@ import { useRoleDetail } from "@/hooks/useRoleDocuments";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
 import { ProfileInlineEditor } from "@/components/ProfileInlineEditor";
+import { PageShell } from "@/components/layout/PageHeader";
 import { slugify } from "@/lib/slugify";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type {
   AgentCreatePayload,
   AgentMCPBinding,
@@ -134,13 +170,14 @@ export function AgentEditorPage() {
 
   const mcpName = (mcpId: string): string =>
     availableMCPs.find((m) => m.id === mcpId)?.name ?? mcpId;
+  const mcpTransport = (mcpId: string): string =>
+    availableMCPs.find((m) => m.id === mcpId)?.transport ?? "stdio";
   const skillName = (sid: string): string =>
     availableSkills.find((s) => s.id === sid)?.name ?? sid;
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      // Auto-derive slug from display_name while the user hasn't touched it.
       if (key === "display_name" && isNew && !slugTouched) {
         next.slug = slugify(String(value), "-");
       }
@@ -250,7 +287,9 @@ export function AgentEditorPage() {
         await updateMutation.mutateAsync(updatePayload);
       }
     } catch (e) {
-      const err = e as { response?: { status?: number; data?: { detail?: string } } };
+      const err = e as {
+        response?: { status?: number; data?: { detail?: string } };
+      };
       if (err.response?.status === 409) {
         setError(t("agent_editor.error_duplicate_slug"));
       } else if (err.response?.status === 400) {
@@ -264,8 +303,6 @@ export function AgentEditorPage() {
   async function handlePreview(profileId: string | null = null) {
     if (isNew || !id) return;
     setPreviewProfileId(profileId);
-    // Wait a tick so useConfigPreview picks up the new profileId in its key
-    // before refetch fires. The refetch bypasses `enabled: false`.
     await Promise.resolve();
     const result = await previewQuery.refetch();
     if (result.data) {
@@ -295,9 +332,12 @@ export function AgentEditorPage() {
   }
 
   async function handleDeleteProfile(profile: AgentProfileSummary) {
-    if (!window.confirm(
-      t("agent_editor.profile_confirm_delete", { name: profile.name }),
-    )) return;
+    if (
+      !window.confirm(
+        t("agent_editor.profile_confirm_delete", { name: profile.name }),
+      )
+    )
+      return;
     await profilesHook.deleteMutation.mutateAsync(profile.id);
   }
 
@@ -330,428 +370,671 @@ export function AgentEditorPage() {
 
   async function handleDelete() {
     if (isNew || !id) return;
-    if (!window.confirm(t("agents.confirm_delete", { name: form.display_name })))
+    if (
+      !window.confirm(t("agents.confirm_delete", { name: form.display_name }))
+    )
       return;
     await deleteMutation.mutateAsync(id);
     navigate("/agents");
   }
 
-  if (!isNew && agentLoading) return <p>{t("secrets.loading")}</p>;
+  if (!isNew && agentLoading)
+    return (
+      <PageShell>
+        <p className="text-muted-foreground">{t("secrets.loading")}</p>
+      </PageShell>
+    );
 
   const title = isNew
     ? t("agent_editor.title_new")
-    : t("agent_editor.title_edit", { name: form.display_name });
+    : form.display_name || t("agent_editor.title_new");
 
   return (
-    <div style={{ padding: "2rem", maxWidth: 1000 }}>
-      <h1>{title}</h1>
+    <PageShell maxWidth="5xl">
+      {/* Back link */}
+      <button
+        type="button"
+        onClick={() => navigate("/agents")}
+        className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground mb-5"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" />
+        {t("agent_editor.back_to_agents")}
+      </button>
 
-      {error && (
-        <p role="alert" style={{ color: "red" }}>
-          {error}
-        </p>
-      )}
-
-      <fieldset style={{ marginBottom: "1rem" }}>
-        <legend>{t("agent_editor.section_general")}</legend>
-        <label>
-          {t("agent_editor.display_name")}
-          <input
-            type="text"
-            value={form.display_name}
-            onChange={(e) => updateField("display_name", e.target.value)}
-          />
-        </label>
-        <label>
-          {t("agent_editor.slug")}
-          <input
-            type="text"
-            value={form.slug}
-            onChange={(e) => {
-              setSlugTouched(true);
-              updateField("slug", e.target.value);
-            }}
-            disabled={!isNew}
-          />
-        </label>
-        <label>
-          {t("agent_editor.description")}
-          <textarea
-            value={form.description}
-            onChange={(e) => updateField("description", e.target.value)}
-            rows={2}
-          />
-        </label>
-      </fieldset>
-
-      <fieldset style={{ marginBottom: "1rem" }}>
-        <legend>{t("agent_editor.section_dockerfile")}</legend>
-        <select
-          value={form.dockerfile_id}
-          onChange={(e) => updateField("dockerfile_id", e.target.value)}
-        >
-          <option value="">—</option>
-          {(dockerfiles ?? []).map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.display_name} ({d.id})
-            </option>
-          ))}
-        </select>
-      </fieldset>
-
-      <fieldset style={{ marginBottom: "1rem" }}>
-        <legend>{t("agent_editor.section_role")}</legend>
-        <select
-          value={form.role_id}
-          onChange={(e) => updateField("role_id", e.target.value)}
-        >
-          <option value="">—</option>
-          {(roles ?? []).map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.display_name} ({r.id})
-            </option>
-          ))}
-        </select>
-      </fieldset>
-
-      <fieldset style={{ marginBottom: "1rem" }}>
-        <legend>{t("agent_editor.section_mcps")}</legend>
-        {form.mcp_bindings.map((b, idx) => (
-          <div
-            key={`${b.mcp_server_id}-${idx}`}
-            style={{
-              border: "1px solid #eee",
-              padding: "0.5rem",
-              marginBottom: "0.5rem",
-            }}
-          >
-            <strong>{mcpName(b.mcp_server_id)}</strong>
-            <label style={{ display: "block", marginTop: "0.25rem" }}>
-              {t("agent_editor.mcp_override_label")}
-              <textarea
-                defaultValue={JSON.stringify(b.parameters_override, null, 2)}
-                onBlur={(e) => setMCPOverride(idx, e.target.value)}
-                rows={3}
-                style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
-              />
-            </label>
-            <button type="button" onClick={() => removeMCP(idx)}>
-              {t("agent_editor.mcp_remove")}
-            </button>
-          </div>
-        ))}
-        <button type="button" onClick={addMCP}>
-          {t("agent_editor.mcp_add")}
-        </button>
-      </fieldset>
-
-      <fieldset style={{ marginBottom: "1rem" }}>
-        <legend>{t("agent_editor.section_skills")}</legend>
-        {form.skill_bindings.map((b, idx) => (
-          <div
-            key={`${b.skill_id}-${idx}`}
-            style={{ display: "flex", gap: "0.5rem", marginBottom: "0.25rem" }}
-          >
-            <span>{skillName(b.skill_id)}</span>
-            <button type="button" onClick={() => removeSkill(idx)}>
-              {t("agent_editor.skill_remove")}
-            </button>
-          </div>
-        ))}
-        <button type="button" onClick={addSkill}>
-          {t("agent_editor.skill_add")}
-        </button>
-      </fieldset>
-
-      {!isNew && (
-        <fieldset style={{ marginBottom: "1rem" }}>
-          <legend>{t("agent_editor.section_profiles")}</legend>
-          <p style={{ color: "#666", fontSize: "12px", marginTop: 0 }}>
-            {t("agent_editor.profiles_subtitle")}
-          </p>
-          {(profilesHook.profiles ?? []).length === 0 ? (
-            <p style={{ color: "#999", fontStyle: "italic", fontSize: "13px" }}>
-              {t("agent_editor.profiles_empty")}
+      {/* Header with title + actions */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-8">
+        <div className="min-w-0">
+          <h1 className="text-[22px] md:text-[26px] font-semibold text-foreground tracking-tight truncate">
+            {title}
+          </h1>
+          {!isNew && form.slug && (
+            <p className="text-muted-foreground mt-1 font-mono text-[12px]">
+              {form.slug}
             </p>
-          ) : (
-            <ul style={{ listStyle: "none", padding: 0 }}>
-              {(profilesHook.profiles ?? []).map((p) => (
-                <li
-                  key={p.id}
-                  style={{
-                    padding: "0.5rem",
-                    border: "1px solid #eee",
-                    borderRadius: "4px",
-                    marginBottom: "0.25rem",
-                    background:
-                      editingProfile?.id === p.id ? "#f3f4f6" : "transparent",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.75rem",
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <strong>{p.name}</strong>{" "}
-                      <span style={{ color: "#666", fontSize: "12px" }}>
-                        ({p.document_ids.length} docs)
-                      </span>
-                      {p.description && (
-                        <div style={{ fontSize: "12px", color: "#666" }}>
-                          {p.description}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setEditingProfile(
-                          editingProfile?.id === p.id ? null : p,
-                        )
-                      }
-                    >
-                      {editingProfile?.id === p.id
-                        ? t("agent_editor.profile_close")
-                        : t("agent_editor.profile_edit")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePreview(p.id)}
-                      title={t("agent_editor.preview_with_profile")}
-                    >
-                      👁
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteProfile(p)}
-                      style={{ color: "red" }}
-                    >
-                      {t("agent_editor.profile_delete")}
-                    </button>
-                  </div>
-                  {editingProfile?.id === p.id && (
-                    <ProfileInlineEditor
-                      profile={p}
-                      roleDetail={roleDetailQuery.data}
-                      onSave={(doc_ids) => handleSaveProfileDocs(p, doc_ids)}
-                      onClose={() => setEditingProfile(null)}
-                      onDelete={async () => {
-                        await handleDeleteProfile(p);
-                        setEditingProfile(null);
-                      }}
-                    />
-                  )}
-                </li>
-              ))}
-            </ul>
           )}
-          <button type="button" onClick={handleAddProfile}>
-            {t("agent_editor.profile_add")}
-          </button>
-        </fieldset>
-      )}
-
-      <fieldset style={{ marginBottom: "1rem" }}>
-        <legend>{t("agent_editor.section_env")}</legend>
-        {form.env_entries.map((entry, idx) => {
-          const secretRef =
-            entry.value.startsWith("$") && entry.value.length > 1
-              ? entry.value.slice(1)
-              : null;
-          return (
-            <div
-              key={idx}
-              style={{
-                display: "flex",
-                gap: "0.5rem",
-                marginBottom: "0.25rem",
-                alignItems: "center",
-              }}
-            >
-              <input
-                type="text"
-                placeholder={t("agent_editor.env_key_placeholder")}
-                value={entry.key}
-                onChange={(e) => setEnv(idx, "key", e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder={t("agent_editor.env_value_placeholder")}
-                value={entry.value}
-                onChange={(e) => setEnv(idx, "value", e.target.value)}
-                style={{ flex: 1 }}
-              />
-              {secretRef && (
-                <EnvVarStatus
-                  name={secretRef}
-                  status={envStatus.data?.[secretRef]}
-                  compact
-                />
-              )}
-              <button type="button" onClick={() => removeEnv(idx)}>
-                {t("agent_editor.env_remove")}
-              </button>
-            </div>
-          );
-        })}
-        <button type="button" onClick={addEnv}>
-          {t("agent_editor.env_add")}
-        </button>
-      </fieldset>
-
-      <fieldset style={{ marginBottom: "1rem" }}>
-        <legend>{t("agent_editor.section_lifecycle")}</legend>
-        <label>
-          {t("agent_editor.timeout")}
-          <input
-            type="number"
-            value={form.timeout_seconds}
-            onChange={(e) =>
-              updateField("timeout_seconds", Number(e.target.value))
-            }
-          />
-        </label>
-        <label>
-          {t("agent_editor.workspace_path")}
-          <input
-            type="text"
-            value={form.workspace_path}
-            onChange={(e) => updateField("workspace_path", e.target.value)}
-          />
-        </label>
-        <label>
-          {t("agent_editor.network_mode")}
-          <select
-            value={form.network_mode}
-            onChange={(e) =>
-              updateField("network_mode", e.target.value as NetworkMode)
-            }
-          >
-            <option value="bridge">bridge</option>
-            <option value="host">host</option>
-            <option value="none">none</option>
-          </select>
-        </label>
-        <label>
-          {t("agent_editor.graceful_shutdown")}
-          <input
-            type="number"
-            value={form.graceful_shutdown_secs}
-            onChange={(e) =>
-              updateField("graceful_shutdown_secs", Number(e.target.value))
-            }
-          />
-        </label>
-        <label>
-          {t("agent_editor.force_kill_delay")}
-          <input
-            type="number"
-            value={form.force_kill_delay_secs}
-            onChange={(e) =>
-              updateField("force_kill_delay_secs", Number(e.target.value))
-            }
-          />
-        </label>
-      </fieldset>
-
-      <div style={{ display: "flex", gap: "0.5rem" }}>
-        <button type="button" onClick={handleSave}>
-          {t("agent_editor.save")}
-        </button>
-        <button type="button" onClick={() => navigate("/agents")}>
-          {t("agent_editor.cancel")}
-        </button>
-        {!isNew && (
-          <>
-            <button type="button" onClick={() => handlePreview(null)}>
-              {t("agent_editor.preview_identity_only")}
-            </button>
-            <button type="button" onClick={handleDuplicate}>
-              {t("agent_editor.duplicate_button")}
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              style={{ color: "red" }}
-            >
-              {t("agent_editor.delete_button")}
-            </button>
-          </>
-        )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isNew && (
+            <>
+              <Button variant="outline" onClick={() => handlePreview(null)}>
+                <Eye className="w-4 h-4" />
+                {t("agent_editor.preview_identity_only")}
+              </Button>
+              <Button variant="outline" onClick={handleDuplicate}>
+                <Copy className="w-4 h-4" />
+                {t("agent_editor.duplicate_button")}
+              </Button>
+            </>
+          )}
+          <Button onClick={handleSave}>
+            <Save className="w-4 h-4" />
+            {t("agent_editor.save")}
+          </Button>
+        </div>
       </div>
 
-      {showPreview && preview && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "flex-start",
-            padding: "2rem",
-            overflowY: "auto",
-          }}
-          onClick={() => setShowPreview(false)}
-        >
-          <div
-            style={{
-              background: "white",
-              padding: "1.5rem",
-              maxWidth: 900,
-              width: "100%",
-              maxHeight: "90vh",
-              overflowY: "auto",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2>{t("agent_editor.preview_title")}</h2>
-            {preview.validation_errors.length > 0 ? (
-              <div style={{ color: "red" }}>
-                <strong>{t("agent_editor.preview_errors")}</strong>
-                <ul>
-                  {preview.validation_errors.map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <p style={{ color: "green" }}>
-                {t("agent_editor.preview_no_errors")}
-              </p>
-            )}
-            <h3>prompt.md</h3>
-            <pre style={{ fontSize: 11, background: "#f5f5f5", padding: 8 }}>
-              {preview.prompt_md}
-            </pre>
-            <h3>mcp.json</h3>
-            <pre style={{ fontSize: 11, background: "#f5f5f5", padding: 8 }}>
-              {JSON.stringify(preview.mcp_json, null, 2)}
-            </pre>
-            <h3>tools.json</h3>
-            <pre style={{ fontSize: 11, background: "#f5f5f5", padding: 8 }}>
-              {JSON.stringify(preview.tools_json, null, 2)}
-            </pre>
-            <h3>.env</h3>
-            <pre style={{ fontSize: 11, background: "#f5f5f5", padding: 8 }}>
-              {preview.env_file || "(empty)"}
-            </pre>
-            <h3>skills/</h3>
-            <ul>
-              {preview.skills.map((s) => (
-                <li key={s.skill_id}>{s.name}</li>
-              ))}
-            </ul>
-            <button type="button" onClick={() => setShowPreview(false)}>
-              {t("agent_editor.preview_close")}
-            </button>
+      {error && (
+        <Card className="mb-4 border-destructive/40 bg-destructive/5">
+          <CardContent className="pt-5 pb-5">
+            <p role="alert" className="text-destructive text-[13px]">
+              {error}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* General */}
+      <SectionLabel>{t("agent_editor.section_general")}</SectionLabel>
+      <Card className="mb-6">
+        <CardContent className="pt-5 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>{t("agent_editor.display_name")}</Label>
+              <Input
+                value={form.display_name}
+                onChange={(e) => updateField("display_name", e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>{t("agent_editor.slug")}</Label>
+              <Input
+                value={form.slug}
+                onChange={(e) => {
+                  setSlugTouched(true);
+                  updateField("slug", e.target.value);
+                }}
+                disabled={!isNew}
+                className="font-mono text-[12px]"
+              />
+            </div>
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("agent_editor.description")}</Label>
+            <Textarea
+              value={form.description}
+              onChange={(e) => updateField("description", e.target.value)}
+              rows={2}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Composition — brick cards */}
+      <div className="flex items-center justify-between mb-3">
+        <SectionLabel className="mb-0">
+          {t("agent_editor.section_composition")}
+        </SectionLabel>
+        <span className="text-muted-foreground text-[12px]">
+          {1 +
+            1 +
+            form.mcp_bindings.length +
+            form.skill_bindings.length}{" "}
+          {t("agent_editor.bricks_assembled")}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {/* Dockerfile brick */}
+        <BrickCard
+          icon={
+            <div className="w-8 h-8 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 flex items-center justify-center">
+              <FileCode2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            </div>
+          }
+          kind={t("agent_editor.section_dockerfile")}
+        >
+          <Select
+            value={form.dockerfile_id}
+            onValueChange={(v) => updateField("dockerfile_id", v)}
+          >
+            <SelectTrigger className="mt-2">
+              <SelectValue placeholder="—" />
+            </SelectTrigger>
+            <SelectContent>
+              {(dockerfiles ?? []).map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.display_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </BrickCard>
+
+        {/* Role brick */}
+        <BrickCard
+          icon={
+            <div className="w-8 h-8 rounded-md bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/50 flex items-center justify-center">
+              <UserRoundCog className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+            </div>
+          }
+          kind={t("agent_editor.section_role")}
+        >
+          <Select
+            value={form.role_id}
+            onValueChange={(v) => updateField("role_id", v)}
+          >
+            <SelectTrigger className="mt-2">
+              <SelectValue placeholder="—" />
+            </SelectTrigger>
+            <SelectContent>
+              {(roles ?? []).map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.display_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </BrickCard>
+
+        {/* MCPs brick — spans 2 columns */}
+        <Card className="md:col-span-2">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-md bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-100 dark:border-cyan-900/50 flex items-center justify-center">
+                  <PlugZap className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("agent_editor.section_mcps")}
+                  </div>
+                  <div className="text-[14px] font-semibold text-foreground -mt-0.5">
+                    {form.mcp_bindings.length}{" "}
+                    {t("agent_editor.mcp_count_suffix")}
+                  </div>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={addMCP}>
+                <Plus className="w-3.5 h-3.5" />
+                {t("agent_editor.mcp_add_short")}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {form.mcp_bindings.length === 0 ? (
+              <p className="text-muted-foreground text-[12px] italic">
+                {t("agent_editor.mcp_empty")}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {form.mcp_bindings.map((b, idx) => (
+                  <div
+                    key={`${b.mcp_server_id}-${idx}`}
+                    className="border rounded-md p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[13px] font-semibold text-foreground truncate">
+                          {mcpName(b.mcp_server_id)}
+                        </span>
+                        <Badge variant="secondary" className="font-mono text-[10px]">
+                          {mcpTransport(b.mcp_server_id)}
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeMCP(idx)}
+                        aria-label={t("agent_editor.mcp_remove")}
+                      >
+                        <X className="w-3.5 h-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
+                    <div className="mt-2">
+                      <Label className="text-[11px]">
+                        {t("agent_editor.mcp_override_label")}
+                      </Label>
+                      <Textarea
+                        defaultValue={JSON.stringify(
+                          b.parameters_override,
+                          null,
+                          2,
+                        )}
+                        onBlur={(e) => setMCPOverride(idx, e.target.value)}
+                        rows={3}
+                        className="font-mono text-[11px] mt-1"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Skills brick — spans 2 columns */}
+        <Card className="md:col-span-2">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/50 flex items-center justify-center">
+                  <BookMarked className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("agent_editor.section_skills")}
+                  </div>
+                  <div className="text-[14px] font-semibold text-foreground -mt-0.5">
+                    {form.skill_bindings.length}{" "}
+                    {t("agent_editor.skill_count_suffix")}
+                  </div>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={addSkill}>
+                <Plus className="w-3.5 h-3.5" />
+                {t("agent_editor.skill_add_short")}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {form.skill_bindings.length === 0 ? (
+              <p className="text-muted-foreground text-[12px] italic">
+                {t("agent_editor.skill_empty")}
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {form.skill_bindings.map((b, idx) => (
+                  <span
+                    key={`${b.skill_id}-${idx}`}
+                    className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md bg-secondary text-[12px] text-foreground border"
+                  >
+                    <BookMarked className="w-3 h-3 text-muted-foreground" />
+                    {skillName(b.skill_id)}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-4 w-4 ml-1"
+                      onClick={() => removeSkill(idx)}
+                      aria-label={t("agent_editor.skill_remove")}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Profiles */}
+      {!isNew && (
+        <>
+          <SectionLabel>{t("agent_editor.section_profiles")}</SectionLabel>
+          <Card className="mb-6">
+            <CardContent className="pt-5">
+              <p className="text-muted-foreground text-[12px] mb-3">
+                {t("agent_editor.profiles_subtitle")}
+              </p>
+              {(profilesHook.profiles ?? []).length === 0 ? (
+                <p className="text-muted-foreground italic text-[13px] mb-3">
+                  {t("agent_editor.profiles_empty")}
+                </p>
+              ) : (
+                <ul className="space-y-2 mb-3">
+                  {(profilesHook.profiles ?? []).map((p) => {
+                    const isEditing = editingProfile?.id === p.id;
+                    return (
+                      <li
+                        key={p.id}
+                        className={cn(
+                          "border rounded-md p-3",
+                          isEditing && "bg-secondary/40",
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-foreground text-[13px] truncate">
+                                {p.name}
+                              </span>
+                              <Badge variant="outline">
+                                {p.document_ids.length} docs
+                              </Badge>
+                            </div>
+                            {p.description && (
+                              <div className="text-[12px] text-muted-foreground mt-0.5">
+                                {p.description}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setEditingProfile(isEditing ? null : p)
+                            }
+                          >
+                            {isEditing
+                              ? t("agent_editor.profile_close")
+                              : t("agent_editor.profile_edit")}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handlePreview(p.id)}
+                            aria-label={t("agent_editor.preview_with_profile")}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteProfile(p)}
+                            aria-label={t("agent_editor.profile_delete")}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                          </Button>
+                        </div>
+                        {isEditing && (
+                          <ProfileInlineEditor
+                            profile={p}
+                            roleDetail={roleDetailQuery.data}
+                            onSave={(doc_ids) =>
+                              handleSaveProfileDocs(p, doc_ids)
+                            }
+                            onClose={() => setEditingProfile(null)}
+                            onDelete={async () => {
+                              await handleDeleteProfile(p);
+                              setEditingProfile(null);
+                            }}
+                          />
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <Button variant="outline" size="sm" onClick={handleAddProfile}>
+                <Plus className="w-3.5 h-3.5" />
+                {t("agent_editor.profile_add")}
+              </Button>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* Env vars */}
+      <SectionLabel>{t("agent_editor.section_env")}</SectionLabel>
+      <Card className="mb-6">
+        <CardContent className="pt-5 space-y-2">
+          {form.env_entries.map((entry, idx) => {
+            const secretRef =
+              entry.value.startsWith("$") && entry.value.length > 1
+                ? entry.value.slice(1)
+                : null;
+            return (
+              <div
+                key={idx}
+                className="flex flex-wrap items-center gap-2"
+              >
+                <Input
+                  placeholder={t("agent_editor.env_key_placeholder")}
+                  value={entry.key}
+                  onChange={(e) => setEnv(idx, "key", e.target.value)}
+                  className="font-mono text-[12px] w-40 md:w-48"
+                />
+                <Input
+                  placeholder={t("agent_editor.env_value_placeholder")}
+                  value={entry.value}
+                  onChange={(e) => setEnv(idx, "value", e.target.value)}
+                  className="flex-1 min-w-[180px] font-mono text-[12px]"
+                />
+                {secretRef && (
+                  <EnvVarStatus
+                    name={secretRef}
+                    status={envStatus.data?.[secretRef]}
+                    compact
+                  />
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeEnv(idx)}
+                  aria-label={t("agent_editor.env_remove")}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            );
+          })}
+          <Button variant="outline" size="sm" onClick={addEnv}>
+            <Plus className="w-3.5 h-3.5" />
+            {t("agent_editor.env_add")}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Lifecycle */}
+      <SectionLabel>{t("agent_editor.section_lifecycle")}</SectionLabel>
+      <Card className="mb-6">
+        <CardContent className="pt-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("agent_editor.timeout")}</Label>
+            <Input
+              type="number"
+              value={form.timeout_seconds}
+              onChange={(e) =>
+                updateField("timeout_seconds", Number(e.target.value))
+              }
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("agent_editor.workspace_path")}</Label>
+            <Input
+              value={form.workspace_path}
+              onChange={(e) => updateField("workspace_path", e.target.value)}
+              className="font-mono text-[12px]"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("agent_editor.network_mode")}</Label>
+            <Select
+              value={form.network_mode}
+              onValueChange={(v) =>
+                updateField("network_mode", v as NetworkMode)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bridge">bridge</SelectItem>
+                <SelectItem value="host">host</SelectItem>
+                <SelectItem value="none">none</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("agent_editor.graceful_shutdown")}</Label>
+            <Input
+              type="number"
+              value={form.graceful_shutdown_secs}
+              onChange={(e) =>
+                updateField("graceful_shutdown_secs", Number(e.target.value))
+              }
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("agent_editor.force_kill_delay")}</Label>
+            <Input
+              type="number"
+              value={form.force_kill_delay_secs}
+              onChange={(e) =>
+                updateField("force_kill_delay_secs", Number(e.target.value))
+              }
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Danger zone */}
+      {!isNew && (
+        <div className="border-t pt-6">
+          <Button variant="destructive" onClick={handleDelete}>
+            <Trash2 className="w-4 h-4" />
+            {t("agent_editor.delete_button")}
+          </Button>
         </div>
       )}
 
+      {/* Preview dialog */}
+      <Dialog
+        open={showPreview && preview !== null}
+        onOpenChange={(o) => !o && setShowPreview(false)}
+      >
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("agent_editor.preview_title")}</DialogTitle>
+            <DialogDescription>
+              {preview?.profile_name
+                ? t("agent_editor.preview_profile_label", {
+                    name: preview.profile_name,
+                  })
+                : t("agent_editor.preview_identity_only_label")}
+            </DialogDescription>
+          </DialogHeader>
+          {preview && (
+            <div className="space-y-4">
+              {preview.validation_errors.length > 0 ? (
+                <div className="rounded-md bg-destructive/5 border border-destructive/20 p-3">
+                  <div className="text-[13px] font-medium text-destructive mb-1">
+                    {t("agent_editor.preview_errors")}
+                  </div>
+                  <ul className="text-[12px] text-destructive space-y-0.5 list-disc list-inside">
+                    {preview.validation_errors.map((e, i) => (
+                      <li key={i}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-900/40 p-3">
+                  <div className="text-[13px] font-medium text-emerald-900 dark:text-emerald-200">
+                    {t("agent_editor.preview_no_errors")}
+                  </div>
+                </div>
+              )}
+
+              <PreviewBlock label="/config/prompt.md">
+                {preview.prompt_md}
+              </PreviewBlock>
+              <PreviewBlock label="/config/mcp.json">
+                {JSON.stringify(preview.mcp_json, null, 2)}
+              </PreviewBlock>
+              <PreviewBlock label="/config/tools.json">
+                {JSON.stringify(preview.tools_json, null, 2)}
+              </PreviewBlock>
+              <PreviewBlock label="/config/.env">
+                {preview.env_file || "(empty)"}
+              </PreviewBlock>
+              {preview.skills.length > 0 && (
+                <div>
+                  <div className="text-[12px] font-semibold text-muted-foreground font-mono mb-1">
+                    /skills/
+                  </div>
+                  <ul className="text-[12px] list-disc list-inside">
+                    {preview.skills.map((s) => (
+                      <li key={s.skill_id}>{s.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPreview(false)}>
+              {t("agent_editor.preview_close")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </PageShell>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Internal helpers
+// ────────────────────────────────────────────────────────────────
+
+function SectionLabel({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function BrickCard({
+  icon,
+  kind,
+  children,
+}: {
+  icon: React.ReactNode;
+  kind: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-5">
+        <div className="flex items-start gap-2.5">
+          {icon}
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+              {kind}
+            </div>
+            {children}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PreviewBlock({
+  label,
+  children,
+}: {
+  label: string;
+  children: string;
+}) {
+  return (
+    <div>
+      <div className="text-[12px] font-semibold text-muted-foreground font-mono mb-1">
+        {label}
+      </div>
+      <pre className="bg-zinc-900 text-zinc-100 rounded-md p-3 text-[11px] font-mono max-h-48 overflow-auto whitespace-pre-wrap">
+        {children}
+      </pre>
     </div>
   );
 }

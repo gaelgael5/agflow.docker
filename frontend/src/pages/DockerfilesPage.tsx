@@ -8,7 +8,6 @@ import { BuildStatusBadge } from "@/components/BuildStatusBadge";
 import { BuildModal } from "@/components/BuildModal";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { dockerfilesApi } from "@/lib/dockerfilesApi";
-import type { FileSummary } from "@/lib/dockerfilesApi";
 
 export function DockerfilesPage() {
   const { t } = useTranslation();
@@ -23,13 +22,14 @@ export function DockerfilesPage() {
   } = useDockerfiles();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<FileSummary | null>(null);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [buildId, setBuildId] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState<string | null>(null);
 
   const detail = useDockerfileDetail(selectedId);
   const currentDockerfile = detail.data?.dockerfile ?? null;
   const files = detail.data?.files ?? [];
+  const selectedFile = files.find((f) => f.id === selectedFileId) ?? null;
 
   async function handleCreate() {
     const id = window.prompt(t("dockerfiles.new_dockerfile_id_prompt"));
@@ -46,7 +46,8 @@ export function DockerfilesPage() {
       return;
     await deleteMutation.mutateAsync(selectedId);
     setSelectedId(null);
-    setSelectedFile(null);
+    setSelectedFileId(null);
+    setDraftContent(null);
   }
 
   async function handleAddFile() {
@@ -57,8 +58,8 @@ export function DockerfilesPage() {
       dockerfileId: selectedId,
       payload: { path, content: "" },
     });
-    setSelectedFile(f);
-    setDraftContent("");
+    setSelectedFileId(f.id);
+    setDraftContent(null);
   }
 
   async function handleSaveFile() {
@@ -77,7 +78,7 @@ export function DockerfilesPage() {
       dockerfileId: selectedId,
       fileId: selectedFile.id,
     });
-    setSelectedFile(null);
+    setSelectedFileId(null);
     setDraftContent(null);
   }
 
@@ -116,7 +117,7 @@ export function DockerfilesPage() {
                   type="button"
                   onClick={() => {
                     setSelectedId(d.id);
-                    setSelectedFile(null);
+                    setSelectedFileId(null);
                     setDraftContent(null);
                   }}
                   style={{
@@ -184,7 +185,7 @@ export function DockerfilesPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedFile(f);
+                        setSelectedFileId(f.id);
                         setDraftContent(null);
                       }}
                       style={{
@@ -192,7 +193,7 @@ export function DockerfilesPage() {
                         textAlign: "left",
                         padding: "4px 6px",
                         background:
-                          selectedFile?.id === f.id
+                          selectedFileId === f.id
                             ? "#e0e7ff"
                             : "transparent",
                         border: "none",

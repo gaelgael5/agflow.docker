@@ -20,12 +20,12 @@
 | M1 Dockerfiles   | 5 | 6 | 3 | 0 |
 | M2 Rôles         | 1 | 7 | 0 | 2 |
 | M3 Catalogues    | 2 | 5 | 2 | 0 |
-| M4 Composition   | 1 | 1 | 2 | 0 |
-| **Total**        | **11** | **21** | **9** | **2** |
+| M4 Composition   | 4 | 4 | 2 | 0 |
+| **Total**        | **14** | **24** | **9** | **2** |
 
-**43 gaps identifiés** au total + 2 décisions de spec à trancher + **2 nouvelles features hors spec** demandées (chat Docker builder, CRUD service types).
+**49 gaps identifiés** au total + 2 décisions de spec à trancher + **3 features hors spec** demandées (NF-1 chat Docker builder, NF-2 CRUD service types, **NF-3 profils de missions**).
 
-**Source** : audit automatique (5 sous-agents) + feedback utilisateur 2026-04-11.
+**Source** : audit automatique (5 sous-agents) + feedback utilisateur 2026-04-11 (en plusieurs passes).
 
 ---
 
@@ -297,6 +297,61 @@ Un assistant conversationnel dédié à la création de Dockerfiles : on décrit
 
 ### NF-2 — Gestion CRUD des types de services (catégorisation des Rôles)
 Voir **M2-M7**. Les 7 types hardcodés (Documentation/Code/Design/…) doivent devenir une table CRUD. Nouvelle page admin.
+
+### NF-3 — Profils de missions (Agents)
+**Concept** : refonte fondamentale du comportement par défaut de `composition_builder`.
+
+**Modèle actuel (phase 5a)** : 1 Agent → 1 Role → prompt = identité + **tous** les documents (pollution permanente).
+
+**Modèle cible** :
+- Agent instantié **sans profil** → prompt = identité seule (léger, non pollué)
+- Agent instantié **avec profil X** → prompt = identité + documents sélectionnés par X
+- Un **profil** = liste de documents sélectionnés cross-catégorie (roles + missions + compétences + futures catégories custom)
+- Les profils sont **scopés à l'agent**, stockés au niveau M4
+
+**Design :**
+```sql
+CREATE TABLE agent_profiles (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    agent_id        UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    document_ids    UUID[] NOT NULL DEFAULT '{}',    -- refs soft à role_documents.id
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (agent_id, name)
+);
+
+CREATE INDEX idx_agent_profiles_agent ON agent_profiles(agent_id);
+```
+
+**Choix délibéré** : `document_ids UUID[]` en colonne plutôt que table de liaison avec FK. Raison : si un `role_document` est supprimé (ou si l'agent change de Role), les UUIDs deviennent orphelins — ce qu'on **veut détecter** comme erreur plutôt que silencieusement cascader.
+
+**Détection d'erreur** :
+- `build_preview(agent_id, profile_id?)` resolve chaque UUID via `role_documents`
+- UUIDs introuvables → `validation_errors.append("Profile X references N missing docs")`
+- L'agent passe en état "erreur de composition" → visible en liste (badge rouge) et dans le builder (bannière)
+
+**Même mécanisme** couvre 2 cas :
+1. Document supprimé depuis la page Roles
+2. Role de l'agent changée (les UUIDs du profil appartiennent à l'ancienne Role)
+
+**Décisions utilisateur (validées) :**
+- ✅ Pas de default profile sur l'agent — toujours explicite au runtime
+- ✅ Suppression d'un doc permise, agent en erreur si référencé
+
+**Items :**
+
+| ID | Titre | Sévérité |
+|---|---|---|
+| **M4-NEW-B1** | Migration 016 `agent_profiles` avec `document_ids UUID[]` | 🔴 |
+| **M4-NEW-B2** | `composition_builder.build_preview` par défaut = identité seule + support `profile_id` + détection broken refs | 🔴 |
+| **M4-NEW-B3** | État "erreur de composition" propagé dans `ConfigPreview` + `AgentSummary.has_errors` pour list view | 🔴 |
+| **M4-NEW-M1** | CRUD `agent_profiles` service + router + endpoints + `GET /config-preview?profile_id=XXX` | 🟠 |
+| **M4-NEW-M2** | UI section "Profils de missions" dans AgentEditorPage (liste + éditeur checkbox grid par catégorie + broken refs en rouge) | 🟠 |
+| **M4-NEW-M3** | Badge 🔴 "En erreur" dans AgentsPage list view quand `has_errors == true` | 🟠 |
+
+**Dépendances strictes :** M2-B1 (sections dynamiques) → M4-NEW-B1 → M4-NEW-B2 → M4-NEW-B3 → M4-NEW-M1 → M4-NEW-M2 → M4-NEW-M3
 
 ---
 

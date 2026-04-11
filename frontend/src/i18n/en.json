@@ -10,6 +10,22 @@
     "supervision": "Supervision",
     "theme_dark": "Dark theme"
   },
+  "service_types": {
+    "page_title": "Service types",
+    "page_subtitle": "Categories used to classify agent roles (Documentation, Code, Design, …)",
+    "add_button": "+ New type",
+    "col_display_name": "Label",
+    "col_name": "Slug",
+    "col_type": "Origin",
+    "col_actions": "Actions",
+    "native": "Native",
+    "custom": "Custom",
+    "delete_button": "Delete",
+    "prompt_display_name": "Type label (e.g. UX Design)",
+    "prompt_name": "Slug (technical identifier)",
+    "confirm_delete": "Delete type \"{{name}}\"?",
+    "error_generic": "An error occurred"
+  },
   "login": {
     "title": "Login",
     "email": "Email",

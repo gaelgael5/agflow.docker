@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { RoleSummary } from "@/lib/rolesApi";
+import { useServiceTypes } from "@/hooks/useServiceTypes";
 import { MarkdownEditor } from "./MarkdownEditor";
 
 interface Props {
@@ -7,18 +8,9 @@ interface Props {
   onChange: (updates: Partial<RoleSummary>) => void;
 }
 
-const SERVICE_TYPES = [
-  "documentation",
-  "code",
-  "design",
-  "automation",
-  "task_list",
-  "specs",
-  "contract",
-] as const;
-
 export function RoleGeneralTab({ role, onChange }: Props) {
   const { t } = useTranslation();
+  const { serviceTypes } = useServiceTypes();
 
   function toggleService(service: string) {
     const current = role.service_types ?? [];
@@ -88,14 +80,14 @@ export function RoleGeneralTab({ role, onChange }: Props) {
             marginTop: "0.5rem",
           }}
         >
-          {SERVICE_TYPES.map((service) => (
-            <label key={service} style={{ fontSize: "13px" }}>
+          {(serviceTypes ?? []).map((st) => (
+            <label key={st.name} style={{ fontSize: "13px" }}>
               <input
                 type="checkbox"
-                checked={role.service_types.includes(service)}
-                onChange={() => toggleService(service)}
+                checked={role.service_types.includes(st.name)}
+                onChange={() => toggleService(st.name)}
               />{" "}
-              {t(`roles.general.service_${service}`)}
+              {st.display_name}
             </label>
           ))}
         </div>

@@ -18,6 +18,11 @@ function resolveCrumbs(path: string, t: (k: string) => string): Crumb | null {
     };
   if (path.startsWith("/roles"))
     return { section: t("sidebar.section_platform"), page: t("roles.page_title") };
+  if (path.startsWith("/service-types"))
+    return {
+      section: t("sidebar.section_platform"),
+      page: t("service_types.page_title"),
+    };
   if (path.startsWith("/discovery-services"))
     return {
       section: t("sidebar.section_catalogs"),

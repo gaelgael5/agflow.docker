@@ -21,21 +21,14 @@ def validate_section_slug(v: str) -> str:
     return v
 
 
-_ALLOWED_SERVICE_TYPES = {
-    "documentation",
-    "code",
-    "design",
-    "automation",
-    "task_list",
-    "specs",
-    "contract",
-}
-
-
 class RoleCreate(BaseModel):
     id: str = Field(min_length=1, max_length=128)
     display_name: str = Field(min_length=1, max_length=200)
     description: str = ""
+    # Service types are validated at service layer against the service_types
+    # DB table (see service_types_service.validate_names). Pydantic here
+    # only enforces they are strings; admins can add/remove types from the
+    # dedicated CRUD page.
     service_types: list[str] = Field(default_factory=list)
     identity_md: str = ""
 
@@ -49,14 +42,6 @@ class RoleCreate(BaseModel):
             )
         return v
 
-    @field_validator("service_types")
-    @classmethod
-    def _valid_services(cls, v: list[str]) -> list[str]:
-        unknown = [s for s in v if s not in _ALLOWED_SERVICE_TYPES]
-        if unknown:
-            raise ValueError(f"Unknown service types: {unknown}")
-        return v
-
 
 class RoleUpdate(BaseModel):
     display_name: str | None = None
@@ -64,16 +49,6 @@ class RoleUpdate(BaseModel):
     service_types: list[str] | None = None
     identity_md: str | None = None
     runtime_config: dict | None = None
-
-    @field_validator("service_types")
-    @classmethod
-    def _valid_services(cls, v: list[str] | None) -> list[str] | None:
-        if v is None:
-            return None
-        unknown = [s for s in v if s not in _ALLOWED_SERVICE_TYPES]
-        if unknown:
-            raise ValueError(f"Unknown service types: {unknown}")
-        return v
 
 
 class RoleSummary(BaseModel):

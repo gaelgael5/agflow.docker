@@ -42,6 +42,21 @@ def _row_to_summary(row: dict[str, Any]) -> RoleSummary:
     )
 
 
+class InvalidServiceTypeError(Exception):
+    pass
+
+
+async def _validate_service_types(names: list[str]) -> None:
+    if not names:
+        return
+    from agflow.services import service_types_service
+    unknown = await service_types_service.validate_names(names)
+    if unknown:
+        raise InvalidServiceTypeError(
+            f"Unknown service types: {', '.join(sorted(unknown))}"
+        )
+
+
 async def create(
     role_id: str,
     display_name: str,
@@ -49,6 +64,7 @@ async def create(
     service_types: list[str] | None = None,
     identity_md: str = "",
 ) -> RoleSummary:
+    await _validate_service_types(service_types or [])
     try:
         row = await fetch_one(
             f"""
@@ -99,6 +115,8 @@ async def update(role_id: str, **fields: Any) -> RoleSummary:
         "identity_md",
         "runtime_config",
     }
+    if "service_types" in fields and fields["service_types"] is not None:
+        await _validate_service_types(fields["service_types"])
     sets: list[str] = []
     args: list[Any] = []
     idx = 1

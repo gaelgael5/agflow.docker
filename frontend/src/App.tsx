@@ -9,6 +9,7 @@ import { MCPCatalogPage } from "./pages/MCPCatalogPage";
 import { SkillsCatalogPage } from "./pages/SkillsCatalogPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { AgentEditorPage } from "./pages/AgentEditorPage";
+import { ServiceTypesPage } from "./pages/ServiceTypesPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -92,6 +93,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <AgentEditorPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/service-types"
+        element={
+          <ProtectedRoute>
+            <ServiceTypesPage />
           </ProtectedRoute>
         }
       />

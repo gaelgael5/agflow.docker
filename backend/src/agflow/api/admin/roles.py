@@ -50,6 +50,10 @@ async def create_role(payload: RoleCreate) -> RoleSummary:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc
+    except roles_service.InvalidServiceTypeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
 
 @router.get("/{role_id}", response_model=RoleDetail)
@@ -81,6 +85,10 @@ async def update_role(role_id: str, payload: RoleUpdate) -> RoleSummary:
     except roles_service.RoleNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except roles_service.InvalidServiceTypeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
 
 

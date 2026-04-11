@@ -12,6 +12,7 @@ import {
   Moon,
   PlugZap,
   RadioTower,
+  Tags,
   UserRoundCog,
   type LucideIcon,
 } from "lucide-react";
@@ -42,6 +43,7 @@ export function Sidebar() {
         { to: "/secrets", label: t("secrets.page_title"), icon: KeyRound },
         { to: "/dockerfiles", label: t("dockerfiles.page_title"), icon: FileCode2 },
         { to: "/roles", label: t("roles.page_title"), icon: UserRoundCog },
+        { to: "/service-types", label: t("service_types.page_title"), icon: Tags },
       ],
     },
     {

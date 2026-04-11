@@ -12,6 +12,11 @@ _log = structlog.get_logger(__name__)
 
 _FILE_COLS = "id, dockerfile_id, path, content, created_at, updated_at"
 
+# Standard files auto-seeded on dockerfile creation. They cannot be deleted,
+# only edited. Mirrors the Module 1 spec requirement that every dockerfile
+# must at least provide a Dockerfile and an entrypoint.sh.
+STANDARD_FILES: tuple[str, ...] = ("Dockerfile", "entrypoint.sh")
+
 
 class FileNotFoundError(Exception):
     pass
@@ -19,6 +24,10 @@ class FileNotFoundError(Exception):
 
 class DuplicateFileError(Exception):
     pass
+
+
+class ProtectedFileError(Exception):
+    """Raised when attempting to delete a standard (non-deletable) file."""
 
 
 def _row(row: dict) -> FileSummary:
@@ -91,6 +100,11 @@ async def update(file_id: UUID, content: str | None = None) -> FileSummary:
 
 
 async def delete(file_id: UUID) -> None:
+    existing = await get_by_id(file_id)
+    if existing.path in STANDARD_FILES:
+        raise ProtectedFileError(
+            f"File '{existing.path}' is a standard file and cannot be deleted"
+        )
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
@@ -99,3 +113,16 @@ async def delete(file_id: UUID) -> None:
     if result == "DELETE 0":
         raise FileNotFoundError(f"File {file_id} not found")
     _log.info("dockerfile_files.delete", file_id=str(file_id))
+
+
+async def seed_standard_files(dockerfile_id: str) -> list[FileSummary]:
+    """Create empty Dockerfile + entrypoint.sh for a freshly created dockerfile."""
+    created: list[FileSummary] = []
+    for path in STANDARD_FILES:
+        try:
+            f = await create(dockerfile_id, path=path, content="")
+            created.append(f)
+        except DuplicateFileError:
+            # Idempotent: skip if it already exists (e.g. retry)
+            continue
+    return created

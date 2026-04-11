@@ -142,12 +142,16 @@
       "close": "Close",
       "running": "Running…",
       "success": "Success",
-      "failed": "Failed"
+      "failed": "Failed",
+      "copy": "Copy",
+      "copied": "Copied ✓",
+      "copy_fallback": "Press Ctrl+C to copy logs:"
     },
     "new_dockerfile_id_prompt": "Dockerfile id (slug)",
     "new_dockerfile_name_prompt": "Display name",
-    "new_file_prompt": "File name (e.g. Dockerfile)",
-    "confirm_delete": "Delete \"{{name}}\"?"
+    "new_file_prompt": "File name (e.g. config.json)",
+    "confirm_delete": "Delete \"{{name}}\"?",
+    "standard_file": "standard file, not deletable"
   },
   "discovery": {
     "page_title": "Discovery services",

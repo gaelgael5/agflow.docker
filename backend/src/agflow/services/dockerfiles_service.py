@@ -88,6 +88,10 @@ async def create(
             f"Dockerfile '{dockerfile_id}' already exists"
         ) from exc
     assert row is not None
+    # Auto-seed the 2 standard files (Dockerfile + entrypoint.sh). They are
+    # required by Module 1 spec and cannot be deleted afterward.
+    from agflow.services import dockerfile_files_service
+    await dockerfile_files_service.seed_standard_files(dockerfile_id)
     _log.info("dockerfiles.create", dockerfile_id=dockerfile_id)
     return await _row_to_summary(row)
 

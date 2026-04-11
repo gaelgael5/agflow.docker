@@ -34,32 +34,31 @@ async def _clean():
 
 @pytest.mark.asyncio
 async def test_create_file() -> None:
+    # The fixture auto-seeds Dockerfile + entrypoint.sh, so create a new one.
     f = await files.create(
         dockerfile_id="test",
-        path="Dockerfile",
-        content="FROM alpine",
+        path="config.json",
+        content="{}",
     )
     assert f.dockerfile_id == "test"
-    assert f.path == "Dockerfile"
-    assert f.content == "FROM alpine"
+    assert f.path == "config.json"
+    assert f.content == "{}"
 
 
 @pytest.mark.asyncio
 async def test_duplicate_path_raises() -> None:
-    await files.create(dockerfile_id="test", path="Dockerfile", content="")
+    # Auto-seeded Dockerfile already exists from the fixture.
     with pytest.raises(files.DuplicateFileError):
         await files.create(dockerfile_id="test", path="Dockerfile", content="x")
 
 
 @pytest.mark.asyncio
 async def test_list_for_dockerfile() -> None:
-    await files.create(dockerfile_id="test", path="Dockerfile", content="")
-    await files.create(dockerfile_id="test", path="entrypoint.sh", content="")
     await files.create(dockerfile_id="test", path="run.cmd.md", content="")
 
     items = await files.list_for_dockerfile("test")
-    paths = [i.path for i in items]
-    assert set(paths) == {"Dockerfile", "entrypoint.sh", "run.cmd.md"}
+    paths = {i.path for i in items}
+    assert paths == {"Dockerfile", "entrypoint.sh", "run.cmd.md"}
 
 
 @pytest.mark.asyncio

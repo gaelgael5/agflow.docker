@@ -142,12 +142,16 @@
       "close": "Fermer",
       "running": "En cours…",
       "success": "Succès",
-      "failed": "Échec"
+      "failed": "Échec",
+      "copy": "Copier",
+      "copied": "Copié ✓",
+      "copy_fallback": "Ctrl+C pour copier les logs :"
     },
     "new_dockerfile_id_prompt": "Identifiant du dockerfile (slug)",
     "new_dockerfile_name_prompt": "Nom d'affichage",
-    "new_file_prompt": "Nom du fichier (ex: Dockerfile)",
-    "confirm_delete": "Supprimer \"{{name}}\" ?"
+    "new_file_prompt": "Nom du fichier (ex: config.json)",
+    "confirm_delete": "Supprimer \"{{name}}\" ?",
+    "standard_file": "fichier standard, non supprimable"
   },
   "discovery": {
     "page_title": "Services de découverte",

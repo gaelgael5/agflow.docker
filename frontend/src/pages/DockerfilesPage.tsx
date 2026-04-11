@@ -9,6 +9,8 @@ import { BuildModal } from "@/components/BuildModal";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { dockerfilesApi } from "@/lib/dockerfilesApi";
 
+const STANDARD_FILES = ["Dockerfile", "entrypoint.sh"] as const;
+
 export function DockerfilesPage() {
   const { t } = useTranslation();
   const {
@@ -91,7 +93,14 @@ export function DockerfilesPage() {
   if (isLoading) return <p>{t("secrets.loading")}</p>;
 
   return (
-    <div style={{ display: "flex", height: "100vh" }}>
+    <div
+      style={{
+        display: "flex",
+        height: "100%",
+        minHeight: "calc(100vh - 56px)",
+        overflow: "hidden",
+      }}
+    >
       {/* Left: dockerfile list */}
       <aside
         style={{
@@ -99,6 +108,7 @@ export function DockerfilesPage() {
           borderRight: "1px solid #ddd",
           padding: "1rem",
           background: "#fafafa",
+          overflowY: "auto",
         }}
       >
         <h2>{t("dockerfiles.page_title")}</h2>
@@ -159,6 +169,7 @@ export function DockerfilesPage() {
               minWidth: 220,
               borderRight: "1px solid #ddd",
               padding: "1rem",
+              overflowY: "auto",
             }}
           >
             <div
@@ -211,7 +222,16 @@ export function DockerfilesPage() {
           </aside>
 
           {/* Right: editor */}
-          <main style={{ flex: 1, padding: "1.5rem", overflowY: "auto" }}>
+          <main
+            style={{
+              flex: 1,
+              padding: "1.5rem",
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              minWidth: 0,
+            }}
+          >
             <div
               style={{
                 display: "flex",
@@ -234,7 +254,14 @@ export function DockerfilesPage() {
             </div>
 
             {selectedFile ? (
-              <div>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  flex: 1,
+                  minHeight: 0,
+                }}
+              >
                 <div
                   style={{
                     display: "flex",
@@ -245,6 +272,20 @@ export function DockerfilesPage() {
                 >
                   <strong style={{ fontFamily: "monospace" }}>
                     {selectedFile.path}
+                    {(STANDARD_FILES as readonly string[]).includes(
+                      selectedFile.path,
+                    ) && (
+                      <span
+                        style={{
+                          marginLeft: "0.5rem",
+                          fontSize: "11px",
+                          color: "#666",
+                          fontFamily: "system-ui",
+                        }}
+                      >
+                        ({t("dockerfiles.standard_file")})
+                      </span>
+                    )}
                   </strong>
                   <span style={{ display: "flex", gap: "0.5rem" }}>
                     {draftContent !== null && (
@@ -252,19 +293,23 @@ export function DockerfilesPage() {
                         {t("dockerfiles.save_button")}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleDeleteFile}
-                      style={{ color: "red" }}
-                    >
-                      {t("dockerfiles.delete_button")}
-                    </button>
+                    {!(STANDARD_FILES as readonly string[]).includes(
+                      selectedFile.path,
+                    ) && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteFile}
+                        style={{ color: "red" }}
+                      >
+                        {t("dockerfiles.delete_button")}
+                      </button>
+                    )}
                   </span>
                 </div>
                 <MarkdownEditor
                   value={draftContent ?? selectedFile.content}
                   onChange={(v) => setDraftContent(v)}
-                  minHeight={420}
+                  fill
                 />
               </div>
             ) : (

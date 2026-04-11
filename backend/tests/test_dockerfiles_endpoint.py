@@ -71,30 +71,82 @@ async def test_file_crud(client: AsyncClient) -> None:
         json={"id": "df", "display_name": "DF"},
     )
 
+    # Non-standard file — standard ones (Dockerfile, entrypoint.sh) are
+    # auto-seeded at dockerfile creation.
     create_file = await client.post(
         "/api/admin/dockerfiles/df/files",
         headers=headers,
-        json={"path": "Dockerfile", "content": "FROM alpine"},
+        json={"path": "config.json", "content": "{}"},
     )
     assert create_file.status_code == 201
     file_id = create_file.json()["id"]
 
     detail = await client.get("/api/admin/dockerfiles/df", headers=headers)
     assert detail.status_code == 200
-    assert len(detail.json()["files"]) == 1
+    paths = [f["path"] for f in detail.json()["files"]]
+    assert "Dockerfile" in paths
+    assert "entrypoint.sh" in paths
+    assert "config.json" in paths
 
     update_file = await client.put(
         f"/api/admin/dockerfiles/df/files/{file_id}",
         headers=headers,
-        json={"content": "FROM alpine:3.19"},
+        json={"content": '{"foo": 1}'},
     )
     assert update_file.status_code == 200
-    assert update_file.json()["content"] == "FROM alpine:3.19"
+    assert update_file.json()["content"] == '{"foo": 1}'
 
     delete_file = await client.delete(
         f"/api/admin/dockerfiles/df/files/{file_id}", headers=headers
     )
     assert delete_file.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_create_dockerfile_auto_seeds_standard_files(
+    client: AsyncClient,
+) -> None:
+    headers = await _token(client)
+    await client.post(
+        "/api/admin/dockerfiles",
+        headers=headers,
+        json={"id": "autosd", "display_name": "Auto Seed"},
+    )
+    detail = await client.get(
+        "/api/admin/dockerfiles/autosd", headers=headers
+    )
+    assert detail.status_code == 200
+    files = detail.json()["files"]
+    assert len(files) == 2
+    paths = sorted(f["path"] for f in files)
+    assert paths == ["Dockerfile", "entrypoint.sh"]
+    assert all(f["content"] == "" for f in files)
+
+
+@pytest.mark.asyncio
+async def test_standard_files_cannot_be_deleted(client: AsyncClient) -> None:
+    headers = await _token(client)
+    await client.post(
+        "/api/admin/dockerfiles",
+        headers=headers,
+        json={"id": "prot", "display_name": "Prot"},
+    )
+    detail = await client.get(
+        "/api/admin/dockerfiles/prot", headers=headers
+    )
+    dockerfile_file = next(
+        f for f in detail.json()["files"] if f["path"] == "Dockerfile"
+    )
+    entrypoint_file = next(
+        f for f in detail.json()["files"] if f["path"] == "entrypoint.sh"
+    )
+
+    for f in (dockerfile_file, entrypoint_file):
+        res = await client.delete(
+            f"/api/admin/dockerfiles/prot/files/{f['id']}", headers=headers
+        )
+        assert res.status_code == 403
+        assert "standard file" in res.json()["detail"]
 
 
 @pytest.mark.asyncio

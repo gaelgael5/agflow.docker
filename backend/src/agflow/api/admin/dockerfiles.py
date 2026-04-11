@@ -130,6 +130,10 @@ async def delete_file(dockerfile_id: str, file_id: UUID) -> None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
+    except dockerfile_files_service.ProtectedFileError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+        ) from exc
 
 
 @router.post(

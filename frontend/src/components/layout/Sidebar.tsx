@@ -14,6 +14,7 @@ import {
   RadioTower,
   Tags,
   UserRoundCog,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,7 +32,14 @@ interface NavSection {
   items: NavItem[];
 }
 
-export function Sidebar() {
+interface Props {
+  /** Only meaningful on mobile (<md); when true the drawer is slid in. */
+  open?: boolean;
+  /** Close handler for the mobile drawer. */
+  onClose?: () => void;
+}
+
+export function Sidebar({ open = false, onClose }: Props) {
   const { t } = useTranslation();
   const location = useLocation();
   const { logout } = useAuth();
@@ -65,9 +73,18 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className="w-60 shrink-0 border-r bg-card flex flex-col">
-      {/* Logo */}
-      <div className="h-14 border-b flex items-center px-5">
+    <aside
+      className={cn(
+        // Mobile: fixed drawer off-canvas by default, slides in when open
+        "fixed inset-y-0 left-0 z-40 w-60 border-r bg-card flex flex-col",
+        "transform transition-transform duration-200 ease-out",
+        open ? "translate-x-0" : "-translate-x-full",
+        // Desktop: always visible, inline in the flex row
+        "md:relative md:translate-x-0 md:shrink-0",
+      )}
+    >
+      {/* Logo + close button (mobile only) */}
+      <div className="h-14 border-b flex items-center justify-between px-5">
         <NavLink to="/" className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shadow-sm">
             <Boxes className="w-4 h-4 text-primary-foreground" />
@@ -75,6 +92,16 @@ export function Sidebar() {
           <span className="font-semibold text-foreground tracking-tight">agflow</span>
           <span className="text-[11px] text-muted-foreground font-medium ml-0.5">docker</span>
         </NavLink>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="md:hidden w-8 h-8 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground"
+            aria-label="Close menu"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Nav */}

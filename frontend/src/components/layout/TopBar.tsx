@@ -1,6 +1,10 @@
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Bell, ChevronRight, Search } from "lucide-react";
+import { Bell, ChevronRight, Menu, Search } from "lucide-react";
+
+interface Props {
+  onOpenSidebar?: () => void;
+}
 
 interface Crumb {
   section: string;
@@ -46,41 +50,58 @@ function resolveCrumbs(path: string, t: (k: string) => string): Crumb | null {
   return null;
 }
 
-export function TopBar() {
+export function TopBar({ onOpenSidebar }: Props) {
   const { t } = useTranslation();
   const location = useLocation();
   const crumb = resolveCrumbs(location.pathname, t);
 
   return (
-    <header className="h-14 border-b bg-card flex items-center justify-between px-6 shrink-0">
-      <div className="flex items-center gap-2 text-[13px]">
+    <header className="h-14 border-b bg-card flex items-center justify-between px-4 md:px-6 shrink-0">
+      <div className="flex items-center gap-2 text-[13px] min-w-0">
+        {onOpenSidebar && (
+          <button
+            type="button"
+            onClick={onOpenSidebar}
+            className="md:hidden w-8 h-8 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground shrink-0"
+            aria-label="Open menu"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+        )}
         {crumb ? (
           <>
-            <span className="text-muted-foreground">{crumb.section}</span>
-            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
-            <span className="text-foreground font-medium">{crumb.page}</span>
+            {/* Section label hidden on small screens to save space */}
+            <span className="text-muted-foreground hidden sm:inline">
+              {crumb.section}
+            </span>
+            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 hidden sm:inline" />
+            <span className="text-foreground font-medium truncate">
+              {crumb.page}
+            </span>
           </>
         ) : (
-          <span className="text-foreground font-medium">{t("home.welcome")}</span>
+          <span className="text-foreground font-medium truncate">
+            {t("home.welcome")}
+          </span>
         )}
       </div>
       <div className="flex items-center gap-2">
         <button
           type="button"
-          className="w-8 h-8 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground transition-colors"
+          className="hidden sm:flex w-8 h-8 rounded-md hover:bg-secondary items-center justify-center text-muted-foreground transition-colors"
           aria-label="Search"
         >
           <Search className="w-4 h-4" />
         </button>
         <button
           type="button"
-          className="w-8 h-8 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground transition-colors"
+          className="hidden sm:flex w-8 h-8 rounded-md hover:bg-secondary items-center justify-center text-muted-foreground transition-colors"
           aria-label="Notifications"
         >
           <Bell className="w-4 h-4" />
         </button>
-        <div className="w-px h-5 bg-border mx-1" />
-        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-[11px] font-semibold">
+        <div className="hidden sm:block w-px h-5 bg-border mx-1" />
+        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-[11px] font-semibold shrink-0">
           GB
         </div>
       </div>

@@ -20,6 +20,7 @@ _MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
 @pytest.fixture
 async def db() -> AsyncIterator[None]:
     for t in [
+        "agent_profiles",
         "agent_skills",
         "agent_mcp_servers",
         "agents",
@@ -30,6 +31,7 @@ async def db() -> AsyncIterator[None]:
         "dockerfile_files",
         "dockerfiles",
         "role_documents",
+        "role_sections",
         "roles",
         "secrets",
         "schema_migrations",
@@ -222,3 +224,163 @@ async def test_preview_reports_stale_image(db: None) -> None:
     preview = await composition_builder.build_preview(agent.id)
     assert preview.image_status == "stale"
     assert any("stale" in e.lower() for e in preview.validation_errors)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NF-3 — Mission profiles
+# ─────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_preview_default_is_identity_only(db: None) -> None:
+    """Without a profile, the prompt must contain only the role identity,
+    never the role's documents (even if they exist)."""
+    from agflow.services import role_documents_service
+
+    # Seed role documents — they should NOT appear in the default preview.
+    await role_documents_service.create(
+        role_id="senior-dev",
+        section="roles",
+        name="analyst",
+        content_md="Tu analyses le code source.",
+    )
+    await role_documents_service.create(
+        role_id="senior-dev",
+        section="missions",
+        name="refactor",
+        content_md="Tu refactorises sans casser les tests.",
+    )
+
+    agent = await agents_service.create(
+        AgentCreate(
+            slug="id-only",
+            display_name="Id Only",
+            dockerfile_id="claude-code",
+            role_id="senior-dev",
+        )
+    )
+    preview = await composition_builder.build_preview(agent.id)
+
+    assert "Tu es un dev senior" in preview.prompt_md
+    # Role documents must NOT leak into the default prompt
+    assert "Tu analyses le code" not in preview.prompt_md
+    assert "Tu refactorises" not in preview.prompt_md
+    assert preview.profile_name is None
+    assert preview.broken_document_ids == []
+
+
+@pytest.mark.asyncio
+async def test_preview_with_profile_includes_selected_docs(db: None) -> None:
+    from agflow.services import agent_profiles_service, role_documents_service
+
+    doc1 = await role_documents_service.create(
+        role_id="senior-dev",
+        section="roles",
+        name="analyst",
+        content_md="Tu analyses le code source.",
+    )
+    doc2 = await role_documents_service.create(
+        role_id="senior-dev",
+        section="missions",
+        name="refactor",
+        content_md="Tu refactorises sans casser les tests.",
+    )
+    await role_documents_service.create(
+        role_id="senior-dev",
+        section="competences",
+        name="unused",
+        content_md="Tu utilises aussi awk mais on ne veut pas ça ici.",
+    )
+
+    agent = await agents_service.create(
+        AgentCreate(
+            slug="with-profile",
+            display_name="With Profile",
+            dockerfile_id="claude-code",
+            role_id="senior-dev",
+        )
+    )
+    profile = await agent_profiles_service.create(
+        agent_id=agent.id,
+        name="refactor-mode",
+        description="Dev mode refactor",
+        document_ids=[doc1.id, doc2.id],
+    )
+
+    preview = await composition_builder.build_preview(agent.id, profile.id)
+    assert preview.profile_name == "refactor-mode"
+    assert "Tu analyses le code" in preview.prompt_md
+    assert "Tu refactorises" in preview.prompt_md
+    assert "awk" not in preview.prompt_md  # not referenced by the profile
+    assert preview.broken_document_ids == []
+
+
+@pytest.mark.asyncio
+async def test_preview_with_profile_detects_broken_refs(db: None) -> None:
+    from uuid import uuid4
+
+    from agflow.services import agent_profiles_service
+
+    agent = await agents_service.create(
+        AgentCreate(
+            slug="broken",
+            display_name="Broken",
+            dockerfile_id="claude-code",
+            role_id="senior-dev",
+        )
+    )
+    ghost_id = uuid4()
+    profile = await agent_profiles_service.create(
+        agent_id=agent.id,
+        name="dangling",
+        document_ids=[ghost_id],
+    )
+
+    preview = await composition_builder.build_preview(agent.id, profile.id)
+    assert ghost_id in preview.broken_document_ids
+    assert any("missing document" in e for e in preview.validation_errors)
+
+
+@pytest.mark.asyncio
+async def test_list_all_flags_agents_with_broken_profiles(db: None) -> None:
+    """agents_service.list_all() must set has_errors=true on agents whose
+    profiles reference documents that don't exist anymore."""
+    from uuid import uuid4
+
+    from agflow.services import agent_profiles_service, role_documents_service
+
+    clean = await agents_service.create(
+        AgentCreate(
+            slug="clean",
+            display_name="Clean",
+            dockerfile_id="claude-code",
+            role_id="senior-dev",
+        )
+    )
+    dirty = await agents_service.create(
+        AgentCreate(
+            slug="dirty",
+            display_name="Dirty",
+            dockerfile_id="claude-code",
+            role_id="senior-dev",
+        )
+    )
+    # clean agent has a profile with a real doc
+    real_doc = await role_documents_service.create(
+        role_id="senior-dev",
+        section="roles",
+        name="r1",
+        content_md="ok",
+    )
+    await agent_profiles_service.create(
+        agent_id=clean.id, name="ok", document_ids=[real_doc.id]
+    )
+    # dirty agent has a profile with a ghost UUID
+    await agent_profiles_service.create(
+        agent_id=dirty.id, name="ghost", document_ids=[uuid4()]
+    )
+
+    summaries = await agents_service.list_all()
+    by_slug = {s.slug: s for s in summaries}
+    assert by_slug["clean"].has_errors is False
+    assert by_slug["dirty"].has_errors is True

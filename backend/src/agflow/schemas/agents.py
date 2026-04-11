@@ -73,6 +73,29 @@ class AgentSummary(BaseModel):
     force_kill_delay_secs: int
     created_at: datetime
     updated_at: datetime
+    has_errors: bool = False
+
+
+class AgentProfileSummary(BaseModel):
+    id: UUID
+    agent_id: UUID
+    name: str
+    description: str
+    document_ids: list[UUID]
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentProfileCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str = ""
+    document_ids: list[UUID] = Field(default_factory=list)
+
+
+class AgentProfileUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = None
+    document_ids: list[UUID] | None = None
 
 
 class AgentDetail(AgentSummary):
@@ -108,3 +131,9 @@ class ConfigPreview(BaseModel):
     skills: list[SkillPreview]
     validation_errors: list[str]
     image_status: ImageStatus
+    # Name of the profile applied to this preview, if any. None means the
+    # agent was previewed in its default (identity-only) state.
+    profile_name: str | None = None
+    # UUIDs referenced by the applied profile that no longer exist in
+    # role_documents — empty when profile_id is None or all refs are valid.
+    broken_document_ids: list[UUID] = Field(default_factory=list)

@@ -203,8 +203,26 @@ async def create(payload: AgentCreate) -> AgentDetail:
 
 
 async def list_all() -> list[AgentSummary]:
+    # Computes `has_errors` in one pass: true when at least one of the
+    # agent's profiles references a document UUID that no longer exists
+    # in `role_documents` (e.g. document deleted, or agent's role changed).
     rows = await fetch_all(
-        f"SELECT {_COLS} FROM agents ORDER BY display_name ASC"
+        f"""
+        SELECT {_COLS},
+               EXISTS (
+                 SELECT 1 FROM agent_profiles p
+                 WHERE p.agent_id = agents.id
+                   AND EXISTS (
+                     SELECT 1
+                     FROM unnest(p.document_ids) AS doc_id
+                     WHERE NOT EXISTS (
+                       SELECT 1 FROM role_documents rd WHERE rd.id = doc_id
+                     )
+                   )
+               ) AS has_errors
+        FROM agents
+        ORDER BY display_name ASC
+        """
     )
     return [_summary(r) for r in rows]
 

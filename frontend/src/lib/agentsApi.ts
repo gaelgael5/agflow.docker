@@ -29,6 +29,29 @@ export interface AgentSummary {
   force_kill_delay_secs: number;
   created_at: string;
   updated_at: string;
+  has_errors: boolean;
+}
+
+export interface AgentProfileSummary {
+  id: string;
+  agent_id: string;
+  name: string;
+  description: string;
+  document_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentProfileCreate {
+  name: string;
+  description?: string;
+  document_ids?: string[];
+}
+
+export interface AgentProfileUpdate {
+  name?: string;
+  description?: string;
+  document_ids?: string[];
 }
 
 export interface AgentDetail extends AgentSummary {
@@ -69,6 +92,8 @@ export interface ConfigPreview {
   skills: SkillPreview[];
   validation_errors: string[];
   image_status: ImageStatus;
+  profile_name: string | null;
+  broken_document_ids: string[];
 }
 
 export const agentsApi = {
@@ -111,10 +136,48 @@ export const agentsApi = {
     return res.data;
   },
 
-  configPreview: async (id: string): Promise<ConfigPreview> => {
+  configPreview: async (
+    id: string,
+    profileId?: string,
+  ): Promise<ConfigPreview> => {
     const res = await api.get<ConfigPreview>(
       `/admin/agents/${id}/config-preview`,
+      profileId ? { params: { profile_id: profileId } } : undefined,
     );
     return res.data;
+  },
+
+  listProfiles: async (agentId: string): Promise<AgentProfileSummary[]> => {
+    const res = await api.get<AgentProfileSummary[]>(
+      `/admin/agents/${agentId}/profiles`,
+    );
+    return res.data;
+  },
+
+  createProfile: async (
+    agentId: string,
+    payload: AgentProfileCreate,
+  ): Promise<AgentProfileSummary> => {
+    const res = await api.post<AgentProfileSummary>(
+      `/admin/agents/${agentId}/profiles`,
+      payload,
+    );
+    return res.data;
+  },
+
+  updateProfile: async (
+    agentId: string,
+    profileId: string,
+    payload: AgentProfileUpdate,
+  ): Promise<AgentProfileSummary> => {
+    const res = await api.put<AgentProfileSummary>(
+      `/admin/agents/${agentId}/profiles/${profileId}`,
+      payload,
+    );
+    return res.data;
+  },
+
+  deleteProfile: async (agentId: string, profileId: string): Promise<void> => {
+    await api.delete(`/admin/agents/${agentId}/profiles/${profileId}`);
   },
 };

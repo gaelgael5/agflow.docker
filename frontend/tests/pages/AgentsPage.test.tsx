@@ -57,6 +57,7 @@ describe("AgentsPage", () => {
         force_kill_delay_secs: 10,
         created_at: "2026-04-11",
         updated_at: "2026-04-11",
+        has_errors: false,
       },
     ]);
 

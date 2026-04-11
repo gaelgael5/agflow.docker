@@ -1,10 +1,23 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CircleCheck, CircleX, Plus, Play, Trash2 } from "lucide-react";
 import { useDiscoveryServices } from "@/hooks/useCatalogs";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
-import { discoveryApi, type ProbeResult } from "@/lib/catalogsApi";
+import { PageHeader, PageShell } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { slugify } from "@/lib/slugify";
+import { discoveryApi, type ProbeResult } from "@/lib/catalogsApi";
 
 export function DiscoveryServicesPage() {
   const { t } = useTranslation();
@@ -46,92 +59,119 @@ export function DiscoveryServicesPage() {
     });
   }
 
-  if (isLoading) return <p>{t("secrets.loading")}</p>;
-
   return (
-    <div style={{ padding: "2rem", maxWidth: 1200 }}>
-      <h1>{t("discovery.page_title")}</h1>
-      <p>{t("discovery.page_subtitle")}</p>
+    <PageShell>
+      <PageHeader
+        title={t("discovery.page_title")}
+        subtitle={t("discovery.page_subtitle")}
+        actions={
+          <Button onClick={handleAdd}>
+            <Plus className="w-4 h-4" />
+            {t("discovery.add_button")}
+          </Button>
+        }
+      />
 
-      <button
-        type="button"
-        onClick={handleAdd}
-        style={{ marginBottom: "1rem" }}
-      >
-        {t("discovery.add_button")}
-      </button>
-
-      {(services ?? []).length === 0 ? (
-        <p style={{ color: "#999", fontStyle: "italic" }}>
-          {t("discovery.no_services")}
-        </p>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
-              <th>{t("discovery.col_id")}</th>
-              <th>{t("discovery.col_name")}</th>
-              <th>{t("discovery.col_base_url")}</th>
-              <th>{t("discovery.col_api_key")}</th>
-              <th>{t("discovery.col_actions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {services?.map((s) => {
-              const test = testResults[s.id];
-              return (
-                <tr
-                  key={s.id}
-                  style={{ borderBottom: "1px solid #eee" }}
-                >
-                  <td>
-                    <code>{s.id}</code>
-                  </td>
-                  <td>{s.name}</td>
-                  <td>
-                    <code style={{ fontSize: "12px" }}>{s.base_url}</code>
-                  </td>
-                  <td>
-                    {s.api_key_var ? (
-                      <EnvVarStatus
-                        name={s.api_key_var}
-                        status={envStatus.data?.[s.api_key_var]}
-                      />
-                    ) : (
-                      <span style={{ color: "#999" }}>—</span>
-                    )}
-                  </td>
-                  <td style={{ display: "flex", gap: "0.5rem" }}>
-                    <button type="button" onClick={() => handleTest(s.id)}>
-                      {t("discovery.test_button")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(s.id, s.name)}
-                      style={{ color: "red" }}
-                    >
-                      {t("discovery.delete_button")}
-                    </button>
-                    {test && (
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          color: test.ok ? "green" : "red",
-                          alignSelf: "center",
-                        }}
-                      >
-                        {test.ok
-                          ? `✅ ${t("discovery.test_ok")}`
-                          : `❌ ${t("discovery.test_ko")} — ${test.detail}`}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </div>
+      <Card className="overflow-hidden">
+        {isLoading ? (
+          <div className="p-6 space-y-3">
+            <Skeleton className="h-6 w-1/3" />
+            <Skeleton className="h-6 w-1/2" />
+          </div>
+        ) : (services ?? []).length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-[13px] italic">
+            {t("discovery.no_services")}
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("discovery.col_id")}</TableHead>
+                <TableHead>{t("discovery.col_name")}</TableHead>
+                <TableHead>{t("discovery.col_base_url")}</TableHead>
+                <TableHead>{t("discovery.col_api_key")}</TableHead>
+                <TableHead className="text-right">
+                  {t("discovery.col_actions")}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {services?.map((s) => {
+                const test = testResults[s.id];
+                return (
+                  <TableRow key={s.id}>
+                    <TableCell>
+                      <code className="text-[12px] text-muted-foreground font-mono">
+                        {s.id}
+                      </code>
+                    </TableCell>
+                    <TableCell className="font-medium">{s.name}</TableCell>
+                    <TableCell>
+                      <code className="text-[11px] text-muted-foreground font-mono">
+                        {s.base_url}
+                      </code>
+                    </TableCell>
+                    <TableCell>
+                      {s.api_key_var ? (
+                        <EnvVarStatus
+                          name={s.api_key_var}
+                          status={envStatus.data?.[s.api_key_var]}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground text-[12px]">
+                          —
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        {test && (
+                          <span
+                            className={
+                              test.ok
+                                ? "text-emerald-600 text-[11px] mr-1 flex items-center gap-1"
+                                : "text-destructive text-[11px] mr-1 flex items-center gap-1"
+                            }
+                            title={test.detail}
+                          >
+                            {test.ok ? (
+                              <>
+                                <CircleCheck className="w-3 h-3" />
+                                {t("discovery.test_ok")}
+                              </>
+                            ) : (
+                              <>
+                                <CircleX className="w-3 h-3" />
+                                {t("discovery.test_ko")}
+                              </>
+                            )}
+                          </span>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleTest(s.id)}
+                          aria-label={t("discovery.test_button")}
+                        >
+                          <Play className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(s.id, s.name)}
+                          aria-label={t("discovery.delete_button")}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+    </PageShell>
   );
 }

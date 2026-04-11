@@ -1,8 +1,19 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Plus, Search } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Props<T> {
   title: string;
+  /** Kept for API compat — no-op since real registry doesn't support it. */
   showSemantic?: boolean;
   onSearch: (query: string, semantic: boolean) => Promise<T[]>;
   onAdd: (item: T) => Promise<void>;
@@ -12,7 +23,6 @@ interface Props<T> {
 
 export function SearchModal<T>({
   title,
-  showSemantic = false,
   onSearch,
   onAdd,
   renderItem,
@@ -20,7 +30,6 @@ export function SearchModal<T>({
 }: Props<T>) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
-  const [semantic, setSemantic] = useState(false);
   const [results, setResults] = useState<T[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +38,7 @@ export function SearchModal<T>({
     setLoading(true);
     setError(null);
     try {
-      const items = await onSearch(query, semantic);
+      const items = await onSearch(query, false);
       setResults(items);
     } catch {
       setError(t("search_modal.error"));
@@ -48,115 +57,75 @@ export function SearchModal<T>({
   }
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}
-    >
-      <div
-        style={{
-          background: "white",
-          padding: "1.5rem",
-          borderRadius: "8px",
-          width: "min(780px, 92%)",
-          maxHeight: "85vh",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <h2 style={{ margin: 0 }}>
-          {t("search_modal.title", { title })}
-        </h2>
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>{t("search_modal.title", { title })}</DialogTitle>
+        </DialogHeader>
 
-        <div
-          style={{
-            display: "flex",
-            gap: "0.5rem",
-            marginTop: "1rem",
-            alignItems: "center",
-          }}
-        >
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("search_modal.placeholder")}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSearch();
-            }}
-            style={{ flex: 1, padding: "6px" }}
-          />
-          {showSemantic && (
-            <label style={{ fontSize: "13px", whiteSpace: "nowrap" }}>
-              <input
-                type="checkbox"
-                checked={semantic}
-                onChange={(e) => setSemantic(e.target.checked)}
-              />{" "}
-              {t("search_modal.semantic_label")}
-            </label>
-          )}
-          <button type="button" onClick={handleSearch} disabled={loading}>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("search_modal.placeholder")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSearch();
+              }}
+              className="pl-9"
+            />
+          </div>
+          <Button onClick={handleSearch} disabled={loading}>
             {loading
               ? t("search_modal.loading")
               : t("search_modal.search_button")}
-          </button>
+          </Button>
         </div>
 
         {error && (
-          <p role="alert" style={{ color: "red", marginTop: "0.5rem" }}>
+          <p role="alert" className="text-destructive text-[12px]">
             {error}
           </p>
         )}
 
-        <div
-          style={{
-            flex: 1,
-            overflow: "auto",
-            marginTop: "1rem",
-            borderTop: "1px solid #eee",
-          }}
-        >
-          {results === null ? null : results.length === 0 ? (
-            <p style={{ color: "#999", fontStyle: "italic" }}>
+        <div className="flex-1 overflow-y-auto -mx-6 px-6 border-t pt-2">
+          {loading && results === null ? (
+            <div className="space-y-2 py-3">
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
+            </div>
+          ) : results === null ? (
+            <p className="text-muted-foreground text-[13px] italic py-3">
+              {t("search_modal.hint")}
+            </p>
+          ) : results.length === 0 ? (
+            <p className="text-muted-foreground text-[13px] italic py-3">
               {t("search_modal.no_results")}
             </p>
           ) : (
-            <ul style={{ listStyle: "none", padding: 0 }}>
+            <ul className="divide-y">
               {results.map((item, idx) => (
                 <li
                   key={idx}
-                  style={{
-                    borderBottom: "1px solid #eee",
-                    padding: "0.75rem",
-                    display: "flex",
-                    gap: "0.75rem",
-                  }}
+                  className="flex items-center gap-3 py-3"
                 >
-                  <div style={{ flex: 1 }}>{renderItem(item)}</div>
-                  <button type="button" onClick={() => handleAdd(item)}>
+                  <div className="flex-1 min-w-0">{renderItem(item)}</div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAdd(item)}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
                     {t("search_modal.add_button")}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          style={{ marginTop: "1rem", alignSelf: "flex-end" }}
-        >
-          {t("search_modal.close")}
-        </button>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

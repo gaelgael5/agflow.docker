@@ -245,7 +245,8 @@
     "no_results": "No results",
     "add_button": "Add",
     "loading": "Searching…",
-    "error": "Error — check the registry URL and API key"
+    "error": "Error — check the registry URL and API key",
+    "hint": "Type a query then click Search"
   },
   "agents": {
     "page_title": "Agents (compositions)",

@@ -245,7 +245,8 @@
     "no_results": "Aucun résultat",
     "add_button": "Ajouter",
     "loading": "Recherche en cours…",
-    "error": "Erreur — vérifie la clé API et l'URL du registre"
+    "error": "Erreur — vérifie la clé API et l'URL du registre",
+    "hint": "Tape une requête puis clique Rechercher"
   },
   "agents": {
     "page_title": "Agents (compositions)",

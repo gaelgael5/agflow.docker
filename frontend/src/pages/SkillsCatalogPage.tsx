@@ -1,7 +1,27 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Search, Trash2 } from "lucide-react";
 import { useDiscoveryServices, useSkillsCatalog } from "@/hooks/useCatalogs";
 import { SearchModal } from "@/components/SearchModal";
+import { PageHeader, PageShell } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { discoveryApi, type SkillSearchItem } from "@/lib/catalogsApi";
 
 export function SkillsCatalogPage() {
@@ -14,7 +34,6 @@ export function SkillsCatalogPage() {
     null,
   );
 
-  // Auto-select the first registry once the list is loaded.
   useEffect(() => {
     if (selectedServiceId === null && services && services.length > 0) {
       setSelectedServiceId(services[0]!.id);
@@ -40,83 +59,99 @@ export function SkillsCatalogPage() {
     setSearchOpen(false);
   }
 
-  if (isLoading) return <p>{t("secrets.loading")}</p>;
-
   const hasServices = (services ?? []).length > 0;
 
   return (
-    <div style={{ padding: "2rem", maxWidth: 1200 }}>
-      <h1>{t("skills_catalog.page_title")}</h1>
-      <p>{t("skills_catalog.page_subtitle")}</p>
+    <PageShell>
+      <PageHeader
+        title={t("skills_catalog.page_title")}
+        subtitle={t("skills_catalog.page_subtitle")}
+        actions={
+          hasServices && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={selectedServiceId ?? ""}
+                onValueChange={(v) => setSelectedServiceId(v || null)}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder={t("skills_catalog.select_service")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {services?.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={() => setSearchOpen(true)}
+                disabled={!selectedServiceId}
+              >
+                <Search className="w-4 h-4" />
+                {t("skills_catalog.search_button")}
+              </Button>
+            </div>
+          )
+        }
+      />
 
-      {!hasServices ? (
-        <p style={{ color: "#999", fontStyle: "italic" }}>
+      {!hasServices && (
+        <Card className="p-8 text-center text-muted-foreground text-[13px] italic mb-6">
           {t("skills_catalog.no_services")}
-        </p>
-      ) : (
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
-          <label>
-            {t("skills_catalog.select_service")}:{" "}
-            <select
-              value={selectedServiceId ?? ""}
-              onChange={(e) => setSelectedServiceId(e.target.value || null)}
-            >
-              <option value="">—</option>
-              {services?.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => setSearchOpen(true)}
-            disabled={!selectedServiceId}
-          >
-            {t("skills_catalog.search_button")}
-          </button>
-        </div>
+        </Card>
       )}
 
-      {(skills ?? []).length === 0 ? (
-        <p style={{ color: "#999", fontStyle: "italic" }}>
-          {t("skills_catalog.no_skills")}
-        </p>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
-              <th>{t("skills_catalog.col_name")}</th>
-              <th>{t("skills_catalog.col_id")}</th>
-              <th>{t("skills_catalog.col_description")}</th>
-              <th>{t("skills_catalog.col_actions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {skills?.map((s) => (
-              <tr key={s.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>
-                  <strong>{s.name}</strong>
-                </td>
-                <td>
-                  <code>{s.skill_id}</code>
-                </td>
-                <td>{s.description}</td>
-                <td>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(s.id, s.name)}
-                    style={{ color: "red" }}
-                  >
-                    {t("skills_catalog.delete_button")}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <Card className="overflow-hidden">
+        {isLoading ? (
+          <div className="p-6 space-y-3">
+            <Skeleton className="h-6 w-1/3" />
+            <Skeleton className="h-6 w-1/2" />
+          </div>
+        ) : (skills ?? []).length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-[13px] italic">
+            {t("skills_catalog.no_skills")}
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("skills_catalog.col_name")}</TableHead>
+                <TableHead>{t("skills_catalog.col_id")}</TableHead>
+                <TableHead>{t("skills_catalog.col_description")}</TableHead>
+                <TableHead className="text-right">
+                  {t("skills_catalog.col_actions")}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {skills?.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableCell>
+                    <code className="text-[11px] text-muted-foreground font-mono">
+                      {s.skill_id}
+                    </code>
+                  </TableCell>
+                  <TableCell className="text-[12px] text-muted-foreground max-w-md truncate">
+                    {s.description}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(s.id, s.name)}
+                      aria-label={t("skills_catalog.delete_button")}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
 
       {searchOpen && selectedServiceId && (
         <SearchModal<SkillSearchItem>
@@ -125,9 +160,11 @@ export function SkillsCatalogPage() {
           onAdd={handleInstall}
           renderItem={(item) => (
             <div>
-              <strong>{item.name}</strong>{" "}
-              <code style={{ fontSize: "11px" }}>{item.skill_id}</code>
-              <div style={{ fontSize: "12px", color: "#666" }}>
+              <strong className="text-[13px]">{item.name}</strong>{" "}
+              <code className="text-[11px] text-muted-foreground font-mono">
+                {item.skill_id}
+              </code>
+              <div className="text-[12px] text-muted-foreground">
                 {item.description}
               </div>
             </div>
@@ -135,6 +172,6 @@ export function SkillsCatalogPage() {
           onClose={() => setSearchOpen(false)}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

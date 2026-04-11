@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import anthropic
 import structlog
 
-from agflow.schemas.roles import DocumentSummary, RoleSummary
+from agflow.schemas.roles import DocumentSummary, RoleSummary, SectionSummary
 from agflow.services import secrets_service
 
 _log = structlog.get_logger(__name__)
@@ -24,13 +24,19 @@ class GeneratedPrompts:
 
 
 def assemble_source_markdown(
-    role: RoleSummary, documents: list[DocumentSummary]
+    role: RoleSummary,
+    documents: list[DocumentSummary],
+    sections: list["SectionSummary"] | None = None,
 ) -> str:
     """Concatenate identity + all documents grouped by section into one markdown.
 
     This is the 2nd-person source-of-truth. It's used both as input to
     `generate_prompts` (to produce the 3rd-person orchestrator description) and
     as the final "agent prompt" injected into the agent container at launch.
+
+    The `sections` argument, when provided, dictates the ordering and display
+    names of the section headers. If omitted, sections are inferred from the
+    documents themselves (sorted alphabetically, raw names as headers).
     """
     parts: list[str] = []
     parts.append("# Identité")
@@ -38,13 +44,16 @@ def assemble_source_markdown(
     parts.append(role.identity_md or "(identité non renseignée)")
     parts.append("")
 
-    sections = {
-        "roles": "Rôles",
-        "missions": "Missions",
-        "competences": "Compétences",
-    }
-    for section, title in sections.items():
-        docs = [d for d in documents if d.section == section]
+    if sections is not None:
+        ordered_sections = [(s.name, s.display_name) for s in sections]
+    else:
+        seen: dict[str, str] = {}
+        for d in documents:
+            seen.setdefault(d.section, d.section.capitalize())
+        ordered_sections = sorted(seen.items())
+
+    for section_name, title in ordered_sections:
+        docs = [d for d in documents if d.section == section_name]
         if not docs:
             continue
         parts.append(f"## {title}")
@@ -78,7 +87,9 @@ async def _get_anthropic_client() -> anthropic.AsyncAnthropic:
 
 
 async def generate_prompts(
-    role: RoleSummary, documents: list[DocumentSummary]
+    role: RoleSummary,
+    documents: list[DocumentSummary],
+    sections: list[SectionSummary] | None = None,
 ) -> GeneratedPrompts:
     """Generate the 3rd-person orchestrator description from the assembled source."""
     try:
@@ -88,7 +99,7 @@ async def generate_prompts(
             "ANTHROPIC_API_KEY is not set in Module 0 (Secrets)"
         ) from exc
 
-    source = assemble_source_markdown(role, documents)
+    source = assemble_source_markdown(role, documents, sections)
 
     _log.info("prompt_generator.orchestrator.start", role_id=role.id)
     response = await client.messages.create(

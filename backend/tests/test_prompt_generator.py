@@ -49,14 +49,21 @@ def _make_doc(section: str, name: str, content: str) -> DocumentSummary:
 
 
 def test_assemble_source_markdown_orders_sections() -> None:
+    from agflow.schemas.roles import SectionSummary
+
     role = _make_role()
     documents = [
         _make_doc("missions", "m1", "Tu transformes sans reformater."),
         _make_doc("roles", "r1", "Tu analyses et extrais."),
         _make_doc("competences", "c1", "Tu maîtrises la déduction logique."),
     ]
+    sections = [
+        SectionSummary(name="roles", display_name="Rôles", is_native=True, position=0),
+        SectionSummary(name="missions", display_name="Missions", is_native=True, position=1),
+        SectionSummary(name="competences", display_name="Compétences", is_native=True, position=2),
+    ]
 
-    source = prompt_generator.assemble_source_markdown(role, documents)
+    source = prompt_generator.assemble_source_markdown(role, documents, sections)
 
     assert "# Identité" in source
     assert "Tu es un analyste rigoureux." in source

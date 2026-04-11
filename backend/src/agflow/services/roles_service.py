@@ -67,6 +67,10 @@ async def create(
     except asyncpg.UniqueViolationError as exc:
         raise DuplicateRoleError(f"Role '{role_id}' already exists") from exc
     assert row is not None
+    # Auto-seed the 3 native sections for the new role so that document
+    # creation (which FK-references role_sections) can proceed immediately.
+    from agflow.services import role_sections_service
+    await role_sections_service.seed_natives(role_id)
     _log.info("roles.create", role_id=role_id)
     return _row_to_summary(row)
 

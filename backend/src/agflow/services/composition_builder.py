@@ -10,6 +10,7 @@ from agflow.services import (
     mcp_catalog_service,
     prompt_generator,
     role_documents_service,
+    role_sections_service,
     roles_service,
     secrets_service,
     skills_catalog_service,
@@ -21,7 +22,8 @@ _log = structlog.get_logger(__name__)
 async def _compile_prompt(role_id: str) -> str:
     role = await roles_service.get_by_id(role_id)
     documents = await role_documents_service.list_for_role(role_id)
-    return prompt_generator.assemble_source_markdown(role, documents)
+    sections = await role_sections_service.list_for_role(role_id)
+    return prompt_generator.assemble_source_markdown(role, documents, sections)
 
 
 async def _build_mcp_section(

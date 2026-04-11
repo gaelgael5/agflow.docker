@@ -13,8 +13,16 @@ from agflow.schemas.roles import (
     RoleDetail,
     RoleSummary,
     RoleUpdate,
+    SectionCreate,
+    SectionSummary,
+    SectionWithDocuments,
 )
-from agflow.services import prompt_generator, role_documents_service, roles_service
+from agflow.services import (
+    prompt_generator,
+    role_documents_service,
+    role_sections_service,
+    roles_service,
+)
 
 router = APIRouter(
     prefix="/api/admin/roles",
@@ -52,13 +60,16 @@ async def get_role(role_id: str) -> RoleDetail:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
+    sections = await role_sections_service.list_for_role(role_id)
     documents = await role_documents_service.list_for_role(role_id)
-    return RoleDetail(
-        role=role,
-        roles_documents=[d for d in documents if d.section == "roles"],
-        missions_documents=[d for d in documents if d.section == "missions"],
-        competences_documents=[d for d in documents if d.section == "competences"],
-    )
+    sections_with_docs = [
+        SectionWithDocuments(
+            **s.model_dump(),
+            documents=[d for d in documents if d.section == s.name],
+        )
+        for s in sections
+    ]
+    return RoleDetail(role=role, sections=sections_with_docs)
 
 
 @router.put("/{role_id}", response_model=RoleSummary)
@@ -93,8 +104,11 @@ async def generate_prompts_endpoint(role_id: str) -> RoleSummary:
         ) from exc
 
     documents = await role_documents_service.list_for_role(role_id)
+    sections = await role_sections_service.list_for_role(role_id)
     try:
-        generated = await prompt_generator.generate_prompts(role, documents)
+        generated = await prompt_generator.generate_prompts(
+            role, documents, sections
+        )
     except prompt_generator.MissingAnthropicKeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_412_PRECONDITION_FAILED, detail=str(exc)
@@ -162,4 +176,59 @@ async def delete_document(role_id: str, doc_id: UUID) -> None:
     except role_documents_service.ProtectedDocumentError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+        ) from exc
+
+
+@router.get("/{role_id}/sections", response_model=list[SectionSummary])
+async def list_sections(role_id: str) -> list[SectionSummary]:
+    try:
+        await roles_service.get_by_id(role_id)
+    except roles_service.RoleNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    return await role_sections_service.list_for_role(role_id)
+
+
+@router.post(
+    "/{role_id}/sections",
+    response_model=SectionSummary,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_section(
+    role_id: str, payload: SectionCreate
+) -> SectionSummary:
+    try:
+        await roles_service.get_by_id(role_id)
+    except roles_service.RoleNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    try:
+        return await role_sections_service.create(
+            role_id=role_id, name=payload.name, display_name=payload.display_name
+        )
+    except role_sections_service.DuplicateSectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+
+
+@router.delete(
+    "/{role_id}/sections/{name}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_section(role_id: str, name: str) -> None:
+    try:
+        await role_sections_service.delete(role_id, name)
+    except role_sections_service.SectionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except role_sections_service.ProtectedSectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+        ) from exc
+    except role_sections_service.SectionNotEmptyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc

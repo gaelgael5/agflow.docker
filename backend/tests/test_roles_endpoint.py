@@ -80,9 +80,12 @@ async def test_get_role_detail_includes_documents(client: AsyncClient) -> None:
     assert res.status_code == 200
     body = res.json()
     assert body["role"]["id"] == "analyst"
-    assert len(body["roles_documents"]) == 1
-    assert len(body["missions_documents"]) == 1
-    assert len(body["competences_documents"]) == 0
+
+    sections_by_name = {s["name"]: s for s in body["sections"]}
+    assert sections_by_name["roles"]["is_native"] is True
+    assert len(sections_by_name["roles"]["documents"]) == 1
+    assert len(sections_by_name["missions"]["documents"]) == 1
+    assert len(sections_by_name["competences"]["documents"]) == 0
 
 
 @pytest.mark.asyncio
@@ -197,3 +200,82 @@ async def test_generate_prompts_missing_anthropic_key(client: AsyncClient) -> No
 
     assert res.status_code == 412
     assert "ANTHROPIC_API_KEY" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_list_sections_returns_natives_after_create(
+    client: AsyncClient,
+) -> None:
+    headers = await _token(client)
+    await client.post(
+        "/api/admin/roles",
+        headers=headers,
+        json={"id": "analyst", "display_name": "Analyst"},
+    )
+    res = await client.get(
+        "/api/admin/roles/analyst/sections", headers=headers
+    )
+    assert res.status_code == 200
+    names = [s["name"] for s in res.json()]
+    assert names == ["roles", "missions", "competences"]
+
+
+@pytest.mark.asyncio
+async def test_create_and_delete_custom_section(client: AsyncClient) -> None:
+    headers = await _token(client)
+    await client.post(
+        "/api/admin/roles",
+        headers=headers,
+        json={"id": "dev", "display_name": "Dev"},
+    )
+
+    create = await client.post(
+        "/api/admin/roles/dev/sections",
+        headers=headers,
+        json={"name": "outils", "display_name": "Outils"},
+    )
+    assert create.status_code == 201
+    assert create.json()["is_native"] is False
+
+    delete = await client.delete(
+        "/api/admin/roles/dev/sections/outils", headers=headers
+    )
+    assert delete.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_native_section_forbidden(client: AsyncClient) -> None:
+    headers = await _token(client)
+    await client.post(
+        "/api/admin/roles",
+        headers=headers,
+        json={"id": "dev", "display_name": "Dev"},
+    )
+    res = await client.delete(
+        "/api/admin/roles/dev/sections/roles", headers=headers
+    )
+    assert res.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_delete_non_empty_section_blocked(client: AsyncClient) -> None:
+    headers = await _token(client)
+    await client.post(
+        "/api/admin/roles",
+        headers=headers,
+        json={"id": "dev", "display_name": "Dev"},
+    )
+    await client.post(
+        "/api/admin/roles/dev/sections",
+        headers=headers,
+        json={"name": "outils", "display_name": "Outils"},
+    )
+    await client.post(
+        "/api/admin/roles/dev/documents",
+        headers=headers,
+        json={"section": "outils", "name": "vim", "content_md": "# vim"},
+    )
+    res = await client.delete(
+        "/api/admin/roles/dev/sections/outils", headers=headers
+    )
+    assert res.status_code == 409

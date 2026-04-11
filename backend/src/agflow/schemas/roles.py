@@ -1,12 +1,25 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-Section = Literal["roles", "missions", "competences"]
+Section = str
+NATIVE_SECTIONS: tuple[str, ...] = ("roles", "missions", "competences")
+_SECTION_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def validate_section_slug(v: str) -> str:
+    v = v.strip().lower()
+    if not _SECTION_SLUG_RE.match(v):
+        raise ValueError(
+            "section name must be a slug: lowercase alphanumeric + _ and -, "
+            "start with alphanumeric, max 64 chars"
+        )
+    return v
+
 
 _ALLOWED_SERVICE_TYPES = {
     "documentation",
@@ -81,6 +94,11 @@ class DocumentCreate(BaseModel):
     content_md: str = ""
     protected: bool = False
 
+    @field_validator("section")
+    @classmethod
+    def _valid_section(cls, v: str) -> str:
+        return validate_section_slug(v)
+
     @field_validator("name")
     @classmethod
     def _nonempty(cls, v: str) -> str:
@@ -107,8 +125,27 @@ class DocumentSummary(BaseModel):
     updated_at: datetime
 
 
+class SectionSummary(BaseModel):
+    name: str
+    display_name: str
+    is_native: bool
+    position: int
+
+
+class SectionCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    display_name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def _valid_name(cls, v: str) -> str:
+        return validate_section_slug(v)
+
+
+class SectionWithDocuments(SectionSummary):
+    documents: list[DocumentSummary]
+
+
 class RoleDetail(BaseModel):
     role: RoleSummary
-    roles_documents: list[DocumentSummary]
-    missions_documents: list[DocumentSummary]
-    competences_documents: list[DocumentSummary]
+    sections: list[SectionWithDocuments]

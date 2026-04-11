@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDiscoveryServices, useSkillsCatalog } from "@/hooks/useCatalogs";
 import { SearchModal } from "@/components/SearchModal";
@@ -13,6 +13,13 @@ export function SkillsCatalogPage() {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
     null,
   );
+
+  // Auto-select the first registry once the list is loaded.
+  useEffect(() => {
+    if (selectedServiceId === null && services && services.length > 0) {
+      setSelectedServiceId(services[0]!.id);
+    }
+  }, [services, selectedServiceId]);
 
   async function handleDelete(id: string, name: string) {
     if (!window.confirm(t("skills_catalog.confirm_delete", { name }))) return;

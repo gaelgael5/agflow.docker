@@ -91,14 +91,13 @@ export const discoveryApi = {
     const res = await api.post<ProbeResult>(`/admin/discovery-services/${id}/test`);
     return res.data;
   },
-  async searchMcp(
-    id: string,
-    query: string,
-    semantic: boolean,
-  ): Promise<MCPSearchItem[]> {
+  async searchMcp(id: string, query: string): Promise<MCPSearchItem[]> {
+    // Semantic search is not supported by the real registry (yoops.org),
+    // so we always pass semantic=0. Kept as a query param for forward
+    // compatibility but effectively a no-op.
     const res = await api.get<MCPSearchItem[]>(
       `/admin/discovery-services/${id}/search/mcp`,
-      { params: { q: query, semantic: semantic ? "1" : "0" } },
+      { params: { q: query, semantic: "0" } },
     );
     return res.data;
   },

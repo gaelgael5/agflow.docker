@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDiscoveryServices, useMCPCatalog } from "@/hooks/useCatalogs";
 import { SearchModal } from "@/components/SearchModal";
@@ -13,6 +13,13 @@ export function MCPCatalogPage() {
     null,
   );
 
+  // Auto-select the first registry once the list is loaded.
+  useEffect(() => {
+    if (selectedServiceId === null && services && services.length > 0) {
+      setSelectedServiceId(services[0]!.id);
+    }
+  }, [services, selectedServiceId]);
+
   // Group by repo
   const grouped = (mcps ?? []).reduce<Record<string, typeof mcps>>((acc, m) => {
     const key = m.repo || "(other)";
@@ -26,9 +33,9 @@ export function MCPCatalogPage() {
     await deleteMutation.mutateAsync(id);
   }
 
-  async function handleSearch(query: string, semantic: boolean) {
+  async function handleSearch(query: string) {
     if (!selectedServiceId) return [];
-    return discoveryApi.searchMcp(selectedServiceId, query, semantic);
+    return discoveryApi.searchMcp(selectedServiceId, query);
   }
 
   async function handleInstall(item: MCPSearchItem) {
@@ -137,7 +144,6 @@ export function MCPCatalogPage() {
       {searchOpen && selectedServiceId && (
         <SearchModal<MCPSearchItem>
           title={t("mcp_catalog.page_title")}
-          showSemantic
           onSearch={handleSearch}
           onAdd={handleInstall}
           renderItem={(item) => (

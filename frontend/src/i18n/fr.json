@@ -2,6 +2,14 @@
   "app": {
     "title": "agflow.docker"
   },
+  "sidebar": {
+    "section_platform": "Plateforme",
+    "section_catalogs": "Catalogues",
+    "section_orchestration": "Orchestration",
+    "api_public": "API publique",
+    "supervision": "Supervision",
+    "theme_dark": "Thème sombre"
+  },
   "login": {
     "title": "Connexion",
     "email": "Email",
@@ -11,6 +19,7 @@
   },
   "home": {
     "welcome": "Bienvenue sur agflow.docker",
+    "subtitle": "Plateforme d'instanciation d'agents IA packagés en Docker. Utilise la navigation à gauche pour accéder aux modules.",
     "logout": "Déconnexion"
   },
   "status": {

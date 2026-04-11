@@ -2,6 +2,10 @@ import { useTranslation } from "react-i18next";
 import type { RoleSummary } from "@/lib/rolesApi";
 import { useServiceTypes } from "@/hooks/useServiceTypes";
 import { MarkdownEditor } from "./MarkdownEditor";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Props {
   role: RoleSummary;
@@ -21,77 +25,70 @@ export function RoleGeneralTab({ role, onChange }: Props) {
   }
 
   return (
-    <div
-      style={{
-        maxWidth: 640,
-        display: "flex",
-        flexDirection: "column",
-        gap: "1rem",
-      }}
-    >
-      <div>
-        <label>
-          <strong>{t("roles.general.id")}</strong>
-          <input
-            type="text"
-            value={role.id}
-            disabled
-            style={{ display: "block", width: "100%" }}
+    <div className="max-w-3xl space-y-4">
+      <Card>
+        <CardContent className="pt-5 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>{t("roles.general.id")}</Label>
+              <Input value={role.id} disabled className="font-mono text-[12px]" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>{t("roles.general.display_name")}</Label>
+              <Input
+                value={role.display_name}
+                onChange={(e) => onChange({ display_name: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("roles.general.description")}</Label>
+            <Textarea
+              value={role.description}
+              onChange={(e) => onChange({ description: e.target.value })}
+              rows={2}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-5">
+          <Label className="mb-2 block">
+            {t("roles.identity.label")}
+          </Label>
+          <MarkdownEditor
+            value={role.identity_md}
+            onChange={(v) => onChange({ identity_md: v })}
+            placeholder={t("roles.identity.placeholder")}
+            minHeight={220}
           />
-        </label>
-      </div>
-      <div>
-        <label>
-          <strong>{t("roles.general.display_name")}</strong>
-          <input
-            type="text"
-            value={role.display_name}
-            onChange={(e) => onChange({ display_name: e.target.value })}
-            style={{ display: "block", width: "100%" }}
-          />
-        </label>
-      </div>
-      <div>
-        <label>
-          <strong>{t("roles.general.description")}</strong>
-          <textarea
-            value={role.description}
-            onChange={(e) => onChange({ description: e.target.value })}
-            style={{ display: "block", width: "100%", minHeight: "80px" }}
-          />
-        </label>
-      </div>
-      <div>
-        <strong>{t("roles.identity.label")}</strong>
-        <MarkdownEditor
-          value={role.identity_md}
-          onChange={(v) => onChange({ identity_md: v })}
-          placeholder={t("roles.identity.placeholder")}
-          minHeight={240}
-        />
-      </div>
-      <div>
-        <strong>{t("roles.general.service_types")}</strong>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "0.75rem",
-            marginTop: "0.5rem",
-          }}
-        >
-          {(serviceTypes ?? []).map((st) => (
-            <label key={st.name} style={{ fontSize: "13px" }}>
-              <input
-                type="checkbox"
-                checked={role.service_types.includes(st.name)}
-                onChange={() => toggleService(st.name)}
-              />{" "}
-              {st.display_name}
-            </label>
-          ))}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-5">
+          <Label className="mb-3 block">
+            {t("roles.general.service_types")}
+          </Label>
+          <div className="flex flex-wrap gap-3">
+            {(serviceTypes ?? []).map((st) => (
+              <label
+                key={st.name}
+                className="flex items-center gap-2 text-[13px] cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={role.service_types.includes(st.name)}
+                  onChange={() => toggleService(st.name)}
+                  className="accent-primary"
+                />
+                {st.display_name}
+              </label>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

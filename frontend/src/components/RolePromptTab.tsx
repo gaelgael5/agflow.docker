@@ -1,5 +1,8 @@
 import { useTranslation } from "react-i18next";
+import { Sparkles } from "lucide-react";
 import { MarkdownEditor } from "./MarkdownEditor";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import type { RoleSummary } from "@/lib/rolesApi";
 
 interface Props {
@@ -18,46 +21,44 @@ export function RolePromptTab({
   const { t } = useTranslation();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-      <p
-        style={{
-          fontSize: "13px",
-          color: "#555",
-          background: "#f5f5f5",
-          padding: "0.75rem",
-          borderRadius: "4px",
-          borderLeft: "3px solid #4f46e5",
-          margin: 0,
-        }}
-      >
+    <div className="max-w-3xl space-y-4">
+      <div className="rounded-md bg-primary/5 border-l-4 border-primary p-3 text-[13px] text-foreground/80">
         {t("roles.prompt.explanation")}
-      </p>
+      </div>
+
       <div>
-        <button type="button" onClick={onRegenerate} disabled={regenerating}>
+        <Button onClick={onRegenerate} disabled={regenerating}>
+          <Sparkles className="w-4 h-4" />
           {regenerating
             ? t("roles.prompt.generating")
             : t("roles.prompt.regenerate_button")}
-        </button>
+        </Button>
         {error && (
-          <p role="alert" style={{ color: "red", marginTop: "0.5rem" }}>
+          <p role="alert" className="text-destructive text-[12px] mt-2">
             {error}
           </p>
         )}
       </div>
-      <div>
-        <h3>{t("roles.prompt.orchestrator_title")}</h3>
-        {role.prompt_orchestrator_md ? (
-          <MarkdownEditor
-            value={role.prompt_orchestrator_md}
-            onChange={() => {}}
-            readOnly
-          />
-        ) : (
-          <p style={{ color: "#888", fontStyle: "italic" }}>
-            {t("roles.prompt.empty")}
-          </p>
-        )}
-      </div>
+
+      <Card>
+        <CardContent className="pt-5">
+          <h3 className="text-[14px] font-semibold mb-3">
+            {t("roles.prompt.orchestrator_title")}
+          </h3>
+          {role.prompt_orchestrator_md ? (
+            <MarkdownEditor
+              value={role.prompt_orchestrator_md}
+              onChange={() => {}}
+              readOnly
+              minHeight={240}
+            />
+          ) : (
+            <p className="text-muted-foreground italic text-[13px]">
+              {t("roles.prompt.empty")}
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -81,7 +81,11 @@ describe("RoleSidebar", () => {
     const onAdd = vi.fn();
     renderSidebar({ onAdd });
 
-    const plusButtons = screen.getAllByRole("button", { name: "+" });
+    // Icon buttons expose their purpose via aria-label (i18n key
+    // roles.sidebar.add_document → "Ajouter un document")
+    const plusButtons = screen.getAllByRole("button", {
+      name: /Ajouter un document/i,
+    });
     await userEvent.click(plusButtons[0]!);
     expect(onAdd).toHaveBeenCalledWith("roles");
   });
@@ -95,7 +99,9 @@ describe("RoleSidebar", () => {
     renderSidebar({ sections, documents: [], onDeleteSection });
 
     expect(screen.getByText("Outils")).toBeInTheDocument();
-    const deleteButtons = screen.getAllByRole("button", { name: "×" });
+    const deleteButtons = screen.getAllByRole("button", {
+      name: /Supprimer cette catégorie/i,
+    });
     expect(deleteButtons).toHaveLength(1);
     await userEvent.click(deleteButtons[0]!);
     expect(onDeleteSection).toHaveBeenCalledWith("outils");
@@ -103,7 +109,9 @@ describe("RoleSidebar", () => {
 
   it("hides delete button for native sections", () => {
     renderSidebar({ documents: [] });
-    const deleteButtons = screen.queryAllByRole("button", { name: "×" });
+    const deleteButtons = screen.queryAllByRole("button", {
+      name: /Supprimer cette catégorie/i,
+    });
     expect(deleteButtons).toHaveLength(0);
   });
 

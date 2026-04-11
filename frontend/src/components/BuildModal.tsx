@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Check, Copy } from "lucide-react";
 import { useBuild } from "@/hooks/useBuild";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface Props {
   dockerfileId: string;
@@ -42,7 +54,6 @@ export function BuildModal({
     [build?.logs],
   );
 
-  // Auto-scroll to the bottom whenever logs grow — mirrors a terminal feel.
   useEffect(() => {
     const el = logsRef.current;
     if (!el) return;
@@ -56,108 +67,90 @@ export function BuildModal({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard API may not be available (non-HTTPS); fall back to a prompt.
       window.prompt(t("dockerfiles.build_modal.copy_fallback"), build.logs);
     }
   }
 
+  const statusVariant = (() => {
+    if (!build) return "secondary" as const;
+    if (build.status === "success") return "success" as const;
+    if (build.status === "failed") return "destructive" as const;
+    return "secondary" as const;
+  })();
+
+  const statusLabel = (() => {
+    if (!build) return "…";
+    if (build.status === "success") return t("dockerfiles.build_modal.success");
+    if (build.status === "failed") return t("dockerfiles.build_modal.failed");
+    return t("dockerfiles.build_modal.running");
+  })();
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}
-    >
-      <div
-        style={{
-          background: "white",
-          padding: "1.5rem",
-          borderRadius: "8px",
-          width: "min(900px, 90%)",
-          maxHeight: "80vh",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <h2 style={{ margin: 0 }}>
-          {t("dockerfiles.build_modal.title", { dockerfile: dockerfileName })}
-        </h2>
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>
+            {t("dockerfiles.build_modal.title", { dockerfile: dockerfileName })}
+          </DialogTitle>
+          {build && (
+            <DialogDescription className="flex flex-wrap items-center gap-2">
+              <Badge variant={statusVariant}>{statusLabel}</Badge>
+              <code className="font-mono text-[11px]">{build.image_tag}</code>
+            </DialogDescription>
+          )}
+        </DialogHeader>
+
         {build && (
           <>
-            <p style={{ fontSize: "13px", color: "#555" }}>
-              <strong>{t("dockerfiles.build_modal.image_tag")}:</strong>{" "}
-              <code>{build.image_tag}</code>
-            </p>
-            <p>
-              <strong>Status:</strong>{" "}
-              {build.status === "success"
-                ? `✅ ${t("dockerfiles.build_modal.success")}`
-                : build.status === "failed"
-                  ? `❌ ${t("dockerfiles.build_modal.failed")}`
-                  : `🔵 ${t("dockerfiles.build_modal.running")}`}
-            </p>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <strong>{t("dockerfiles.build_modal.logs")}</strong>
-              <button
-                type="button"
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                {t("dockerfiles.build_modal.logs")}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={handleCopy}
                 disabled={!build.logs}
-                style={{
-                  fontSize: "12px",
-                  padding: "2px 8px",
-                  cursor: build.logs ? "pointer" : "default",
-                }}
               >
-                {copied
-                  ? t("dockerfiles.build_modal.copied")
-                  : t("dockerfiles.build_modal.copy")}
-              </button>
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    {t("dockerfiles.build_modal.copied")}
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    {t("dockerfiles.build_modal.copy")}
+                  </>
+                )}
+              </Button>
             </div>
             <pre
               ref={logsRef}
-              style={{
-                flex: 1,
-                overflow: "auto",
-                background: "#111",
-                color: "#e5e7eb",
-                padding: "0.75rem",
-                fontSize: "12px",
-                margin: "0.5rem 0",
-                whiteSpace: "pre-wrap",
-              }}
+              className="flex-1 overflow-auto bg-zinc-900 text-zinc-100 rounded-md p-3 text-[11px] font-mono whitespace-pre-wrap min-h-[200px]"
             >
-              {build.logs
-                ? segments.map((seg) => (
-                    <div
-                      key={seg.key}
-                      style={{ color: seg.isError ? "#f87171" : undefined }}
-                    >
-                      {seg.text || "\u00a0"}
-                    </div>
-                  ))
-                : "..."}
+              {build.logs ? (
+                segments.map((seg) => (
+                  <div
+                    key={seg.key}
+                    className={cn(seg.isError && "text-red-400")}
+                  >
+                    {seg.text || "\u00a0"}
+                  </div>
+                ))
+              ) : (
+                <span className="text-zinc-500">…</span>
+              )}
             </pre>
           </>
         )}
-        <button
-          type="button"
-          onClick={onClose}
-          style={{ alignSelf: "flex-end" }}
-        >
-          {t("dockerfiles.build_modal.close")}
-        </button>
-      </div>
-    </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {t("dockerfiles.build_modal.close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

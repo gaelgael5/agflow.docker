@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Bot, FileCode2, Hammer, Plus, Save, Trash2 } from "lucide-react";
 import {
   useDockerfileDetail,
   useDockerfiles,
@@ -10,6 +11,9 @@ import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { DockerChatModal } from "@/components/DockerChatModal";
 import { dockerfilesApi } from "@/lib/dockerfilesApi";
 import { slugify } from "@/lib/slugify";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 const STANDARD_FILES = ["Dockerfile", "entrypoint.sh"] as const;
 
@@ -59,18 +63,19 @@ export function DockerfilesPage() {
       run_cmd_md: string;
     },
   ) {
-    // 1. Create the dockerfile — this auto-seeds empty Dockerfile + entrypoint.sh
     await createMutation.mutateAsync({
       id: dockerfileId,
       display_name: displayName,
     });
-    // 2. Fetch the detail to get the auto-seeded file UUIDs
     const fresh = await dockerfilesApi.get(dockerfileId);
     const dfFile = fresh.files.find((f) => f.path === "Dockerfile");
     const epFile = fresh.files.find((f) => f.path === "entrypoint.sh");
-    // 3. Overwrite the 2 standard files with the generated content
     if (dfFile) {
-      await dockerfilesApi.updateFile(dockerfileId, dfFile.id, generated.dockerfile);
+      await dockerfilesApi.updateFile(
+        dockerfileId,
+        dfFile.id,
+        generated.dockerfile,
+      );
     }
     if (epFile) {
       await dockerfilesApi.updateFile(
@@ -79,7 +84,6 @@ export function DockerfilesPage() {
         generated.entrypoint_sh,
       );
     }
-    // 4. Create run.cmd.md as an additional (non-standard) file
     await dockerfilesApi.createFile(dockerfileId, {
       path: "run.cmd.md",
       content: generated.run_cmd_md,
@@ -135,226 +139,198 @@ export function DockerfilesPage() {
     setBuildId(res.id);
   }
 
-  if (isLoading) return <p>{t("secrets.loading")}</p>;
+  if (isLoading)
+    return <p className="p-6 text-muted-foreground">{t("secrets.loading")}</p>;
+
+  const isStandard =
+    selectedFile !== null &&
+    (STANDARD_FILES as readonly string[]).includes(selectedFile.path);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "100%",
-        minHeight: "calc(100vh - 56px)",
-        overflow: "hidden",
-      }}
-    >
-      {/* Left: dockerfile list */}
-      <aside
-        style={{
-          minWidth: 240,
-          borderRight: "1px solid #ddd",
-          padding: "1rem",
-          background: "#fafafa",
-          overflowY: "auto",
-        }}
-      >
-        <h2>{t("dockerfiles.page_title")}</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-          <button type="button" onClick={handleCreate}>
-            {t("dockerfiles.add_button")}
-          </button>
-          <button type="button" onClick={() => setShowChat(true)}>
-            {t("dockerfiles.chat.open_button")}
-          </button>
+    <div className="flex h-full min-h-[calc(100vh-3.5rem)] overflow-hidden">
+      {/* Left column: dockerfile list */}
+      <aside className="w-64 shrink-0 border-r bg-muted/30 flex flex-col overflow-hidden">
+        <div className="p-4 border-b">
+          <h2 className="text-[13px] font-semibold text-foreground uppercase tracking-wider mb-2">
+            {t("dockerfiles.page_title")}
+          </h2>
+          <div className="flex flex-col gap-1.5">
+            <Button size="sm" onClick={handleCreate} className="w-full">
+              <Plus className="w-3.5 h-3.5" />
+              {t("dockerfiles.add_button")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowChat(true)}
+              className="w-full"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              {t("dockerfiles.chat.open_button_short")}
+            </Button>
+          </div>
         </div>
-        {(dockerfiles ?? []).length === 0 ? (
-          <p style={{ color: "#999", fontStyle: "italic" }}>
-            {t("dockerfiles.no_dockerfiles")}
-          </p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0, marginTop: "1rem" }}>
-            {dockerfiles?.map((d) => (
-              <li key={d.id} style={{ marginBottom: "0.5rem" }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(d.id);
-                    setSelectedFileId(null);
-                    setDraftContent(null);
-                  }}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "8px",
-                    background:
-                      selectedId === d.id ? "#e0e7ff" : "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
-                  }}
-                >
-                  <strong>{d.display_name}</strong>
-                  <BuildStatusBadge status={d.display_status} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+
+        <div className="flex-1 overflow-y-auto p-2">
+          {(dockerfiles ?? []).length === 0 ? (
+            <p className="text-muted-foreground text-[12px] italic px-2 py-2">
+              {t("dockerfiles.no_dockerfiles")}
+            </p>
+          ) : (
+            <ul className="space-y-0.5">
+              {dockerfiles?.map((d) => {
+                const active = selectedId === d.id;
+                return (
+                  <li key={d.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedId(d.id);
+                        setSelectedFileId(null);
+                        setDraftContent(null);
+                      }}
+                      className={cn(
+                        "w-full text-left px-2.5 py-2 rounded-md transition-colors",
+                        active
+                          ? "bg-primary/10 text-primary"
+                          : "hover:bg-secondary text-foreground",
+                      )}
+                    >
+                      <div className="font-medium text-[13px] truncate">
+                        {d.display_name}
+                      </div>
+                      <div className="mt-1">
+                        <BuildStatusBadge status={d.display_status} />
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
         {selectedId && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            style={{ marginTop: "2rem", color: "red" }}
-          >
-            {t("dockerfiles.delete_button")}
-          </button>
+          <div className="p-3 border-t">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleDelete}
+              className="w-full text-destructive"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {t("dockerfiles.delete_button")}
+            </Button>
+          </div>
         )}
       </aside>
 
       {selectedId && currentDockerfile ? (
         <>
-          {/* Middle: files list */}
-          <aside
-            style={{
-              minWidth: 220,
-              borderRight: "1px solid #ddd",
-              padding: "1rem",
-              overflowY: "auto",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "0.5rem",
-              }}
-            >
-              <strong>Files</strong>
-              <button type="button" onClick={handleAddFile}>
-                {t("dockerfiles.new_file_button")}
-              </button>
+          {/* Middle column: files list */}
+          <aside className="w-56 shrink-0 border-r flex flex-col overflow-hidden">
+            <div className="p-3 border-b flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                {t("dockerfiles.files_title")}
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handleAddFile}
+                aria-label={t("dockerfiles.new_file_button")}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </Button>
             </div>
-            {files.length === 0 ? (
-              <p style={{ color: "#999", fontStyle: "italic" }}>
-                {t("dockerfiles.no_files")}
-              </p>
-            ) : (
-              <ul style={{ listStyle: "none", padding: 0 }}>
-                {files.map((f) => (
-                  <li key={f.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFileId(f.id);
-                        setDraftContent(null);
-                      }}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "4px 6px",
-                        background:
-                          selectedFileId === f.id
-                            ? "#e0e7ff"
-                            : "transparent",
-                        border: "none",
-                        cursor: "pointer",
-                        fontFamily: "monospace",
-                        fontSize: "13px",
-                      }}
-                    >
-                      {f.path}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <div className="flex-1 overflow-y-auto p-2">
+              {files.length === 0 ? (
+                <p className="text-muted-foreground text-[12px] italic px-2 py-2">
+                  {t("dockerfiles.no_files")}
+                </p>
+              ) : (
+                <ul className="space-y-0.5">
+                  {files.map((f) => {
+                    const active = selectedFileId === f.id;
+                    return (
+                      <li key={f.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedFileId(f.id);
+                            setDraftContent(null);
+                          }}
+                          className={cn(
+                            "w-full text-left px-2.5 py-1.5 rounded-md font-mono text-[12px] flex items-center gap-2 transition-colors",
+                            active
+                              ? "bg-primary/10 text-primary"
+                              : "hover:bg-secondary text-foreground",
+                          )}
+                        >
+                          <FileCode2 className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{f.path}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </aside>
 
-          {/* Right: editor */}
-          <main
-            style={{
-              flex: 1,
-              padding: "1.5rem",
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-              minWidth: 0,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "1rem",
-              }}
-            >
-              <div>
-                <h2 style={{ margin: 0 }}>{currentDockerfile.display_name}</h2>
-                <p style={{ fontSize: "12px", color: "#666" }}>
-                  {t("dockerfiles.current_hash")}:{" "}
-                  <code>{currentDockerfile.current_hash}</code>
-                </p>
-                <BuildStatusBadge status={currentDockerfile.display_status} />
+          {/* Right column: editor */}
+          <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b">
+              <div className="min-w-0">
+                <h2 className="text-[18px] font-semibold text-foreground truncate">
+                  {currentDockerfile.display_name}
+                </h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <BuildStatusBadge status={currentDockerfile.display_status} />
+                  <span className="text-[11px] text-muted-foreground">
+                    {t("dockerfiles.current_hash")}:{" "}
+                    <code className="font-mono">
+                      {currentDockerfile.current_hash}
+                    </code>
+                  </span>
+                </div>
               </div>
-              <button type="button" onClick={handleBuild}>
+              <Button onClick={handleBuild}>
+                <Hammer className="w-4 h-4" />
                 {t("dockerfiles.build_button")}
-              </button>
+              </Button>
             </div>
 
             {selectedFile ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  flex: 1,
-                  minHeight: 0,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "0.5rem",
-                  }}
-                >
-                  <strong style={{ fontFamily: "monospace" }}>
-                    {selectedFile.path}
-                    {(STANDARD_FILES as readonly string[]).includes(
-                      selectedFile.path,
-                    ) && (
-                      <span
-                        style={{
-                          marginLeft: "0.5rem",
-                          fontSize: "11px",
-                          color: "#666",
-                          fontFamily: "system-ui",
-                        }}
-                      >
-                        ({t("dockerfiles.standard_file")})
-                      </span>
+              <div className="flex-1 flex flex-col min-h-0 px-6 py-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <code className="font-mono text-[13px] font-semibold">
+                      {selectedFile.path}
+                    </code>
+                    {isStandard && (
+                      <Badge variant="secondary">
+                        {t("dockerfiles.standard_file")}
+                      </Badge>
                     )}
-                  </strong>
-                  <span style={{ display: "flex", gap: "0.5rem" }}>
+                  </div>
+                  <div className="flex items-center gap-1">
                     {draftContent !== null && (
-                      <button type="button" onClick={handleSaveFile}>
+                      <Button size="sm" onClick={handleSaveFile}>
+                        <Save className="w-3.5 h-3.5" />
                         {t("dockerfiles.save_button")}
-                      </button>
+                      </Button>
                     )}
-                    {!(STANDARD_FILES as readonly string[]).includes(
-                      selectedFile.path,
-                    ) && (
-                      <button
-                        type="button"
+                    {!isStandard && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
                         onClick={handleDeleteFile}
-                        style={{ color: "red" }}
+                        aria-label={t("dockerfiles.delete_button")}
                       >
-                        {t("dockerfiles.delete_button")}
-                      </button>
+                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                      </Button>
                     )}
-                  </span>
+                  </div>
                 </div>
                 <MarkdownEditor
                   value={draftContent ?? selectedFile.content}
@@ -363,16 +339,15 @@ export function DockerfilesPage() {
                 />
               </div>
             ) : (
-              <p style={{ color: "#888" }}>
-                {t("dockerfiles.no_files")} —{" "}
-                {t("dockerfiles.new_file_button")}
-              </p>
+              <div className="flex-1 flex items-center justify-center text-muted-foreground text-[13px] italic p-6">
+                {t("dockerfiles.pick_file_hint")}
+              </div>
             )}
           </main>
         </>
       ) : (
-        <main style={{ flex: 1, padding: "2rem", color: "#888" }}>
-          <p>{t("dockerfiles.select_dockerfile")}</p>
+        <main className="flex-1 flex items-center justify-center text-muted-foreground text-[13px] italic">
+          {t("dockerfiles.select_dockerfile")}
         </main>
       )}
 

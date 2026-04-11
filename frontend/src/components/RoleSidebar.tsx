@@ -1,4 +1,7 @@
 import { useTranslation } from "react-i18next";
+import { Plus, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type {
   DocumentSummary,
   Section,
@@ -27,117 +30,84 @@ export function RoleSidebar({
   const { t } = useTranslation();
 
   return (
-    <aside
-      style={{
-        minWidth: 260,
-        borderRight: "1px solid #ddd",
-        padding: "1rem",
-      }}
-    >
-      {sections.map((section) => {
-        const docs = documents.filter((d) => d.section === section.name);
-        const canDelete = !section.is_native && docs.length === 0;
-        return (
-          <div key={section.name} style={{ marginBottom: "1.25rem" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                fontWeight: 600,
-                fontSize: "11px",
-                letterSpacing: "0.05em",
-                color: "#666",
-                marginBottom: "0.5rem",
-              }}
-            >
-              <span style={{ textTransform: "uppercase" }}>
-                {section.display_name}
-              </span>
-              <span style={{ display: "flex", gap: "0.25rem" }}>
-                <button
-                  type="button"
-                  onClick={() => onAdd(section.name)}
-                  title={t("roles.sidebar.add_document")}
-                  style={{
-                    fontSize: "11px",
-                    padding: "2px 6px",
-                    cursor: "pointer",
-                  }}
-                >
-                  +
-                </button>
-                {canDelete && (
-                  <button
-                    type="button"
-                    onClick={() => onDeleteSection(section.name)}
-                    title={t("roles.sidebar.delete_section")}
-                    style={{
-                      fontSize: "11px",
-                      padding: "2px 6px",
-                      cursor: "pointer",
-                      color: "#c00",
-                    }}
+    <aside className="w-64 shrink-0 border-r bg-background overflow-y-auto">
+      <div className="p-3 space-y-4">
+        {sections.map((section) => {
+          const docs = documents.filter((d) => d.section === section.name);
+          const canDelete = !section.is_native && docs.length === 0;
+          return (
+            <div key={section.name}>
+              <div className="flex items-center justify-between px-1 mb-1">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  {section.display_name}
+                </span>
+                <span className="flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5"
+                    onClick={() => onAdd(section.name)}
+                    aria-label={t("roles.sidebar.add_document")}
                   >
-                    ×
-                  </button>
-                )}
-              </span>
-            </div>
-            {docs.length === 0 ? (
-              <div
-                style={{ fontSize: "12px", color: "#999", fontStyle: "italic" }}
-              >
-                —
-              </div>
-            ) : (
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {docs.map((doc) => (
-                  <li key={doc.id}>
-                    <button
-                      type="button"
-                      onClick={() => onSelect(doc.id)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        width: "100%",
-                        padding: "4px 6px",
-                        textAlign: "left",
-                        border: "none",
-                        background:
-                          selectedDocId === doc.id ? "#e0e7ff" : "transparent",
-                        cursor: "pointer",
-                        fontSize: "13px",
-                      }}
+                    <Plus className="w-3 h-3" />
+                  </Button>
+                  {canDelete && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-destructive"
+                      onClick={() => onDeleteSection(section.name)}
+                      aria-label={t("roles.sidebar.delete_section")}
                     >
-                      <span>{doc.protected ? "🔒" : "📄"}</span>
-                      <span>{doc.name}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        );
-      })}
+                      <X className="w-3 h-3" />
+                    </Button>
+                  )}
+                </span>
+              </div>
+              {docs.length === 0 ? (
+                <div className="text-[12px] text-muted-foreground italic px-2 py-1">
+                  —
+                </div>
+              ) : (
+                <ul className="space-y-0.5">
+                  {docs.map((doc) => {
+                    const active = selectedDocId === doc.id;
+                    return (
+                      <li key={doc.id}>
+                        <button
+                          type="button"
+                          onClick={() => onSelect(doc.id)}
+                          className={cn(
+                            "w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-md text-[13px] transition-colors",
+                            active
+                              ? "bg-primary/10 text-primary"
+                              : "hover:bg-secondary text-foreground",
+                          )}
+                        >
+                          <span className="text-[11px]">
+                            {doc.protected ? "🔒" : "📄"}
+                          </span>
+                          <span className="truncate">{doc.name}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          );
+        })}
 
-      <button
-        type="button"
-        onClick={onAddSection}
-        style={{
-          width: "100%",
-          marginTop: "0.5rem",
-          padding: "6px",
-          fontSize: "12px",
-          border: "1px dashed #ccc",
-          background: "transparent",
-          cursor: "pointer",
-          color: "#666",
-        }}
-      >
-        {t("roles.sidebar.add_section")}
-      </button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full border-dashed"
+          onClick={onAddSection}
+        >
+          <Plus className="w-3.5 h-3.5" />
+          {t("roles.sidebar.add_section")}
+        </Button>
+      </div>
     </aside>
   );
 }

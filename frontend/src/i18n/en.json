@@ -168,8 +168,11 @@
     "new_file_prompt": "File name (e.g. config.json)",
     "confirm_delete": "Delete \"{{name}}\"?",
     "standard_file": "standard file, not deletable",
+    "files_title": "Files",
+    "pick_file_hint": "Select a file in the sidebar",
     "chat": {
       "open_button": "🤖 Create via chat",
+      "open_button_short": "Create via chat",
       "title": "Generate a Dockerfile via chat",
       "subtitle": "Describe the agent you want — the LLM will generate Dockerfile, entrypoint.sh and run.cmd.md",
       "placeholder": "e.g. claude-code agent with Python 3.12, git, node 20 and jq, mounted at /workspace",

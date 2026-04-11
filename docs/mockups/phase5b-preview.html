@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>agflow.docker — Preview Phase 5b</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/lucide@0.462.0/dist/umd/lucide.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    html, body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  </style>
+</head>
+<body class="bg-zinc-50 text-zinc-900 text-[14px] leading-6 antialiased">
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+  <aside class="w-60 shrink-0 border-r border-zinc-200 bg-white flex flex-col">
+    <div class="h-14 border-b border-zinc-200 flex items-center px-5">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-md bg-indigo-600 flex items-center justify-center shadow-sm">
+          <i data-lucide="boxes" class="w-4 h-4 text-white"></i>
+        </div>
+        <span class="font-semibold text-zinc-900 tracking-tight">agflow</span>
+        <span class="text-[11px] text-zinc-400 font-medium ml-0.5">docker</span>
+      </div>
+    </div>
+
+    <nav class="flex-1 px-3 py-5 space-y-6 overflow-y-auto text-[13px]">
+      <!-- Plateforme -->
+      <div>
+        <div class="px-2 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Plateforme</div>
+        <a href="#" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-600 hover:bg-zinc-100">
+          <i data-lucide="key-round" class="w-4 h-4 shrink-0"></i>
+          <span>Secrets</span>
+        </a>
+        <a href="#" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-600 hover:bg-zinc-100">
+          <i data-lucide="file-code-2" class="w-4 h-4 shrink-0"></i>
+          <span>Dockerfiles</span>
+        </a>
+        <a href="#" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-600 hover:bg-zinc-100">
+          <i data-lucide="user-round-cog" class="w-4 h-4 shrink-0"></i>
+          <span>Rôles</span>
+        </a>
+      </div>
+
+      <!-- Catalogues -->
+      <div>
+        <div class="px-2 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Catalogues</div>
+        <a href="#" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-600 hover:bg-zinc-100">
+          <i data-lucide="radio-tower" class="w-4 h-4 shrink-0"></i>
+          <span>Services découverte</span>
+        </a>
+        <a href="#" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-600 hover:bg-zinc-100">
+          <i data-lucide="plug-zap" class="w-4 h-4 shrink-0"></i>
+          <span>Catalogue MCP</span>
+        </a>
+        <a href="#" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-600 hover:bg-zinc-100">
+          <i data-lucide="book-marked" class="w-4 h-4 shrink-0"></i>
+          <span>Catalogue Skills</span>
+        </a>
+      </div>
+
+      <!-- Orchestration -->
+      <div>
+        <div class="px-2 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Orchestration</div>
+        <a href="#" onclick="show('view-list')" class="nav-agents flex items-center gap-2.5 px-2 py-1.5 rounded-md bg-indigo-50 text-indigo-700 font-medium">
+          <i data-lucide="bot" class="w-4 h-4 shrink-0"></i>
+          <span>Agents</span>
+        </a>
+        <a href="#" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-400 cursor-not-allowed">
+          <i data-lucide="globe" class="w-4 h-4 shrink-0"></i>
+          <span>API publique</span>
+          <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-400 font-medium">soon</span>
+        </a>
+        <a href="#" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-400 cursor-not-allowed">
+          <i data-lucide="activity" class="w-4 h-4 shrink-0"></i>
+          <span>Supervision</span>
+          <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-400 font-medium">soon</span>
+        </a>
+      </div>
+    </nav>
+
+    <div class="border-t border-zinc-200 p-3 space-y-0.5 text-[13px]">
+      <button class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-600 hover:bg-zinc-100 w-full">
+        <i data-lucide="moon" class="w-4 h-4"></i>
+        <span>Thème sombre</span>
+      </button>
+      <button class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-zinc-600 hover:bg-zinc-100 w-full">
+        <i data-lucide="log-out" class="w-4 h-4"></i>
+        <span>Déconnexion</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════ MAIN COLUMN ═══════════════════ -->
+  <div class="flex-1 flex flex-col min-w-0">
+
+    <!-- TOP BAR -->
+    <header class="h-14 border-b border-zinc-200 bg-white flex items-center justify-between px-6 shrink-0">
+      <div class="flex items-center gap-2 text-[13px]">
+        <span class="text-zinc-400">Orchestration</span>
+        <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-zinc-300"></i>
+        <span class="text-zinc-900 font-medium">Agents</span>
+        <span id="crumb-extra" class="hidden items-center gap-2 ml-0">
+          <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-zinc-300"></i>
+          <span class="text-zinc-900 font-medium">claude-code-senior</span>
+        </span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="w-8 h-8 rounded-md hover:bg-zinc-100 flex items-center justify-center text-zinc-500">
+          <i data-lucide="search" class="w-4 h-4"></i>
+        </button>
+        <button class="w-8 h-8 rounded-md hover:bg-zinc-100 flex items-center justify-center text-zinc-500">
+          <i data-lucide="bell" class="w-4 h-4"></i>
+        </button>
+        <div class="w-px h-5 bg-zinc-200 mx-1"></div>
+        <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-[11px] font-semibold">GB</div>
+      </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto">
+
+      <!-- ═══════════════════ VIEW LIST ═══════════════════ -->
+      <div id="view-list" class="view">
+        <div class="px-8 py-10 max-w-6xl">
+          <div class="mb-8">
+            <h1 class="text-[26px] font-semibold text-zinc-900 tracking-tight">Agents</h1>
+            <p class="text-zinc-500 mt-1.5">Dockerfile + Rôle + MCPs + Skills assemblés en un agent déployable.</p>
+          </div>
+
+          <div class="flex items-center justify-between mb-5">
+            <div class="relative">
+              <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"></i>
+              <input type="text" placeholder="Filtrer les agents…" class="pl-9 pr-4 py-2 rounded-md border border-zinc-200 bg-white text-[13px] w-80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+            </div>
+            <button onclick="show('view-editor')" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-medium shadow-sm">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              Nouvel agent
+            </button>
+          </div>
+
+          <div class="bg-white rounded-lg border border-zinc-200 overflow-hidden shadow-sm">
+            <table class="w-full">
+              <thead>
+                <tr class="bg-zinc-50 text-left text-[11px] uppercase tracking-wider text-zinc-500 border-b border-zinc-200">
+                  <th class="px-4 py-2.5 font-semibold">Slug</th>
+                  <th class="px-4 py-2.5 font-semibold">Nom</th>
+                  <th class="px-4 py-2.5 font-semibold">Dockerfile</th>
+                  <th class="px-4 py-2.5 font-semibold">Rôle</th>
+                  <th class="px-4 py-2.5 font-semibold">Image</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-zinc-100 text-[13px]">
+                <tr class="hover:bg-zinc-50 cursor-pointer" onclick="show('view-editor')">
+                  <td class="px-4 py-3.5 font-mono text-[12px] text-zinc-500">claude-code-senior</td>
+                  <td class="px-4 py-3.5 font-medium text-zinc-900">Claude — Senior Dev</td>
+                  <td class="px-4 py-3.5 font-mono text-[12px] text-zinc-500">claude-code</td>
+                  <td class="px-4 py-3.5 font-mono text-[12px] text-zinc-500">senior-dev</td>
+                  <td class="px-4 py-3.5">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium border border-emerald-200/50">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      À jour
+                    </span>
+                  </td>
+                  <td class="px-4 py-3.5" onclick="event.stopPropagation()">
+                    <div class="flex items-center justify-end gap-0.5">
+                      <button class="w-7 h-7 rounded-md hover:bg-zinc-100 flex items-center justify-center text-zinc-500" title="Éditer"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                      <button class="w-7 h-7 rounded-md hover:bg-zinc-100 flex items-center justify-center text-zinc-500" title="Dupliquer"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                      <button class="w-7 h-7 rounded-md hover:bg-red-50 flex items-center justify-center text-zinc-500 hover:text-red-600" title="Supprimer"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-zinc-50 cursor-pointer" onclick="show('view-editor')">
+                  <td class="px-4 py-3.5 font-mono text-[12px] text-zinc-500">aider-refactor</td>
+                  <td class="px-4 py-3.5 font-medium text-zinc-900">Aider — Refactor expert</td>
+                  <td class="px-4 py-3.5 font-mono text-[12px] text-zinc-500">aider</td>
+                  <td class="px-4 py-3.5 font-mono text-[12px] text-zinc-500">refactor-expert</td>
+                  <td class="px-4 py-3.5">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-medium border border-amber-200/50">
+                      <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                      Obsolète
+                    </span>
+                  </td>
+                  <td class="px-4 py-3.5" onclick="event.stopPropagation()">
+                    <div class="flex items-center justify-end gap-0.5">
+                      <button class="w-7 h-7 rounded-md hover:bg-zinc-100 flex items-center justify-center text-zinc-500"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                      <button class="w-7 h-7 rounded-md hover:bg-zinc-100 flex items-center justify-center text-zinc-500"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                      <button class="w-7 h-7 rounded-md hover:bg-red-50 flex items-center justify-center text-zinc-500 hover:text-red-600"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-zinc-50 cursor-pointer" onclick="show('view-editor')">
+                  <td class="px-4 py-3.5 font-mono text-[12px] text-zinc-500">goose-docs</td>
+                  <td class="px-4 py-3.5 font-medium text-zinc-900">Goose — Docs writer</td>
+                  <td class="px-4 py-3.5 font-mono text-[12px] text-zinc-500">goose</td>
+                  <td class="px-4 py-3.5 font-mono text-[12px] text-zinc-500">technical-writer</td>
+                  <td class="px-4 py-3.5">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[11px] font-medium border border-red-200/50">
+                      <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                      Non buildée
+                    </span>
+                  </td>
+                  <td class="px-4 py-3.5" onclick="event.stopPropagation()">
+                    <div class="flex items-center justify-end gap-0.5">
+                      <button class="w-7 h-7 rounded-md hover:bg-zinc-100 flex items-center justify-center text-zinc-500"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                      <button class="w-7 h-7 rounded-md hover:bg-zinc-100 flex items-center justify-center text-zinc-500"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                      <button class="w-7 h-7 rounded-md hover:bg-red-50 flex items-center justify-center text-zinc-500 hover:text-red-600"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-zinc-400 text-[12px] mt-3">3 agents • Cliquer sur une ligne pour ouvrir le builder</p>
+        </div>
+      </div>
+
+      <!-- ═══════════════════ VIEW EDITOR ═══════════════════ -->
+      <div id="view-editor" class="view hidden">
+        <div class="px-8 py-10 max-w-5xl">
+
+          <!-- back + header -->
+          <button onclick="show('view-list')" class="inline-flex items-center gap-1.5 text-[13px] text-zinc-500 hover:text-zinc-900 mb-5">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+            Retour aux agents
+          </button>
+
+          <div class="flex items-start justify-between mb-8">
+            <div>
+              <div class="flex items-center gap-3">
+                <h1 class="text-[26px] font-semibold text-zinc-900 tracking-tight">Claude — Senior Dev</h1>
+                <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium border border-emerald-200/50">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  À jour
+                </span>
+              </div>
+              <p class="text-zinc-500 mt-1.5 font-mono text-[12px]">claude-code-senior</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="togglePreview()" class="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-white border border-zinc-200 hover:bg-zinc-50 text-[13px] font-medium text-zinc-700">
+                <i data-lucide="eye" class="w-4 h-4"></i>
+                Aperçu config
+              </button>
+              <button class="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-white border border-zinc-200 hover:bg-zinc-50 text-[13px] font-medium text-zinc-700">
+                <i data-lucide="copy" class="w-4 h-4"></i>
+                Dupliquer
+              </button>
+              <button class="inline-flex items-center gap-2 px-3.5 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-medium shadow-sm">
+                <i data-lucide="save" class="w-4 h-4"></i>
+                Enregistrer
+              </button>
+            </div>
+          </div>
+
+          <!-- GENERAL -->
+          <section class="mb-10">
+            <h2 class="text-[12px] font-semibold text-zinc-400 uppercase tracking-wider mb-3">Général</h2>
+            <div class="bg-white rounded-lg border border-zinc-200 p-5 space-y-4 shadow-sm">
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="text-[12px] text-zinc-500 mb-1 block font-medium">Slug</label>
+                  <input type="text" value="claude-code-senior" disabled class="w-full px-3 py-2 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-500 font-mono text-[12px]" />
+                </div>
+                <div>
+                  <label class="text-[12px] text-zinc-500 mb-1 block font-medium">Nom d'affichage</label>
+                  <input type="text" value="Claude — Senior Dev" class="w-full px-3 py-2 rounded-md border border-zinc-200 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                </div>
+              </div>
+              <div>
+                <label class="text-[12px] text-zinc-500 mb-1 block font-medium">Description</label>
+                <textarea rows="2" class="w-full px-3 py-2 rounded-md border border-zinc-200 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">Agent Claude Code configuré en dev senior full-stack Python/React.</textarea>
+              </div>
+            </div>
+          </section>
+
+          <!-- COMPOSITION -->
+          <section class="mb-10">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-[12px] font-semibold text-zinc-400 uppercase tracking-wider">Composition</h2>
+              <span class="text-[12px] text-zinc-400">4 briques assemblées</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+
+              <!-- BRICK : Dockerfile -->
+              <div class="bg-white rounded-lg border border-zinc-200 p-5 shadow-sm hover:border-indigo-300 transition group">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-md bg-blue-50 border border-blue-100 flex items-center justify-center">
+                      <i data-lucide="file-code-2" class="w-4 h-4 text-blue-600"></i>
+                    </div>
+                    <div>
+                      <div class="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">Dockerfile</div>
+                      <div class="text-[14px] font-semibold text-zinc-900 -mt-0.5">claude-code</div>
+                    </div>
+                  </div>
+                  <button class="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-zinc-900 transition">
+                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+                <div class="pl-10 space-y-1 text-[12px]">
+                  <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-medium border border-emerald-200/50">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      Image à jour
+                    </span>
+                  </div>
+                  <div class="text-zinc-500 font-mono text-[11px]">hash: a7b3f9e2…</div>
+                </div>
+              </div>
+
+              <!-- BRICK : Role -->
+              <div class="bg-white rounded-lg border border-zinc-200 p-5 shadow-sm hover:border-indigo-300 transition group">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-md bg-violet-50 border border-violet-100 flex items-center justify-center">
+                      <i data-lucide="user-round-cog" class="w-4 h-4 text-violet-600"></i>
+                    </div>
+                    <div>
+                      <div class="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">Rôle</div>
+                      <div class="text-[14px] font-semibold text-zinc-900 -mt-0.5">Senior Dev</div>
+                    </div>
+                  </div>
+                  <button class="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-zinc-900 transition">
+                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+                <div class="pl-10 text-[12px] text-zinc-500">
+                  <div>Identité + 3 rôles • 2 missions • 4 compétences</div>
+                </div>
+              </div>
+
+              <!-- BRICK : MCPs -->
+              <div class="bg-white rounded-lg border border-zinc-200 p-5 shadow-sm col-span-2">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-md bg-cyan-50 border border-cyan-100 flex items-center justify-center">
+                      <i data-lucide="plug-zap" class="w-4 h-4 text-cyan-600"></i>
+                    </div>
+                    <div>
+                      <div class="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">Services MCP</div>
+                      <div class="text-[14px] font-semibold text-zinc-900 -mt-0.5">2 serveurs</div>
+                    </div>
+                  </div>
+                  <button class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-zinc-50 hover:bg-zinc-100 text-[12px] font-medium text-zinc-700 border border-zinc-200">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    Ajouter
+                  </button>
+                </div>
+
+                <div class="space-y-2">
+                  <!-- MCP item -->
+                  <div class="border border-zinc-200 rounded-md p-3 hover:bg-zinc-50 group/item">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-1.5">
+                          <span class="text-[13px] font-semibold text-zinc-900">Filesystem</span>
+                          <span class="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 font-mono">stdio</span>
+                        </div>
+                        <span class="text-zinc-300">•</span>
+                        <span class="text-[11px] text-zinc-500 font-mono">@mcp/filesystem</span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <span class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200/50 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-1">
+                          <i data-lucide="pen-line" class="w-3 h-3"></i>
+                          Override
+                        </span>
+                        <button class="opacity-0 group-hover/item:opacity-100 text-zinc-400 hover:text-zinc-900 transition">
+                          <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                        </button>
+                        <button class="opacity-0 group-hover/item:opacity-100 text-zinc-400 hover:text-red-600 transition">
+                          <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                      </div>
+                    </div>
+                    <pre class="mt-2 text-[11px] bg-zinc-50 border border-zinc-100 rounded p-2 text-zinc-700 font-mono">{
+  "root": "/workspace/project"
+}</pre>
+                  </div>
+
+                  <div class="border border-zinc-200 rounded-md p-3 hover:bg-zinc-50 group/item">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-1.5">
+                          <span class="text-[13px] font-semibold text-zinc-900">GitHub</span>
+                          <span class="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 font-mono">sse</span>
+                        </div>
+                        <span class="text-zinc-300">•</span>
+                        <span class="text-[11px] text-zinc-500 font-mono">@mcp/github</span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button class="opacity-0 group-hover/item:opacity-100 text-zinc-400 hover:text-zinc-900 transition">
+                          <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                        </button>
+                        <button class="opacity-0 group-hover/item:opacity-100 text-zinc-400 hover:text-red-600 transition">
+                          <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BRICK : Skills -->
+              <div class="bg-white rounded-lg border border-zinc-200 p-5 shadow-sm col-span-2">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-md bg-amber-50 border border-amber-100 flex items-center justify-center">
+                      <i data-lucide="book-marked" class="w-4 h-4 text-amber-600"></i>
+                    </div>
+                    <div>
+                      <div class="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">Skills</div>
+                      <div class="text-[14px] font-semibold text-zinc-900 -mt-0.5">3 skills attachés</div>
+                    </div>
+                  </div>
+                  <button class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-zinc-50 hover:bg-zinc-100 text-[12px] font-medium text-zinc-700 border border-zinc-200">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    Ajouter
+                  </button>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md bg-zinc-100 text-[12px] text-zinc-700 border border-zinc-200 group/chip">
+                    <i data-lucide="book-marked" class="w-3 h-3 text-zinc-400"></i>
+                    Markdown guidelines
+                    <button class="w-4 h-4 rounded-sm hover:bg-zinc-200 flex items-center justify-center text-zinc-400 hover:text-red-600">
+                      <i data-lucide="x" class="w-3 h-3"></i>
+                    </button>
+                  </span>
+                  <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md bg-zinc-100 text-[12px] text-zinc-700 border border-zinc-200">
+                    <i data-lucide="book-marked" class="w-3 h-3 text-zinc-400"></i>
+                    Python SOLID rules
+                    <button class="w-4 h-4 rounded-sm hover:bg-zinc-200 flex items-center justify-center text-zinc-400 hover:text-red-600">
+                      <i data-lucide="x" class="w-3 h-3"></i>
+                    </button>
+                  </span>
+                  <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md bg-zinc-100 text-[12px] text-zinc-700 border border-zinc-200">
+                    <i data-lucide="book-marked" class="w-3 h-3 text-zinc-400"></i>
+                    TDD discipline
+                    <button class="w-4 h-4 rounded-sm hover:bg-zinc-200 flex items-center justify-center text-zinc-400 hover:text-red-600">
+                      <i data-lucide="x" class="w-3 h-3"></i>
+                    </button>
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          </section>
+
+          <!-- ENV VARS -->
+          <section class="mb-10">
+            <h2 class="text-[12px] font-semibold text-zinc-400 uppercase tracking-wider mb-3">Variables d'environnement</h2>
+            <div class="bg-white rounded-lg border border-zinc-200 p-5 shadow-sm space-y-2">
+              <div class="flex items-center gap-2 text-[13px]">
+                <input type="text" value="ANTHROPIC_API_KEY" class="flex-1 px-3 py-1.5 rounded-md border border-zinc-200 font-mono text-[12px]" />
+                <span class="text-zinc-400">=</span>
+                <input type="text" value="$ANTHROPIC_API_KEY" class="flex-1 px-3 py-1.5 rounded-md border border-zinc-200 font-mono text-[12px]" />
+                <span class="inline-flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200/50 px-2 py-0.5 rounded-full">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  secret OK
+                </span>
+                <button class="w-6 h-6 rounded hover:bg-zinc-100 flex items-center justify-center text-zinc-400"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+              </div>
+              <div class="flex items-center gap-2 text-[13px]">
+                <input type="text" value="LOG_LEVEL" class="flex-1 px-3 py-1.5 rounded-md border border-zinc-200 font-mono text-[12px]" />
+                <span class="text-zinc-400">=</span>
+                <input type="text" value="INFO" class="flex-1 px-3 py-1.5 rounded-md border border-zinc-200 font-mono text-[12px]" />
+                <span class="w-[72px]"></span>
+                <button class="w-6 h-6 rounded hover:bg-zinc-100 flex items-center justify-center text-zinc-400"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+              </div>
+              <button class="inline-flex items-center gap-1.5 text-[12px] text-zinc-500 hover:text-indigo-600 mt-2">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                Ajouter une variable
+              </button>
+            </div>
+          </section>
+
+          <!-- LIFECYCLE -->
+          <section class="mb-12">
+            <h2 class="text-[12px] font-semibold text-zinc-400 uppercase tracking-wider mb-3">Lifecycle</h2>
+            <div class="bg-white rounded-lg border border-zinc-200 p-5 shadow-sm grid grid-cols-3 gap-4">
+              <div>
+                <label class="text-[12px] text-zinc-500 mb-1 block font-medium">Timeout</label>
+                <div class="relative">
+                  <input type="number" value="3600" class="w-full pl-3 pr-14 py-2 rounded-md border border-zinc-200 text-[13px]" />
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-zinc-400">seconds</span>
+                </div>
+              </div>
+              <div>
+                <label class="text-[12px] text-zinc-500 mb-1 block font-medium">Workspace path</label>
+                <input type="text" value="/workspace" class="w-full px-3 py-2 rounded-md border border-zinc-200 font-mono text-[12px]" />
+              </div>
+              <div>
+                <label class="text-[12px] text-zinc-500 mb-1 block font-medium">Network mode</label>
+                <select class="w-full px-3 py-2 rounded-md border border-zinc-200 text-[13px]">
+                  <option>bridge</option>
+                  <option>host</option>
+                  <option>none</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[12px] text-zinc-500 mb-1 block font-medium">Graceful shutdown</label>
+                <div class="relative">
+                  <input type="number" value="30" class="w-full pl-3 pr-10 py-2 rounded-md border border-zinc-200 text-[13px]" />
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-zinc-400">sec</span>
+                </div>
+              </div>
+              <div>
+                <label class="text-[12px] text-zinc-500 mb-1 block font-medium">Force kill delay</label>
+                <div class="relative">
+                  <input type="number" value="10" class="w-full pl-3 pr-10 py-2 rounded-md border border-zinc-200 text-[13px]" />
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-zinc-400">sec</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- danger zone -->
+          <section class="border-t border-zinc-200 pt-6">
+            <button class="inline-flex items-center gap-2 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 text-[13px] font-medium">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+              Supprimer cet agent
+            </button>
+          </section>
+
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════ PREVIEW DIALOG ═══════════════════ -->
+<div id="preview-dialog" class="hidden fixed inset-0 bg-zinc-900/30 backdrop-blur-sm z-50 items-center justify-center p-6" onclick="togglePreview()">
+  <div class="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+      <div>
+        <h3 class="text-[16px] font-semibold text-zinc-900">Aperçu de la configuration</h3>
+        <p class="text-[12px] text-zinc-500 mt-0.5">Fichiers générés au lancement de l'agent</p>
+      </div>
+      <button onclick="togglePreview()" class="w-8 h-8 rounded-md hover:bg-zinc-100 flex items-center justify-center text-zinc-500">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div class="rounded-md bg-emerald-50 border border-emerald-200 p-3 flex items-start gap-2.5">
+        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 mt-0.5"></i>
+        <div>
+          <div class="text-[13px] font-medium text-emerald-900">Aucune erreur — prêt à lancer</div>
+          <div class="text-[12px] text-emerald-700 mt-0.5">Toutes les briques sont valides et les secrets sont résolus.</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <div class="text-[12px] font-semibold text-zinc-600 font-mono">/config/prompt.md</div>
+          <button class="text-[11px] text-zinc-400 hover:text-zinc-900">Copier</button>
+        </div>
+        <pre class="bg-zinc-900 text-zinc-100 rounded-md p-3 text-[11px] font-mono max-h-48 overflow-y-auto"># Identité
+
+Tu es un développeur senior full-stack spécialisé en Python et React…
+
+## Rôles
+### Architecte backend
+Tu conçois des APIs REST cohérentes…</pre>
+      </div>
+
+      <div>
+        <div class="text-[12px] font-semibold text-zinc-600 font-mono mb-1.5">/config/mcp.json</div>
+        <pre class="bg-zinc-900 text-zinc-100 rounded-md p-3 text-[11px] font-mono max-h-48 overflow-y-auto">{
+  "mcpServers": {
+    "Filesystem": {
+      "package_id": "@mcp/filesystem",
+      "transport": "stdio",
+      "parameters": { "root": "/workspace/project" }
+    },
+    "GitHub": {
+      "package_id": "@mcp/github",
+      "transport": "sse",
+      "parameters": {}
+    }
+  }
+}</pre>
+      </div>
+
+      <div>
+        <div class="text-[12px] font-semibold text-zinc-600 font-mono mb-1.5">/config/.env</div>
+        <pre class="bg-zinc-900 text-zinc-100 rounded-md p-3 text-[11px] font-mono">ANTHROPIC_API_KEY=sk-ant-…
+LOG_LEVEL=INFO</pre>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-zinc-200 flex justify-end">
+      <button onclick="togglePreview()" class="px-3.5 py-2 rounded-md bg-zinc-100 hover:bg-zinc-200 text-[13px] font-medium text-zinc-700">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function show(id) {
+    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+    document.getElementById('crumb-extra').classList.toggle('hidden', id !== 'view-editor');
+    document.getElementById('crumb-extra').classList.toggle('flex', id === 'view-editor');
+    lucide.createIcons();
+  }
+  function togglePreview() {
+    const d = document.getElementById('preview-dialog');
+    d.classList.toggle('hidden');
+    d.classList.toggle('flex');
+    lucide.createIcons();
+  }
+  lucide.createIcons();
+</script>
+
+</body>
+</html>

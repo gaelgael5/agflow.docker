@@ -7,7 +7,7 @@ from uuid import UUID
 import asyncpg
 import structlog
 
-from agflow.db.pool import fetch_all, fetch_one, get_pool
+from agflow.db.pool import fetch_all, get_pool
 from agflow.schemas.agents import (
     AgentCreate,
     AgentDetail,
@@ -160,11 +160,10 @@ def _translate_fk_error(exc: asyncpg.ForeignKeyViolationError) -> Exception:
 
 async def create(payload: AgentCreate) -> AgentDetail:
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            try:
-                row = await conn.fetchrow(
-                    f"""
+    async with pool.acquire() as conn, conn.transaction():
+        try:
+            row = await conn.fetchrow(
+                f"""
                     INSERT INTO agents
                         (slug, display_name, description, dockerfile_id, role_id,
                          env_vars, timeout_seconds, workspace_path, network_mode,
@@ -172,33 +171,33 @@ async def create(payload: AgentCreate) -> AgentDetail:
                     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)
                     RETURNING {_COLS}
                     """,
-                    payload.slug,
-                    payload.display_name,
-                    payload.description,
-                    payload.dockerfile_id,
-                    payload.role_id,
-                    json.dumps(payload.env_vars),
-                    payload.timeout_seconds,
-                    payload.workspace_path,
-                    payload.network_mode,
-                    payload.graceful_shutdown_secs,
-                    payload.force_kill_delay_secs,
-                )
-            except asyncpg.UniqueViolationError as exc:
-                raise DuplicateAgentError(
-                    f"Agent slug '{payload.slug}' already exists"
-                ) from exc
-            except asyncpg.ForeignKeyViolationError as exc:
-                raise _translate_fk_error(exc) from exc
-            assert row is not None
-            summary = _summary(dict(row))
-            try:
-                await _insert_bindings(
-                    conn, summary.id, payload.mcp_bindings, payload.skill_bindings
-                )
-            except asyncpg.ForeignKeyViolationError as exc:
-                raise _translate_fk_error(exc) from exc
-            detail = await _detail_from_summary(conn, summary)
+                payload.slug,
+                payload.display_name,
+                payload.description,
+                payload.dockerfile_id,
+                payload.role_id,
+                json.dumps(payload.env_vars),
+                payload.timeout_seconds,
+                payload.workspace_path,
+                payload.network_mode,
+                payload.graceful_shutdown_secs,
+                payload.force_kill_delay_secs,
+            )
+        except asyncpg.UniqueViolationError as exc:
+            raise DuplicateAgentError(
+                f"Agent slug '{payload.slug}' already exists"
+            ) from exc
+        except asyncpg.ForeignKeyViolationError as exc:
+            raise _translate_fk_error(exc) from exc
+        assert row is not None
+        summary = _summary(dict(row))
+        try:
+            await _insert_bindings(
+                conn, summary.id, payload.mcp_bindings, payload.skill_bindings
+            )
+        except asyncpg.ForeignKeyViolationError as exc:
+            raise _translate_fk_error(exc) from exc
+        detail = await _detail_from_summary(conn, summary)
     _log.info("agents.create", agent_id=str(detail.id), slug=detail.slug)
     return detail
 
@@ -223,11 +222,10 @@ async def get_by_id(agent_id: UUID) -> AgentDetail:
 
 async def update(agent_id: UUID, payload: AgentUpdate) -> AgentDetail:
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            try:
-                row = await conn.fetchrow(
-                    f"""
+    async with pool.acquire() as conn, conn.transaction():
+        try:
+            row = await conn.fetchrow(
+                f"""
                     UPDATE agents SET
                         display_name = $2,
                         description = $3,
@@ -243,35 +241,35 @@ async def update(agent_id: UUID, payload: AgentUpdate) -> AgentDetail:
                     WHERE id = $1
                     RETURNING {_COLS}
                     """,
-                    agent_id,
-                    payload.display_name,
-                    payload.description,
-                    payload.dockerfile_id,
-                    payload.role_id,
-                    json.dumps(payload.env_vars),
-                    payload.timeout_seconds,
-                    payload.workspace_path,
-                    payload.network_mode,
-                    payload.graceful_shutdown_secs,
-                    payload.force_kill_delay_secs,
-                )
-            except asyncpg.ForeignKeyViolationError as exc:
-                raise _translate_fk_error(exc) from exc
-            if row is None:
-                raise AgentNotFoundError(f"Agent {agent_id} not found")
-            await conn.execute(
-                "DELETE FROM agent_mcp_servers WHERE agent_id = $1", agent_id
+                agent_id,
+                payload.display_name,
+                payload.description,
+                payload.dockerfile_id,
+                payload.role_id,
+                json.dumps(payload.env_vars),
+                payload.timeout_seconds,
+                payload.workspace_path,
+                payload.network_mode,
+                payload.graceful_shutdown_secs,
+                payload.force_kill_delay_secs,
             )
-            await conn.execute(
-                "DELETE FROM agent_skills WHERE agent_id = $1", agent_id
+        except asyncpg.ForeignKeyViolationError as exc:
+            raise _translate_fk_error(exc) from exc
+        if row is None:
+            raise AgentNotFoundError(f"Agent {agent_id} not found")
+        await conn.execute(
+            "DELETE FROM agent_mcp_servers WHERE agent_id = $1", agent_id
+        )
+        await conn.execute(
+            "DELETE FROM agent_skills WHERE agent_id = $1", agent_id
+        )
+        try:
+            await _insert_bindings(
+                conn, agent_id, payload.mcp_bindings, payload.skill_bindings
             )
-            try:
-                await _insert_bindings(
-                    conn, agent_id, payload.mcp_bindings, payload.skill_bindings
-                )
-            except asyncpg.ForeignKeyViolationError as exc:
-                raise _translate_fk_error(exc) from exc
-            detail = await _detail_from_summary(conn, _summary(dict(row)))
+        except asyncpg.ForeignKeyViolationError as exc:
+            raise _translate_fk_error(exc) from exc
+        detail = await _detail_from_summary(conn, _summary(dict(row)))
     _log.info("agents.update", agent_id=str(agent_id))
     return detail
 

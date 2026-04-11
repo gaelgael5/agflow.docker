@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 
+from agflow.api.admin.agents import router as admin_agents_router
 from agflow.api.admin.auth import router as admin_auth_router
 from agflow.api.admin.discovery_services import router as admin_discovery_router
 from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_discovery_router)
     app.include_router(admin_mcp_catalog_router)
     app.include_router(admin_skills_catalog_router)
+    app.include_router(admin_agents_router)
     return app
 
 

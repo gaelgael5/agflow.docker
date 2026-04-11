@@ -51,6 +51,7 @@ export function AgentsPage() {
               <th>{t("agents.col_name")}</th>
               <th>{t("agents.col_dockerfile")}</th>
               <th>{t("agents.col_role")}</th>
+              <th>{t("agents.col_status")}</th>
               <th>{t("agents.col_actions")}</th>
             </tr>
           </thead>
@@ -66,6 +67,24 @@ export function AgentsPage() {
                 </td>
                 <td>
                   <code style={{ fontSize: "12px" }}>{a.role_id}</code>
+                </td>
+                <td>
+                  {a.has_errors ? (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        color: "#991b1b",
+                        background: "#fef2f2",
+                        border: "1px solid #fca5a5",
+                        padding: "2px 6px",
+                        borderRadius: "10px",
+                      }}
+                    >
+                      {t("agents.error_badge")}
+                    </span>
+                  ) : (
+                    <span style={{ color: "#999", fontSize: "12px" }}>—</span>
+                  )}
                 </td>
                 <td style={{ display: "flex", gap: "0.5rem" }}>
                   <button

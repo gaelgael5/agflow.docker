@@ -237,7 +237,9 @@
       "missing": "🔴 Non buildée",
       "stale": "🟠 Obsolète",
       "fresh": "🟢 À jour"
-    }
+    },
+    "error_badge": "🔴 En erreur",
+    "col_status": "Statut"
   },
   "agent_editor": {
     "title_new": "Nouvel agent",
@@ -279,6 +281,23 @@
     "preview_no_errors": "Aucune erreur — prêt à lancer",
     "error_duplicate_slug": "Ce slug existe déjà",
     "error_invalid_reference": "Référence invalide (dockerfile, rôle, MCP ou skill inexistant)",
-    "error_generic": "Une erreur est survenue"
+    "error_generic": "Une erreur est survenue",
+    "section_profiles": "Profils de missions",
+    "profiles_subtitle": "Sélections de documents activées au lancement de l'agent. Sans profil, seule l'identité est injectée.",
+    "profiles_empty": "Aucun profil — sans profil, l'agent démarre avec identité seule",
+    "profile_add": "+ Nouveau profil",
+    "profile_name_prompt": "Nom du profil (ex: refactor-mode)",
+    "profile_description_prompt": "Description (optionnelle)",
+    "profile_edit": "Éditer",
+    "profile_delete": "Supprimer",
+    "profile_confirm_delete": "Supprimer le profil \"{{name}}\" ?",
+    "profile_editor_title": "Profil — {{name}}",
+    "profile_editor_pick_docs": "Documents inclus dans ce profil",
+    "profile_broken_refs": "{{count}} document(s) référencé(s) par ce profil n'existent plus (rôle changé ou docs supprimés)",
+    "profile_select_all": "Tout sélectionner",
+    "profile_deselect_all": "Tout désélectionner",
+    "preview_identity_only": "Aperçu (identité seule)",
+    "preview_with_profile": "Aperçu avec profil…",
+    "preview_profile_suffix": " — {{name}}"
   }
 }

@@ -6,15 +6,19 @@ import { useRoles } from "@/hooks/useRoles";
 import { useMCPCatalog, useSkillsCatalog } from "@/hooks/useCatalogs";
 import {
   useAgent,
+  useAgentProfiles,
   useAgents,
   useConfigPreview,
 } from "@/hooks/useAgents";
+import { useRoleDetail } from "@/hooks/useRoleDocuments";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
+import { ProfileEditorDialog } from "@/components/ProfileEditorDialog";
 import { slugify } from "@/lib/slugify";
 import type {
   AgentCreatePayload,
   AgentMCPBinding,
+  AgentProfileSummary,
   AgentSkillBinding,
   ConfigPreview,
   NetworkMode,
@@ -80,13 +84,21 @@ export function AgentEditorPage() {
   const { roles } = useRoles();
   const { mcps } = useMCPCatalog();
   const { skills } = useSkillsCatalog();
-  const previewQuery = useConfigPreview(isNew ? undefined : id);
+  const [previewProfileId, setPreviewProfileId] = useState<string | null>(null);
+  const previewQuery = useConfigPreview(
+    isNew ? undefined : id,
+    previewProfileId ?? undefined,
+  );
+  const profilesHook = useAgentProfiles(isNew ? undefined : id);
+  const roleDetailQuery = useRoleDetail(isNew ? null : agent?.role_id ?? null);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [preview, setPreview] = useState<ConfigPreview | null>(null);
   const [slugTouched, setSlugTouched] = useState(false);
+  const [editingProfile, setEditingProfile] =
+    useState<AgentProfileSummary | null>(null);
 
   useEffect(() => {
     if (!isNew && agent) {
@@ -249,13 +261,54 @@ export function AgentEditorPage() {
     }
   }
 
-  async function handlePreview() {
+  async function handlePreview(profileId: string | null = null) {
     if (isNew || !id) return;
+    setPreviewProfileId(profileId);
+    // Wait a tick so useConfigPreview picks up the new profileId in its key
+    // before refetch fires. The refetch bypasses `enabled: false`.
+    await Promise.resolve();
     const result = await previewQuery.refetch();
     if (result.data) {
       setPreview(result.data);
       setShowPreview(true);
     }
+  }
+
+  async function handleAddProfile() {
+    if (isNew || !id) return;
+    const name = window.prompt(t("agent_editor.profile_name_prompt"));
+    if (!name) return;
+    const description =
+      window.prompt(t("agent_editor.profile_description_prompt")) ?? "";
+    try {
+      const created = await profilesHook.createMutation.mutateAsync({
+        name,
+        description,
+        document_ids: [],
+      });
+      setEditingProfile(created);
+    } catch (e) {
+      const detail = (e as { response?: { data?: { detail?: string } } })
+        .response?.data?.detail;
+      window.alert(detail ?? t("agent_editor.error_generic"));
+    }
+  }
+
+  async function handleDeleteProfile(profile: AgentProfileSummary) {
+    if (!window.confirm(
+      t("agent_editor.profile_confirm_delete", { name: profile.name }),
+    )) return;
+    await profilesHook.deleteMutation.mutateAsync(profile.id);
+  }
+
+  async function handleSaveProfileDocs(
+    profile: AgentProfileSummary,
+    document_ids: string[],
+  ) {
+    await profilesHook.updateMutation.mutateAsync({
+      profileId: profile.id,
+      payload: { document_ids },
+    });
   }
 
   async function handleDuplicate() {
@@ -410,6 +463,69 @@ export function AgentEditorPage() {
         </button>
       </fieldset>
 
+      {!isNew && (
+        <fieldset style={{ marginBottom: "1rem" }}>
+          <legend>{t("agent_editor.section_profiles")}</legend>
+          <p style={{ color: "#666", fontSize: "12px", marginTop: 0 }}>
+            {t("agent_editor.profiles_subtitle")}
+          </p>
+          {(profilesHook.profiles ?? []).length === 0 ? (
+            <p style={{ color: "#999", fontStyle: "italic", fontSize: "13px" }}>
+              {t("agent_editor.profiles_empty")}
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0 }}>
+              {(profilesHook.profiles ?? []).map((p) => (
+                <li
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.75rem",
+                    padding: "0.5rem",
+                    border: "1px solid #eee",
+                    borderRadius: "4px",
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <strong>{p.name}</strong>{" "}
+                    <span style={{ color: "#666", fontSize: "12px" }}>
+                      ({p.document_ids.length} docs)
+                    </span>
+                    {p.description && (
+                      <div style={{ fontSize: "12px", color: "#666" }}>
+                        {p.description}
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => setEditingProfile(p)}>
+                    {t("agent_editor.profile_edit")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePreview(p.id)}
+                    title={t("agent_editor.preview_with_profile")}
+                  >
+                    👁
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteProfile(p)}
+                    style={{ color: "red" }}
+                  >
+                    {t("agent_editor.profile_delete")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" onClick={handleAddProfile}>
+            {t("agent_editor.profile_add")}
+          </button>
+        </fieldset>
+      )}
+
       <fieldset style={{ marginBottom: "1rem" }}>
         <legend>{t("agent_editor.section_env")}</legend>
         {form.env_entries.map((entry, idx) => {
@@ -522,8 +638,8 @@ export function AgentEditorPage() {
         </button>
         {!isNew && (
           <>
-            <button type="button" onClick={handlePreview}>
-              {t("agent_editor.preview_button")}
+            <button type="button" onClick={() => handlePreview(null)}>
+              {t("agent_editor.preview_identity_only")}
             </button>
             <button type="button" onClick={handleDuplicate}>
               {t("agent_editor.duplicate_button")}
@@ -606,6 +722,15 @@ export function AgentEditorPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {editingProfile && (
+        <ProfileEditorDialog
+          profile={editingProfile}
+          roleDetail={roleDetailQuery.data}
+          onSave={(doc_ids) => handleSaveProfileDocs(editingProfile, doc_ids)}
+          onClose={() => setEditingProfile(null)}
+        />
       )}
     </div>
   );

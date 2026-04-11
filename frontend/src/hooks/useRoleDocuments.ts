@@ -4,6 +4,7 @@ import {
   type DocumentCreate,
   type DocumentUpdate,
   type RoleDetail,
+  type SectionCreate,
 } from "@/lib/rolesApi";
 
 export function useRoleDetail(roleId: string | null) {
@@ -39,5 +40,16 @@ export function useRoleDocumentMutations(roleId: string) {
     onSuccess: invalidate,
   });
 
-  return { createDoc, updateDoc, deleteDoc };
+  const createSection = useMutation({
+    mutationFn: (payload: SectionCreate) =>
+      rolesApi.createSection(roleId, payload),
+    onSuccess: invalidate,
+  });
+
+  const deleteSection = useMutation({
+    mutationFn: (name: string) => rolesApi.deleteSection(roleId, name),
+    onSuccess: invalidate,
+  });
+
+  return { createDoc, updateDoc, deleteDoc, createSection, deleteSection };
 }

@@ -34,13 +34,8 @@ export function RolesPage() {
   const docMutations = useRoleDocumentMutations(selectedRoleId ?? "");
 
   const currentRole = draftRole ?? detail.data?.role ?? null;
-  const allDocuments = detail.data
-    ? [
-        ...detail.data.roles_documents,
-        ...detail.data.missions_documents,
-        ...detail.data.competences_documents,
-      ]
-    : [];
+  const sections = detail.data?.sections ?? [];
+  const allDocuments = sections.flatMap((s) => s.documents);
   const selectedDoc = allDocuments.find((d) => d.id === selectedDocId) ?? null;
 
   async function handleCreateRole() {
@@ -104,6 +99,34 @@ export function RolesPage() {
       protected: false,
     });
     setSelectedDocId(doc.id);
+  }
+
+  async function handleAddSection() {
+    if (!selectedRoleId) return;
+    const name = window.prompt(t("roles.sidebar.new_section_slug"));
+    if (!name) return;
+    const display_name =
+      window.prompt(t("roles.sidebar.new_section_display_name")) ?? name;
+    try {
+      await docMutations.createSection.mutateAsync({ name, display_name });
+    } catch (e) {
+      const detail = (e as { response?: { data?: { detail?: string } } })
+        .response?.data?.detail;
+      window.alert(detail ?? t("roles.errors.generic"));
+    }
+  }
+
+  async function handleDeleteSection(name: string) {
+    if (!selectedRoleId) return;
+    if (!window.confirm(t("roles.sidebar.confirm_delete_section", { name })))
+      return;
+    try {
+      await docMutations.deleteSection.mutateAsync(name);
+    } catch (e) {
+      const detail = (e as { response?: { data?: { detail?: string } } })
+        .response?.data?.detail;
+      window.alert(detail ?? t("roles.errors.generic"));
+    }
   }
 
   async function handleDocumentChange(content: string) {
@@ -180,10 +203,13 @@ export function RolesPage() {
       {selectedRoleId && detail.data && currentRole ? (
         <>
           <RoleSidebar
+            sections={sections}
             documents={allDocuments}
             selectedDocId={selectedDocId}
             onSelect={setSelectedDocId}
             onAdd={handleAddDocument}
+            onAddSection={handleAddSection}
+            onDeleteSection={handleDeleteSection}
           />
           <main style={{ flex: 1, padding: "1.5rem", overflowY: "auto" }}>
             <nav style={{ marginBottom: "1rem", display: "flex", gap: "1rem" }}>

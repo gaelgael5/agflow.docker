@@ -1,6 +1,11 @@
 import { api } from "./api";
 
-export type Section = "roles" | "missions" | "competences";
+export type Section = string;
+export const NATIVE_SECTIONS: readonly string[] = [
+  "roles",
+  "missions",
+  "competences",
+] as const;
 
 export interface RoleSummary {
   id: string;
@@ -26,11 +31,25 @@ export interface DocumentSummary {
   updated_at: string;
 }
 
+export interface SectionSummary {
+  name: string;
+  display_name: string;
+  is_native: boolean;
+  position: number;
+}
+
+export interface SectionWithDocuments extends SectionSummary {
+  documents: DocumentSummary[];
+}
+
+export interface SectionCreate {
+  name: string;
+  display_name: string;
+}
+
 export interface RoleDetail {
   role: RoleSummary;
-  roles_documents: DocumentSummary[];
-  missions_documents: DocumentSummary[];
-  competences_documents: DocumentSummary[];
+  sections: SectionWithDocuments[];
 }
 
 export interface RoleCreate {
@@ -107,5 +126,24 @@ export const rolesApi = {
   },
   async deleteDocument(roleId: string, docId: string): Promise<void> {
     await api.delete(`/admin/roles/${roleId}/documents/${docId}`);
+  },
+  async listSections(roleId: string): Promise<SectionSummary[]> {
+    const res = await api.get<SectionSummary[]>(
+      `/admin/roles/${roleId}/sections`,
+    );
+    return res.data;
+  },
+  async createSection(
+    roleId: string,
+    payload: SectionCreate,
+  ): Promise<SectionSummary> {
+    const res = await api.post<SectionSummary>(
+      `/admin/roles/${roleId}/sections`,
+      payload,
+    );
+    return res.data;
+  },
+  async deleteSection(roleId: string, name: string): Promise<void> {
+    await api.delete(`/admin/roles/${roleId}/sections/${name}`);
   },
 };

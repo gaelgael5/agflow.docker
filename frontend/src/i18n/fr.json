@@ -99,11 +99,13 @@
       "empty": "Pas encore généré. Clique sur « Régénérer le prompt orchestrateur »."
     },
     "sidebar": {
-      "roles_section": "ROLES",
-      "missions_section": "MISSIONS",
-      "competences_section": "COMPETENCES",
-      "add_document": "+ Ajouter",
+      "add_document": "Ajouter un document",
+      "add_section": "+ Ajouter une catégorie",
+      "delete_section": "Supprimer cette catégorie",
       "new_document_name": "Nom du document",
+      "new_section_slug": "Identifiant de la catégorie (slug, ex: outils)",
+      "new_section_display_name": "Nom d'affichage de la catégorie",
+      "confirm_delete_section": "Supprimer la catégorie \"{{name}}\" ?",
       "protected": "Verrouillé",
       "unlock": "Déverrouiller"
     },

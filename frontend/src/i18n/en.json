@@ -99,11 +99,13 @@
       "empty": "Not generated yet. Click \"Regenerate orchestrator prompt\"."
     },
     "sidebar": {
-      "roles_section": "ROLES",
-      "missions_section": "MISSIONS",
-      "competences_section": "COMPETENCES",
-      "add_document": "+ Add",
+      "add_document": "Add a document",
+      "add_section": "+ Add a category",
+      "delete_section": "Delete this category",
       "new_document_name": "Document name",
+      "new_section_slug": "Category identifier (slug, e.g. tools)",
+      "new_section_display_name": "Category display name",
+      "confirm_delete_section": "Delete category \"{{name}}\"?",
       "protected": "Locked",
       "unlock": "Unlock"
     },

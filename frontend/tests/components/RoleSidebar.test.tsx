@@ -2,8 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RoleSidebar } from "@/components/RoleSidebar";
-import type { DocumentSummary } from "@/lib/rolesApi";
+import type { DocumentSummary, SectionSummary } from "@/lib/rolesApi";
 import "@/lib/i18n";
+
+const NATIVE_SECTIONS: SectionSummary[] = [
+  { name: "roles", display_name: "Rôles", is_native: true, position: 0 },
+  { name: "missions", display_name: "Missions", is_native: true, position: 1 },
+  { name: "competences", display_name: "Compétences", is_native: true, position: 2 },
+];
 
 function makeDoc(overrides: Partial<DocumentSummary>): DocumentSummary {
   return {
@@ -20,6 +26,22 @@ function makeDoc(overrides: Partial<DocumentSummary>): DocumentSummary {
   };
 }
 
+function renderSidebar(
+  props: Partial<React.ComponentProps<typeof RoleSidebar>> = {},
+) {
+  return render(
+    <RoleSidebar
+      sections={props.sections ?? NATIVE_SECTIONS}
+      documents={props.documents ?? []}
+      selectedDocId={props.selectedDocId ?? null}
+      onSelect={props.onSelect ?? vi.fn()}
+      onAdd={props.onAdd ?? vi.fn()}
+      onAddSection={props.onAddSection ?? vi.fn()}
+      onDeleteSection={props.onDeleteSection ?? vi.fn()}
+    />,
+  );
+}
+
 describe("RoleSidebar", () => {
   it("renders sections with documents", () => {
     const documents = [
@@ -28,18 +50,11 @@ describe("RoleSidebar", () => {
       makeDoc({ id: "c1", section: "competences", name: "deduction" }),
     ];
 
-    render(
-      <RoleSidebar
-        documents={documents}
-        selectedDocId={null}
-        onSelect={vi.fn()}
-        onAdd={vi.fn()}
-      />,
-    );
+    renderSidebar({ documents });
 
-    expect(screen.getByText("ROLES")).toBeInTheDocument();
-    expect(screen.getByText("MISSIONS")).toBeInTheDocument();
-    expect(screen.getByText("COMPETENCES")).toBeInTheDocument();
+    expect(screen.getByText("Rôles")).toBeInTheDocument();
+    expect(screen.getByText("Missions")).toBeInTheDocument();
+    expect(screen.getByText("Compétences")).toBeInTheDocument();
     expect(screen.getByText("analyse")).toBeInTheDocument();
     expect(screen.getByText("transform")).toBeInTheDocument();
     expect(screen.getByText("deduction")).toBeInTheDocument();
@@ -47,15 +62,7 @@ describe("RoleSidebar", () => {
 
   it("shows 🔒 icon for protected documents", () => {
     const documents = [makeDoc({ id: "p1", name: "locked", protected: true })];
-
-    render(
-      <RoleSidebar
-        documents={documents}
-        selectedDocId={null}
-        onSelect={vi.fn()}
-        onAdd={vi.fn()}
-      />,
-    );
+    renderSidebar({ documents });
 
     const row = screen.getByText("locked").closest("button");
     expect(row).toHaveTextContent("🔒");
@@ -64,33 +71,60 @@ describe("RoleSidebar", () => {
   it("calls onSelect when a document is clicked", async () => {
     const onSelect = vi.fn();
     const documents = [makeDoc({ id: "click", name: "clickable" })];
-
-    render(
-      <RoleSidebar
-        documents={documents}
-        selectedDocId={null}
-        onSelect={onSelect}
-        onAdd={vi.fn()}
-      />,
-    );
+    renderSidebar({ documents, onSelect });
 
     await userEvent.click(screen.getByText("clickable"));
     expect(onSelect).toHaveBeenCalledWith("click");
   });
 
-  it("calls onAdd with the section name when Add is clicked", async () => {
+  it("calls onAdd with the section name when + is clicked", async () => {
     const onAdd = vi.fn();
-    render(
-      <RoleSidebar
-        documents={[]}
-        selectedDocId={null}
-        onSelect={vi.fn()}
-        onAdd={onAdd}
-      />,
-    );
+    renderSidebar({ onAdd });
 
-    const addButtons = screen.getAllByRole("button", { name: /Ajouter/ });
-    await userEvent.click(addButtons[0]!);
+    const plusButtons = screen.getAllByRole("button", { name: "+" });
+    await userEvent.click(plusButtons[0]!);
     expect(onAdd).toHaveBeenCalledWith("roles");
+  });
+
+  it("renders custom sections and allows deleting empty ones", async () => {
+    const onDeleteSection = vi.fn();
+    const sections: SectionSummary[] = [
+      ...NATIVE_SECTIONS,
+      { name: "outils", display_name: "Outils", is_native: false, position: 3 },
+    ];
+    renderSidebar({ sections, documents: [], onDeleteSection });
+
+    expect(screen.getByText("Outils")).toBeInTheDocument();
+    const deleteButtons = screen.getAllByRole("button", { name: "×" });
+    expect(deleteButtons).toHaveLength(1);
+    await userEvent.click(deleteButtons[0]!);
+    expect(onDeleteSection).toHaveBeenCalledWith("outils");
+  });
+
+  it("hides delete button for native sections", () => {
+    renderSidebar({ documents: [] });
+    const deleteButtons = screen.queryAllByRole("button", { name: "×" });
+    expect(deleteButtons).toHaveLength(0);
+  });
+
+  it("hides delete button for non-empty custom sections", () => {
+    const sections: SectionSummary[] = [
+      ...NATIVE_SECTIONS,
+      { name: "outils", display_name: "Outils", is_native: false, position: 3 },
+    ];
+    const documents = [
+      makeDoc({ id: "t1", section: "outils", name: "vim" }),
+    ];
+    renderSidebar({ sections, documents });
+    const deleteButtons = screen.queryAllByRole("button", { name: "×" });
+    expect(deleteButtons).toHaveLength(0);
+  });
+
+  it("calls onAddSection when add-section button is clicked", async () => {
+    const onAddSection = vi.fn();
+    renderSidebar({ onAddSection });
+    const button = screen.getByRole("button", { name: /Ajouter une catégorie/i });
+    await userEvent.click(button);
+    expect(onAddSection).toHaveBeenCalled();
   });
 });

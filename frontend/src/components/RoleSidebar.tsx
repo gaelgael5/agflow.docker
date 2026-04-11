@@ -1,16 +1,29 @@
 import { useTranslation } from "react-i18next";
-import type { DocumentSummary, Section } from "@/lib/rolesApi";
+import type {
+  DocumentSummary,
+  Section,
+  SectionSummary,
+} from "@/lib/rolesApi";
 
 interface Props {
+  sections: SectionSummary[];
   documents: DocumentSummary[];
   selectedDocId: string | null;
   onSelect: (docId: string) => void;
   onAdd: (section: Section) => void;
+  onAddSection: () => void;
+  onDeleteSection: (name: string) => void;
 }
 
-const SECTIONS: Section[] = ["roles", "missions", "competences"];
-
-export function RoleSidebar({ documents, selectedDocId, onSelect, onAdd }: Props) {
+export function RoleSidebar({
+  sections,
+  documents,
+  selectedDocId,
+  onSelect,
+  onAdd,
+  onAddSection,
+  onDeleteSection,
+}: Props) {
   const { t } = useTranslation();
 
   return (
@@ -21,11 +34,11 @@ export function RoleSidebar({ documents, selectedDocId, onSelect, onAdd }: Props
         padding: "1rem",
       }}
     >
-      {SECTIONS.map((section) => {
-        const docs = documents.filter((d) => d.section === section);
-        const title = t(`roles.sidebar.${section}_section`);
+      {sections.map((section) => {
+        const docs = documents.filter((d) => d.section === section.name);
+        const canDelete = !section.is_native && docs.length === 0;
         return (
-          <div key={section} style={{ marginBottom: "1.25rem" }}>
+          <div key={section.name} style={{ marginBottom: "1.25rem" }}>
             <div
               style={{
                 display: "flex",
@@ -38,21 +51,43 @@ export function RoleSidebar({ documents, selectedDocId, onSelect, onAdd }: Props
                 marginBottom: "0.5rem",
               }}
             >
-              <span>{title}</span>
-              <button
-                type="button"
-                onClick={() => onAdd(section)}
-                style={{
-                  fontSize: "11px",
-                  padding: "2px 6px",
-                  cursor: "pointer",
-                }}
-              >
-                {t("roles.sidebar.add_document")}
-              </button>
+              <span style={{ textTransform: "uppercase" }}>
+                {section.display_name}
+              </span>
+              <span style={{ display: "flex", gap: "0.25rem" }}>
+                <button
+                  type="button"
+                  onClick={() => onAdd(section.name)}
+                  title={t("roles.sidebar.add_document")}
+                  style={{
+                    fontSize: "11px",
+                    padding: "2px 6px",
+                    cursor: "pointer",
+                  }}
+                >
+                  +
+                </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteSection(section.name)}
+                    title={t("roles.sidebar.delete_section")}
+                    style={{
+                      fontSize: "11px",
+                      padding: "2px 6px",
+                      cursor: "pointer",
+                      color: "#c00",
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
             </div>
             {docs.length === 0 ? (
-              <div style={{ fontSize: "12px", color: "#999", fontStyle: "italic" }}>
+              <div
+                style={{ fontSize: "12px", color: "#999", fontStyle: "italic" }}
+              >
                 —
               </div>
             ) : (
@@ -86,6 +121,23 @@ export function RoleSidebar({ documents, selectedDocId, onSelect, onAdd }: Props
           </div>
         );
       })}
+
+      <button
+        type="button"
+        onClick={onAddSection}
+        style={{
+          width: "100%",
+          marginTop: "0.5rem",
+          padding: "6px",
+          fontSize: "12px",
+          border: "1px dashed #ccc",
+          background: "transparent",
+          cursor: "pointer",
+          color: "#666",
+        }}
+      >
+        {t("roles.sidebar.add_section")}
+      </button>
     </aside>
   );
 }

@@ -35,6 +35,7 @@ tar czf /tmp/agflow-deploy.tar.gz \
     backend/Dockerfile backend/pyproject.toml backend/src backend/migrations \
     frontend/Dockerfile frontend/nginx.conf frontend/package.json frontend/package-lock.json \
     frontend/tsconfig.json frontend/tsconfig.node.json frontend/vite.config.ts \
+    frontend/tailwind.config.js frontend/postcss.config.js \
     frontend/index.html frontend/src
 
 echo "==> Uploading to pve..."

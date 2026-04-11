@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Deploy agflow.docker to LXC 201 (192.168.10.82)
+# Deploy agflow.docker to LXC 201 (192.168.10.68)
 #
 # Prereqs :
 #   - ssh alias `pve` in ~/.ssh/config
@@ -55,5 +55,5 @@ ssh pve "pct exec ${CTID} -- bash -c 'cd ${REPO_DIR_ON_CT} && docker compose -f 
 
 echo ""
 echo "==> Deployed. Smoke test:"
-echo "    curl http://192.168.10.82/health"
-echo "    curl http://192.168.10.82/api/admin/auth/login -X POST -H 'Content-Type: application/json' -d '{\"email\":\"<admin_email>\",\"password\":\"<admin_password>\"}'"
+echo "    curl http://192.168.10.68/health"
+echo "    curl http://192.168.10.68/api/admin/auth/login -X POST -H 'Content-Type: application/json' -d '{\"email\":\"<admin_email>\",\"password\":\"<admin_password>\"}'"

@@ -47,6 +47,17 @@ async def db() -> AsyncIterator[None]:
         VALUES ('senior-dev', 'Senior Dev', 'Tu es un dev senior.')
         """
     )
+    # Raw SQL insert bypasses roles_service.create, so we must manually
+    # seed the 3 native sections for the role (otherwise role_documents
+    # FK on (role_id, section) fails).
+    await execute(
+        """
+        INSERT INTO role_sections (role_id, name, display_name, is_native, position)
+        VALUES ('senior-dev', 'roles', 'Rôles', TRUE, 0),
+               ('senior-dev', 'missions', 'Missions', TRUE, 1),
+               ('senior-dev', 'competences', 'Compétences', TRUE, 2)
+        """
+    )
     await execute(
         """
         INSERT INTO discovery_services (id, name, base_url)

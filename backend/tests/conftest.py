@@ -11,7 +11,7 @@ _TEST_ADMIN_HASH = bcrypt.hashpw(b"correct-password", bcrypt.gensalt(rounds=4)).
 
 os.environ.setdefault(
     "DATABASE_URL",
-    "postgresql://agflow:agflow_dev@192.168.10.82:5432/agflow",
+    "postgresql://agflow:agflow_dev@192.168.10.68:5432/agflow",
 )
 os.environ.setdefault("JWT_SECRET", "test-secret-key")
 os.environ.setdefault("ADMIN_EMAIL", "admin@example.com")

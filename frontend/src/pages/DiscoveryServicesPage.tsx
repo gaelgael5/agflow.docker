@@ -4,6 +4,7 @@ import { useDiscoveryServices } from "@/hooks/useCatalogs";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
 import { discoveryApi, type ProbeResult } from "@/lib/catalogsApi";
+import { slugify } from "@/lib/slugify";
 
 export function DiscoveryServicesPage() {
   const { t } = useTranslation();
@@ -19,9 +20,10 @@ export function DiscoveryServicesPage() {
   const envStatus = useEnvVarStatuses(apiKeyVars);
 
   async function handleAdd() {
-    const id = window.prompt(t("discovery.prompt_id"));
+    const name = window.prompt(t("discovery.prompt_name"));
+    if (!name) return;
+    const id = window.prompt(t("discovery.prompt_id"), slugify(name));
     if (!id) return;
-    const name = window.prompt(t("discovery.prompt_name")) ?? id;
     const base_url = window.prompt(t("discovery.prompt_base_url")) ?? "";
     if (!base_url) return;
     const api_key_var =

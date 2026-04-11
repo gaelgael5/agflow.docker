@@ -10,6 +10,7 @@ import { RoleGeneralTab } from "@/components/RoleGeneralTab";
 import { RolePromptTab } from "@/components/RolePromptTab";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
 import type { RoleSummary, Section } from "@/lib/rolesApi";
+import { slugify } from "@/lib/slugify";
 
 type Tab = "general" | "prompt" | "chat";
 
@@ -39,9 +40,10 @@ export function RolesPage() {
   const selectedDoc = allDocuments.find((d) => d.id === selectedDocId) ?? null;
 
   async function handleCreateRole() {
-    const id = window.prompt(t("roles.general.id"));
+    const display_name = window.prompt(t("roles.general.display_name"));
+    if (!display_name) return;
+    const id = window.prompt(t("roles.general.id"), slugify(display_name));
     if (!id) return;
-    const display_name = window.prompt(t("roles.general.display_name")) ?? id;
     const created = await createMutation.mutateAsync({ id, display_name });
     setSelectedRoleId(created.id);
     setTab("general");
@@ -103,10 +105,15 @@ export function RolesPage() {
 
   async function handleAddSection() {
     if (!selectedRoleId) return;
-    const name = window.prompt(t("roles.sidebar.new_section_slug"));
+    const display_name = window.prompt(
+      t("roles.sidebar.new_section_display_name"),
+    );
+    if (!display_name) return;
+    const name = window.prompt(
+      t("roles.sidebar.new_section_slug"),
+      slugify(display_name),
+    );
     if (!name) return;
-    const display_name =
-      window.prompt(t("roles.sidebar.new_section_display_name")) ?? name;
     try {
       await docMutations.createSection.mutateAsync({ name, display_name });
     } catch (e) {

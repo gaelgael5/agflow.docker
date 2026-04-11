@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAgents } from "@/hooks/useAgents";
+import { slugify } from "@/lib/slugify";
 
 export function AgentsPage() {
   const { t } = useTranslation();
@@ -13,10 +14,13 @@ export function AgentsPage() {
   }
 
   async function handleDuplicate(id: string) {
-    const slug = window.prompt(t("agents.duplicate_prompt_slug"));
+    const displayName = window.prompt(t("agents.duplicate_prompt_name"));
+    if (!displayName) return;
+    const slug = window.prompt(
+      t("agents.duplicate_prompt_slug"),
+      slugify(displayName, "-"),
+    );
     if (!slug) return;
-    const displayName =
-      window.prompt(t("agents.duplicate_prompt_name")) ?? slug;
     await duplicateMutation.mutateAsync({ id, slug, displayName });
   }
 

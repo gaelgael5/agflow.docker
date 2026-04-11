@@ -8,6 +8,7 @@ import { BuildStatusBadge } from "@/components/BuildStatusBadge";
 import { BuildModal } from "@/components/BuildModal";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { dockerfilesApi } from "@/lib/dockerfilesApi";
+import { slugify } from "@/lib/slugify";
 
 const STANDARD_FILES = ["Dockerfile", "entrypoint.sh"] as const;
 
@@ -34,10 +35,15 @@ export function DockerfilesPage() {
   const selectedFile = files.find((f) => f.id === selectedFileId) ?? null;
 
   async function handleCreate() {
-    const id = window.prompt(t("dockerfiles.new_dockerfile_id_prompt"));
+    const display_name = window.prompt(
+      t("dockerfiles.new_dockerfile_name_prompt"),
+    );
+    if (!display_name) return;
+    const id = window.prompt(
+      t("dockerfiles.new_dockerfile_id_prompt"),
+      slugify(display_name),
+    );
     if (!id) return;
-    const display_name =
-      window.prompt(t("dockerfiles.new_dockerfile_name_prompt")) ?? id;
     const created = await createMutation.mutateAsync({ id, display_name });
     setSelectedId(created.id);
   }

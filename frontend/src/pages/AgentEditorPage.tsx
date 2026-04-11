@@ -11,6 +11,7 @@ import {
 } from "@/hooks/useAgents";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
+import { slugify } from "@/lib/slugify";
 import type {
   AgentCreatePayload,
   AgentMCPBinding,
@@ -85,6 +86,7 @@ export function AgentEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [preview, setPreview] = useState<ConfigPreview | null>(null);
+  const [slugTouched, setSlugTouched] = useState(false);
 
   useEffect(() => {
     if (!isNew && agent) {
@@ -124,7 +126,14 @@ export function AgentEditorPage() {
     availableSkills.find((s) => s.id === sid)?.name ?? sid;
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      // Auto-derive slug from display_name while the user hasn't touched it.
+      if (key === "display_name" && isNew && !slugTouched) {
+        next.slug = slugify(String(value), "-");
+      }
+      return next;
+    });
   }
 
   function addEnv() {
@@ -251,10 +260,13 @@ export function AgentEditorPage() {
 
   async function handleDuplicate() {
     if (isNew || !id) return;
-    const slug = window.prompt(t("agents.duplicate_prompt_slug"));
+    const displayName = window.prompt(t("agents.duplicate_prompt_name"));
+    if (!displayName) return;
+    const slug = window.prompt(
+      t("agents.duplicate_prompt_slug"),
+      slugify(displayName, "-"),
+    );
     if (!slug) return;
-    const displayName =
-      window.prompt(t("agents.duplicate_prompt_name")) ?? slug;
     const copy = await duplicateMutation.mutateAsync({
       id,
       slug,
@@ -290,20 +302,23 @@ export function AgentEditorPage() {
       <fieldset style={{ marginBottom: "1rem" }}>
         <legend>{t("agent_editor.section_general")}</legend>
         <label>
-          {t("agent_editor.slug")}
-          <input
-            type="text"
-            value={form.slug}
-            onChange={(e) => updateField("slug", e.target.value)}
-            disabled={!isNew}
-          />
-        </label>
-        <label>
           {t("agent_editor.display_name")}
           <input
             type="text"
             value={form.display_name}
             onChange={(e) => updateField("display_name", e.target.value)}
+          />
+        </label>
+        <label>
+          {t("agent_editor.slug")}
+          <input
+            type="text"
+            value={form.slug}
+            onChange={(e) => {
+              setSlugTouched(true);
+              updateField("slug", e.target.value);
+            }}
+            disabled={!isNew}
           />
         </label>
         <label>

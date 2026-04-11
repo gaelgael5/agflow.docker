@@ -325,8 +325,10 @@
     "profile_editor_title": "Profil — {{name}}",
     "profile_editor_pick_docs": "Documents inclus dans ce profil",
     "profile_broken_refs": "{{count}} document(s) référencé(s) par ce profil n'existent plus (rôle changé ou docs supprimés)",
-    "profile_select_all": "Tout sélectionner",
-    "profile_deselect_all": "Tout désélectionner",
+    "profile_close": "Fermer",
+    "profile_saving": "enregistrement…",
+    "profile_dirty": "modifié",
+    "profile_saved": "enregistré ✓",
     "preview_identity_only": "Aperçu (identité seule)",
     "preview_with_profile": "Aperçu avec profil…",
     "preview_profile_suffix": " — {{name}}"

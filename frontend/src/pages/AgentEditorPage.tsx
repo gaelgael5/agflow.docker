@@ -13,7 +13,7 @@ import {
 import { useRoleDetail } from "@/hooks/useRoleDocuments";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
-import { ProfileEditorDialog } from "@/components/ProfileEditorDialog";
+import { ProfileInlineEditor } from "@/components/ProfileInlineEditor";
 import { slugify } from "@/lib/slugify";
 import type {
   AgentCreatePayload,
@@ -479,43 +479,71 @@ export function AgentEditorPage() {
                 <li
                   key={p.id}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
                     padding: "0.5rem",
                     border: "1px solid #eee",
                     borderRadius: "4px",
                     marginBottom: "0.25rem",
+                    background:
+                      editingProfile?.id === p.id ? "#f3f4f6" : "transparent",
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <strong>{p.name}</strong>{" "}
-                    <span style={{ color: "#666", fontSize: "12px" }}>
-                      ({p.document_ids.length} docs)
-                    </span>
-                    {p.description && (
-                      <div style={{ fontSize: "12px", color: "#666" }}>
-                        {p.description}
-                      </div>
-                    )}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <strong>{p.name}</strong>{" "}
+                      <span style={{ color: "#666", fontSize: "12px" }}>
+                        ({p.document_ids.length} docs)
+                      </span>
+                      {p.description && (
+                        <div style={{ fontSize: "12px", color: "#666" }}>
+                          {p.description}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingProfile(
+                          editingProfile?.id === p.id ? null : p,
+                        )
+                      }
+                    >
+                      {editingProfile?.id === p.id
+                        ? t("agent_editor.profile_close")
+                        : t("agent_editor.profile_edit")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePreview(p.id)}
+                      title={t("agent_editor.preview_with_profile")}
+                    >
+                      👁
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProfile(p)}
+                      style={{ color: "red" }}
+                    >
+                      {t("agent_editor.profile_delete")}
+                    </button>
                   </div>
-                  <button type="button" onClick={() => setEditingProfile(p)}>
-                    {t("agent_editor.profile_edit")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePreview(p.id)}
-                    title={t("agent_editor.preview_with_profile")}
-                  >
-                    👁
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteProfile(p)}
-                    style={{ color: "red" }}
-                  >
-                    {t("agent_editor.profile_delete")}
-                  </button>
+                  {editingProfile?.id === p.id && (
+                    <ProfileInlineEditor
+                      profile={p}
+                      roleDetail={roleDetailQuery.data}
+                      onSave={(doc_ids) => handleSaveProfileDocs(p, doc_ids)}
+                      onClose={() => setEditingProfile(null)}
+                      onDelete={async () => {
+                        await handleDeleteProfile(p);
+                        setEditingProfile(null);
+                      }}
+                    />
+                  )}
                 </li>
               ))}
             </ul>
@@ -724,14 +752,6 @@ export function AgentEditorPage() {
         </div>
       )}
 
-      {editingProfile && (
-        <ProfileEditorDialog
-          profile={editingProfile}
-          roleDetail={roleDetailQuery.data}
-          onSave={(doc_ids) => handleSaveProfileDocs(editingProfile, doc_ids)}
-          onClose={() => setEditingProfile(null)}
-        />
-      )}
     </div>
   );
 }

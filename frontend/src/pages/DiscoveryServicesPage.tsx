@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDiscoveryServices } from "@/hooks/useCatalogs";
+import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
+import { EnvVarStatus } from "@/components/EnvVarStatus";
 import { discoveryApi, type ProbeResult } from "@/lib/catalogsApi";
 
 export function DiscoveryServicesPage() {
@@ -10,6 +12,11 @@ export function DiscoveryServicesPage() {
   const [testResults, setTestResults] = useState<Record<string, ProbeResult>>(
     {},
   );
+
+  const apiKeyVars = (services ?? [])
+    .map((s) => s.api_key_var)
+    .filter((v): v is string => Boolean(v));
+  const envStatus = useEnvVarStatuses(apiKeyVars);
 
   async function handleAdd() {
     const id = window.prompt(t("discovery.prompt_id"));
@@ -84,7 +91,10 @@ export function DiscoveryServicesPage() {
                   </td>
                   <td>
                     {s.api_key_var ? (
-                      <code>{s.api_key_var}</code>
+                      <EnvVarStatus
+                        name={s.api_key_var}
+                        status={envStatus.data?.[s.api_key_var]}
+                      />
                     ) : (
                       <span style={{ color: "#999" }}>—</span>
                     )}

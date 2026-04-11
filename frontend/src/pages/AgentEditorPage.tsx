@@ -9,6 +9,8 @@ import {
   useAgents,
   useConfigPreview,
 } from "@/hooks/useAgents";
+import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
+import { EnvVarStatus } from "@/components/EnvVarStatus";
 import type {
   AgentCreatePayload,
   AgentMCPBinding,
@@ -106,6 +108,15 @@ export function AgentEditorPage() {
 
   const availableMCPs = useMemo(() => mcps ?? [], [mcps]);
   const availableSkills = useMemo(() => skills ?? [], [skills]);
+
+  const referencedSecrets = useMemo(
+    () =>
+      form.env_entries
+        .filter((e) => e.value.startsWith("$") && e.value.length > 1)
+        .map((e) => e.value.slice(1)),
+    [form.env_entries],
+  );
+  const envStatus = useEnvVarStatuses(referencedSecrets);
 
   const mcpName = (mcpId: string): string =>
     availableMCPs.find((m) => m.id === mcpId)?.name ?? mcpId;
@@ -386,29 +397,47 @@ export function AgentEditorPage() {
 
       <fieldset style={{ marginBottom: "1rem" }}>
         <legend>{t("agent_editor.section_env")}</legend>
-        {form.env_entries.map((entry, idx) => (
-          <div
-            key={idx}
-            style={{ display: "flex", gap: "0.5rem", marginBottom: "0.25rem" }}
-          >
-            <input
-              type="text"
-              placeholder={t("agent_editor.env_key_placeholder")}
-              value={entry.key}
-              onChange={(e) => setEnv(idx, "key", e.target.value)}
-            />
-            <input
-              type="text"
-              placeholder={t("agent_editor.env_value_placeholder")}
-              value={entry.value}
-              onChange={(e) => setEnv(idx, "value", e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button type="button" onClick={() => removeEnv(idx)}>
-              {t("agent_editor.env_remove")}
-            </button>
-          </div>
-        ))}
+        {form.env_entries.map((entry, idx) => {
+          const secretRef =
+            entry.value.startsWith("$") && entry.value.length > 1
+              ? entry.value.slice(1)
+              : null;
+          return (
+            <div
+              key={idx}
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                marginBottom: "0.25rem",
+                alignItems: "center",
+              }}
+            >
+              <input
+                type="text"
+                placeholder={t("agent_editor.env_key_placeholder")}
+                value={entry.key}
+                onChange={(e) => setEnv(idx, "key", e.target.value)}
+              />
+              <input
+                type="text"
+                placeholder={t("agent_editor.env_value_placeholder")}
+                value={entry.value}
+                onChange={(e) => setEnv(idx, "value", e.target.value)}
+                style={{ flex: 1 }}
+              />
+              {secretRef && (
+                <EnvVarStatus
+                  name={secretRef}
+                  status={envStatus.data?.[secretRef]}
+                  compact
+                />
+              )}
+              <button type="button" onClick={() => removeEnv(idx)}>
+                {t("agent_editor.env_remove")}
+              </button>
+            </div>
+          );
+        })}
         <button type="button" onClick={addEnv}>
           {t("agent_editor.env_add")}
         </button>

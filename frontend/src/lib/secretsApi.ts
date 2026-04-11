@@ -1,6 +1,8 @@
 import { api } from "./api";
 
 export type Scope = "global" | "agent";
+export type EnvVarStatus = "missing" | "empty" | "ok";
+export type EnvVarStatusMap = Record<string, EnvVarStatus>;
 
 export interface SecretSummary {
   id: string;
@@ -56,6 +58,13 @@ export const secretsApi = {
   },
   async test(id: string): Promise<SecretTestResult> {
     const res = await api.post<SecretTestResult>(`/admin/secrets/${id}/test`);
+    return res.data;
+  },
+  async resolveStatus(varNames: string[]): Promise<EnvVarStatusMap> {
+    if (varNames.length === 0) return {};
+    const res = await api.get<EnvVarStatusMap>("/admin/secrets/resolve-status", {
+      params: { var_names: varNames.join(",") },
+    });
     return res.data;
   },
 };

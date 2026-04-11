@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSecrets } from "@/hooks/useSecrets";
+import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { SecretForm } from "@/components/SecretForm";
 import { RevealButton } from "@/components/RevealButton";
 import { TestKeyButton } from "@/components/TestKeyButton";
+import { EnvVarStatus } from "@/components/EnvVarStatus";
 import type { SecretCreate, SecretSummary } from "@/lib/secretsApi";
 
 export function SecretsPage() {
@@ -11,6 +13,10 @@ export function SecretsPage() {
   const { secrets, isLoading, createMutation, deleteMutation } = useSecrets();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const envStatus = useEnvVarStatuses(
+    (secrets ?? []).map((s) => s.var_name),
+  );
 
   async function handleCreate(payload: SecretCreate) {
     setError(null);
@@ -82,7 +88,10 @@ export function SecretsPage() {
             {secrets?.map((secret) => (
               <tr key={secret.id} style={{ borderBottom: "1px solid #eee" }}>
                 <td>
-                  <code>{secret.var_name}</code>
+                  <EnvVarStatus
+                    name={secret.var_name}
+                    status={envStatus.data?.[secret.var_name]}
+                  />
                 </td>
                 <td>
                   <RevealButton secretId={secret.id} />

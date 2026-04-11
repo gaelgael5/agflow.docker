@@ -7,6 +7,8 @@ import { DockerfilesPage } from "./pages/DockerfilesPage";
 import { DiscoveryServicesPage } from "./pages/DiscoveryServicesPage";
 import { MCPCatalogPage } from "./pages/MCPCatalogPage";
 import { SkillsCatalogPage } from "./pages/SkillsCatalogPage";
+import { AgentsPage } from "./pages/AgentsPage";
+import { AgentEditorPage } from "./pages/AgentEditorPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -66,6 +68,30 @@ export default function App() {
         element={
           <ProtectedRoute>
             <SkillsCatalogPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/agents"
+        element={
+          <ProtectedRoute>
+            <AgentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/agents/new"
+        element={
+          <ProtectedRoute>
+            <AgentEditorPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/agents/:id"
+        element={
+          <ProtectedRoute>
+            <AgentEditorPage />
           </ProtectedRoute>
         }
       />

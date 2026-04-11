@@ -35,6 +35,8 @@ export function HomePage() {
         <Link to="/mcp-catalog">{t("mcp_catalog.page_title")}</Link>
         <span>•</span>
         <Link to="/skills-catalog">{t("skills_catalog.page_title")}</Link>
+        <span>•</span>
+        <Link to="/agents">{t("agents.page_title")}</Link>
       </nav>
       <button type="button" onClick={handleLogout}>
         {t("home.logout")}

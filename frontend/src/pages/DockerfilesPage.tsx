@@ -7,6 +7,7 @@ import {
 import { BuildStatusBadge } from "@/components/BuildStatusBadge";
 import { BuildModal } from "@/components/BuildModal";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
+import { DockerChatModal } from "@/components/DockerChatModal";
 import { dockerfilesApi } from "@/lib/dockerfilesApi";
 import { slugify } from "@/lib/slugify";
 
@@ -28,6 +29,7 @@ export function DockerfilesPage() {
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [buildId, setBuildId] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState(false);
 
   const detail = useDockerfileDetail(selectedId);
   const currentDockerfile = detail.data?.dockerfile ?? null;
@@ -46,6 +48,43 @@ export function DockerfilesPage() {
     if (!id) return;
     const created = await createMutation.mutateAsync({ id, display_name });
     setSelectedId(created.id);
+  }
+
+  async function handleAcceptGenerated(
+    dockerfileId: string,
+    displayName: string,
+    generated: {
+      dockerfile: string;
+      entrypoint_sh: string;
+      run_cmd_md: string;
+    },
+  ) {
+    // 1. Create the dockerfile — this auto-seeds empty Dockerfile + entrypoint.sh
+    await createMutation.mutateAsync({
+      id: dockerfileId,
+      display_name: displayName,
+    });
+    // 2. Fetch the detail to get the auto-seeded file UUIDs
+    const fresh = await dockerfilesApi.get(dockerfileId);
+    const dfFile = fresh.files.find((f) => f.path === "Dockerfile");
+    const epFile = fresh.files.find((f) => f.path === "entrypoint.sh");
+    // 3. Overwrite the 2 standard files with the generated content
+    if (dfFile) {
+      await dockerfilesApi.updateFile(dockerfileId, dfFile.id, generated.dockerfile);
+    }
+    if (epFile) {
+      await dockerfilesApi.updateFile(
+        dockerfileId,
+        epFile.id,
+        generated.entrypoint_sh,
+      );
+    }
+    // 4. Create run.cmd.md as an additional (non-standard) file
+    await dockerfilesApi.createFile(dockerfileId, {
+      path: "run.cmd.md",
+      content: generated.run_cmd_md,
+    });
+    setSelectedId(dockerfileId);
   }
 
   async function handleDelete() {
@@ -118,9 +157,14 @@ export function DockerfilesPage() {
         }}
       >
         <h2>{t("dockerfiles.page_title")}</h2>
-        <button type="button" onClick={handleCreate}>
-          {t("dockerfiles.add_button")}
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <button type="button" onClick={handleCreate}>
+            {t("dockerfiles.add_button")}
+          </button>
+          <button type="button" onClick={() => setShowChat(true)}>
+            {t("dockerfiles.chat.open_button")}
+          </button>
+        </div>
         {(dockerfiles ?? []).length === 0 ? (
           <p style={{ color: "#999", fontStyle: "italic" }}>
             {t("dockerfiles.no_dockerfiles")}
@@ -330,6 +374,13 @@ export function DockerfilesPage() {
         <main style={{ flex: 1, padding: "2rem", color: "#888" }}>
           <p>{t("dockerfiles.select_dockerfile")}</p>
         </main>
+      )}
+
+      {showChat && (
+        <DockerChatModal
+          onClose={() => setShowChat(false)}
+          onAccept={handleAcceptGenerated}
+        />
       )}
 
       {buildId && selectedId && currentDockerfile && (

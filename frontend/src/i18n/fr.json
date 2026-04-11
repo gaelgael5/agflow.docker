@@ -167,7 +167,22 @@
     "new_dockerfile_name_prompt": "Nom d'affichage",
     "new_file_prompt": "Nom du fichier (ex: config.json)",
     "confirm_delete": "Supprimer \"{{name}}\" ?",
-    "standard_file": "fichier standard, non supprimable"
+    "standard_file": "fichier standard, non supprimable",
+    "chat": {
+      "open_button": "🤖 Créer via chat",
+      "title": "Générer un Dockerfile par chat",
+      "subtitle": "Décris l'agent que tu veux — le LLM va générer Dockerfile, entrypoint.sh et run.cmd.md",
+      "placeholder": "Ex: agent claude-code avec Python 3.12, git, node 20 et jq, monté sur /workspace",
+      "generate_button": "Générer",
+      "generating": "Génération en cours…",
+      "reasoning": "Choix du LLM",
+      "accept_header": "Créer ce dockerfile",
+      "accept_button": "Créer",
+      "creating": "Création…",
+      "error_no_key": "ANTHROPIC_API_KEY manquante dans Module 0 (Secrets). Ajoute-la avant de générer.",
+      "error_llm": "Erreur LLM — {{detail}}",
+      "error_generic": "Une erreur est survenue"
+    }
   },
   "discovery": {
     "page_title": "Services de découverte",

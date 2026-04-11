@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
 from agflow.auth.dependencies import require_admin
 from agflow.schemas.dockerfiles import (
@@ -17,9 +18,14 @@ from agflow.schemas.dockerfiles import (
 )
 from agflow.services import (
     build_service,
+    dockerfile_chat_service,
     dockerfile_files_service,
     dockerfiles_service,
 )
+
+
+class ChatGenerateRequest(BaseModel):
+    description: str = Field(min_length=10, max_length=4000)
 
 router = APIRouter(
     prefix="/api/admin/dockerfiles",
@@ -195,3 +201,29 @@ async def get_build(dockerfile_id: str, build_id: UUID) -> BuildSummary:
             status_code=status.HTTP_404_NOT_FOUND, detail="Build not found"
         )
     return BuildSummary(**row)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Chat-assisted Dockerfile generation (NF-1)
+# ──────────────────────────────────────────────────────────────────────
+
+
+@router.post("/chat-generate")
+async def chat_generate_dockerfile(
+    payload: ChatGenerateRequest,
+) -> dockerfile_chat_service.GeneratedDockerfile:
+    """Generate Dockerfile + entrypoint.sh + run.cmd.md from a natural
+    language description via Anthropic Claude. Stateless — the client is
+    expected to show the result, let the user approve, and then create
+    the dockerfile via the regular POST endpoint.
+    """
+    try:
+        return await dockerfile_chat_service.generate(payload.description)
+    except dockerfile_chat_service.MissingAnthropicKeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_412_PRECONDITION_FAILED, detail=str(exc)
+        ) from exc
+    except dockerfile_chat_service.GenerationFailedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
+        ) from exc

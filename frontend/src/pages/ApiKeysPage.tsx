@@ -21,6 +21,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -65,13 +66,6 @@ function CreateDialog({ open, onOpenChange, onCreate }: CreateDialogProps) {
     onOpenChange(val);
   }
 
-  const expiresInDays: Record<string, number> = {
-    "3m": 90,
-    "6m": 180,
-    "9m": 270,
-    "12m": 365,
-  };
-
   async function handleSubmit() {
     setError(null);
     setSubmitting(true);
@@ -80,13 +74,22 @@ function CreateDialog({ open, onOpenChange, onCreate }: CreateDialogProps) {
         name,
         scopes: [...checked],
         rate_limit: parseInt(rateLimit, 10) || 120,
-        ...(expiresIn !== "never" && { expires_in: expiresInDays[expiresIn] }),
+        expires_in: expiresIn,
       };
       await onCreate(payload);
       handleOpenChange(false);
     } catch (e) {
-      const detail = (e as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setError(detail ?? t("api_keys.create_dialog_title"));
+      const raw = (e as { response?: { data?: { detail?: unknown } } })
+        .response?.data?.detail;
+      const detail =
+        typeof raw === "string"
+          ? raw
+          : Array.isArray(raw)
+            ? raw.map((d: { msg?: string }) => d.msg ?? "").join(", ")
+            : typeof raw === "object" && raw !== null
+              ? JSON.stringify(raw)
+              : t("api_keys.create_dialog_title");
+      setError(detail);
     } finally {
       setSubmitting(false);
     }
@@ -97,6 +100,9 @@ function CreateDialog({ open, onOpenChange, onCreate }: CreateDialogProps) {
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("api_keys.create_dialog_title")}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {t("api_keys.create_dialog_title")}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="overflow-y-auto flex-1 space-y-4 pr-1">
@@ -200,6 +206,9 @@ function TokenRevealDialog({ created, onClose }: TokenRevealDialogProps) {
       <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{t("api_keys.token_created_title")}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {t("api_keys.token_warning")}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -284,6 +293,9 @@ function EditDialog({ open, onOpenChange, apiKey, onSave }: EditDialogProps) {
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("api_keys.edit_dialog_title")}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {t("api_keys.edit_dialog_title")}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="overflow-y-auto flex-1 space-y-4 pr-1">

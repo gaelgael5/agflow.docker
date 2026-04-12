@@ -20,6 +20,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -99,6 +100,9 @@ function ScopesDialog({ open, onOpenChange, user, onSave }: ScopesDialogProps) {
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("users.scopes_dialog_title")}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {t("users.scopes_dialog_title")}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex gap-2 flex-wrap">
@@ -193,6 +197,9 @@ function CreateDialog({ open, onOpenChange, onCreate }: CreateDialogProps) {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{t("users.create_dialog_title")}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {t("users.create_dialog_title")}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

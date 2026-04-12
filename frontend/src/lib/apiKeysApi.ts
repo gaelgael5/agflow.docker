@@ -21,7 +21,7 @@ export interface ApiKeyCreate {
   name: string;
   scopes: string[];
   rate_limit?: number;
-  expires_in?: number;
+  expires_in?: string;
 }
 
 export interface ApiKeyUpdate {

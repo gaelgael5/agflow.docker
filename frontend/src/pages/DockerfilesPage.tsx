@@ -1,24 +1,60 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Bot, FileCode2, Hammer, Plus, Save, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  Bot,
+  Download,
+  FileCode2,
+  Hammer,
+  MessageSquare,
+  Play,
+  Plus,
+  Save,
+  Settings2,
+  Square,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import {
   useDockerfileDetail,
   useDockerfiles,
 } from "@/hooks/useDockerfiles";
+import { useContainers } from "@/hooks/useContainers";
 import { BuildStatusBadge } from "@/components/BuildStatusBadge";
 import { BuildModal } from "@/components/BuildModal";
-import { MarkdownEditor } from "@/components/MarkdownEditor";
+import { CodeEditor } from "@/components/CodeEditor";
 import { DockerChatModal } from "@/components/DockerChatModal";
+import { DockerfileParamsDialog } from "@/components/DockerfileParamsDialog";
+import { ChatWindow } from "@/components/ChatWindow";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { PromptDialog } from "@/components/PromptDialog";
 import { dockerfilesApi } from "@/lib/dockerfilesApi";
-import { slugify } from "@/lib/slugify";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
-const STANDARD_FILES = ["Dockerfile", "entrypoint.sh"] as const;
+// Visible files that cannot be deleted — mirrors backend PROTECTED_FILES,
+// minus Dockerfile.json which is hidden from the UI entirely.
+const PROTECTED_FILES: readonly string[] = ["Dockerfile", "entrypoint.sh"];
+
+// Files that are system-managed (seeded + protected) but hidden from the
+// file list sidebar. Dockerfile.json holds the default parameters and is
+// edited via the dedicated "Paramètres" dialog, not inline.
+const HIDDEN_FILES: readonly string[] = ["Dockerfile.json"];
 
 export function DockerfilesPage() {
   const { t } = useTranslation();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const {
     dockerfiles,
     isLoading,
@@ -28,29 +64,45 @@ export function DockerfilesPage() {
     updateFileMutation,
     deleteFileMutation,
   } = useDockerfiles();
+  const {
+    containers,
+    runMutation: runContainerMutation,
+    stopMutation: stopContainerMutation,
+  } = useContainers();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [buildId, setBuildId] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showAddFileDialog, setShowAddFileDialog] = useState(false);
+  const [showParamsDialog, setShowParamsDialog] = useState(false);
+  const [showDeleteDockerfileConfirm, setShowDeleteDockerfileConfirm] =
+    useState(false);
+  const [showDeleteFileConfirm, setShowDeleteFileConfirm] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [actionErrors, setActionErrors] = useState<string[]>([]);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [chatOpenFor, setChatOpenFor] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<
+    (() => void) | null
+  >(null);
+  const hasUnsavedChanges = draftContent !== null;
 
   const detail = useDockerfileDetail(selectedId);
   const currentDockerfile = detail.data?.dockerfile ?? null;
-  const files = detail.data?.files ?? [];
+  const allFiles = detail.data?.files ?? [];
+  const files = allFiles.filter((f) => !HIDDEN_FILES.includes(f.path));
+  const dockerfileJsonFile =
+    allFiles.find((f) => f.path === "Dockerfile.json") ?? null;
   const selectedFile = files.find((f) => f.id === selectedFileId) ?? null;
 
-  async function handleCreate() {
-    const display_name = window.prompt(
-      t("dockerfiles.new_dockerfile_name_prompt"),
-    );
-    if (!display_name) return;
-    const id = window.prompt(
-      t("dockerfiles.new_dockerfile_id_prompt"),
-      slugify(display_name),
-    );
-    if (!id) return;
-    const created = await createMutation.mutateAsync({ id, display_name });
+  async function handleCreate(values: Record<string, string>) {
+    const created = await createMutation.mutateAsync({
+      id: values.id ?? "",
+      display_name: values.display_name ?? "",
+    });
     setSelectedId(created.id);
   }
 
@@ -60,7 +112,6 @@ export function DockerfilesPage() {
     generated: {
       dockerfile: string;
       entrypoint_sh: string;
-      run_cmd_md: string;
     },
   ) {
     await createMutation.mutateAsync({
@@ -68,43 +119,28 @@ export function DockerfilesPage() {
       display_name: displayName,
     });
     const fresh = await dockerfilesApi.get(dockerfileId);
-    const dfFile = fresh.files.find((f) => f.path === "Dockerfile");
-    const epFile = fresh.files.find((f) => f.path === "entrypoint.sh");
-    if (dfFile) {
-      await dockerfilesApi.updateFile(
-        dockerfileId,
-        dfFile.id,
-        generated.dockerfile,
-      );
-    }
-    if (epFile) {
-      await dockerfilesApi.updateFile(
-        dockerfileId,
-        epFile.id,
-        generated.entrypoint_sh,
-      );
-    }
-    await dockerfilesApi.createFile(dockerfileId, {
-      path: "run.cmd.md",
-      content: generated.run_cmd_md,
-    });
+    const fillStandardFile = async (path: string, content: string) => {
+      const file = fresh.files.find((f) => f.path === path);
+      if (file) {
+        await dockerfilesApi.updateFile(dockerfileId, file.id, content);
+      }
+    };
+    await fillStandardFile("Dockerfile", generated.dockerfile);
+    await fillStandardFile("entrypoint.sh", generated.entrypoint_sh);
     setSelectedId(dockerfileId);
   }
 
   async function handleDelete() {
     if (!selectedId) return;
-    if (!window.confirm(t("dockerfiles.confirm_delete", { name: selectedId })))
-      return;
     await deleteMutation.mutateAsync(selectedId);
     setSelectedId(null);
     setSelectedFileId(null);
     setDraftContent(null);
   }
 
-  async function handleAddFile() {
+  async function handleAddFile(values: Record<string, string>) {
     if (!selectedId) return;
-    const path = window.prompt(t("dockerfiles.new_file_prompt"));
-    if (!path) return;
+    const path = values.path ?? "";
     const f = await createFileMutation.mutateAsync({
       dockerfileId: selectedId,
       payload: { path, content: "" },
@@ -133,18 +169,169 @@ export function DockerfilesPage() {
     setDraftContent(null);
   }
 
+  // ─────────────────────────────────────────────────────────
+  // Unsaved-changes guard: if the file editor holds a draft,
+  // intercept in-page selection changes AND SPA link clicks to
+  // ask the user whether to save, discard or cancel.
+  // ─────────────────────────────────────────────────────────
+  function guardedNavigate(action: () => void) {
+    if (hasUnsavedChanges) {
+      setPendingNavigation(() => action);
+    } else {
+      action();
+    }
+  }
+
+  async function handleSaveAndContinue() {
+    await handleSaveFile();
+    const action = pendingNavigation;
+    setPendingNavigation(null);
+    action?.();
+  }
+
+  function handleDiscardAndContinue() {
+    setDraftContent(null);
+    const action = pendingNavigation;
+    setPendingNavigation(null);
+    action?.();
+  }
+
+  function handleCancelNavigation() {
+    setPendingNavigation(null);
+  }
+
+  // Catch browser-level nav (refresh, tab close) when a draft is pending.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsavedChanges]);
+
+  // Catch SPA nav (clicks on NavLink in the sidebar menu). We only need
+  // this when there are unsaved changes; it captures the click before the
+  // router handles it and stores a deferred navigate(href) action.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const anchor = (e.target as HTMLElement | null)?.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      if (anchor.target === "_blank") return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("http")) return;
+      // Same location? let it through.
+      if (href === window.location.pathname) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPendingNavigation(() => () => navigate(href));
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [hasUnsavedChanges, navigate]);
+
+  function reportError(err: unknown) {
+    const resp = (err as { response?: { data?: { detail?: unknown } } })
+      .response;
+    const detail = resp?.data?.detail;
+    let messages: string[];
+    if (typeof detail === "string") {
+      messages = [detail];
+    } else if (
+      detail &&
+      typeof detail === "object" &&
+      "errors" in detail &&
+      Array.isArray((detail as { errors: unknown[] }).errors)
+    ) {
+      messages = (detail as { errors: string[] }).errors;
+    } else {
+      const fallback =
+        (err as { message?: string }).message ??
+        t("dockerfiles.import.error_unknown");
+      messages = [fallback];
+    }
+    setActionErrors(messages);
+  }
+
   async function handleBuild() {
     if (!selectedId) return;
-    const res = await dockerfilesApi.build(selectedId);
-    setBuildId(res.id);
+    try {
+      const res = await dockerfilesApi.build(selectedId);
+      setBuildId(res.id);
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  async function handleRunContainer() {
+    if (!selectedId) return;
+    try {
+      await runContainerMutation.mutateAsync(selectedId);
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  async function handleStopContainer(containerId: string) {
+    try {
+      await stopContainerMutation.mutateAsync(containerId);
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  async function handleExport() {
+    if (!selectedId) return;
+    try {
+      const blob = await dockerfilesApi.exportZip(selectedId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${selectedId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  function handleImportClick() {
+    importInputRef.current?.click();
+  }
+
+  function handleImportFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = e.target.files?.[0] ?? null;
+    e.target.value = ""; // allow picking the same file twice
+    if (picked) setImportFile(picked);
+  }
+
+  async function handleImportConfirm() {
+    if (!selectedId || !importFile) return;
+    setActionErrors([]);
+    try {
+      await dockerfilesApi.importZip(selectedId, importFile);
+      setImportFile(null);
+      setSelectedFileId(null);
+      setDraftContent(null);
+      qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
+    } catch (err: unknown) {
+      reportError(err);
+      setImportFile(null);
+      throw err;
+    }
   }
 
   if (isLoading)
     return <p className="p-6 text-muted-foreground">{t("secrets.loading")}</p>;
 
-  const isStandard =
-    selectedFile !== null &&
-    (STANDARD_FILES as readonly string[]).includes(selectedFile.path);
+  const isProtected =
+    selectedFile !== null && PROTECTED_FILES.includes(selectedFile.path);
 
   return (
     <div className="flex h-full min-h-[calc(100vh-3.5rem)] overflow-hidden">
@@ -155,7 +342,11 @@ export function DockerfilesPage() {
             {t("dockerfiles.page_title")}
           </h2>
           <div className="flex flex-col gap-1.5">
-            <Button size="sm" onClick={handleCreate} className="w-full">
+            <Button
+              size="sm"
+              onClick={() => setShowCreateDialog(true)}
+              className="w-full"
+            >
               <Plus className="w-3.5 h-3.5" />
               {t("dockerfiles.add_button")}
             </Button>
@@ -184,11 +375,13 @@ export function DockerfilesPage() {
                   <li key={d.id}>
                     <button
                       type="button"
-                      onClick={() => {
-                        setSelectedId(d.id);
-                        setSelectedFileId(null);
-                        setDraftContent(null);
-                      }}
+                      onClick={() =>
+                        guardedNavigate(() => {
+                          setSelectedId(d.id);
+                          setSelectedFileId(null);
+                          setDraftContent(null);
+                        })
+                      }
                       className={cn(
                         "w-full text-left px-2.5 py-2 rounded-md transition-colors",
                         active
@@ -210,12 +403,62 @@ export function DockerfilesPage() {
           )}
         </div>
 
+        {containers.length > 0 && (
+          <div className="border-t">
+            <div className="px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              {t("dockerfiles.running_instances")}
+            </div>
+            <ul className="px-2 pb-2 space-y-1 max-h-48 overflow-y-auto">
+              {containers.map((c) => (
+                <li
+                  key={c.id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-secondary/60"
+                >
+                  <span
+                    className={cn(
+                      "w-1.5 h-1.5 rounded-full shrink-0",
+                      c.status === "running"
+                        ? "bg-emerald-500"
+                        : c.status === "exited" || c.status === "dead"
+                          ? "bg-zinc-500"
+                          : "bg-amber-400",
+                    )}
+                    title={c.status}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="text-[11px] font-mono truncate"
+                      title={c.name}
+                    >
+                      {c.name}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground truncate">
+                      {c.dockerfile_id}
+                    </div>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 shrink-0"
+                    onClick={() => handleStopContainer(c.id)}
+                    disabled={stopContainerMutation.isPending}
+                    aria-label={t("dockerfiles.stop_instance")}
+                    title={t("dockerfiles.stop_instance")}
+                  >
+                    <Square className="w-3 h-3 text-destructive" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {selectedId && (
           <div className="p-3 border-t">
             <Button
               size="sm"
               variant="ghost"
-              onClick={handleDelete}
+              onClick={() => setShowDeleteDockerfileConfirm(true)}
               className="w-full text-destructive"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -236,7 +479,7 @@ export function DockerfilesPage() {
               <Button
                 size="icon"
                 variant="ghost"
-                onClick={handleAddFile}
+                onClick={() => setShowAddFileDialog(true)}
                 aria-label={t("dockerfiles.new_file_button")}
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -255,10 +498,12 @@ export function DockerfilesPage() {
                       <li key={f.id}>
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedFileId(f.id);
-                            setDraftContent(null);
-                          }}
+                          onClick={() =>
+                            guardedNavigate(() => {
+                              setSelectedFileId(f.id);
+                              setDraftContent(null);
+                            })
+                          }
                           className={cn(
                             "w-full text-left px-2.5 py-1.5 rounded-md font-mono text-[12px] flex items-center gap-2 transition-colors",
                             active
@@ -294,10 +539,67 @@ export function DockerfilesPage() {
                   </span>
                 </div>
               </div>
-              <Button onClick={handleBuild}>
-                <Hammer className="w-4 h-4" />
-                {t("dockerfiles.build_button")}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowParamsDialog(true)}
+                  disabled={!dockerfileJsonFile}
+                >
+                  <Settings2 className="w-4 h-4" />
+                  {t("dockerfiles.params_button")}
+                </Button>
+                <Button variant="outline" onClick={handleExport}>
+                  <Download className="w-4 h-4" />
+                  {t("dockerfiles.export_button")}
+                </Button>
+                <Button variant="outline" onClick={handleImportClick}>
+                  <Upload className="w-4 h-4" />
+                  {t("dockerfiles.import_button")}
+                </Button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".zip,application/zip"
+                  onChange={handleImportFilePicked}
+                  className="hidden"
+                />
+                <Button onClick={handleBuild}>
+                  <Hammer className="w-4 h-4" />
+                  {t("dockerfiles.build_button")}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleRunContainer}
+                  disabled={
+                    currentDockerfile?.display_status !== "up_to_date" ||
+                    runContainerMutation.isPending
+                  }
+                  title={
+                    currentDockerfile?.display_status !== "up_to_date"
+                      ? t("dockerfiles.run_button_disabled_hint")
+                      : undefined
+                  }
+                >
+                  <Play className="w-4 h-4" />
+                  {t("dockerfiles.run_button")}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setChatOpenFor(selectedId)}
+                  disabled={
+                    !selectedId ||
+                    currentDockerfile?.display_status !== "up_to_date"
+                  }
+                  title={
+                    currentDockerfile?.display_status !== "up_to_date"
+                      ? t("dockerfiles.run_button_disabled_hint")
+                      : undefined
+                  }
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  {t("dockerfiles.chat_window_button")}
+                </Button>
+              </div>
             </div>
 
             {selectedFile ? (
@@ -307,7 +609,7 @@ export function DockerfilesPage() {
                     <code className="font-mono text-[13px] font-semibold">
                       {selectedFile.path}
                     </code>
-                    {isStandard && (
+                    {isProtected && (
                       <Badge variant="secondary">
                         {t("dockerfiles.standard_file")}
                       </Badge>
@@ -320,11 +622,11 @@ export function DockerfilesPage() {
                         {t("dockerfiles.save_button")}
                       </Button>
                     )}
-                    {!isStandard && (
+                    {!isProtected && (
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={handleDeleteFile}
+                        onClick={() => setShowDeleteFileConfirm(true)}
                         aria-label={t("dockerfiles.delete_button")}
                       >
                         <Trash2 className="w-3.5 h-3.5 text-destructive" />
@@ -332,9 +634,10 @@ export function DockerfilesPage() {
                     )}
                   </div>
                 </div>
-                <MarkdownEditor
+                <CodeEditor
                   value={draftContent ?? selectedFile.content}
                   onChange={(v) => setDraftContent(v)}
+                  path={selectedFile.path}
                   fill
                 />
               </div>
@@ -366,6 +669,207 @@ export function DockerfilesPage() {
           onClose={() => setBuildId(null)}
         />
       )}
+
+      <PromptDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        title={t("dockerfiles.new_dockerfile_dialog_title")}
+        submitLabel={t("common.create")}
+        onSubmit={handleCreate}
+        fields={[
+          {
+            name: "display_name",
+            label: t("dockerfiles.new_dockerfile_name_prompt"),
+          },
+          {
+            name: "id",
+            label: t("dockerfiles.new_dockerfile_id_prompt"),
+            autoSlugFrom: "display_name",
+            monospace: true,
+          },
+        ]}
+      />
+
+      <PromptDialog
+        open={showAddFileDialog}
+        onOpenChange={setShowAddFileDialog}
+        title={t("dockerfiles.new_file_dialog_title")}
+        submitLabel={t("common.create")}
+        onSubmit={handleAddFile}
+        fields={[
+          {
+            name: "path",
+            label: t("dockerfiles.new_file_prompt"),
+            monospace: true,
+          },
+        ]}
+      />
+
+      {selectedId && (
+        <DockerfileParamsDialog
+          open={showParamsDialog}
+          onOpenChange={setShowParamsDialog}
+          dockerfileId={selectedId}
+          file={dockerfileJsonFile}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
+          }}
+        />
+      )}
+
+      <ConfirmDialog
+        open={showDeleteDockerfileConfirm}
+        onOpenChange={setShowDeleteDockerfileConfirm}
+        title={t("dockerfiles.confirm_delete_title")}
+        description={t("dockerfiles.confirm_delete_message", {
+          name: currentDockerfile?.display_name ?? selectedId ?? "",
+        })}
+        confirmLabel={t("dockerfiles.confirm_delete_button")}
+        destructive
+        onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={showDeleteFileConfirm}
+        onOpenChange={setShowDeleteFileConfirm}
+        title={t("dockerfiles.confirm_delete_file_title")}
+        description={t("dockerfiles.confirm_delete_file_message", {
+          path: selectedFile?.path ?? "",
+        })}
+        confirmLabel={t("dockerfiles.confirm_delete_button")}
+        destructive
+        onConfirm={handleDeleteFile}
+      />
+
+      <ConfirmDialog
+        open={importFile !== null}
+        onOpenChange={(open) => !open && setImportFile(null)}
+        title={t("dockerfiles.import.confirm_title")}
+        description={t("dockerfiles.import.confirm_message", {
+          filename: importFile?.name ?? "",
+        })}
+        confirmLabel={t("dockerfiles.import.confirm_button")}
+        destructive
+        onConfirm={handleImportConfirm}
+      />
+
+      <ImportErrorsDialog
+        errors={actionErrors}
+        onClose={() => setActionErrors([])}
+      />
+
+      <UnsavedChangesDialog
+        open={pendingNavigation !== null}
+        filePath={selectedFile?.path ?? ""}
+        onSave={handleSaveAndContinue}
+        onDiscard={handleDiscardAndContinue}
+        onCancel={handleCancelNavigation}
+      />
+
+      {chatOpenFor && (
+        <ChatWindow
+          dockerfileId={chatOpenFor}
+          onClose={() => setChatOpenFor(null)}
+        />
+      )}
     </div>
+  );
+}
+
+interface UnsavedChangesDialogProps {
+  open: boolean;
+  filePath: string;
+  onSave: () => Promise<void> | void;
+  onDiscard: () => void;
+  onCancel: () => void;
+}
+
+function UnsavedChangesDialog({
+  open,
+  filePath,
+  onSave,
+  onDiscard,
+  onCancel,
+}: UnsavedChangesDialogProps) {
+  const { t } = useTranslation();
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("dockerfiles.unsaved.title")}</DialogTitle>
+          <DialogDescription>
+            {t("dockerfiles.unsaved.message", { path: filePath })}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={saving}
+          >
+            {t("dockerfiles.unsaved.cancel")}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={onDiscard}
+            disabled={saving}
+          >
+            {t("dockerfiles.unsaved.discard")}
+          </Button>
+          <Button type="button" onClick={handleSave} disabled={saving}>
+            {t("dockerfiles.unsaved.save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface ImportErrorsDialogProps {
+  errors: string[];
+  onClose: () => void;
+}
+
+function ImportErrorsDialog({ errors, onClose }: ImportErrorsDialogProps) {
+  const { t } = useTranslation();
+  return (
+    <Dialog
+      open={errors.length > 0}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("dockerfiles.import.errors_title")}</DialogTitle>
+          <DialogDescription>
+            {t("dockerfiles.import.errors_subtitle")}
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="space-y-1 list-disc list-inside text-[13px] text-destructive">
+          {errors.map((err, i) => (
+            <li key={i}>{err}</li>
+          ))}
+        </ul>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t("dockerfiles.import.errors_close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

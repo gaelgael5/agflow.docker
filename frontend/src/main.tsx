@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
+import { VaultProvider } from "./hooks/useVault";
 import App from "./App";
 import "./index.css";
 import "./lib/i18n";
@@ -17,7 +18,9 @@ ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <VaultProvider>
+          <App />
+        </VaultProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,

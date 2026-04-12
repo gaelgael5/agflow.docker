@@ -9,6 +9,7 @@ import {
   Globe,
   Key,
   KeyRound,
+  Lock,
   LogOut,
   Moon,
   PlugZap,
@@ -53,6 +54,7 @@ export function Sidebar({ open = false, onClose }: Props) {
     {
       title: t("sidebar.section_platform"),
       items: [
+        { to: "/my-secrets", label: t("my_secrets.page_title"), icon: Lock },
         { to: "/secrets", label: t("secrets.page_title"), icon: KeyRound },
         { to: "/dockerfiles", label: t("dockerfiles.page_title"), icon: FileCode2 },
         { to: "/roles", label: t("roles.page_title"), icon: UserRoundCog },

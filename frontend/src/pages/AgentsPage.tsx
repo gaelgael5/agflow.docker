@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Copy, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useAgents } from "@/hooks/useAgents";
-import { slugify } from "@/lib/slugify";
+import { PromptDialog } from "@/components/PromptDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,21 +24,22 @@ export function AgentsPage() {
   const navigate = useNavigate();
   const { agents, isLoading, deleteMutation, duplicateMutation } = useAgents();
   const [filter, setFilter] = useState("");
+  const [duplicateTargetId, setDuplicateTargetId] = useState<string | null>(
+    null,
+  );
 
   async function handleDelete(id: string, name: string) {
     if (!window.confirm(t("agents.confirm_delete", { name }))) return;
     await deleteMutation.mutateAsync(id);
   }
 
-  async function handleDuplicate(id: string) {
-    const displayName = window.prompt(t("agents.duplicate_prompt_name"));
-    if (!displayName) return;
-    const slug = window.prompt(
-      t("agents.duplicate_prompt_slug"),
-      slugify(displayName, "-"),
-    );
-    if (!slug) return;
-    await duplicateMutation.mutateAsync({ id, slug, displayName });
+  async function handleDuplicateSubmit(values: Record<string, string>) {
+    if (!duplicateTargetId) return;
+    await duplicateMutation.mutateAsync({
+      id: duplicateTargetId,
+      slug: values.slug ?? "",
+      displayName: values.displayName ?? "",
+    });
   }
 
   const filtered = (agents ?? []).filter((a) => {
@@ -146,7 +147,7 @@ export function AgentsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDuplicate(a.id)}
+                        onClick={() => setDuplicateTargetId(a.id)}
                         aria-label={t("agents.duplicate_button")}
                       >
                         <Copy className="w-3.5 h-3.5" />
@@ -167,6 +168,24 @@ export function AgentsPage() {
           </Table>
         )}
       </Card>
+
+      <PromptDialog
+        open={duplicateTargetId !== null}
+        onOpenChange={(open) => !open && setDuplicateTargetId(null)}
+        title={t("agents.duplicate_dialog_title")}
+        submitLabel={t("common.duplicate")}
+        onSubmit={handleDuplicateSubmit}
+        fields={[
+          { name: "displayName", label: t("agents.duplicate_prompt_name") },
+          {
+            name: "slug",
+            label: t("agents.duplicate_prompt_slug"),
+            autoSlugFrom: "displayName",
+            slugSeparator: "-",
+            monospace: true,
+          },
+        ]}
+      />
     </PageShell>
   );
 }

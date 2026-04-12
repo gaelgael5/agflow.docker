@@ -27,6 +27,7 @@ import { useRoleDetail } from "@/hooks/useRoleDocuments";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
 import { ProfileInlineEditor } from "@/components/ProfileInlineEditor";
+import { PromptDialog } from "@/components/PromptDialog";
 import { PageShell } from "@/components/layout/PageHeader";
 import { slugify } from "@/lib/slugify";
 import { cn } from "@/lib/utils";
@@ -135,6 +136,9 @@ export function AgentEditorPage() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [editingProfile, setEditingProfile] =
     useState<AgentProfileSummary | null>(null);
+  const [showAddProfileDialog, setShowAddProfileDialog] = useState(false);
+  const [addProfileError, setAddProfileError] = useState<string | null>(null);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
 
   useEffect(() => {
     if (!isNew && agent) {
@@ -311,23 +315,21 @@ export function AgentEditorPage() {
     }
   }
 
-  async function handleAddProfile() {
+  async function handleAddProfile(values: Record<string, string>) {
     if (isNew || !id) return;
-    const name = window.prompt(t("agent_editor.profile_name_prompt"));
-    if (!name) return;
-    const description =
-      window.prompt(t("agent_editor.profile_description_prompt")) ?? "";
+    setAddProfileError(null);
     try {
       const created = await profilesHook.createMutation.mutateAsync({
-        name,
-        description,
+        name: values.name ?? "",
+        description: values.description ?? "",
         document_ids: [],
       });
       setEditingProfile(created);
     } catch (e) {
       const detail = (e as { response?: { data?: { detail?: string } } })
         .response?.data?.detail;
-      window.alert(detail ?? t("agent_editor.error_generic"));
+      setAddProfileError(detail ?? t("agent_editor.error_generic"));
+      throw e;
     }
   }
 
@@ -351,19 +353,12 @@ export function AgentEditorPage() {
     });
   }
 
-  async function handleDuplicate() {
+  async function handleDuplicateSubmit(values: Record<string, string>) {
     if (isNew || !id) return;
-    const displayName = window.prompt(t("agents.duplicate_prompt_name"));
-    if (!displayName) return;
-    const slug = window.prompt(
-      t("agents.duplicate_prompt_slug"),
-      slugify(displayName, "-"),
-    );
-    if (!slug) return;
     const copy = await duplicateMutation.mutateAsync({
       id,
-      slug,
-      displayName,
+      slug: values.slug ?? "",
+      displayName: values.displayName ?? "",
     });
     navigate(`/agents/${copy.id}`);
   }
@@ -420,7 +415,10 @@ export function AgentEditorPage() {
                 <Eye className="w-4 h-4" />
                 {t("agent_editor.preview_identity_only")}
               </Button>
-              <Button variant="outline" onClick={handleDuplicate}>
+              <Button
+                variant="outline"
+                onClick={() => setShowDuplicateDialog(true)}
+              >
                 <Copy className="w-4 h-4" />
                 {t("agent_editor.duplicate_button")}
               </Button>
@@ -764,7 +762,14 @@ export function AgentEditorPage() {
                   })}
                 </ul>
               )}
-              <Button variant="outline" size="sm" onClick={handleAddProfile}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setAddProfileError(null);
+                  setShowAddProfileDialog(true);
+                }}
+              >
                 <Plus className="w-3.5 h-3.5" />
                 {t("agent_editor.profile_add")}
               </Button>
@@ -967,6 +972,41 @@ export function AgentEditorPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PromptDialog
+        open={showAddProfileDialog}
+        onOpenChange={setShowAddProfileDialog}
+        title={t("agent_editor.profile_dialog_title")}
+        description={addProfileError ?? undefined}
+        submitLabel={t("common.create")}
+        onSubmit={handleAddProfile}
+        fields={[
+          { name: "name", label: t("agent_editor.profile_name_prompt") },
+          {
+            name: "description",
+            label: t("agent_editor.profile_description_prompt"),
+            required: false,
+          },
+        ]}
+      />
+
+      <PromptDialog
+        open={showDuplicateDialog}
+        onOpenChange={setShowDuplicateDialog}
+        title={t("agents.duplicate_dialog_title")}
+        submitLabel={t("common.duplicate")}
+        onSubmit={handleDuplicateSubmit}
+        fields={[
+          { name: "displayName", label: t("agents.duplicate_prompt_name") },
+          {
+            name: "slug",
+            label: t("agents.duplicate_prompt_slug"),
+            autoSlugFrom: "displayName",
+            slugSeparator: "-",
+            monospace: true,
+          },
+        ]}
+      />
     </PageShell>
   );
 }

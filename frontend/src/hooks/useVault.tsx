@@ -16,6 +16,7 @@ import {
   verifyPassphrase,
   bufferToBase64,
   base64ToBuffer,
+  type VaultKey,
 } from "@/lib/vault";
 import { vaultApi } from "@/lib/userSecretsApi";
 
@@ -26,8 +27,8 @@ interface VaultContextValue {
   setupVault: (passphrase: string) => Promise<void>;
   unlockVault: (passphrase: string) => Promise<boolean>;
   lockVault: () => void;
-  encryptSecret: (plaintext: string) => Promise<{ ciphertext: string; iv: string }>;
-  decryptSecret: (ciphertext: string, iv: string) => Promise<string>;
+  encryptSecret: (plaintext: string) => { ciphertext: string; iv: string };
+  decryptSecret: (ciphertext: string, iv: string) => string;
   refreshStatus: () => Promise<void>;
 }
 
@@ -35,8 +36,7 @@ const VaultContext = createContext<VaultContextValue | null>(null);
 
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<VaultState>("loading");
-  const keyRef = useRef<CryptoKey | null>(null);
-  const saltRef = useRef<Uint8Array | null>(null);
+  const keyRef = useRef<VaultKey | null>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -49,7 +49,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setState("locked");
       }
     } catch {
-      // Not logged in or network error — stay loading
       setState("loading");
     }
   }, []);
@@ -60,15 +59,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const setupVault = useCallback(async (passphrase: string) => {
     const salt = generateSalt();
-    const key = await deriveKey(passphrase, salt);
-    const proof = await createTestProof(key);
+    const key = deriveKey(passphrase, salt);
+    const proof = createTestProof(key);
     await vaultApi.setup({
       salt: bufferToBase64(salt),
       test_ciphertext: proof.ciphertext,
       test_iv: proof.iv,
     });
     keyRef.current = key;
-    saltRef.current = salt;
     setState("unlocked");
   }, []);
 
@@ -78,27 +76,25 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return false;
     }
     const salt = base64ToBuffer(status.salt);
-    const key = await deriveKey(passphrase, salt);
-    const ok = await verifyPassphrase(key, status.test_ciphertext, status.test_iv);
+    const key = deriveKey(passphrase, salt);
+    const ok = verifyPassphrase(key, status.test_ciphertext, status.test_iv);
     if (!ok) return false;
     keyRef.current = key;
-    saltRef.current = salt;
     setState("unlocked");
     return true;
   }, []);
 
   const lockVault = useCallback(() => {
     keyRef.current = null;
-    saltRef.current = null;
     setState("locked");
   }, []);
 
-  const encryptSecret = useCallback(async (plaintext: string) => {
+  const encryptSecret = useCallback((plaintext: string) => {
     if (!keyRef.current) throw new Error("Vault is locked");
     return encrypt(keyRef.current, plaintext);
   }, []);
 
-  const decryptSecret = useCallback(async (ciphertext: string, iv: string) => {
+  const decryptSecret = useCallback((ciphertext: string, iv: string) => {
     if (!keyRef.current) throw new Error("Vault is locked");
     return decrypt(keyRef.current, ciphertext, iv);
   }, []);

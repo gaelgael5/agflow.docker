@@ -1,82 +1,70 @@
+import { gcm } from "@noble/ciphers/aes.js";
+import { randomBytes } from "@noble/ciphers/utils.js";
+import { pbkdf2 } from "@noble/hashes/pbkdf2.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+
 const VAULT_TEST_PLAINTEXT = "VAULT_OK";
+const PBKDF2_ITERATIONS = 100_000;
+const KEY_LENGTH = 32; // 256 bits
+
+export type VaultKey = Uint8Array;
 
 export function generateSalt(): Uint8Array {
-  return crypto.getRandomValues(new Uint8Array(16));
+  return randomBytes(16);
 }
 
-export async function deriveKey(
-  passphrase: string,
-  salt: Uint8Array,
-): Promise<CryptoKey> {
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(passphrase),
-    "PBKDF2",
-    false,
-    ["deriveKey"],
-  );
-  return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt: new Uint8Array(salt), iterations: 100000, hash: "SHA-256" },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
+export function deriveKey(passphrase: string, salt: Uint8Array): VaultKey {
+  return pbkdf2(sha256, new TextEncoder().encode(passphrase), salt, {
+    c: PBKDF2_ITERATIONS,
+    dkLen: KEY_LENGTH,
+  });
 }
 
-export async function encrypt(
-  key: CryptoKey,
+export function encrypt(
+  key: VaultKey,
   plaintext: string,
-): Promise<{ ciphertext: string; iv: string }> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+): { ciphertext: string; iv: string } {
+  const iv = randomBytes(12);
   const encoded = new TextEncoder().encode(plaintext);
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    encoded,
-  );
+  const aes = gcm(key, iv);
+  const encrypted = aes.encrypt(encoded);
   return {
     ciphertext: bufferToBase64(encrypted),
     iv: bufferToBase64(iv),
   };
 }
 
-export async function decrypt(
-  key: CryptoKey,
+export function decrypt(
+  key: VaultKey,
   ciphertext: string,
   iv: string,
-): Promise<string> {
-  const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: new Uint8Array(base64ToBuffer(iv)) },
-    key,
-    new Uint8Array(base64ToBuffer(ciphertext)),
-  );
+): string {
+  const aes = gcm(key, base64ToBuffer(iv));
+  const decrypted = aes.decrypt(base64ToBuffer(ciphertext));
   return new TextDecoder().decode(decrypted);
 }
 
-export async function createTestProof(
-  key: CryptoKey,
-): Promise<{ ciphertext: string; iv: string }> {
+export function createTestProof(
+  key: VaultKey,
+): { ciphertext: string; iv: string } {
   return encrypt(key, VAULT_TEST_PLAINTEXT);
 }
 
-export async function verifyPassphrase(
-  key: CryptoKey,
+export function verifyPassphrase(
+  key: VaultKey,
   testCiphertext: string,
   testIv: string,
-): Promise<boolean> {
+): boolean {
   try {
-    const result = await decrypt(key, testCiphertext, testIv);
-    return result === VAULT_TEST_PLAINTEXT;
+    return decrypt(key, testCiphertext, testIv) === VAULT_TEST_PLAINTEXT;
   } catch {
     return false;
   }
 }
 
-export function bufferToBase64(buf: ArrayBuffer | Uint8Array): string {
-  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+export function bufferToBase64(buf: Uint8Array): string {
   let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
+  for (const b of buf) binary += String.fromCharCode(b);
   return btoa(binary);
 }
 

@@ -21,7 +21,6 @@ import { cn } from "@/lib/utils";
 interface GeneratedDockerfile {
   dockerfile: string;
   entrypoint_sh: string;
-  run_cmd_md: string;
   reasoning: string;
 }
 
@@ -42,7 +41,7 @@ export function DockerChatModal({ onClose, onAccept }: Props) {
   const [result, setResult] = useState<GeneratedDockerfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "dockerfile" | "entrypoint_sh" | "run_cmd_md"
+    "dockerfile" | "entrypoint_sh"
   >("dockerfile");
   const [displayName, setDisplayName] = useState("");
   const [slug, setSlug] = useState("");
@@ -146,27 +145,21 @@ export function DockerChatModal({ onClose, onAccept }: Props) {
             )}
 
             <div className="flex gap-1">
-              {(["dockerfile", "entrypoint_sh", "run_cmd_md"] as const).map(
-                (tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    className={cn(
-                      "px-2.5 py-1 text-[11px] font-mono border rounded",
-                      activeTab === tab
-                        ? "bg-primary/10 border-primary/30 text-primary"
-                        : "hover:bg-secondary",
-                    )}
-                  >
-                    {tab === "dockerfile"
-                      ? "Dockerfile"
-                      : tab === "entrypoint_sh"
-                        ? "entrypoint.sh"
-                        : "run.cmd.md"}
-                  </button>
-                ),
-              )}
+              {(["dockerfile", "entrypoint_sh"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={cn(
+                    "px-2.5 py-1 text-[11px] font-mono border rounded",
+                    activeTab === tab
+                      ? "bg-primary/10 border-primary/30 text-primary"
+                      : "hover:bg-secondary",
+                  )}
+                >
+                  {tab === "dockerfile" ? "Dockerfile" : "entrypoint.sh"}
+                </button>
+              ))}
             </div>
 
             <pre className="bg-zinc-900 text-zinc-100 rounded-md p-3 text-[11px] font-mono whitespace-pre-wrap max-h-64 overflow-auto">

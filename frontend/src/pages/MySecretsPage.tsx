@@ -323,11 +323,11 @@ export function MySecretsPage() {
     if (vault.state !== "unlocked" || !secrets) return;
     let cancelled = false;
 
-    async function decryptAll() {
+    function decryptAll() {
       const results: Record<string, string> = {};
       for (const s of secrets ?? []) {
         try {
-          results[s.id] = await vault.decryptSecret(s.ciphertext, s.iv);
+          results[s.id] = vault.decryptSecret(s.ciphertext, s.iv);
         } catch {
           results[s.id] = `⚠ ${t("my_secrets.decrypt_error")}`;
         }
@@ -335,7 +335,7 @@ export function MySecretsPage() {
       if (!cancelled) setDecrypted(results);
     }
 
-    void decryptAll();
+    decryptAll();
     return () => {
       cancelled = true;
     };
@@ -344,12 +344,12 @@ export function MySecretsPage() {
   // ── Handlers ──
 
   async function handleAdd(name: string, value: string) {
-    const { ciphertext, iv } = await vault.encryptSecret(value);
+    const { ciphertext, iv } = vault.encryptSecret(value);
     await createMutation.mutateAsync({ name, ciphertext, iv });
   }
 
   async function handleEdit(id: string, value: string) {
-    const { ciphertext, iv } = await vault.encryptSecret(value);
+    const { ciphertext, iv } = vault.encryptSecret(value);
     await updateMutation.mutateAsync({ id, payload: { ciphertext, iv } });
   }
 

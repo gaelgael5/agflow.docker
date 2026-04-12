@@ -4,6 +4,7 @@ import { Plus, Search } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -61,6 +62,9 @@ export function SearchModal<T>({
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("search_modal.title", { title })}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {t("search_modal.placeholder")}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center gap-2">

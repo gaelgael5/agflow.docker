@@ -52,6 +52,17 @@ export interface DockerfileCreate {
   parameters?: Record<string, unknown>;
 }
 
+export interface MountCheckResult {
+  source_original: string;
+  source_resolved: string;
+  auto_prefixed: boolean;
+  exists: boolean | null;
+}
+
+export interface MountCheckResponse {
+  results: MountCheckResult[];
+}
+
 export interface FileCreate {
   path: string;
   content?: string;
@@ -106,6 +117,39 @@ export const dockerfilesApi = {
   async getBuild(dockerfileId: string, buildId: string): Promise<BuildSummary> {
     const res = await api.get<BuildSummary>(
       `/admin/dockerfiles/${dockerfileId}/builds/${buildId}`,
+    );
+    return res.data;
+  },
+  async exportZip(dockerfileId: string): Promise<Blob> {
+    const res = await api.get<Blob>(
+      `/admin/dockerfiles/${dockerfileId}/export`,
+      { responseType: "blob" },
+    );
+    return res.data;
+  },
+  async checkMounts(
+    dockerfileId: string,
+    payload: {
+      mounts: { source: string; target: string; readonly: boolean }[];
+      params: Record<string, string>;
+    },
+  ): Promise<MountCheckResponse> {
+    const res = await api.post<MountCheckResponse>(
+      `/admin/dockerfiles/${dockerfileId}/check-mounts`,
+      payload,
+    );
+    return res.data;
+  },
+  async importZip(
+    dockerfileId: string,
+    file: File,
+  ): Promise<DockerfileDetail> {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await api.post<DockerfileDetail>(
+      `/admin/dockerfiles/${dockerfileId}/import`,
+      form,
+      { headers: { "Content-Type": "multipart/form-data" } },
     );
     return res.data;
   },

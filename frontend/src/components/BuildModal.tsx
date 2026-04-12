@@ -66,8 +66,23 @@ export function BuildModal({
       await navigator.clipboard.writeText(build.logs);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      return;
     } catch {
-      window.prompt(t("dockerfiles.build_modal.copy_fallback"), build.logs);
+      // Clipboard API unavailable (insecure context, permissions); fall back below.
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = build.logs;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand("copy");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } finally {
+      document.body.removeChild(textarea);
     }
   }
 
@@ -92,10 +107,14 @@ export function BuildModal({
           <DialogTitle>
             {t("dockerfiles.build_modal.title", { dockerfile: dockerfileName })}
           </DialogTitle>
-          {build && (
+          {build ? (
             <DialogDescription className="flex flex-wrap items-center gap-2">
               <Badge variant={statusVariant}>{statusLabel}</Badge>
               <code className="font-mono text-[11px]">{build.image_tag}</code>
+            </DialogDescription>
+          ) : (
+            <DialogDescription className="sr-only">
+              {t("dockerfiles.build_modal.running")}
             </DialogDescription>
           )}
         </DialogHeader>

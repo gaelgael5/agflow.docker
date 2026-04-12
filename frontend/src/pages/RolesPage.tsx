@@ -10,6 +10,7 @@ import { RoleSidebar } from "@/components/RoleSidebar";
 import { RoleGeneralTab } from "@/components/RoleGeneralTab";
 import { RolePromptTab } from "@/components/RolePromptTab";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
+import { PromptDialog } from "@/components/PromptDialog";
 import { Button } from "@/components/ui/button";
 import {
   Tabs,
@@ -19,7 +20,6 @@ import {
 } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { RoleSummary, Section } from "@/lib/rolesApi";
-import { slugify } from "@/lib/slugify";
 
 type Tab = "general" | "prompt" | "chat";
 
@@ -39,6 +39,10 @@ export function RolesPage() {
   const [tab, setTab] = useState<Tab>("general");
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [draftRole, setDraftRole] = useState<RoleSummary | null>(null);
+  const [showCreateRoleDialog, setShowCreateRoleDialog] = useState(false);
+  const [addDocSection, setAddDocSection] = useState<Section | null>(null);
+  const [showAddSectionDialog, setShowAddSectionDialog] = useState(false);
+  const [sectionError, setSectionError] = useState<string | null>(null);
 
   const detail = useRoleDetail(selectedRoleId);
   const docMutations = useRoleDocumentMutations(selectedRoleId ?? "");
@@ -48,12 +52,11 @@ export function RolesPage() {
   const allDocuments = sections.flatMap((s) => s.documents);
   const selectedDoc = allDocuments.find((d) => d.id === selectedDocId) ?? null;
 
-  async function handleCreateRole() {
-    const display_name = window.prompt(t("roles.general.display_name"));
-    if (!display_name) return;
-    const id = window.prompt(t("roles.general.id"), slugify(display_name));
-    if (!id) return;
-    const created = await createMutation.mutateAsync({ id, display_name });
+  async function handleCreateRole(values: Record<string, string>) {
+    const created = await createMutation.mutateAsync({
+      id: values.id ?? "",
+      display_name: values.display_name ?? "",
+    });
     setSelectedRoleId(created.id);
     setTab("general");
   }
@@ -99,36 +102,35 @@ export function RolesPage() {
     }
   }
 
-  async function handleAddDocument(section: Section) {
+  function handleAddDocument(section: Section) {
     if (!selectedRoleId) return;
-    const name = window.prompt(t("roles.sidebar.new_document_name"));
-    if (!name) return;
+    setAddDocSection(section);
+  }
+
+  async function handleAddDocumentSubmit(values: Record<string, string>) {
+    if (!selectedRoleId || !addDocSection) return;
     const doc = await docMutations.createDoc.mutateAsync({
-      section,
-      name,
+      section: addDocSection,
+      name: values.name ?? "",
       content_md: "",
       protected: false,
     });
     setSelectedDocId(doc.id);
   }
 
-  async function handleAddSection() {
+  async function handleAddSectionSubmit(values: Record<string, string>) {
     if (!selectedRoleId) return;
-    const display_name = window.prompt(
-      t("roles.sidebar.new_section_display_name"),
-    );
-    if (!display_name) return;
-    const name = window.prompt(
-      t("roles.sidebar.new_section_slug"),
-      slugify(display_name),
-    );
-    if (!name) return;
+    setSectionError(null);
     try {
-      await docMutations.createSection.mutateAsync({ name, display_name });
+      await docMutations.createSection.mutateAsync({
+        name: values.name ?? "",
+        display_name: values.display_name ?? "",
+      });
     } catch (e) {
       const detail = (e as { response?: { data?: { detail?: string } } })
         .response?.data?.detail;
-      window.alert(detail ?? t("roles.errors.generic"));
+      setSectionError(detail ?? t("roles.errors.generic"));
+      throw e;
     }
   }
 
@@ -169,7 +171,11 @@ export function RolesPage() {
           <h2 className="text-[13px] font-semibold text-foreground uppercase tracking-wider mb-2">
             {t("roles.page_title")}
           </h2>
-          <Button size="sm" onClick={handleCreateRole} className="w-full">
+          <Button
+            size="sm"
+            onClick={() => setShowCreateRoleDialog(true)}
+            className="w-full"
+          >
             <Plus className="w-3.5 h-3.5" />
             {t("roles.add_button")}
           </Button>
@@ -233,7 +239,10 @@ export function RolesPage() {
             selectedDocId={selectedDocId}
             onSelect={setSelectedDocId}
             onAdd={handleAddDocument}
-            onAddSection={handleAddSection}
+            onAddSection={() => {
+              setSectionError(null);
+              setShowAddSectionDialog(true);
+            }}
             onDeleteSection={handleDeleteSection}
           />
 
@@ -327,6 +336,55 @@ export function RolesPage() {
           {t("roles.select_role")}
         </main>
       )}
+
+      <PromptDialog
+        open={showCreateRoleDialog}
+        onOpenChange={setShowCreateRoleDialog}
+        title={t("roles.new_role_dialog_title")}
+        submitLabel={t("common.create")}
+        onSubmit={handleCreateRole}
+        fields={[
+          { name: "display_name", label: t("roles.general.display_name") },
+          {
+            name: "id",
+            label: t("roles.general.id"),
+            autoSlugFrom: "display_name",
+            monospace: true,
+          },
+        ]}
+      />
+
+      <PromptDialog
+        open={addDocSection !== null}
+        onOpenChange={(open) => !open && setAddDocSection(null)}
+        title={t("roles.sidebar.new_document_dialog_title")}
+        submitLabel={t("common.create")}
+        onSubmit={handleAddDocumentSubmit}
+        fields={[
+          { name: "name", label: t("roles.sidebar.new_document_name") },
+        ]}
+      />
+
+      <PromptDialog
+        open={showAddSectionDialog}
+        onOpenChange={setShowAddSectionDialog}
+        title={t("roles.sidebar.new_section_dialog_title")}
+        description={sectionError ?? undefined}
+        submitLabel={t("common.create")}
+        onSubmit={handleAddSectionSubmit}
+        fields={[
+          {
+            name: "display_name",
+            label: t("roles.sidebar.new_section_display_name"),
+          },
+          {
+            name: "name",
+            label: t("roles.sidebar.new_section_slug"),
+            autoSlugFrom: "display_name",
+            monospace: true,
+          },
+        ]}
+      />
     </div>
   );
 }

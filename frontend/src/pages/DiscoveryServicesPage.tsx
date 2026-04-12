@@ -4,6 +4,7 @@ import { CircleCheck, CircleX, Plus, Play, Trash2 } from "lucide-react";
 import { useDiscoveryServices } from "@/hooks/useCatalogs";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
+import { PromptDialog } from "@/components/PromptDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,7 +17,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { slugify } from "@/lib/slugify";
 import { discoveryApi, type ProbeResult } from "@/lib/catalogsApi";
 
 export function DiscoveryServicesPage() {
@@ -26,22 +26,20 @@ export function DiscoveryServicesPage() {
   const [testResults, setTestResults] = useState<Record<string, ProbeResult>>(
     {},
   );
+  const [showAddDialog, setShowAddDialog] = useState(false);
 
   const apiKeyVars = (services ?? [])
     .map((s) => s.api_key_var)
     .filter((v): v is string => Boolean(v));
   const envStatus = useEnvVarStatuses(apiKeyVars);
 
-  async function handleAdd() {
-    const name = window.prompt(t("discovery.prompt_name"));
-    if (!name) return;
-    const id = window.prompt(t("discovery.prompt_id"), slugify(name));
-    if (!id) return;
-    const base_url = window.prompt(t("discovery.prompt_base_url")) ?? "";
-    if (!base_url) return;
-    const api_key_var =
-      window.prompt(t("discovery.prompt_api_key_var")) || null;
-    await createMutation.mutateAsync({ id, name, base_url, api_key_var });
+  async function handleAdd(values: Record<string, string>) {
+    await createMutation.mutateAsync({
+      id: values.id ?? "",
+      name: values.name ?? "",
+      base_url: values.base_url ?? "",
+      api_key_var: values.api_key_var ? values.api_key_var : null,
+    });
   }
 
   async function handleTest(id: string) {
@@ -65,11 +63,35 @@ export function DiscoveryServicesPage() {
         title={t("discovery.page_title")}
         subtitle={t("discovery.page_subtitle")}
         actions={
-          <Button onClick={handleAdd}>
+          <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="w-4 h-4" />
             {t("discovery.add_button")}
           </Button>
         }
+      />
+
+      <PromptDialog
+        open={showAddDialog}
+        onOpenChange={setShowAddDialog}
+        title={t("discovery.add_dialog_title")}
+        submitLabel={t("common.create")}
+        onSubmit={handleAdd}
+        fields={[
+          { name: "name", label: t("discovery.prompt_name") },
+          {
+            name: "id",
+            label: t("discovery.prompt_id"),
+            autoSlugFrom: "name",
+            monospace: true,
+          },
+          { name: "base_url", label: t("discovery.prompt_base_url") },
+          {
+            name: "api_key_var",
+            label: t("discovery.prompt_api_key_var"),
+            required: false,
+            monospace: true,
+          },
+        ]}
       />
 
       <Card className="overflow-hidden">

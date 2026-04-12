@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useServiceTypes } from "@/hooks/useServiceTypes";
-import { slugify } from "@/lib/slugify";
+import { PromptDialog } from "@/components/PromptDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,21 +21,21 @@ export function ServiceTypesPage() {
   const { t } = useTranslation();
   const { serviceTypes, isLoading, createMutation, deleteMutation } =
     useServiceTypes();
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
-  async function handleAdd() {
-    const display_name = window.prompt(t("service_types.prompt_display_name"));
-    if (!display_name) return;
-    const name = window.prompt(
-      t("service_types.prompt_name"),
-      slugify(display_name),
-    );
-    if (!name) return;
+  async function handleAdd(values: Record<string, string>) {
+    setAddError(null);
     try {
-      await createMutation.mutateAsync({ name, display_name });
+      await createMutation.mutateAsync({
+        name: values.name ?? "",
+        display_name: values.display_name ?? "",
+      });
     } catch (e) {
       const detail = (e as { response?: { data?: { detail?: string } } })
         .response?.data?.detail;
-      window.alert(detail ?? t("service_types.error_generic"));
+      setAddError(detail ?? t("service_types.error_generic"));
+      throw e;
     }
   }
 
@@ -60,11 +61,37 @@ export function ServiceTypesPage() {
         title={t("service_types.page_title")}
         subtitle={t("service_types.page_subtitle")}
         actions={
-          <Button onClick={handleAdd}>
+          <Button
+            onClick={() => {
+              setAddError(null);
+              setShowAddDialog(true);
+            }}
+          >
             <Plus className="w-4 h-4" />
             {t("service_types.add_button")}
           </Button>
         }
+      />
+
+      <PromptDialog
+        open={showAddDialog}
+        onOpenChange={setShowAddDialog}
+        title={t("service_types.add_dialog_title")}
+        description={addError ?? undefined}
+        submitLabel={t("common.create")}
+        onSubmit={handleAdd}
+        fields={[
+          {
+            name: "display_name",
+            label: t("service_types.prompt_display_name"),
+          },
+          {
+            name: "name",
+            label: t("service_types.prompt_name"),
+            autoSlugFrom: "display_name",
+            monospace: true,
+          },
+        ]}
       />
 
       <Card className="overflow-hidden">

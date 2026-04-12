@@ -521,6 +521,21 @@
     "containers.chat:write": "Send tasks via chat",
     "keys:manage": "Manage own API keys (always active)"
   },
+  "vault": {
+    "setup_title": "Create your vault passphrase",
+    "setup_warning": "This passphrase is not stored anywhere. If you forget it, your secrets will be permanently lost.",
+    "setup_passphrase": "Passphrase",
+    "setup_confirm": "Confirm passphrase",
+    "setup_submit": "Create vault",
+    "setup_mismatch": "Passphrases do not match",
+    "setup_min_length": "8 characters minimum",
+    "setup_error_generic": "An error occurred",
+    "unlock_title": "Unlock your vault",
+    "unlock_subtitle": "Enter your passphrase to access your secrets",
+    "unlock_passphrase": "Passphrase",
+    "unlock_submit": "Unlock",
+    "unlock_error": "Incorrect passphrase"
+  },
   "agent_editor": {
     "title_new": "New agent",
     "title_edit": "Edit — {{name}}",

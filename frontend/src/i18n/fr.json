@@ -521,6 +521,21 @@
     "containers.chat:write": "Envoyer des tâches via le chat",
     "keys:manage": "Gérer ses propres clés API (toujours actif)"
   },
+  "vault": {
+    "setup_title": "Créez votre passphrase coffre-fort",
+    "setup_warning": "Cette passphrase n'est stockée nulle part. Si vous l'oubliez, vos secrets seront définitivement perdus.",
+    "setup_passphrase": "Passphrase",
+    "setup_confirm": "Confirmer la passphrase",
+    "setup_submit": "Créer le coffre-fort",
+    "setup_mismatch": "Les passphrases ne correspondent pas",
+    "setup_min_length": "8 caractères minimum",
+    "setup_error_generic": "Une erreur est survenue",
+    "unlock_title": "Déverrouillez votre coffre-fort",
+    "unlock_subtitle": "Entrez votre passphrase pour accéder à vos secrets",
+    "unlock_passphrase": "Passphrase",
+    "unlock_submit": "Déverrouiller",
+    "unlock_error": "Passphrase incorrecte"
+  },
   "agent_editor": {
     "title_new": "Nouvel agent",
     "title_edit": "Éditer — {{name}}",

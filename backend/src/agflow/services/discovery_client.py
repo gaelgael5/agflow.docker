@@ -90,14 +90,15 @@ async def search_mcp(
     base_url: str,
     api_key: str | None,
     query: str,
-    semantic: bool = False,  # kept for API compat; yoops has no semantic mode
+    semantic: bool = False,
     client: httpx.AsyncClient | None = None,
 ) -> list[dict[str, Any]]:
-    del semantic  # ignored — real registry does not support semantic search
     url = base_url.rstrip("/") + "/services"
     params: dict[str, Any] = {"limit": 50}
     if query:
         params["search"] = query
+    if semantic:
+        params["semantic"] = 1
     async with _maybe_client(client) as c:
         response = await c.get(url, headers=_headers(api_key), params=params)
     response.raise_for_status()

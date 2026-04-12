@@ -24,6 +24,7 @@ interface Props<T> {
 
 export function SearchModal<T>({
   title,
+  showSemantic = false,
   onSearch,
   onAdd,
   renderItem,
@@ -31,6 +32,7 @@ export function SearchModal<T>({
 }: Props<T>) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
+  const [semantic, setSemantic] = useState(false);
   const [results, setResults] = useState<T[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +41,7 @@ export function SearchModal<T>({
     setLoading(true);
     setError(null);
     try {
-      const items = await onSearch(query, false);
+      const items = await onSearch(query, semantic);
       setResults(items);
     } catch {
       setError(t("search_modal.error"));
@@ -80,6 +82,17 @@ export function SearchModal<T>({
               className="pl-9"
             />
           </div>
+          {showSemantic && (
+            <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground whitespace-nowrap cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={semantic}
+                onChange={(e) => setSemantic(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border border-input accent-primary"
+              />
+              {t("search_modal.semantic_label")}
+            </label>
+          )}
           <Button onClick={handleSearch} disabled={loading}>
             {loading
               ? t("search_modal.loading")

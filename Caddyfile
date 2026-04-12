@@ -1,5 +1,5 @@
 :80 {
-    @backend path /api/* /health
+    @backend path /api/* /health /docs /redoc /openapi.json
     handle @backend {
         reverse_proxy backend:8000
     }

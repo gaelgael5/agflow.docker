@@ -536,6 +536,27 @@
     "unlock_submit": "Unlock",
     "unlock_error": "Incorrect passphrase"
   },
+  "my_secrets": {
+    "page_title": "My secrets",
+    "page_subtitle": "Your secrets are end-to-end encrypted. Only your passphrase can decrypt them.",
+    "vault_unlocked": "Vault unlocked",
+    "lock_button": "Lock",
+    "col_name": "Name",
+    "col_value": "Value",
+    "col_actions": "Actions",
+    "add_button": "+ Add secret",
+    "reveal_button": "Reveal",
+    "hide_button": "Hide",
+    "edit_button": "Edit",
+    "delete_button": "Delete",
+    "confirm_delete": "Delete secret \"{{name}}\"?",
+    "add_dialog_title": "New secret",
+    "edit_dialog_title": "Edit secret",
+    "field_name": "Variable name",
+    "field_value": "Value",
+    "decrypt_error": "Decryption error",
+    "empty": "No secrets — add your first API key"
+  },
   "agent_editor": {
     "title_new": "New agent",
     "title_edit": "Edit — {{name}}",

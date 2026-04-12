@@ -13,12 +13,18 @@ import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { PromptDialog } from "@/components/PromptDialog";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 import type { RoleSummary, Section } from "@/lib/rolesApi";
 
 type Tab = "general" | "prompt" | "chat";
@@ -164,178 +170,166 @@ export function RolesPage() {
     return <p className="p-6 text-muted-foreground">{t("secrets.loading")}</p>;
 
   return (
-    <div className="flex h-full min-h-[calc(100vh-3.5rem)] overflow-hidden">
-      {/* Left: roles list */}
-      <aside className="w-64 shrink-0 border-r bg-muted/30 flex flex-col overflow-hidden">
-        <div className="p-4 border-b">
-          <h2 className="text-[13px] font-semibold text-foreground uppercase tracking-wider mb-2">
-            {t("roles.page_title")}
-          </h2>
-          <Button
-            size="sm"
-            onClick={() => setShowCreateRoleDialog(true)}
-            className="w-full"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            {t("roles.add_button")}
-          </Button>
-        </div>
+    <div className="flex flex-col h-full min-h-[calc(100vh-3.5rem)] overflow-hidden">
+      {/* Header row: dropdown + action buttons */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b bg-background shrink-0 flex-wrap">
+        <Select
+          value={selectedRoleId ?? ""}
+          onValueChange={(value) => {
+            setSelectedRoleId(value || null);
+            setSelectedDocId(null);
+            setDraftRole(null);
+          }}
+        >
+          <SelectTrigger className="w-56">
+            <SelectValue placeholder={t("roles.select_role")} />
+          </SelectTrigger>
+          <SelectContent>
+            {(roles ?? []).map((r) => (
+              <SelectItem key={r.id} value={r.id}>
+                {r.display_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        <div className="flex-1 overflow-y-auto p-2">
-          {(roles ?? []).length === 0 ? (
-            <p className="text-muted-foreground text-[12px] italic px-2 py-2">
-              {t("roles.no_roles")}
-            </p>
-          ) : (
-            <ul className="space-y-0.5">
-              {roles?.map((r) => {
-                const active = selectedRoleId === r.id;
-                return (
-                  <li key={r.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedRoleId(r.id);
-                        setSelectedDocId(null);
-                        setDraftRole(null);
-                      }}
-                      className={cn(
-                        "w-full text-left px-2.5 py-2 rounded-md text-[13px] font-medium transition-colors",
-                        active
-                          ? "bg-primary/10 text-primary"
-                          : "hover:bg-secondary text-foreground",
-                      )}
-                    >
-                      {r.display_name}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setShowCreateRoleDialog(true)}
+        >
+          <Plus className="w-3.5 h-3.5" />
+          {t("roles.add_button")}
+        </Button>
 
-        {selectedRoleId && (
-          <div className="p-3 border-t">
+        {selectedRoleId && currentRole && (
+          <>
+            <div className="w-px h-5 bg-border mx-1 shrink-0" />
+            <span className="text-[12px] text-muted-foreground font-mono">
+              {currentRole.id}
+            </span>
             <Button
               size="sm"
               variant="ghost"
               onClick={handleDeleteRole}
-              className="w-full text-destructive"
+              className="text-destructive ml-auto"
             >
               <Trash2 className="w-3.5 h-3.5" />
               {t("roles.delete_button")}
             </Button>
-          </div>
+          </>
         )}
-      </aside>
+      </div>
 
-      {selectedRoleId && detail.data && currentRole ? (
-        <>
-          {/* Middle: documents sidebar */}
-          <RoleSidebar
-            sections={sections}
-            documents={allDocuments}
-            selectedDocId={selectedDocId}
-            onSelect={setSelectedDocId}
-            onAdd={handleAddDocument}
-            onAddSection={() => {
-              setSectionError(null);
-              setShowAddSectionDialog(true);
-            }}
-            onDeleteSection={handleDeleteSection}
-          />
+      {/* Body: RoleSidebar + main content */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {selectedRoleId && detail.data && currentRole ? (
+          <>
+            {/* Left: documents sidebar */}
+            <RoleSidebar
+              sections={sections}
+              documents={allDocuments}
+              selectedDocId={selectedDocId}
+              onSelect={setSelectedDocId}
+              onAdd={handleAddDocument}
+              onAddSection={() => {
+                setSectionError(null);
+                setShowAddSectionDialog(true);
+              }}
+              onDeleteSection={handleDeleteSection}
+            />
 
-          {/* Right: main content */}
-          <main className="flex-1 min-w-0 overflow-y-auto">
-            <div className="px-6 py-5 border-b">
-              <h2 className="text-[18px] font-semibold text-foreground truncate">
-                {currentRole.display_name}
-              </h2>
-              <p className="text-[12px] text-muted-foreground font-mono mt-0.5">
-                {currentRole.id}
-              </p>
-            </div>
+            {/* Right: main content */}
+            <main className="flex-1 min-w-0 overflow-y-auto">
+              <div className="px-6 py-5 border-b">
+                <h2 className="text-[18px] font-semibold text-foreground truncate">
+                  {currentRole.display_name}
+                </h2>
+                <p className="text-[12px] text-muted-foreground font-mono mt-0.5">
+                  {currentRole.id}
+                </p>
+              </div>
 
-            <div className="px-6 py-5">
-              {selectedDoc ? (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <h3 className="text-[15px] font-semibold">
-                      {selectedDoc.name}
-                    </h3>
-                    {selectedDoc.protected && (
-                      <span className="text-[11px] text-muted-foreground">
-                        🔒
-                      </span>
-                    )}
+              <div className="px-6 py-5">
+                {selectedDoc ? (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <h3 className="text-[15px] font-semibold">
+                        {selectedDoc.name}
+                      </h3>
+                      {selectedDoc.protected && (
+                        <span className="text-[11px] text-muted-foreground">
+                          🔒
+                        </span>
+                      )}
+                    </div>
+                    <MarkdownEditor
+                      value={selectedDoc.content_md}
+                      onChange={handleDocumentChange}
+                      readOnly={selectedDoc.protected}
+                      minHeight={400}
+                    />
                   </div>
-                  <MarkdownEditor
-                    value={selectedDoc.content_md}
-                    onChange={handleDocumentChange}
-                    readOnly={selectedDoc.protected}
-                    minHeight={400}
-                  />
-                </div>
-              ) : (
-                <Tabs
-                  value={tab}
-                  onValueChange={(v) => {
-                    setTab(v as Tab);
-                    setSelectedDocId(null);
-                  }}
-                >
-                  <TabsList>
-                    <TabsTrigger value="general">
-                      {t("roles.tab_general")}
-                    </TabsTrigger>
-                    <TabsTrigger value="prompt">
-                      {t("roles.tab_prompt")}
-                    </TabsTrigger>
-                    <TabsTrigger value="chat">
-                      {t("roles.tab_chat")}
-                    </TabsTrigger>
-                  </TabsList>
+                ) : (
+                  <Tabs
+                    value={tab}
+                    onValueChange={(v) => {
+                      setTab(v as Tab);
+                      setSelectedDocId(null);
+                    }}
+                  >
+                    <TabsList>
+                      <TabsTrigger value="general">
+                        {t("roles.tab_general")}
+                      </TabsTrigger>
+                      <TabsTrigger value="prompt">
+                        {t("roles.tab_prompt")}
+                      </TabsTrigger>
+                      <TabsTrigger value="chat">
+                        {t("roles.tab_chat")}
+                      </TabsTrigger>
+                    </TabsList>
 
-                  <TabsContent value="general">
-                    <RoleGeneralTab
-                      role={currentRole}
-                      onChange={handleRoleFieldChange}
-                    />
-                    {draftRole && (
-                      <div className="mt-4">
-                        <Button onClick={handleSaveRole}>
-                          <Save className="w-4 h-4" />
-                          {t("roles.save")}
-                        </Button>
-                      </div>
-                    )}
-                  </TabsContent>
+                    <TabsContent value="general">
+                      <RoleGeneralTab
+                        role={currentRole}
+                        onChange={handleRoleFieldChange}
+                      />
+                      {draftRole && (
+                        <div className="mt-4">
+                          <Button onClick={handleSaveRole}>
+                            <Save className="w-4 h-4" />
+                            {t("roles.save")}
+                          </Button>
+                        </div>
+                      )}
+                    </TabsContent>
 
-                  <TabsContent value="prompt">
-                    <RolePromptTab
-                      role={currentRole}
-                      onRegenerate={handleGenerate}
-                      regenerating={generateMutation.isPending}
-                      error={generateError}
-                    />
-                  </TabsContent>
+                    <TabsContent value="prompt">
+                      <RolePromptTab
+                        role={currentRole}
+                        onRegenerate={handleGenerate}
+                        regenerating={generateMutation.isPending}
+                        error={generateError}
+                      />
+                    </TabsContent>
 
-                  <TabsContent value="chat">
-                    <p className="text-muted-foreground italic text-[13px]">
-                      {t("roles.chat_placeholder")}
-                    </p>
-                  </TabsContent>
-                </Tabs>
-              )}
-            </div>
+                    <TabsContent value="chat">
+                      <p className="text-muted-foreground italic text-[13px]">
+                        {t("roles.chat_placeholder")}
+                      </p>
+                    </TabsContent>
+                  </Tabs>
+                )}
+              </div>
+            </main>
+          </>
+        ) : (
+          <main className="flex-1 flex items-center justify-center text-muted-foreground text-[13px] italic">
+            {t("roles.select_role")}
           </main>
-        </>
-      ) : (
-        <main className="flex-1 flex items-center justify-center text-muted-foreground text-[13px] italic">
-          {t("roles.select_role")}
-        </main>
-      )}
+        )}
+      </div>
 
       <PromptDialog
         open={showCreateRoleDialog}

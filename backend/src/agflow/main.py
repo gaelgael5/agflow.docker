@@ -29,8 +29,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level)
     log = structlog.get_logger(__name__)
     log.info("app.startup", environment=settings.environment)
+    from pathlib import Path
+
+    from agflow.db.migrations import run_migrations
     from agflow.services import users_service
 
+    migrations_dir = Path(__file__).parent.parent.parent / "migrations"
+    await run_migrations(migrations_dir)
     await users_service.seed_admin(settings.admin_email)
     yield
     log.info("app.shutdown")

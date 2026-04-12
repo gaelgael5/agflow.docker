@@ -55,6 +55,7 @@ describe("AgentsPage", () => {
         network_mode: "bridge",
         graceful_shutdown_secs: 30,
         force_kill_delay_secs: 10,
+        is_assistant: false,
         created_at: "2026-04-11",
         updated_at: "2026-04-11",
         has_errors: false,

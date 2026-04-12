@@ -7,6 +7,7 @@ interface Props {
   onOpenSidebar?: () => void;
   onToggleAssistant?: () => void;
   assistantActive?: boolean;
+  assistantName?: string;
 }
 
 interface Crumb {
@@ -59,7 +60,7 @@ function resolveCrumbs(path: string, t: (k: string) => string): Crumb | null {
   return null;
 }
 
-export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive }: Props) {
+export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive, assistantName }: Props) {
   const { t } = useTranslation();
   const location = useLocation();
   const crumb = resolveCrumbs(location.pathname, t);
@@ -102,22 +103,25 @@ export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive }: Pr
         >
           <Search className="w-4 h-4" />
         </button>
-        {onToggleAssistant && (
-          <button
-            type="button"
-            onClick={onToggleAssistant}
-            className={cn(
-              "hidden sm:flex w-8 h-8 rounded-md items-center justify-center transition-colors",
-              assistantActive
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-secondary text-muted-foreground",
-            )}
-            aria-label="Assistant"
-            title="Assistant"
-          >
-            <BotMessageSquare className="w-4 h-4" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onToggleAssistant}
+          disabled={!onToggleAssistant}
+          className={cn(
+            "hidden sm:flex w-8 h-8 rounded-md items-center justify-center transition-colors",
+            !onToggleAssistant && "opacity-30 cursor-not-allowed",
+            onToggleAssistant && assistantActive && "bg-primary text-primary-foreground",
+            onToggleAssistant && !assistantActive && "hover:bg-secondary text-muted-foreground",
+          )}
+          aria-label="Assistant"
+          title={
+            onToggleAssistant
+              ? `Assistant — ${assistantName ?? "?"}`
+              : t("assistant.not_configured")
+          }
+        >
+          <BotMessageSquare className="w-4 h-4" />
+        </button>
         <button
           type="button"
           className="hidden sm:flex w-8 h-8 rounded-md hover:bg-secondary items-center justify-center text-muted-foreground transition-colors"

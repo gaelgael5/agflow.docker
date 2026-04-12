@@ -71,6 +71,7 @@ class AgentSummary(BaseModel):
     network_mode: NetworkMode
     graceful_shutdown_secs: int
     force_kill_delay_secs: int
+    is_assistant: bool = False
     created_at: datetime
     updated_at: datetime
     has_errors: bool = False

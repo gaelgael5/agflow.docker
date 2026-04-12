@@ -2,6 +2,11 @@
   "app": {
     "title": "agflow.docker"
   },
+  "assistant": {
+    "not_configured": "No agent is configured as assistant. Designate one in the agent editor.",
+    "toggle_label": "Use as assistant",
+    "toggle_hint": "This agent will be used for the global chat accessible from the navigation bar."
+  },
   "common": {
     "cancel": "Cancel",
     "confirm": "Confirm",

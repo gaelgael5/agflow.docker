@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   BookMarked,
@@ -52,13 +53,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type {
-  AgentCreatePayload,
-  AgentMCPBinding,
-  AgentProfileSummary,
-  AgentSkillBinding,
-  ConfigPreview,
-  NetworkMode,
+import {
+  agentsApi,
+  type AgentCreatePayload,
+  type AgentMCPBinding,
+  type AgentProfileSummary,
+  type AgentSkillBinding,
+  type ConfigPreview,
+  type NetworkMode,
 } from "@/lib/agentsApi";
 
 type EnvEntry = { key: string; value: string };
@@ -110,6 +112,7 @@ function envEntriesToObject(entries: EnvEntry[]): Record<string, string> {
 export function AgentEditorPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === "new";
 
@@ -891,6 +894,42 @@ export function AgentEditorPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Assistant toggle */}
+      {!isNew && agent && (
+        <Card className="mb-6">
+          <CardContent className="pt-5">
+            <div className="flex items-center gap-3">
+              <input
+                id="is-assistant"
+                type="checkbox"
+                checked={agent.is_assistant}
+                onChange={async (e) => {
+                  try {
+                    if (e.target.checked) {
+                      await agentsApi.setAssistant(agent.id);
+                    } else {
+                      await agentsApi.clearAssistant();
+                    }
+                    qc.invalidateQueries({ queryKey: ["agents"] });
+                    if (id) qc.invalidateQueries({ queryKey: ["agent", id] });
+                    qc.invalidateQueries({ queryKey: ["assistant-agent"] });
+                  } catch {
+                    // silently fail
+                  }
+                }}
+                className="h-4 w-4 rounded border border-input accent-primary"
+              />
+              <Label htmlFor="is-assistant" className="cursor-pointer">
+                {t("assistant.toggle_label")}
+              </Label>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1 ml-7">
+              {t("assistant.toggle_hint")}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Danger zone */}
       {!isNew && (

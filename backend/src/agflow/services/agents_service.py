@@ -24,7 +24,7 @@ _log = structlog.get_logger(__name__)
 _COLS = (
     "id, slug, display_name, description, dockerfile_id, role_id, env_vars, "
     "timeout_seconds, workspace_path, network_mode, graceful_shutdown_secs, "
-    "force_kill_delay_secs, created_at, updated_at"
+    "force_kill_delay_secs, is_assistant, created_at, updated_at"
 )
 
 
@@ -321,3 +321,27 @@ async def duplicate(
         skill_bindings=source.skill_bindings,
     )
     return await create(payload)
+
+
+async def get_assistant() -> AgentSummary | None:
+    row = await fetch_one(
+        f"SELECT {_COLS} FROM agents WHERE is_assistant = TRUE LIMIT 1"
+    )
+    return _summary(row) if row else None
+
+
+async def set_assistant(agent_id: UUID) -> None:
+    """Mark an agent as the application assistant. Clears the flag on all others."""
+    pool = await get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute("UPDATE agents SET is_assistant = FALSE WHERE is_assistant = TRUE")
+        result = await conn.execute(
+            "UPDATE agents SET is_assistant = TRUE WHERE id = $1", agent_id
+        )
+    if result == "UPDATE 0":
+        raise AgentNotFoundError(f"Agent {agent_id} not found")
+    _log.info("agents.set_assistant", agent_id=str(agent_id))
+
+
+async def clear_assistant() -> None:
+    await execute("UPDATE agents SET is_assistant = FALSE WHERE is_assistant = TRUE")

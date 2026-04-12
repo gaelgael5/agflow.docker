@@ -27,6 +27,7 @@ export interface AgentSummary {
   network_mode: NetworkMode;
   graceful_shutdown_secs: number;
   force_kill_delay_secs: number;
+  is_assistant: boolean;
   created_at: string;
   updated_at: string;
   has_errors: boolean;
@@ -179,5 +180,18 @@ export const agentsApi = {
 
   deleteProfile: async (agentId: string, profileId: string): Promise<void> => {
     await api.delete(`/admin/agents/${agentId}/profiles/${profileId}`);
+  },
+
+  getAssistant: async (): Promise<AgentSummary | null> => {
+    const res = await api.get<AgentSummary | null>("/admin/agents/assistant");
+    return res.data;
+  },
+
+  setAssistant: async (agentId: string): Promise<void> => {
+    await api.post(`/admin/agents/${agentId}/set-assistant`);
+  },
+
+  clearAssistant: async (): Promise<void> => {
+    await api.delete("/admin/agents/assistant");
   },
 };

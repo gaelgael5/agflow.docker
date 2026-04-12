@@ -9,6 +9,8 @@ from fastapi import FastAPI
 from agflow.api.admin.agents import router as admin_agents_router
 from agflow.api.admin.api_keys import router as admin_api_keys_router
 from agflow.api.admin.auth import router as admin_auth_router
+from agflow.api.admin.user_secrets import router as admin_user_secrets_router
+from agflow.api.admin.vault import router as admin_vault_router
 from agflow.api.admin.containers import router as admin_containers_router
 from agflow.api.admin.discovery_services import router as admin_discovery_router
 from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
@@ -60,6 +62,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_agents_router)
     app.include_router(admin_users_router)
     app.include_router(admin_api_keys_router)
+    app.include_router(admin_vault_router)
+    app.include_router(admin_user_secrets_router)
     return app
 
 

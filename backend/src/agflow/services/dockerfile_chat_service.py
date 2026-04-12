@@ -27,7 +27,6 @@ class GeneratedDockerfile(BaseModel):
 
     dockerfile: str = Field(description="Content of the Dockerfile")
     entrypoint_sh: str = Field(description="Content of entrypoint.sh")
-    run_cmd_md: str = Field(description="Content of run.cmd.md documentation")
     reasoning: str = Field(
         default="",
         description="Short plain-text summary of the choices the LLM made",
@@ -38,7 +37,7 @@ _SYSTEM_PROMPT = """\
 You are an expert DevOps engineer specialized in creating Docker images for \
 AI CLI agents (claude-code, aider, codex, goose, etc.). Given a short \
 natural-language description of the agent the user wants, you generate \
-three standard files in strict JSON:
+two standard files in strict JSON:
 
 1. **Dockerfile** — a minimal, well-documented Dockerfile that:
    - starts from a slim base image (python:3.12-slim or node:20-alpine \
@@ -58,18 +57,11 @@ three standard files in strict JSON:
    - handles SIGTERM and prints a final `{"type":"shutdown"}` event,
    - exits 0 on success, 1 on error.
 
-3. **run.cmd.md** — a concise markdown doc that:
-   - explains what the agent does (1 line),
-   - shows the `docker run` command with the normalized volumes mounted,
-   - lists the environment variables the container expects,
-   - describes the stdin/stdout contract in 3-5 lines.
-
 Respond with a SINGLE JSON object matching this schema exactly, no \
 markdown fences, no prose outside the JSON:
 {
   "dockerfile": "...",
   "entrypoint_sh": "...",
-  "run_cmd_md": "...",
   "reasoning": "1-3 sentences explaining your choices"
 }
 """
@@ -111,7 +103,7 @@ def _parse_response(text: str) -> GeneratedDockerfile:
 
 
 async def generate(description: str) -> GeneratedDockerfile:
-    """Generate a Dockerfile + entrypoint.sh + run.cmd.md from a description."""
+    """Generate a Dockerfile + entrypoint.sh from a description."""
     client = await _get_client()
     _log.info("dockerfile_chat.generate.start", description_len=len(description))
 
@@ -132,6 +124,5 @@ async def generate(description: str) -> GeneratedDockerfile:
         "dockerfile_chat.generate.done",
         dockerfile_len=len(parsed.dockerfile),
         entrypoint_len=len(parsed.entrypoint_sh),
-        run_cmd_len=len(parsed.run_cmd_md),
     )
     return parsed

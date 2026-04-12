@@ -54,11 +54,61 @@ async def test_duplicate_path_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_list_for_dockerfile() -> None:
-    await files.create(dockerfile_id="test", path="run.cmd.md", content="")
-
+    # The fixture auto-seeds the 3 standard files.
     items = await files.list_for_dockerfile("test")
     paths = {i.path for i in items}
-    assert paths == {"Dockerfile", "entrypoint.sh", "run.cmd.md"}
+    assert paths == {
+        "Dockerfile",
+        "entrypoint.sh",
+        "Dockerfile.json",
+    }
+
+
+@pytest.mark.asyncio
+async def test_protected_files_cannot_be_deleted() -> None:
+    items = await files.list_for_dockerfile("test")
+    by_path = {i.path: i for i in items}
+    for protected in ("Dockerfile", "entrypoint.sh", "Dockerfile.json"):
+        with pytest.raises(files.ProtectedFileError):
+            await files.delete(by_path[protected].id)
+
+
+@pytest.mark.asyncio
+async def test_dockerfile_json_seeded_with_defaults() -> None:
+    import json
+
+    items = await files.list_for_dockerfile("test")
+    dockerfile_json = next(i for i in items if i.path == "Dockerfile.json")
+    parsed = json.loads(dockerfile_json.content)
+
+    # Top-level shape: docker + Params
+    assert set(parsed.keys()) == {"docker", "Params"}
+
+    docker = parsed["docker"]
+    assert docker["Container"] == {
+        "Name": "agent-{slug}-{id}",
+        "Image": "agflow-{slug}:{hash}",
+    }
+    assert docker["Network"] == {"Mode": "bridge"}
+    assert docker["Runtime"] == {
+        "Init": True,
+        "StopSignal": "SIGTERM",
+        "StopTimeout": 30,
+        "WorkingDir": "/app",
+    }
+    assert docker["Resources"] == {"Memory": "2g", "Cpus": "1.5"}
+    assert docker["Environments"] == {"ANTHROPIC_API_KEY": "{API_KEY_NAME}"}
+    assert docker["Mounts"] == [
+        {"source": "{WORKSPACE_PATH}", "target": "/app/workspace", "readonly": False},
+        {"source": "./config", "target": "/app/config", "readonly": True},
+        {"source": "./skills", "target": "/app/skills", "readonly": True},
+        {"source": "./output", "target": "/app/output", "readonly": False},
+    ]
+
+    assert parsed["Params"] == {
+        "API_KEY_NAME": "ANTHROPIC_API_KEY",
+        "WORKSPACE_PATH": "${WORKSPACE_PATH:-./workspace}",
+    }
 
 
 @pytest.mark.asyncio

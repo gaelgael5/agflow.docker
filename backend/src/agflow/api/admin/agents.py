@@ -48,6 +48,16 @@ async def create_agent(payload: AgentCreate) -> AgentDetail:
         ) from exc
 
 
+@router.get("/assistant", response_model=AgentSummary | None)
+async def get_assistant() -> AgentSummary | None:
+    return await agents_service.get_assistant()
+
+
+@router.delete("/assistant", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_assistant() -> None:
+    await agents_service.clear_assistant()
+
+
 @router.get("/{agent_id}", response_model=AgentDetail)
 async def get_agent(agent_id: UUID) -> AgentDetail:
     try:
@@ -225,23 +235,3 @@ async def delete_profile(agent_id: UUID, profile_id: UUID) -> None:
     await agent_profiles_service.delete(profile_id)
 
 
-@router.get("/assistant", response_model=AgentSummary | None)
-async def get_assistant() -> AgentSummary | None:
-    return await agents_service.get_assistant()
-
-
-@router.post(
-    "/{agent_id}/set-assistant", status_code=status.HTTP_204_NO_CONTENT
-)
-async def set_assistant(agent_id: UUID) -> None:
-    try:
-        await agents_service.set_assistant(agent_id)
-    except agents_service.AgentNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
-        ) from exc
-
-
-@router.delete("/assistant", status_code=status.HTTP_204_NO_CONTENT)
-async def clear_assistant() -> None:
-    await agents_service.clear_assistant()

@@ -7,7 +7,7 @@ from uuid import UUID
 import asyncpg
 import structlog
 
-from agflow.db.pool import fetch_all, get_pool
+from agflow.db.pool import execute, fetch_all, fetch_one, get_pool
 from agflow.schemas.agents import (
     AgentCreate,
     AgentDetail,

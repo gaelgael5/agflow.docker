@@ -60,8 +60,33 @@ class FileCreate(BaseModel):
         return v
 
 
+class FileCreateBase64(BaseModel):
+    """FileCreate where content is base64-encoded."""
+
+    path: str = Field(min_length=1, max_length=200)
+    content: str = ""
+    encoding: str = "base64"
+
+    @field_validator("path")
+    @classmethod
+    def _clean_path(cls, v: str) -> str:
+        v = v.strip()
+        if "/" in v or "\\" in v:
+            raise ValueError("path must be a flat filename (no directories)")
+        if not v:
+            raise ValueError("path cannot be empty")
+        return v
+
+
 class FileUpdate(BaseModel):
     content: str | None = None
+
+
+class FileUpdateBase64(BaseModel):
+    """FileUpdate where content is base64-encoded."""
+
+    content: str | None = None
+    encoding: str = "base64"
 
 
 class FileSummary(BaseModel):
@@ -69,6 +94,19 @@ class FileSummary(BaseModel):
     dockerfile_id: str
     path: str
     content: str
+    encoding: str = "utf-8"
+    created_at: datetime
+    updated_at: datetime
+
+
+class FileSummaryBase64(BaseModel):
+    """Same as FileSummary but content is base64-encoded (for API responses)."""
+
+    id: UUID
+    dockerfile_id: str
+    path: str
+    content: str
+    encoding: str = "base64"
     created_at: datetime
     updated_at: datetime
 

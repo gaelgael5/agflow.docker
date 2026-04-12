@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     environment: str = "dev"
     log_level: str = "INFO"
     jwt_expire_hours: int = 24
+    api_key_salt: str = ""
 
 
 def get_settings() -> Settings:

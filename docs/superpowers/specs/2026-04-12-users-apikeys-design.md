@@ -46,13 +46,12 @@ Le backend distingue les deux par le préfixe `agfd_`. Si le token commence par 
 ```sql
 CREATE TABLE IF NOT EXISTS users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    google_id   TEXT UNIQUE,                          -- NULL tant que Google OAuth n'est pas implémenté
     email       TEXT NOT NULL UNIQUE,
     name        TEXT NOT NULL DEFAULT '',
     avatar_url  TEXT NOT NULL DEFAULT '',
     role        TEXT NOT NULL DEFAULT 'user'
                 CHECK (role IN ('admin', 'user')),
-    scopes      TEXT[] NOT NULL DEFAULT '{}',      -- scopes assignés par l'admin
+    scopes      TEXT[] NOT NULL DEFAULT '{}',
     status      TEXT NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'active', 'disabled')),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -70,10 +69,9 @@ CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 | Colonne | Type | Description |
 |---|---|---|
 | `id` | UUID | PK, auto-généré |
-| `google_id` | TEXT | Google `sub` claim (NULL pour l'admin initial et tant que OAuth pas implémenté) |
 | `email` | TEXT | Email unique, sert de login pour l'admin legacy |
 | `name` | TEXT | Nom affiché |
-| `avatar_url` | TEXT | URL photo Google (vide si pas d'OAuth) |
+| `avatar_url` | TEXT | URL photo provider (vide si pas d'OAuth) |
 | `role` | TEXT | `admin` ou `user` — l'admin choisit à la main |
 | `scopes` | TEXT[] | Scopes assignés par l'admin. Ex: `{roles:read, roles:write, agents:read, agents:run}`. L'admin a implicitement `{*}` (pas besoin de lister). Un user ne peut créer des API keys qu'avec un sous-ensemble de SES scopes. |
 | `status` | TEXT | `pending` (inscrit, non approuvé), `active` (approuvé), `disabled` (désactivé) |
@@ -81,6 +79,61 @@ CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 | `approved_at` | TIMESTAMPTZ | Date d'approbation par l'admin |
 | `approved_by` | UUID FK → users | Qui a approuvé |
 | `last_login` | TIMESTAMPTZ | Dernier login réussi |
+
+La table `users` ne contient **aucun champ lié à un provider OAuth spécifique**. Le lien se fait via la table `user_identities` ci-dessous.
+
+### 2.2 Table `user_identities`
+
+```sql
+CREATE TABLE IF NOT EXISTS user_identities (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider    TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    email       TEXT,
+    name        TEXT,
+    avatar_url  TEXT,
+    raw_claims  JSONB,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (provider, subject)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_identities_lookup ON user_identities(provider, subject);
+```
+
+**Champs** :
+
+| Colonne | Type | Description |
+|---|---|---|
+| `id` | UUID | PK |
+| `user_id` | UUID FK → users | Le user agflow auquel cette identité est rattachée. `ON DELETE CASCADE` |
+| `provider` | TEXT | Identifiant du provider : `google`, `facebook`, `github`, `microsoft`, etc. |
+| `subject` | TEXT | ID unique chez le provider (Google `sub`, GitHub `id`, etc.). Immutable |
+| `email` | TEXT | Email retourné par le provider (peut différer de `users.email`) |
+| `name` | TEXT | Nom retourné par le provider |
+| `avatar_url` | TEXT | URL avatar du provider |
+| `raw_claims` | JSONB | Payload OpenID / OAuth complet (pour debug et audit) |
+| `created_at` | TIMESTAMPTZ | Date de liaison |
+
+**Contrainte** : `UNIQUE (provider, subject)` — un même couple provider+subject ne peut être lié qu'à un seul user.
+
+**Un user peut avoir N identities** (ex: Google + GitHub liés au même compte).
+
+**Flow OAuth générique** (implémentation future, hors scope de cette spec) :
+1. Frontend → `GET /api/auth/{provider}/url` → backend retourne l'URL de consentement
+2. Redirect navigateur vers le provider → l'utilisateur consent
+3. Provider redirige vers `/api/auth/{provider}/callback?code=xxx`
+4. Backend échange le `code` contre un `access_token` → lit email, name, avatar, subject
+5. Lookup `user_identities(provider, subject)` :
+   - **Trouvé** → charge le user existant
+   - **Pas trouvé** → lookup `users(email)` (match par email cross-provider) :
+     - Si user existe → lie la nouvelle identité (`INSERT user_identities`)
+     - Si pas de user → crée un nouveau user `status: pending` + lie l'identité
+6. Si `status: active` → émet un JWT agflow → retour au frontend
+7. Si `status: pending` → retourne 403 "Compte en attente de validation"
+
+**L'admin actuel (login email/password)** reste fonctionnel en parallèle comme fallback.
 
 **Cycle de vie** :
 
@@ -95,7 +148,7 @@ Inscription (Google OAuth ou création admin)
 
 **Admin initial** : à la première migration, un user admin est seedé à partir des env vars existantes (`ADMIN_EMAIL`). Son `google_id` est NULL, son status est `active`, son role est `admin`.
 
-### 2.2 Table `api_keys`
+### 2.3 Table `api_keys`
 
 ```sql
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -698,13 +751,12 @@ Clés Redis créées :
 -- 022_users.sql
 CREATE TABLE IF NOT EXISTS users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    google_id   TEXT UNIQUE,
     email       TEXT NOT NULL UNIQUE,
     name        TEXT NOT NULL DEFAULT '',
     avatar_url  TEXT NOT NULL DEFAULT '',
     role        TEXT NOT NULL DEFAULT 'user'
                 CHECK (role IN ('admin', 'user')),
-    scopes      TEXT[] NOT NULL DEFAULT '{}',      -- scopes assignés par l'admin
+    scopes      TEXT[] NOT NULL DEFAULT '{}',
     status      TEXT NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'active', 'disabled')),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -717,10 +769,31 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 ```
 
-### 9.2 Migration 023 — seed admin initial
+### 9.2 Migration 023 — table `user_identities`
 
 ```sql
--- 023_seed_admin_user.sql
+-- 023_user_identities.sql
+CREATE TABLE IF NOT EXISTS user_identities (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider    TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    email       TEXT,
+    name        TEXT,
+    avatar_url  TEXT,
+    raw_claims  JSONB,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (provider, subject)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_identities_lookup ON user_identities(provider, subject);
+```
+
+### 9.3 Migration 024 — seed admin initial
+
+```sql
+-- 024_seed_admin_user.sql
 -- Seeds the initial admin user from the legacy ADMIN_EMAIL env var.
 -- This migration is handled in Python (needs access to settings) via a
 -- post-migration hook in the backend lifespan, not in raw SQL.
@@ -728,10 +801,10 @@ CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
 Note : cette migration est un placeholder. Le seed se fait dans le `lifespan` du backend après les migrations SQL, car il a besoin de lire `settings.admin_email`.
 
-### 9.3 Migration 024 — table `api_keys`
+### 9.4 Migration 025 — table `api_keys`
 
 ```sql
--- 024_api_keys.sql
+-- 025_api_keys.sql
 CREATE TABLE IF NOT EXISTS api_keys (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_id        UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -759,8 +832,11 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner_id);
 | Fichier | Rôle |
 |---|---|
 | `backend/migrations/022_users.sql` | Table users |
-| `backend/migrations/023_seed_admin_user.sql` | Placeholder (seed en Python) |
-| `backend/migrations/024_api_keys.sql` | Table api_keys |
+| `backend/migrations/023_user_identities.sql` | Table user_identities (multi-provider OAuth) |
+| `backend/migrations/024_seed_admin_user.sql` | Placeholder (seed en Python) |
+| `backend/migrations/025_api_keys.sql` | Table api_keys |
+| `backend/src/agflow/schemas/user_identities.py` | DTOs Pydantic pour les identités provider |
+| `backend/src/agflow/services/user_identities_service.py` | CRUD identities (link/unlink provider) |
 | `backend/src/agflow/schemas/users.py` | DTOs Pydantic (UserCreate, UserSummary, UserUpdate) |
 | `backend/src/agflow/schemas/api_keys.py` | DTOs Pydantic (ApiKeyCreate, ApiKeyCreated, ApiKeySummary, ApiKeyUpdate) |
 | `backend/src/agflow/services/users_service.py` | CRUD users + seed admin |

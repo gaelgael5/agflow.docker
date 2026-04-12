@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
+import { ChatWindow } from "@/components/ChatWindow";
 import { Toaster } from "@/components/ui/sonner";
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 export function AppLayout({ children }: Props) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -35,9 +37,21 @@ export function AppLayout({ children }: Props) {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar onOpenSidebar={() => setSidebarOpen(true)} />
+        <TopBar
+          onOpenSidebar={() => setSidebarOpen(true)}
+          onToggleAssistant={() => setAssistantOpen((v) => !v)}
+          assistantActive={assistantOpen}
+        />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
+
+      {assistantOpen && (
+        <ChatWindow
+          dockerfileId="assistant"
+          onClose={() => setAssistantOpen(false)}
+        />
+      )}
+
       <Toaster />
     </div>
   );

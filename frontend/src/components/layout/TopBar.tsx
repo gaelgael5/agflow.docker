@@ -1,9 +1,12 @@
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Bell, ChevronRight, Menu, Search } from "lucide-react";
+import { Bell, BotMessageSquare, ChevronRight, Menu, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Props {
   onOpenSidebar?: () => void;
+  onToggleAssistant?: () => void;
+  assistantActive?: boolean;
 }
 
 interface Crumb {
@@ -47,10 +50,16 @@ function resolveCrumbs(path: string, t: (k: string) => string): Crumb | null {
       section: t("sidebar.section_orchestration"),
       page: t("agents.page_title"),
     };
+  if (path.startsWith("/users"))
+    return { section: t("sidebar.section_platform"), page: t("users.page_title") };
+  if (path.startsWith("/api-keys"))
+    return { section: t("sidebar.section_platform"), page: t("api_keys.page_title") };
+  if (path.startsWith("/my-secrets"))
+    return { section: t("sidebar.section_platform"), page: t("my_secrets.page_title") };
   return null;
 }
 
-export function TopBar({ onOpenSidebar }: Props) {
+export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive }: Props) {
   const { t } = useTranslation();
   const location = useLocation();
   const crumb = resolveCrumbs(location.pathname, t);
@@ -93,6 +102,22 @@ export function TopBar({ onOpenSidebar }: Props) {
         >
           <Search className="w-4 h-4" />
         </button>
+        {onToggleAssistant && (
+          <button
+            type="button"
+            onClick={onToggleAssistant}
+            className={cn(
+              "hidden sm:flex w-8 h-8 rounded-md items-center justify-center transition-colors",
+              assistantActive
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-secondary text-muted-foreground",
+            )}
+            aria-label="Assistant"
+            title="Assistant"
+          >
+            <BotMessageSquare className="w-4 h-4" />
+          </button>
+        )}
         <button
           type="button"
           className="hidden sm:flex w-8 h-8 rounded-md hover:bg-secondary items-center justify-center text-muted-foreground transition-colors"

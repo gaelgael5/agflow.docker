@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Bot,
   Download,
   FileCode2,
   Hammer,
@@ -378,14 +377,6 @@ export function DockerfilesPage() {
         >
           <Plus className="w-3.5 h-3.5" />
           {t("dockerfiles.add_button")}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setShowChat(true)}
-        >
-          <Bot className="w-3.5 h-3.5" />
-          {t("dockerfiles.chat.open_button_short")}
         </Button>
 
         {/* Action buttons — only visible when a dockerfile is selected */}

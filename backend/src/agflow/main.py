@@ -21,6 +21,9 @@ from agflow.api.admin.service_types import router as admin_service_types_router
 from agflow.api.admin.skills_catalog import router as admin_skills_catalog_router
 from agflow.api.admin.users import router as admin_users_router
 from agflow.api.health import router as health_router
+from agflow.api.public.dockerfiles import router as public_dockerfiles_router
+from agflow.api.public.files import router as public_files_router
+from agflow.api.public.params import router as public_params_router
 from agflow.config import get_settings
 from agflow.logging_setup import configure_logging
 
@@ -64,6 +67,9 @@ def create_app() -> FastAPI:
     app.include_router(admin_api_keys_router)
     app.include_router(admin_vault_router)
     app.include_router(admin_user_secrets_router)
+    app.include_router(public_dockerfiles_router)
+    app.include_router(public_files_router)
+    app.include_router(public_params_router)
     return app
 
 

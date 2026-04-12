@@ -11,7 +11,7 @@ from agflow.schemas.api_keys import (
     ApiKeySummary,
     ApiKeyUpdate,
 )
-from agflow.services import api_keys_service
+from agflow.services import api_keys_service, users_service
 
 router = APIRouter(
     prefix="/api/admin/api-keys",
@@ -21,18 +21,18 @@ router = APIRouter(
 
 
 @router.post("", response_model=ApiKeyCreated, status_code=status.HTTP_201_CREATED)
-async def create_api_key(payload: ApiKeyCreate) -> ApiKeyCreated:
-    # Admin creates keys — all scopes are allowed; no user scope validation needed.
-    # When a real user context is available, validate_key_scopes will be called here.
+async def create_api_key(
+    payload: ApiKeyCreate, admin_email: str = Depends(require_admin)
+) -> ApiKeyCreated:
     expires_at = api_keys_service.compute_expiry(payload.expires_in)
-    # owner_id is nil UUID for admin-created system keys (no user associated yet)
-    nil_owner = UUID("00000000-0000-0000-0000-000000000000")
+    admin_user = await users_service.get_by_email(admin_email)
+    owner_id = admin_user.id if admin_user else None
     return await api_keys_service.create(
         name=payload.name,
         scopes=payload.scopes,
         rate_limit=payload.rate_limit,
         expires_at=expires_at,
-        owner_id=nil_owner,
+        owner_id=owner_id,
     )
 
 

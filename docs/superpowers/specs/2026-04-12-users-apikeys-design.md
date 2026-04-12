@@ -91,8 +91,6 @@ CREATE TABLE IF NOT EXISTS user_identities (
     provider    TEXT NOT NULL,
     subject     TEXT NOT NULL,
     email       TEXT,
-    name        TEXT,
-    avatar_url  TEXT,
     raw_claims  JSONB,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (provider, subject)
@@ -110,10 +108,8 @@ CREATE INDEX IF NOT EXISTS idx_user_identities_lookup ON user_identities(provide
 | `user_id` | UUID FK → users | Le user agflow auquel cette identité est rattachée. `ON DELETE CASCADE` |
 | `provider` | TEXT | Identifiant du provider : `google`, `facebook`, `github`, `microsoft`, etc. |
 | `subject` | TEXT | ID unique chez le provider (Google `sub`, GitHub `id`, etc.). Immutable |
-| `email` | TEXT | Email retourné par le provider (peut différer de `users.email`) |
-| `name` | TEXT | Nom retourné par le provider |
-| `avatar_url` | TEXT | URL avatar du provider |
-| `raw_claims` | JSONB | Payload OpenID / OAuth complet (pour debug et audit) |
+| `email` | TEXT | Email retourné par le provider (sert au match cross-provider, peut différer de `users.email`) |
+| `raw_claims` | JSONB | Payload OpenID / OAuth complet — contient name, avatar, email, et toutes les claims du provider. Sert au debug et à l'audit |
 | `created_at` | TIMESTAMPTZ | Date de liaison |
 
 **Contrainte** : `UNIQUE (provider, subject)` — un même couple provider+subject ne peut être lié qu'à un seul user.
@@ -779,8 +775,6 @@ CREATE TABLE IF NOT EXISTS user_identities (
     provider    TEXT NOT NULL,
     subject     TEXT NOT NULL,
     email       TEXT,
-    name        TEXT,
-    avatar_url  TEXT,
     raw_claims  JSONB,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (provider, subject)

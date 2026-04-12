@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -21,6 +22,7 @@ interface VaultUnlockDialogProps {
 
 export function VaultUnlockDialog({ open, email, onComplete }: VaultUnlockDialogProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const vault = useVault();
 
   const [passphrase, setPassphrase] = useState("");
@@ -87,6 +89,14 @@ export function VaultUnlockDialog({ open, email, onComplete }: VaultUnlockDialog
           </div>
 
           <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate("/")}
+              disabled={submitting}
+            >
+              {t("common.cancel")}
+            </Button>
             <Button type="submit" disabled={submitting}>
               {t("vault.unlock_submit")}
             </Button>

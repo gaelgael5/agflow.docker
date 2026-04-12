@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -21,6 +22,7 @@ interface VaultSetupDialogProps {
 
 export function VaultSetupDialog({ open, email, onComplete }: VaultSetupDialogProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const vault = useVault();
 
   const [passphrase, setPassphrase] = useState("");
@@ -113,6 +115,14 @@ export function VaultSetupDialog({ open, email, onComplete }: VaultSetupDialogPr
           </div>
 
           <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate("/")}
+              disabled={submitting}
+            >
+              {t("common.cancel")}
+            </Button>
             <Button type="submit" disabled={submitting}>
               {t("vault.setup_submit")}
             </Button>

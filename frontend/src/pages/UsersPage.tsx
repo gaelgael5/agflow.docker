@@ -33,39 +33,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { UserSummary } from "@/lib/usersApi";
+import { ScopesEditor, ALL_SCOPES } from "@/components/ScopesEditor";
 
 // ─── Scope catalogue ─────────────────────────────────────────────────────────
-
-const SCOPE_GROUPS: Record<string, string[]> = {
-  secrets: ["secrets:read", "secrets:write"],
-  dockerfiles: [
-    "dockerfiles:read",
-    "dockerfiles:write",
-    "dockerfiles:delete",
-    "dockerfiles:build",
-    "dockerfiles.files:read",
-    "dockerfiles.files:write",
-    "dockerfiles.files:delete",
-    "dockerfiles.params:read",
-    "dockerfiles.params:write",
-  ],
-  discovery: ["discovery:read", "discovery:write"],
-  service_types: ["service_types:read", "service_types:write"],
-  users: ["users:manage"],
-  roles: ["roles:read", "roles:write", "roles:delete"],
-  catalogs: ["catalogs:read", "catalogs:write"],
-  agents: ["agents:read", "agents:write", "agents:delete", "agents:run"],
-  containers: [
-    "containers:read",
-    "containers:run",
-    "containers:stop",
-    "containers.logs:read",
-    "containers.chat:write",
-  ],
-  keys: ["keys:manage"],
-};
-
-const ALL_SCOPES = Object.values(SCOPE_GROUPS).flat();
 
 const STANDARD_PROFILE_SCOPES = [
   "roles:read",
@@ -102,16 +72,6 @@ function ScopesDialog({ open, onOpenChange, user, onSave }: ScopesDialogProps) {
     onOpenChange(val);
   }
 
-  function toggle(scope: string) {
-    if (scope === "keys:manage") return; // always on
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(scope)) next.delete(scope);
-      else next.add(scope);
-      return next;
-    });
-  }
-
   function applyStandard() {
     setChecked(new Set(STANDARD_PROFILE_SCOPES));
   }
@@ -136,7 +96,7 @@ function ScopesDialog({ open, onOpenChange, user, onSave }: ScopesDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("users.scopes_dialog_title")}</DialogTitle>
         </DialogHeader>
@@ -153,38 +113,11 @@ function ScopesDialog({ open, onOpenChange, user, onSave }: ScopesDialogProps) {
           </Button>
         </div>
 
-        <div className="overflow-y-auto flex-1 space-y-3 pr-1">
-          {Object.entries(SCOPE_GROUPS).map(([group, scopes]) => (
-            <div key={group}>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                {group}
-              </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                {scopes.map((scope) => {
-                  const isImplicit = scope === "keys:manage";
-                  const action = scope.split(":")[1] ?? scope;
-                  return (
-                    <div key={scope} className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        id={scope}
-                        checked={checked.has(scope)}
-                        onChange={() => toggle(scope)}
-                        disabled={isImplicit}
-                        className="w-3.5 h-3.5 accent-primary cursor-pointer disabled:cursor-not-allowed"
-                      />
-                      <Label
-                        htmlFor={scope}
-                        className={`text-sm cursor-pointer ${isImplicit ? "text-muted-foreground" : ""}`}
-                      >
-                        {action}
-                      </Label>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <div className="flex-1 overflow-hidden">
+          <ScopesEditor
+            selected={[...checked]}
+            onChange={(scopes) => setChecked(new Set(scopes))}
+          />
         </div>
 
         <DialogFooter>

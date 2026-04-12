@@ -33,77 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ApiKeySummary, ApiKeyCreated, ApiKeyCreate, ApiKeyUpdate } from "@/lib/apiKeysApi";
-
-// ─── Scope catalogue ──────────────────────────────────────────────────────────
-
-const SCOPE_GROUPS: Record<string, string[]> = {
-  secrets: ["secrets:read", "secrets:write"],
-  dockerfiles: [
-    "dockerfiles:read",
-    "dockerfiles:write",
-    "dockerfiles:delete",
-    "dockerfiles:build",
-    "dockerfiles.files:read",
-    "dockerfiles.files:write",
-    "dockerfiles.files:delete",
-    "dockerfiles.params:read",
-    "dockerfiles.params:write",
-  ],
-  discovery: ["discovery:read", "discovery:write"],
-  service_types: ["service_types:read", "service_types:write"],
-  users: ["users:manage"],
-  roles: ["roles:read", "roles:write", "roles:delete"],
-  catalogs: ["catalogs:read", "catalogs:write"],
-  agents: ["agents:read", "agents:write", "agents:delete", "agents:run"],
-  containers: [
-    "containers:read",
-    "containers:run",
-    "containers:stop",
-    "containers.logs:read",
-    "containers.chat:write",
-  ],
-  keys: ["keys:manage"],
-};
-
-// ─── Scopes grid ─────────────────────────────────────────────────────────────
-
-interface ScopesGridProps {
-  checked: Set<string>;
-  onToggle: (scope: string) => void;
-}
-
-function ScopesGrid({ checked, onToggle }: ScopesGridProps) {
-  return (
-    <div className="space-y-3">
-      {Object.entries(SCOPE_GROUPS).map(([group, scopes]) => (
-        <div key={group}>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-            {group}
-          </p>
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-            {scopes.map((scope) => {
-              const action = scope.split(":")[1] ?? scope;
-              return (
-                <div key={scope} className="flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    id={`scope-${scope}`}
-                    checked={checked.has(scope)}
-                    onChange={() => onToggle(scope)}
-                    className="w-3.5 h-3.5 accent-primary cursor-pointer"
-                  />
-                  <Label htmlFor={`scope-${scope}`} className="text-sm cursor-pointer">
-                    {action}
-                  </Label>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+import { ScopesEditor } from "@/components/ScopesEditor";
 
 // ─── Create Dialog ────────────────────────────────────────────────────────────
 
@@ -133,15 +63,6 @@ function CreateDialog({ open, onOpenChange, onCreate }: CreateDialogProps) {
   function handleOpenChange(val: boolean) {
     if (!val) reset();
     onOpenChange(val);
-  }
-
-  function toggleScope(scope: string) {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(scope)) next.delete(scope);
-      else next.add(scope);
-      return next;
-    });
   }
 
   const expiresInDays: Record<string, number> = {
@@ -224,7 +145,10 @@ function CreateDialog({ open, onOpenChange, onCreate }: CreateDialogProps) {
 
           <div className="space-y-1.5">
             <Label>{t("api_keys.field_scopes")}</Label>
-            <ScopesGrid checked={checked} onToggle={toggleScope} />
+            <ScopesEditor
+              selected={[...checked]}
+              onChange={(scopes) => setChecked(new Set(scopes))}
+            />
           </div>
 
           {error && (
@@ -341,15 +265,6 @@ function EditDialog({ open, onOpenChange, apiKey, onSave }: EditDialogProps) {
     onOpenChange(val);
   }
 
-  function toggleScope(scope: string) {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(scope)) next.delete(scope);
-      else next.add(scope);
-      return next;
-    });
-  }
-
   async function handleSave() {
     setSaving(true);
     try {
@@ -403,7 +318,10 @@ function EditDialog({ open, onOpenChange, apiKey, onSave }: EditDialogProps) {
 
           <div className="space-y-1.5">
             <Label>{t("api_keys.field_scopes")}</Label>
-            <ScopesGrid checked={checked} onToggle={toggleScope} />
+            <ScopesEditor
+              selected={[...checked]}
+              onChange={(scopes) => setChecked(new Set(scopes))}
+            />
           </div>
         </div>
 

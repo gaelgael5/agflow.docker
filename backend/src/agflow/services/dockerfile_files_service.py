@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import os
+import uuid
+from datetime import UTC, datetime
 from uuid import UUID
 
-import asyncpg
 import structlog
 
-from agflow.db.pool import fetch_all, fetch_one, get_pool
 from agflow.schemas.dockerfiles import FileSummary
 
 _log = structlog.get_logger(__name__)
 
-_FILE_COLS = "id, dockerfile_id, path, content, created_at, updated_at"
+# Deterministic UUID5 namespace for file IDs — fixed forever.
+_FILE_NS = uuid.UUID("a8f4c3b2-e7d6-4a1f-b5c9-0123456789ab")
 
 # Standard files auto-seeded on dockerfile creation. They cannot be deleted,
 # only edited. Mirrors the Module 1 spec requirement that every dockerfile
@@ -83,8 +85,72 @@ class ProtectedFileError(Exception):
     """Raised when attempting to delete a standard (non-deletable) file."""
 
 
-def _row(row: dict) -> FileSummary:
-    return FileSummary(**row)
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _file_id(dockerfile_id: str, path: str) -> uuid.UUID:
+    """Deterministic UUID5 derived from (dockerfile_id, path)."""
+    return uuid.uuid5(_FILE_NS, f"{dockerfile_id}:{path}")
+
+
+def _data_dir() -> str:
+    return os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+
+
+def _slug_dir(dockerfile_id: str) -> str:
+    return os.path.join(_data_dir(), dockerfile_id)
+
+
+def _file_summary(dockerfile_id: str, path: str, full_path: str) -> FileSummary:
+    stat = os.stat(full_path)
+    with open(full_path, encoding="utf-8") as fh:
+        content = fh.read()
+    return FileSummary(
+        id=_file_id(dockerfile_id, path),
+        dockerfile_id=dockerfile_id,
+        path=path,
+        content=content,
+        created_at=datetime.fromtimestamp(stat.st_ctime, tz=UTC),
+        updated_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API  (async signatures preserved for caller compatibility)
+# ---------------------------------------------------------------------------
+
+
+async def seed_standard_files(dockerfile_id: str) -> list[FileSummary]:
+    """Create the directory + standard files with their default content.
+
+    Idempotent — skips files that already exist on disk.
+    """
+    slug_dir = _slug_dir(dockerfile_id)
+    os.makedirs(slug_dir, exist_ok=True)
+    created: list[FileSummary] = []
+    for path, default_content in STANDARD_FILE_CONTENTS.items():
+        full_path = os.path.join(slug_dir, path)
+        if os.path.exists(full_path):
+            continue
+        with open(full_path, "w", encoding="utf-8") as fh:
+            fh.write(default_content)
+        created.append(_file_summary(dockerfile_id, path, full_path))
+        _log.info("dockerfile_files.seed", dockerfile_id=dockerfile_id, path=path)
+    return created
+
+
+async def list_for_dockerfile(dockerfile_id: str) -> list[FileSummary]:
+    slug_dir = _slug_dir(dockerfile_id)
+    if not os.path.isdir(slug_dir):
+        return []
+    results: list[FileSummary] = []
+    for filename in sorted(os.listdir(slug_dir)):
+        full_path = os.path.join(slug_dir, filename)
+        if os.path.isfile(full_path):
+            results.append(_file_summary(dockerfile_id, filename, full_path))
+    return results
 
 
 async def create(
@@ -92,64 +158,46 @@ async def create(
     path: str,
     content: str = "",
 ) -> FileSummary:
-    try:
-        row = await fetch_one(
-            f"""
-            INSERT INTO dockerfile_files (dockerfile_id, path, content)
-            VALUES ($1, $2, $3)
-            RETURNING {_FILE_COLS}
-            """,
-            dockerfile_id,
-            path,
-            content,
-        )
-    except asyncpg.UniqueViolationError as exc:
+    slug_dir = _slug_dir(dockerfile_id)
+    os.makedirs(slug_dir, exist_ok=True)
+    full_path = os.path.join(slug_dir, path)
+    if os.path.exists(full_path):
         raise DuplicateFileError(
             f"File '{path}' already exists in dockerfile '{dockerfile_id}'"
-        ) from exc
-    assert row is not None
+        )
+    with open(full_path, "w", encoding="utf-8") as fh:
+        fh.write(content)
     _log.info("dockerfile_files.create", dockerfile_id=dockerfile_id, path=path)
-    return _row(row)
+    return _file_summary(dockerfile_id, path, full_path)
 
 
 async def get_by_id(file_id: UUID) -> FileSummary:
-    row = await fetch_one(
-        f"SELECT {_FILE_COLS} FROM dockerfile_files WHERE id = $1", file_id
-    )
-    if row is None:
+    """Scan all dockerfile dirs to find the file with this deterministic UUID5."""
+    base = _data_dir()
+    if not os.path.isdir(base):
         raise FileNotFoundError(f"File {file_id} not found")
-    return _row(row)
-
-
-async def list_for_dockerfile(dockerfile_id: str) -> list[FileSummary]:
-    rows = await fetch_all(
-        f"""
-        SELECT {_FILE_COLS} FROM dockerfile_files
-        WHERE dockerfile_id = $1
-        ORDER BY path ASC
-        """,
-        dockerfile_id,
-    )
-    return [_row(r) for r in rows]
+    for slug in sorted(os.listdir(base)):
+        slug_path = os.path.join(base, slug)
+        if not os.path.isdir(slug_path):
+            continue
+        for filename in os.listdir(slug_path):
+            full_path = os.path.join(slug_path, filename)
+            if not os.path.isfile(full_path):
+                continue
+            if _file_id(slug, filename) == file_id:
+                return _file_summary(slug, filename, full_path)
+    raise FileNotFoundError(f"File {file_id} not found")
 
 
 async def update(file_id: UUID, content: str | None = None) -> FileSummary:
     if content is None:
         return await get_by_id(file_id)
-    row = await fetch_one(
-        f"""
-        UPDATE dockerfile_files
-        SET content = $2, updated_at = NOW()
-        WHERE id = $1
-        RETURNING {_FILE_COLS}
-        """,
-        file_id,
-        content,
-    )
-    if row is None:
-        raise FileNotFoundError(f"File {file_id} not found")
+    existing = await get_by_id(file_id)
+    full_path = os.path.join(_slug_dir(existing.dockerfile_id), existing.path)
+    with open(full_path, "w", encoding="utf-8") as fh:
+        fh.write(content)
     _log.info("dockerfile_files.update", file_id=str(file_id))
-    return _row(row)
+    return _file_summary(existing.dockerfile_id, existing.path, full_path)
 
 
 async def delete(file_id: UUID) -> None:
@@ -158,13 +206,8 @@ async def delete(file_id: UUID) -> None:
         raise ProtectedFileError(
             f"File '{existing.path}' is protected and cannot be deleted"
         )
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        result = await conn.execute(
-            "DELETE FROM dockerfile_files WHERE id = $1", file_id
-        )
-    if result == "DELETE 0":
-        raise FileNotFoundError(f"File {file_id} not found")
+    full_path = os.path.join(_slug_dir(existing.dockerfile_id), existing.path)
+    os.unlink(full_path)
     _log.info("dockerfile_files.delete", file_id=str(file_id))
 
 
@@ -172,29 +215,25 @@ async def replace_all(
     dockerfile_id: str,
     files_map: dict[str, str],
 ) -> list[FileSummary]:
-    """Transactionally wipe all existing files of a dockerfile and insert the
-    given set in a single DB transaction.
+    """Wipe all existing files of a dockerfile and write the given set.
 
     Used by the zip import feature. Bypasses the PROTECTED_FILES check on
     purpose — protected files are still being REPLACED with fresh content
     coming from the import, not removed.
     """
-    pool = await get_pool()
-    async with pool.acquire() as conn, conn.transaction():
-        await conn.execute(
-            "DELETE FROM dockerfile_files WHERE dockerfile_id = $1",
-            dockerfile_id,
-        )
-        for path, content in files_map.items():
-            await conn.execute(
-                """
-                INSERT INTO dockerfile_files (dockerfile_id, path, content)
-                VALUES ($1, $2, $3)
-                """,
-                dockerfile_id,
-                path,
-                content,
-            )
+    slug_dir = _slug_dir(dockerfile_id)
+    # Remove existing files
+    if os.path.isdir(slug_dir):
+        for filename in os.listdir(slug_dir):
+            full_path = os.path.join(slug_dir, filename)
+            if os.path.isfile(full_path):
+                os.unlink(full_path)
+    else:
+        os.makedirs(slug_dir, exist_ok=True)
+    # Write new files
+    for path, content in files_map.items():
+        with open(os.path.join(slug_dir, path), "w", encoding="utf-8") as fh:
+            fh.write(content)
     _log.info(
         "dockerfile_files.replace_all",
         dockerfile_id=dockerfile_id,
@@ -203,15 +242,46 @@ async def replace_all(
     return await list_for_dockerfile(dockerfile_id)
 
 
-async def seed_standard_files(dockerfile_id: str) -> list[FileSummary]:
-    """Create the standard files (Dockerfile, entrypoint.sh, Dockerfile.json)
-    with their default content. Idempotent — skips files that already exist.
+# ---------------------------------------------------------------------------
+# One-time migration: DB → filesystem
+# ---------------------------------------------------------------------------
+
+
+async def migrate_db_to_disk() -> None:
+    """One-time migration: read all files from the legacy DB table and write
+    them to disk. Idempotent — skips files that already exist on disk.
     """
-    created: list[FileSummary] = []
-    for path, default_content in STANDARD_FILE_CONTENTS.items():
-        try:
-            f = await create(dockerfile_id, path=path, content=default_content)
-            created.append(f)
-        except DuplicateFileError:
+    from agflow.db.pool import fetch_all  # imported lazily — may not be available
+
+    try:
+        rows = await fetch_all(
+            "SELECT dockerfile_id, path, content FROM dockerfile_files"
+        )
+    except Exception as exc:
+        _log.warning(
+            "dockerfile_files.migrate_db_to_disk.skip",
+            reason=str(exc),
+        )
+        return
+
+    migrated = 0
+    skipped = 0
+    for row in rows:
+        dockerfile_id: str = row["dockerfile_id"]
+        path: str = row["path"]
+        content: str = row["content"] or ""
+        slug_dir = _slug_dir(dockerfile_id)
+        os.makedirs(slug_dir, exist_ok=True)
+        full_path = os.path.join(slug_dir, path)
+        if os.path.exists(full_path):
+            skipped += 1
             continue
-    return created
+        with open(full_path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        migrated += 1
+
+    _log.info(
+        "dockerfile_files.migrate_db_to_disk.done",
+        migrated=migrated,
+        skipped=skipped,
+    )

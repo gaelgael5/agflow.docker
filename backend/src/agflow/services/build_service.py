@@ -3,14 +3,16 @@ from __future__ import annotations
 import hashlib
 import io
 import tarfile
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 from uuid import UUID
 
 import aiodocker
 import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
+from agflow.services import dockerfile_files_service
 
 _log = structlog.get_logger(__name__)
 
@@ -93,11 +95,8 @@ async def run_build(build_id: UUID, dockerfile_id: str, tag: str) -> None:
 
     Streams logs into the `logs` column. Flips `status` at the end.
     """
-    rows = await fetch_all(
-        "SELECT path, content FROM dockerfile_files WHERE dockerfile_id = $1",
-        dockerfile_id,
-    )
-    files = [FileDTO(path=r["path"], content=r["content"]) for r in rows]
+    files_list = await dockerfile_files_service.list_for_dockerfile(dockerfile_id)
+    files = [FileDTO(path=f.path, content=f.content) for f in files_list]
 
     has_dockerfile = any(f.path == "Dockerfile" for f in files)
     if not has_dockerfile:

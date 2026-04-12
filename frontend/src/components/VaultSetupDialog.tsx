@@ -57,7 +57,7 @@ export function VaultSetupDialog({ open, email, onComplete }: VaultSetupDialogPr
   };
 
   return (
-    <Dialog open={open} onOpenChange={() => undefined}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) navigate("/"); }}>
       <DialogContent onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{t("vault.setup_title")}</DialogTitle>

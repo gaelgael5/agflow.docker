@@ -50,7 +50,7 @@ export function VaultUnlockDialog({ open, email, onComplete }: VaultUnlockDialog
   };
 
   return (
-    <Dialog open={open} onOpenChange={() => undefined}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) navigate("/"); }}>
       <DialogContent onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{t("vault.unlock_title")}</DialogTitle>

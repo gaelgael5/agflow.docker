@@ -12,6 +12,7 @@ import {
   Lock,
   LogOut,
   Moon,
+  ExternalLink,
   PlugZap,
   RadioTower,
   Sun,
@@ -30,6 +31,7 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   disabled?: boolean;
+  external?: boolean;
 }
 
 interface NavSection {
@@ -75,7 +77,7 @@ export function Sidebar({ open = false, onClose }: Props) {
       title: t("sidebar.section_orchestration"),
       items: [
         { to: "/agents", label: t("agents.page_title"), icon: Bot },
-        { to: "/api", label: t("sidebar.api_public"), icon: Globe, disabled: true },
+        { to: "/docs", label: t("sidebar.api_public"), icon: Globe, external: true },
         { to: "/supervision", label: t("sidebar.supervision"), icon: Activity, disabled: true },
       ],
     },
@@ -134,6 +136,21 @@ export function Sidebar({ open = false, onClose }: Props) {
                       soon
                     </span>
                   </div>
+                );
+              }
+              if (item.external) {
+                return (
+                  <a
+                    key={item.to}
+                    href={item.to}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-md transition-colors text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span>{item.label}</span>
+                    <ExternalLink className="w-3 h-3 ml-auto text-muted-foreground/50" />
+                  </a>
                 );
               }
               const isActive =

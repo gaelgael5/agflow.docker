@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url  TEXT NOT NULL DEFAULT '',
     role        TEXT NOT NULL DEFAULT 'user'
                 CHECK (role IN ('admin', 'user')),
+    scopes      TEXT[] NOT NULL DEFAULT '{}',      -- scopes assignés par l'admin
     status      TEXT NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'active', 'disabled')),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -74,6 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 | `name` | TEXT | Nom affiché |
 | `avatar_url` | TEXT | URL photo Google (vide si pas d'OAuth) |
 | `role` | TEXT | `admin` ou `user` — l'admin choisit à la main |
+| `scopes` | TEXT[] | Scopes assignés par l'admin. Ex: `{roles:read, roles:write, agents:read, agents:run}`. L'admin a implicitement `{*}` (pas besoin de lister). Un user ne peut créer des API keys qu'avec un sous-ensemble de SES scopes. |
 | `status` | TEXT | `pending` (inscrit, non approuvé), `active` (approuvé), `disabled` (désactivé) |
 | `created_at` | TIMESTAMPTZ | Date d'inscription |
 | `approved_at` | TIMESTAMPTZ | Date d'approbation par l'admin |
@@ -382,67 +384,110 @@ async def require_auth(creds = Depends(HTTPBearer())):
 
 ---
 
-## 5. Matrice des scopes
+## 5. Catalogue des scopes & modèle de permissions
 
-### 5.1 Scopes définis
+### 5.1 Catalogue de tous les scopes existants
 
-| Scope | Description | Admin | User |
-|---|---|---|---|
-| `*` | Super-scope, accès total | ✅ | ❌ |
-| `secrets:read` | Lire les secrets (noms, pas les valeurs) | ✅ | ❌ |
-| `secrets:write` | Créer/modifier/supprimer des secrets | ✅ | ❌ |
-| `dockerfiles:read` | Lister, détailler les dockerfiles | ✅ | ❌ |
-| `dockerfiles:write` | Créer, modifier, importer des dockerfiles | ✅ | ❌ |
-| `dockerfiles:delete` | Supprimer un dockerfile | ✅ | ❌ |
-| `dockerfiles:build` | Compiler une image | ✅ | ❌ |
-| `dockerfiles.files:read` | Lire le contenu des fichiers | ✅ | ❌ |
-| `dockerfiles.files:write` | Créer/modifier des fichiers | ✅ | ❌ |
-| `dockerfiles.files:delete` | Supprimer des fichiers | ✅ | ❌ |
-| `dockerfiles.params:read` | Lire Dockerfile.json parsé | ✅ | ❌ |
-| `dockerfiles.params:write` | Modifier Dockerfile.json | ✅ | ❌ |
-| `discovery:read` | Lister les services de découverte | ✅ | ❌ |
-| `discovery:write` | CRUD services de découverte | ✅ | ❌ |
-| `service_types:read` | Lister les types de services | ✅ | ❌ |
-| `service_types:write` | CRUD types de services | ✅ | ❌ |
-| `users:manage` | CRUD utilisateurs, approbation, rôle | ✅ | ❌ |
-| `roles:read` | Lister/détailler les rôles | ✅ | ✅ |
-| `roles:write` | Créer/modifier des rôles | ✅ | ✅ |
-| `roles:delete` | Supprimer des rôles | ✅ | ✅ |
-| `catalogs:read` | Lister MCP + Skills | ✅ | ✅ |
-| `catalogs:write` | Ajouter/supprimer MCP + Skills | ✅ | ✅ |
-| `agents:read` | Lister/détailler les agents composés | ✅ | ✅ |
-| `agents:write` | Créer/modifier des agents | ✅ | ✅ |
-| `agents:delete` | Supprimer des agents | ✅ | ✅ |
-| `agents:run` | Lancer un agent composé | ✅ | ✅ |
-| `containers:read` | Lister les containers actifs | ✅ | ✅ |
-| `containers:run` | Lancer un container | ✅ | ✅ |
-| `containers:stop` | Arrêter un container | ✅ | ✅ |
-| `containers.logs:read` | Lire les logs d'un container | ✅ | ✅ |
-| `containers.chat:write` | Envoyer une tâche chat | ✅ | ✅ |
-| `keys:manage` | CRUD ses propres API keys | ✅ | ✅ |
+| Scope | Description |
+|---|---|
+| `*` | Super-scope, accès total (réservé aux admins) |
+| `secrets:read` | Lire les secrets (noms, pas les valeurs) |
+| `secrets:write` | Créer/modifier/supprimer des secrets |
+| `dockerfiles:read` | Lister, détailler les dockerfiles |
+| `dockerfiles:write` | Créer, modifier, importer des dockerfiles |
+| `dockerfiles:delete` | Supprimer un dockerfile |
+| `dockerfiles:build` | Compiler une image |
+| `dockerfiles.files:read` | Lire le contenu des fichiers |
+| `dockerfiles.files:write` | Créer/modifier des fichiers |
+| `dockerfiles.files:delete` | Supprimer des fichiers |
+| `dockerfiles.params:read` | Lire Dockerfile.json parsé |
+| `dockerfiles.params:write` | Modifier Dockerfile.json |
+| `discovery:read` | Lister les services de découverte |
+| `discovery:write` | CRUD services de découverte |
+| `service_types:read` | Lister les types de services |
+| `service_types:write` | CRUD types de services |
+| `users:manage` | CRUD utilisateurs, approbation, rôle, scopes |
+| `roles:read` | Lister/détailler les rôles |
+| `roles:write` | Créer/modifier des rôles |
+| `roles:delete` | Supprimer des rôles |
+| `catalogs:read` | Lister MCP + Skills |
+| `catalogs:write` | Ajouter/supprimer MCP + Skills |
+| `agents:read` | Lister/détailler les agents composés |
+| `agents:write` | Créer/modifier des agents |
+| `agents:delete` | Supprimer des agents |
+| `agents:run` | Lancer un agent composé |
+| `containers:read` | Lister les containers actifs |
+| `containers:run` | Lancer un container |
+| `containers:stop` | Arrêter un container |
+| `containers.logs:read` | Lire les logs d'un container |
+| `containers.chat:write` | Envoyer une tâche chat |
+| `keys:manage` | CRUD ses propres API keys |
 
-### 5.2 Scopes maximum par rôle
+### 5.2 Modèle de permissions — admin assigne, user hérite
 
-Quand un user crée une API key, le backend vérifie que **chaque scope demandé est dans sa matrice** :
+Le modèle n'est PAS une matrice statique rôle → scopes. Les scopes sont **assignés par l'admin à chaque user individuellement**.
+
+**Règles** :
+
+1. **Admin** (`role = admin`) : a implicitement le scope `*` (tout). Pas besoin de lister ses scopes explicitement. Peut créer des API keys avec n'importe quel scope.
+
+2. **User** (`role = user`) : n'a accès qu'aux scopes que l'admin lui a **explicitement assignés** dans `users.scopes[]`. Exemple : `{roles:read, roles:write, agents:read, agents:run, containers:read, containers:run, keys:manage}`.
+
+3. **API key** : un user ne peut créer une API key qu'avec des scopes **⊆ ses propres scopes**. Si le user a `{agents:read, agents:run}`, il ne peut pas créer une clé avec `agents:write`.
+
+4. **`keys:manage`** : toujours implicitement accordé à tout user `active` (il peut gérer ses propres clés même si l'admin ne l'a pas listé explicitement).
+
+**Validation à la création d'une API key** :
 
 ```python
-ADMIN_ONLY_SCOPES = {
-    "*",
-    "secrets:read", "secrets:write",
-    "dockerfiles:read", "dockerfiles:write", "dockerfiles:delete", "dockerfiles:build",
-    "dockerfiles.files:read", "dockerfiles.files:write", "dockerfiles.files:delete",
-    "dockerfiles.params:read", "dockerfiles.params:write",
-    "discovery:read", "discovery:write",
-    "service_types:read", "service_types:write",
-    "users:manage",
-}
+ALL_SCOPES: set[str] = { ... }  # catalogue complet ci-dessus
 
-def validate_scopes_for_role(role: str, requested_scopes: list[str]) -> list[str]:
+def validate_key_scopes(
+    user_role: str,
+    user_scopes: list[str],
+    requested_scopes: list[str],
+) -> list[str]:
     """Returns list of rejected scopes (empty = all OK)."""
-    if role == "admin":
+    # Validate scope names exist
+    unknown = [s for s in requested_scopes if s not in ALL_SCOPES and s != "*"]
+    if unknown:
+        return unknown
+
+    # Admin can request anything
+    if user_role == "admin":
         return []
-    return [s for s in requested_scopes if s in ADMIN_ONLY_SCOPES]
+
+    # User: requested must be a subset of their assigned scopes
+    granted = set(user_scopes) | {"keys:manage"}  # keys:manage is always implicit
+    return [s for s in requested_scopes if s not in granted]
 ```
+
+### 5.3 UX admin — assignation des scopes à un user
+
+Dans la page **Utilisateurs**, quand l'admin clique sur un user :
+- Section "Permissions" avec des **checkboxes groupées par resource** :
+
+```
+☐ Secrets         [☐ read] [☐ write]
+☐ Dockerfiles     [☐ read] [☐ write] [☐ delete] [☐ build]
+☐ Dockerfiles.files  [☐ read] [☐ write] [☐ delete]
+☐ Dockerfiles.params [☐ read] [☐ write]
+☐ Discovery       [☐ read] [☐ write]
+☐ Service types   [☐ read] [☐ write]
+☐ Users           [☐ manage]
+───────────────────────────────
+☑ Roles           [☑ read] [☑ write] [☐ delete]
+☑ Catalogs        [☑ read] [☐ write]
+☑ Agents          [☑ read] [☐ write] [☐ delete] [☑ run]
+☑ Containers      [☑ read] [☑ run] [☐ stop]
+☑ Containers.logs [☑ read]
+☑ Containers.chat [☑ write]
+☑ Keys            [☑ manage]  ← toujours coché, non décochable
+```
+
+Boutons raccourcis :
+- **"Profil standard"** : coche les scopes typiques d'un user (roles, catalogs, agents, containers, keys)
+- **"Tout cocher"** / **"Tout décocher"**
 
 ---
 
@@ -586,13 +631,15 @@ class UserCreate(BaseModel):
     email: str = Field(min_length=3, max_length=200)
     name: str = Field(default="", max_length=200)
     role: Literal["admin", "user"] = "user"
-    status: Literal["pending", "active"] = "active"  # invitation admin → active directement
+    scopes: list[str] = Field(default_factory=list)   # admin assigne les scopes
+    status: Literal["pending", "active"] = "active"   # invitation admin → active directement
 
 class UserSummary(BaseModel):
     id: UUID
     email: str
     name: str
     role: str
+    scopes: list[str]
     status: str
     created_at: datetime
     approved_at: datetime | None
@@ -602,6 +649,7 @@ class UserSummary(BaseModel):
 class UserUpdate(BaseModel):
     name: str | None = None
     role: Literal["admin", "user"] | None = None
+    scopes: list[str] | None = None                   # admin modifie les scopes
 ```
 
 ### 7.3 UX frontend — page Users
@@ -656,6 +704,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url  TEXT NOT NULL DEFAULT '',
     role        TEXT NOT NULL DEFAULT 'user'
                 CHECK (role IN ('admin', 'user')),
+    scopes      TEXT[] NOT NULL DEFAULT '{}',      -- scopes assignés par l'admin
     status      TEXT NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'active', 'disabled')),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -772,7 +821,9 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner_id);
 | `test_disable_user` | active → disabled |
 | `test_enable_user` | disabled → active |
 | `test_delete_cascades_keys` | Supprimer un user supprime ses API keys |
-| `test_user_cannot_create_admin_scoped_key` | User role=user → clé avec dockerfiles:write refusée |
+| `test_user_cannot_exceed_own_scopes` | User avec scopes `{agents:read}` → clé avec `agents:write` refusée |
+| `test_keys_manage_always_implicit` | User sans `keys:manage` explicite → peut quand même gérer ses clés |
+| `test_admin_can_assign_any_scope` | Admin assigne `dockerfiles:write` à un user → user peut créer une clé avec ce scope |
 
 ### 11.3 Frontend
 

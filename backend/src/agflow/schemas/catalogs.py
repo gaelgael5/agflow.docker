@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-Transport = Literal["stdio", "sse", "docker"]
+Transport = Literal["stdio", "sse", "docker", "streamable-http"]
 
 
 class DiscoveryServiceCreate(BaseModel):

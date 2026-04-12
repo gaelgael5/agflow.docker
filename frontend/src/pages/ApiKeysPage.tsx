@@ -192,13 +192,26 @@ function TokenRevealDialog({ created, onClose }: TokenRevealDialogProps) {
     const token = created?.full_key ?? "";
     try {
       await navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      return;
     } catch {
-      // fallback: select the input
-      const input = document.getElementById("token-reveal-input") as HTMLInputElement | null;
-      input?.select();
+      // Clipboard API unavailable (HTTP, no permission)
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const textarea = document.createElement("textarea");
+    textarea.value = token;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand("copy");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } finally {
+      document.body.removeChild(textarea);
+    }
   }
 
   return (

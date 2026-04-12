@@ -470,7 +470,8 @@
     "none": "None"
   },
   "scope_groups": {
-    "secrets": "Secrets",
+    "platform_secrets": "Platform secrets",
+    "user_secrets": "My secrets",
     "dockerfiles": "Dockerfiles",
     "dockerfiles.files": "Dockerfile files",
     "dockerfiles.params": "Dockerfile parameters",
@@ -486,8 +487,10 @@
     "keys": "API keys"
   },
   "scope_descriptions": {
-    "secrets:read": "View secret variable names (not values)",
-    "secrets:write": "Create, edit, delete secrets",
+    "platform_secrets:read": "View platform secret names",
+    "platform_secrets:write": "Manage platform secrets",
+    "user_secrets:read": "Read own encrypted secrets",
+    "user_secrets:write": "Manage own secrets",
     "dockerfiles:read": "List and view dockerfiles",
     "dockerfiles:write": "Create, edit, import dockerfiles",
     "dockerfiles:delete": "Delete a dockerfile",

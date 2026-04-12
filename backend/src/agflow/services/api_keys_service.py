@@ -15,8 +15,10 @@ _log = structlog.get_logger(__name__)
 
 ALL_SCOPES: set[str] = {
     "*",
-    "secrets:read",
-    "secrets:write",
+    "platform_secrets:read",
+    "platform_secrets:write",
+    "user_secrets:read",
+    "user_secrets:write",
     "dockerfiles:read",
     "dockerfiles:write",
     "dockerfiles:delete",

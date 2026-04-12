@@ -15,8 +15,12 @@ interface ScopeGroup {
 
 const SCOPE_GROUPS: ScopeGroup[] = [
   {
-    id: "secrets",
-    scopes: [{ key: "secrets:read" }, { key: "secrets:write" }],
+    id: "platform_secrets",
+    scopes: [{ key: "platform_secrets:read" }, { key: "platform_secrets:write" }],
+  },
+  {
+    id: "user_secrets",
+    scopes: [{ key: "user_secrets:read" }, { key: "user_secrets:write" }],
   },
   {
     id: "dockerfiles",

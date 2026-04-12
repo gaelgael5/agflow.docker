@@ -340,7 +340,11 @@
     "col_actions": "Actions",
     "configure_button": "Configurer",
     "delete_button": "Supprimer",
-    "confirm_delete": "Supprimer \"{{name}}\" du catalogue ?"
+    "confirm_delete": "Supprimer \"{{name}}\" du catalogue ?",
+    "show_summary": "Résumé",
+    "hide_summary": "Masquer le résumé",
+    "loading_summary": "Chargement…",
+    "no_summary": "Aucun résumé disponible dans cette langue"
   },
   "skills_catalog": {
     "page_title": "Catalogue Skills",

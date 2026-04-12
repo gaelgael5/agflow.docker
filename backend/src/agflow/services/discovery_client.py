@@ -83,6 +83,7 @@ def _map_mcp_item(raw: dict[str, Any]) -> dict[str, Any]:
         "short_description": short_desc,
         "long_description": "",
         "documentation_url": raw.get("doc_url") or "",
+        "has_summaries": bool(raw.get("has_summaries")),
     }
 
 
@@ -118,6 +119,32 @@ async def get_mcp_detail(
         response = await c.get(url, headers=_headers(api_key))
     response.raise_for_status()
     return _map_mcp_item(response.json())
+
+
+async def get_service_summary(
+    base_url: str,
+    api_key: str | None,
+    service_id: str | int,
+    culture: str = "en",
+    client: httpx.AsyncClient | None = None,
+) -> str | None:
+    """Fetch the summary for a service in the given language (culture).
+
+    Returns the summary markdown text, or None if no summary exists
+    for that service/culture combination.
+    """
+    url = base_url.rstrip("/") + "/summaries"
+    params = {"service_id": service_id, "culture": culture}
+    async with _maybe_client(client) as c:
+        response = await c.get(url, headers=_headers(api_key), params=params)
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    data = response.json()
+    items = data.get("items", []) if isinstance(data, dict) else data
+    if not items:
+        return None
+    return items[0].get("summary", "")
 
 
 # ──────────────────────────────────────────────────────────────────────────

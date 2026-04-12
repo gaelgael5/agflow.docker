@@ -102,6 +102,31 @@ async def search_mcp(
     return [MCPSearchItem(**item) for item in items]
 
 
+@router.get("/{service_id}/summary/{package_id}")
+async def get_summary(
+    service_id: str,
+    package_id: str,
+    culture: str = Query("fr"),
+) -> dict:
+    """Fetch the summary (in the given culture/language) for a specific MCP service."""
+    try:
+        service = await svc.get_by_id(service_id)
+    except svc.DiscoveryServiceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    api_key = await svc._resolve_api_key(service.api_key_var)
+    text = await discovery_client.get_service_summary(
+        service.base_url, api_key, package_id, culture=culture
+    )
+    if text is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No summary found for service {package_id} in {culture}",
+        )
+    return {"summary": text, "culture": culture, "package_id": package_id}
+
+
 @router.get("/{service_id}/search/skills", response_model=list[SkillSearchItem])
 async def search_skills(
     service_id: str,

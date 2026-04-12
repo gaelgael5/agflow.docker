@@ -61,6 +61,7 @@ class MCPSearchItem(BaseModel):
     short_description: str = ""
     long_description: str = ""
     documentation_url: str = ""
+    has_summaries: bool = False
 
 
 class MCPInstallPayload(BaseModel):

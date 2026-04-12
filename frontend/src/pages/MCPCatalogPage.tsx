@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Search, Trash2 } from "lucide-react";
+import { ExternalLink, FileText, Search, Trash2 } from "lucide-react";
 import { useDiscoveryServices, useMCPCatalog } from "@/hooks/useCatalogs";
 import { SearchModal } from "@/components/SearchModal";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -44,9 +44,9 @@ export function MCPCatalogPage() {
     await deleteMutation.mutateAsync(id);
   }
 
-  async function handleSearch(query: string) {
+  async function handleSearch(query: string, semantic: boolean) {
     if (!selectedServiceId) return [];
-    return discoveryApi.searchMcp(selectedServiceId, query);
+    return discoveryApi.searchMcp(selectedServiceId, query, semantic);
   }
 
   async function handleInstall(item: MCPSearchItem) {
@@ -169,29 +169,109 @@ export function MCPCatalogPage() {
       {searchOpen && selectedServiceId && (
         <SearchModal<MCPSearchItem>
           title={t("mcp_catalog.page_title")}
+          showSemantic
           onSearch={handleSearch}
           onAdd={handleInstall}
           renderItem={(item) => (
-            <div>
-              <div className="flex items-center gap-2">
-                <strong className="text-[13px]">{item.name}</strong>
-                <Badge variant="secondary" className="font-mono text-[10px]">
-                  {item.transport}
-                </Badge>
-                <code className="text-[11px] text-muted-foreground font-mono">
-                  {item.package_id}
-                </code>
-              </div>
-              {item.short_description && (
-                <div className="text-[12px] text-muted-foreground mt-0.5">
-                  {item.short_description}
-                </div>
-              )}
-            </div>
+            <MCPSearchResultItem
+              item={item}
+              serviceId={selectedServiceId}
+            />
           )}
           onClose={() => setSearchOpen(false)}
         />
       )}
     </PageShell>
+  );
+}
+
+function MCPSearchResultItem({
+  item,
+  serviceId,
+}: {
+  item: MCPSearchItem;
+  serviceId: string;
+}) {
+  const { t, i18n } = useTranslation();
+  const [summary, setSummary] = useState<string | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  async function handleShowSummary() {
+    if (summary !== null) {
+      setExpanded(!expanded);
+      return;
+    }
+    setLoadingSummary(true);
+    const culture = i18n.language.startsWith("fr") ? "fr" : "en";
+    const text = await discoveryApi.getSummary(serviceId, String(item.package_id), culture);
+    setSummary(text ?? t("mcp_catalog.no_summary"));
+    setExpanded(true);
+    setLoadingSummary(false);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <strong className="text-[13px]">{item.name}</strong>
+        <Badge variant="secondary" className="font-mono text-[10px]">
+          {item.transport}
+        </Badge>
+        {item.repo && (
+          <span className="text-[11px] text-muted-foreground font-mono">
+            {item.repo}
+          </span>
+        )}
+      </div>
+      {item.short_description && (
+        <div className="text-[12px] text-muted-foreground mt-0.5">
+          {item.short_description}
+        </div>
+      )}
+      <div className="flex items-center gap-2 mt-1">
+        {item.repo_url && (
+          <a
+            href={item.repo_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-primary hover:underline flex items-center gap-1"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Repo
+          </a>
+        )}
+        {item.documentation_url && (
+          <a
+            href={item.documentation_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-primary hover:underline flex items-center gap-1"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Doc
+          </a>
+        )}
+        {item.has_summaries && (
+          <button
+            type="button"
+            onClick={handleShowSummary}
+            disabled={loadingSummary}
+            className="text-[11px] text-primary hover:underline flex items-center gap-1"
+          >
+            <FileText className="w-3 h-3" />
+            {loadingSummary
+              ? t("mcp_catalog.loading_summary")
+              : expanded
+                ? t("mcp_catalog.hide_summary")
+                : t("mcp_catalog.show_summary")}
+          </button>
+        )}
+      </div>
+      {expanded && summary && (
+        <div className="mt-2 p-3 rounded-md bg-muted text-[12px] whitespace-pre-wrap max-h-60 overflow-y-auto">
+          {summary}
+        </div>
+      )}
+    </div>
   );
 }

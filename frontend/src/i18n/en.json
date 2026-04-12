@@ -340,7 +340,11 @@
     "col_actions": "Actions",
     "configure_button": "Configure",
     "delete_button": "Delete",
-    "confirm_delete": "Remove \"{{name}}\" from catalog?"
+    "confirm_delete": "Remove \"{{name}}\" from catalog?",
+    "show_summary": "Summary",
+    "hide_summary": "Hide summary",
+    "loading_summary": "Loading…",
+    "no_summary": "No summary available in this language"
   },
   "skills_catalog": {
     "page_title": "Skills Catalog",

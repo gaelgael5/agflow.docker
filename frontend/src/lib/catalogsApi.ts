@@ -1,6 +1,6 @@
 import { api } from "./api";
 
-export type Transport = "stdio" | "sse" | "docker";
+export type Transport = "stdio" | "sse" | "docker" | "streamable-http";
 
 export interface DiscoveryServiceSummary {
   id: string;
@@ -36,6 +36,7 @@ export interface MCPSearchItem {
   short_description: string;
   long_description: string;
   documentation_url: string;
+  has_summaries: boolean;
 }
 
 export interface MCPServerSummary {
@@ -91,15 +92,31 @@ export const discoveryApi = {
     const res = await api.post<ProbeResult>(`/admin/discovery-services/${id}/test`);
     return res.data;
   },
-  async searchMcp(id: string, query: string): Promise<MCPSearchItem[]> {
-    // Semantic search is not supported by the real registry (yoops.org),
-    // so we always pass semantic=0. Kept as a query param for forward
-    // compatibility but effectively a no-op.
+  async searchMcp(
+    id: string,
+    query: string,
+    semantic: boolean = false,
+  ): Promise<MCPSearchItem[]> {
     const res = await api.get<MCPSearchItem[]>(
       `/admin/discovery-services/${id}/search/mcp`,
-      { params: { q: query, semantic: "0" } },
+      { params: { q: query, semantic: semantic ? "1" : "0" } },
     );
     return res.data;
+  },
+  async getSummary(
+    serviceId: string,
+    packageId: string,
+    culture: string = "fr",
+  ): Promise<string | null> {
+    try {
+      const res = await api.get<{ summary: string }>(
+        `/admin/discovery-services/${serviceId}/summary/${packageId}`,
+        { params: { culture } },
+      );
+      return res.data.summary;
+    } catch {
+      return null;
+    }
   },
   async searchSkills(id: string, query: string): Promise<SkillSearchItem[]> {
     const res = await api.get<SkillSearchItem[]>(

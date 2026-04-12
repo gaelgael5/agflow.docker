@@ -240,8 +240,8 @@ export function RolesPage() {
             />
 
             {/* Right: main content */}
-            <main className="flex-1 min-w-0 overflow-y-auto">
-              <div className="px-6 py-5 border-b">
+            <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+              <div className="px-6 py-4 border-b shrink-0">
                 <h2 className="text-[18px] font-semibold text-foreground truncate">
                   {currentRole.display_name}
                 </h2>
@@ -250,7 +250,7 @@ export function RolesPage() {
                 </p>
               </div>
 
-              <div className="px-6 py-5">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
                 {selectedDoc ? (
                   <div>
                     <div className="flex items-center gap-2 mb-3">

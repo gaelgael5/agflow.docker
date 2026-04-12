@@ -25,7 +25,7 @@ export function RoleGeneralTab({ role, onChange }: Props) {
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="flex flex-col gap-4 h-full">
       <Card>
         <CardContent className="pt-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -46,27 +46,28 @@ export function RoleGeneralTab({ role, onChange }: Props) {
             <Textarea
               value={role.description}
               onChange={(e) => onChange({ description: e.target.value })}
-              rows={2}
+              rows={3}
             />
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="pt-5">
-          <Label className="mb-2 block">
+      <Card className="flex-1 flex flex-col min-h-0">
+        <CardContent className="pt-5 flex-1 flex flex-col min-h-0">
+          <Label className="mb-2 block shrink-0">
             {t("roles.identity.label")}
           </Label>
           <MarkdownEditor
             value={role.identity_md}
             onChange={(v) => onChange({ identity_md: v })}
             placeholder={t("roles.identity.placeholder")}
-            minHeight={220}
+            minHeight={400}
+            fill
           />
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shrink-0">
         <CardContent className="pt-5">
           <Label className="mb-3 block">
             {t("roles.general.service_types")}

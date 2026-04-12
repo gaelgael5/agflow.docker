@@ -10,6 +10,8 @@ import { SkillsCatalogPage } from "./pages/SkillsCatalogPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { AgentEditorPage } from "./pages/AgentEditorPage";
 import { ServiceTypesPage } from "./pages/ServiceTypesPage";
+import { UsersPage } from "./pages/UsersPage";
+import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -101,6 +103,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ServiceTypesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute>
+            <UsersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/api-keys"
+        element={
+          <ProtectedRoute>
+            <ApiKeysPage />
           </ProtectedRoute>
         }
       />

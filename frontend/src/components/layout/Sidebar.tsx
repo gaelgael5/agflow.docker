@@ -7,17 +7,21 @@ import {
   Boxes,
   FileCode2,
   Globe,
+  Key,
   KeyRound,
   LogOut,
   Moon,
   PlugZap,
   RadioTower,
+  Sun,
   Tags,
+  Users,
   UserRoundCog,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -43,6 +47,7 @@ export function Sidebar({ open = false, onClose }: Props) {
   const { t } = useTranslation();
   const location = useLocation();
   const { logout } = useAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const sections: NavSection[] = [
     {
@@ -52,6 +57,8 @@ export function Sidebar({ open = false, onClose }: Props) {
         { to: "/dockerfiles", label: t("dockerfiles.page_title"), icon: FileCode2 },
         { to: "/roles", label: t("roles.page_title"), icon: UserRoundCog },
         { to: "/service-types", label: t("service_types.page_title"), icon: Tags },
+        { to: "/users", label: t("users.page_title"), icon: Users },
+        { to: "/api-keys", label: t("api_keys.page_title"), icon: Key },
       ],
     },
     {
@@ -154,10 +161,19 @@ export function Sidebar({ open = false, onClose }: Props) {
       <div className="border-t p-3 space-y-0.5 text-[13px]">
         <button
           type="button"
+          onClick={toggleTheme}
           className="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground w-full transition-colors"
         >
-          <Moon className="w-4 h-4" />
-          <span>{t("sidebar.theme_dark")}</span>
+          {theme === "dark" ? (
+            <Sun className="w-4 h-4" />
+          ) : (
+            <Moon className="w-4 h-4" />
+          )}
+          <span>
+            {theme === "dark"
+              ? t("sidebar.theme_light")
+              : t("sidebar.theme_dark")}
+          </span>
         </button>
         <button
           type="button"

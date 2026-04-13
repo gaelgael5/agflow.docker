@@ -110,7 +110,7 @@ export function CodeEditor({
   return (
     <div
       style={containerStyle}
-      className="rounded-md border bg-zinc-950 overflow-hidden"
+      className="rounded-md border bg-muted overflow-hidden"
     >
       {/* Line-number gutter */}
       <pre
@@ -127,11 +127,11 @@ export function CodeEditor({
           paddingRight: `${GUTTER_PADDING_RIGHT}px`,
           overflow: "hidden",
           textAlign: "right",
-          color: "#52525b", // zinc-600
+          color: "var(--color-muted-foreground)",
           pointerEvents: "none",
           userSelect: "none",
-          borderRight: "1px solid #27272a", // zinc-800
-          background: "#0a0a0a",
+          borderRight: "1px solid var(--color-border)",
+          background: "var(--color-muted)",
         }}
       >
         {Array.from({ length: lineCount }, (_, i) => `${i + 1}\n`).join("")}
@@ -152,7 +152,7 @@ export function CodeEditor({
           paddingRight: `${PADDING_X}px`,
           overflow: "auto",
           pointerEvents: "none",
-          color: "#e4e4e7",
+          color: "var(--color-foreground)",
         }}
       >
         {tokensToRender.map((tok, i) => (
@@ -184,7 +184,7 @@ export function CodeEditor({
           resize: "none",
           background: "transparent",
           color: "transparent",
-          caretColor: "#e4e4e7",
+          caretColor: "var(--color-foreground)",
           border: "none",
           outline: "none",
           overflow: "auto",

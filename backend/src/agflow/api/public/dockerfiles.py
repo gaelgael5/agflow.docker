@@ -234,11 +234,8 @@ async def import_dockerfile(
         name = info.filename
         if info.is_dir() or name.endswith("/"):
             continue
-        if "/" in name or "\\" in name:
-            errors.append(
-                f"'{name}' : les sous-répertoires ne sont pas autorisés "
-                f"(seuls les fichiers à la racine du zip sont acceptés)."
-            )
+        if ".." in name.split("/") or name.startswith("/"):
+            errors.append(f"'{name}' : chemin invalide.")
             continue
         try:
             files_map[name] = zf.read(info).decode("utf-8")

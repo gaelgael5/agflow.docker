@@ -84,6 +84,7 @@ class DocumentCreate(BaseModel):
 
 
 class DocumentUpdate(BaseModel):
+    name: str | None = None
     content_md: str | None = None
     protected: bool | None = None
 

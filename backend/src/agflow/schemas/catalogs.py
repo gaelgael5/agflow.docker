@@ -53,11 +53,12 @@ class ProbeResult(BaseModel):
 
 
 class MCPSearchItem(BaseModel):
-    package_id: str
+    package_id: str | int
     name: str
     repo: str = ""
     repo_url: str = ""
     transport: Transport = "stdio"
+    category: str = ""
     short_description: str = ""
     long_description: str = ""
     documentation_url: str = ""
@@ -91,7 +92,7 @@ class MCPParametersUpdate(BaseModel):
 
 
 class SkillSearchItem(BaseModel):
-    skill_id: str
+    skill_id: str | int
     name: str
     description: str = ""
 

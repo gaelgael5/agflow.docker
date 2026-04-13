@@ -77,7 +77,7 @@ export function Sidebar({ open = false, onClose }: Props) {
       title: t("sidebar.section_orchestration"),
       items: [
         { to: "/agents", label: t("agents.page_title"), icon: Bot },
-        { to: "/docs", label: t("sidebar.api_public"), icon: Globe, external: true },
+        { to: "/api-docs", label: t("sidebar.api_public"), icon: Globe },
         { to: "/supervision", label: t("sidebar.supervision"), icon: Activity, disabled: true },
       ],
     },

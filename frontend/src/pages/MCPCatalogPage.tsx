@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ExternalLink, FileText, Search, Trash2 } from "lucide-react";
+import Markdown from "react-markdown";
+import { ExternalLink, Search, Trash2 } from "lucide-react";
 import { useDiscoveryServices, useMCPCatalog } from "@/hooks/useCatalogs";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SearchModal } from "@/components/SearchModal";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ export function MCPCatalogPage() {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
     null,
   );
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (selectedServiceId === null && services && services.length > 0) {
@@ -39,9 +42,8 @@ export function MCPCatalogPage() {
     return acc;
   }, {});
 
-  async function handleDelete(id: string, name: string) {
-    if (!window.confirm(t("mcp_catalog.confirm_delete", { name }))) return;
-    await deleteMutation.mutateAsync(id);
+  function handleDelete(id: string, name: string) {
+    setDeleteTarget({ id, name });
   }
 
   async function handleSearch(query: string, semantic: boolean) {
@@ -166,12 +168,24 @@ export function MCPCatalogPage() {
         </div>
       )}
 
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={t("mcp_catalog.confirm_delete_title")}
+        description={t("mcp_catalog.confirm_delete_message", { name: deleteTarget?.name ?? "" })}
+        destructive
+        onConfirm={async () => {
+          if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id);
+        }}
+      />
+
       {searchOpen && selectedServiceId && (
         <SearchModal<MCPSearchItem>
           title={t("mcp_catalog.page_title")}
           showSemantic
           onSearch={handleSearch}
           onAdd={handleInstall}
+          groupBy={(item) => item.category}
           renderItem={(item) => (
             <MCPSearchResultItem
               item={item}
@@ -211,24 +225,28 @@ function MCPSearchResultItem({
   }
 
   return (
-    <div>
+    <div
+      className={item.has_summaries ? "cursor-pointer" : ""}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("a")) return;
+        if (item.has_summaries) handleShowSummary();
+      }}
+    >
       <div className="flex items-center gap-2 flex-wrap">
         <strong className="text-[13px]">{item.name}</strong>
         <Badge variant="secondary" className="font-mono text-[10px]">
           {item.transport}
         </Badge>
+        {item.category && (
+          <Badge variant="outline" className="text-[10px]">
+            {item.category}
+          </Badge>
+        )}
         {item.repo && (
           <span className="text-[11px] text-muted-foreground font-mono">
             {item.repo}
           </span>
         )}
-      </div>
-      {item.short_description && (
-        <div className="text-[12px] text-muted-foreground mt-0.5">
-          {item.short_description}
-        </div>
-      )}
-      <div className="flex items-center gap-2 mt-1">
         {item.repo_url && (
           <a
             href={item.repo_url}
@@ -251,25 +269,18 @@ function MCPSearchResultItem({
             Doc
           </a>
         )}
-        {item.has_summaries && (
-          <button
-            type="button"
-            onClick={handleShowSummary}
-            disabled={loadingSummary}
-            className="text-[11px] text-primary hover:underline flex items-center gap-1"
-          >
-            <FileText className="w-3 h-3" />
-            {loadingSummary
-              ? t("mcp_catalog.loading_summary")
-              : expanded
-                ? t("mcp_catalog.hide_summary")
-                : t("mcp_catalog.show_summary")}
-          </button>
+        {loadingSummary && (
+          <span className="text-[11px] text-muted-foreground">{t("mcp_catalog.loading_summary")}</span>
         )}
       </div>
+      {item.short_description && (
+        <div className="text-[12px] text-muted-foreground mt-0.5">
+          {item.short_description}
+        </div>
+      )}
       {expanded && summary && (
-        <div className="mt-2 p-3 rounded-md bg-muted text-[12px] whitespace-pre-wrap max-h-60 overflow-y-auto">
-          {summary}
+        <div className="mt-2 p-3 rounded-md bg-muted text-[12px] max-h-60 overflow-y-auto prose prose-sm dark:prose-invert prose-headings:text-[13px] prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0 max-w-none">
+          <Markdown>{summary}</Markdown>
         </div>
       )}
     </div>

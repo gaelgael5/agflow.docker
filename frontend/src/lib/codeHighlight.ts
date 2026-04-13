@@ -85,7 +85,7 @@ function tokenizeDockerfileLine(line: string, out: Token[]): void {
 
   // Full-line comment
   if (trimmed.startsWith("#")) {
-    out.push({ text: trimmed, cls: "text-zinc-500 italic" });
+    out.push({ text: trimmed, cls: "text-zinc-400 dark:text-zinc-500 italic" });
     return;
   }
 
@@ -94,7 +94,7 @@ function tokenizeDockerfileLine(line: string, out: Token[]): void {
   if (instrMatch && DOCKERFILE_INSTRUCTIONS.has(instrMatch[1]!)) {
     out.push({
       text: instrMatch[1]!,
-      cls: "text-pink-400 font-semibold",
+      cls: "text-pink-600 dark:text-pink-400 font-semibold",
     });
     if (instrMatch[2]) out.push({ text: instrMatch[2], cls: "" });
     tokenizeDockerfileArgs(trimmed.slice(instrMatch[0].length), out);
@@ -110,17 +110,17 @@ function tokenizeDockerfileArgs(rest: string, out: Token[]): void {
   const pattern =
     /("(?:\\.|[^"\\])*")|('(?:\\.|[^'\\])*')|(#.*$)|(--?[a-zA-Z][\w.-]*(?:=[^\s]*)?)|(\$\{[^}]*\}|\$\w+)|(\s+)|([^\s"'$#\\-]+)|(\\$)|(\\)|([\s\S])/g;
   for (const m of rest.matchAll(pattern)) {
-    if (m[1] !== undefined) out.push({ text: m[1], cls: "text-amber-300" });
+    if (m[1] !== undefined) out.push({ text: m[1], cls: "text-amber-700 dark:text-amber-300" });
     else if (m[2] !== undefined)
-      out.push({ text: m[2], cls: "text-amber-300" });
+      out.push({ text: m[2], cls: "text-amber-700 dark:text-amber-300" });
     else if (m[3] !== undefined)
-      out.push({ text: m[3], cls: "text-zinc-500 italic" });
+      out.push({ text: m[3], cls: "text-zinc-400 dark:text-zinc-500 italic" });
     else if (m[4] !== undefined)
-      out.push({ text: m[4], cls: "text-cyan-300" });
+      out.push({ text: m[4], cls: "text-cyan-700 dark:text-cyan-300" });
     else if (m[5] !== undefined)
-      out.push({ text: m[5], cls: "text-violet-300" });
+      out.push({ text: m[5], cls: "text-violet-600 dark:text-violet-300" });
     else if (m[6] !== undefined) out.push({ text: m[6], cls: "" });
-    else if (m[7] !== undefined) out.push({ text: m[7], cls: "text-zinc-100" });
+    else if (m[7] !== undefined) out.push({ text: m[7], cls: "text-zinc-800 dark:text-zinc-100" });
     else if (m[8] !== undefined)
       out.push({ text: m[8], cls: "text-zinc-500" });
     else if (m[9] !== undefined)
@@ -204,7 +204,7 @@ export function highlightBash(source: string): Token[] {
 function tokenizeBashLine(line: string, out: Token[]): void {
   // Shebang
   if (line.startsWith("#!")) {
-    out.push({ text: line, cls: "text-pink-400 italic" });
+    out.push({ text: line, cls: "text-pink-600 dark:text-pink-400 italic" });
     return;
   }
   // Leading whitespace
@@ -217,7 +217,7 @@ function tokenizeBashLine(line: string, out: Token[]): void {
 
   // Full-line comment
   if (trimmed.startsWith("#")) {
-    out.push({ text: trimmed, cls: "text-zinc-500 italic" });
+    out.push({ text: trimmed, cls: "text-zinc-400 dark:text-zinc-500 italic" });
     return;
   }
 
@@ -226,35 +226,35 @@ function tokenizeBashLine(line: string, out: Token[]): void {
   let atLineStart = true;
   for (const m of trimmed.matchAll(pattern)) {
     if (m[1] !== undefined) {
-      out.push({ text: m[1], cls: "text-amber-300" });
+      out.push({ text: m[1], cls: "text-amber-700 dark:text-amber-300" });
       atLineStart = false;
     } else if (m[2] !== undefined) {
-      out.push({ text: m[2], cls: "text-amber-300" });
+      out.push({ text: m[2], cls: "text-amber-700 dark:text-amber-300" });
       atLineStart = false;
     } else if (m[3] !== undefined) {
-      out.push({ text: m[3], cls: "text-zinc-500 italic" });
+      out.push({ text: m[3], cls: "text-zinc-400 dark:text-zinc-500 italic" });
     } else if (m[4] !== undefined) {
-      out.push({ text: m[4], cls: "text-cyan-300" });
+      out.push({ text: m[4], cls: "text-cyan-700 dark:text-cyan-300" });
       atLineStart = false;
     } else if (m[5] !== undefined) {
-      out.push({ text: m[5], cls: "text-violet-300" });
+      out.push({ text: m[5], cls: "text-violet-600 dark:text-violet-300" });
       atLineStart = false;
     } else if (m[6] !== undefined) {
       out.push({ text: m[6], cls: "" });
     } else if (m[7] !== undefined) {
       const word = m[7];
       if (BASH_KEYWORDS.has(word)) {
-        out.push({ text: word, cls: "text-pink-400 font-semibold" });
+        out.push({ text: word, cls: "text-pink-600 dark:text-pink-400 font-semibold" });
       } else if (atLineStart && BASH_BUILTINS.has(word)) {
-        out.push({ text: word, cls: "text-emerald-300 font-semibold" });
+        out.push({ text: word, cls: "text-emerald-700 dark:text-emerald-300 font-semibold" });
       } else if (atLineStart) {
-        out.push({ text: word, cls: "text-emerald-300" });
+        out.push({ text: word, cls: "text-emerald-700 dark:text-emerald-300" });
       } else {
-        out.push({ text: word, cls: "text-zinc-100" });
+        out.push({ text: word, cls: "text-zinc-800 dark:text-zinc-100" });
       }
       atLineStart = false;
     } else if (m[8] !== undefined) {
-      out.push({ text: m[8], cls: "text-orange-300" });
+      out.push({ text: m[8], cls: "text-orange-600 dark:text-orange-300" });
       atLineStart = false;
     } else if (m[9] !== undefined) {
       out.push({ text: m[9], cls: "text-zinc-500" });
@@ -277,15 +277,15 @@ export function highlightJson(source: string): Token[] {
     if (m[1] !== undefined) {
       // Key vs value: key has trailing colon captured in group 2
       if (m[2] !== undefined) {
-        out.push({ text: m[1], cls: "text-cyan-300" });
+        out.push({ text: m[1], cls: "text-cyan-700 dark:text-cyan-300" });
         out.push({ text: m[2], cls: "text-zinc-400" });
       } else {
-        out.push({ text: m[1], cls: "text-amber-300" });
+        out.push({ text: m[1], cls: "text-amber-700 dark:text-amber-300" });
       }
     } else if (m[3] !== undefined) {
-      out.push({ text: m[3], cls: "text-orange-300" });
+      out.push({ text: m[3], cls: "text-orange-600 dark:text-orange-300" });
     } else if (m[4] !== undefined) {
-      out.push({ text: m[4], cls: "text-violet-300" });
+      out.push({ text: m[4], cls: "text-violet-600 dark:text-violet-300" });
     } else if (m[5] !== undefined) {
       out.push({ text: m[5], cls: "text-zinc-400" });
     } else if (m[6] !== undefined) {

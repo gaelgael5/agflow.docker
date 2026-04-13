@@ -3,19 +3,24 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
   BookMarked,
+  Cog,
   Copy,
   Eye,
   FileCode2,
+  MessageSquare,
+  Play,
   Plus,
   PlugZap,
   Save,
+  TerminalSquare,
   Trash2,
   UserRoundCog,
   X,
 } from "lucide-react";
-import { useDockerfiles } from "@/hooks/useDockerfiles";
+import { useDockerfiles, useDockerfileDetail } from "@/hooks/useDockerfiles";
 import { useRoles } from "@/hooks/useRoles";
 import { useMCPCatalog, useSkillsCatalog } from "@/hooks/useCatalogs";
 import {
@@ -27,7 +32,14 @@ import {
 import { useRoleDetail } from "@/hooks/useRoleDocuments";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
+import { secretsApi } from "@/lib/secretsApi";
+import { useVault } from "@/hooks/useVault";
+import { userSecretsApi } from "@/lib/userSecretsApi";
+import { containersApi } from "@/lib/containersApi";
+import { ChatWindow } from "@/components/ChatWindow";
+import { TerminalWindow } from "@/components/TerminalWindow";
 import { ProfileInlineEditor } from "@/components/ProfileInlineEditor";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { PageShell } from "@/components/layout/PageHeader";
 import { slugify } from "@/lib/slugify";
@@ -115,6 +127,7 @@ export function AgentEditorPage() {
   const qc = useQueryClient();
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === "new";
+  const { state: vaultState, decryptSecret } = useVault();
 
   const { agent, isLoading: agentLoading, updateMutation } = useAgent(
     isNew ? undefined : id,
@@ -133,6 +146,7 @@ export function AgentEditorPage() {
   const roleDetailQuery = useRoleDetail(isNew ? null : agent?.role_id ?? null);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const dockerfileDetailQuery = useDockerfileDetail(form.dockerfile_id || null);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [preview, setPreview] = useState<ConfigPreview | null>(null);
@@ -142,6 +156,14 @@ export function AgentEditorPage() {
   const [showAddProfileDialog, setShowAddProfileDialog] = useState(false);
   const [addProfileError, setAddProfileError] = useState<string | null>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [deleteProfileTarget, setDeleteProfileTarget] = useState<{ id: string; name: string } | null>(null);
+  const [showDeleteAgentDialog, setShowDeleteAgentDialog] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generatedFiles, setGeneratedFiles] = useState<{ path: string; content: string }[]>([]);
+  const [selectedGenFile, setSelectedGenFile] = useState<string | null>(null);
+  const [chatOpenFor, setChatOpenFor] = useState<string | null>(null);
+  const [terminalContainer, setTerminalContainer] = useState<{ id: string; name: string } | null>(null);
+  const [runningContainerId, setRunningContainerId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isNew && agent) {
@@ -163,8 +185,27 @@ export function AgentEditorPage() {
     }
   }, [isNew, agent]);
 
+  useEffect(() => {
+    if (!isNew && id) {
+      agentsApi.listGenerated(id).then(setGeneratedFiles).catch(() => {});
+    }
+  }, [isNew, id]);
+
   const availableMCPs = useMemo(() => mcps ?? [], [mcps]);
   const availableSkills = useMemo(() => skills ?? [], [skills]);
+
+  const dockerfileEnvKeys = useMemo(() => {
+    const files = dockerfileDetailQuery.data?.files ?? [];
+    const paramsFile = files.find((f) => f.path === "Dockerfile.json");
+    if (!paramsFile) return [];
+    try {
+      const parsed = JSON.parse(paramsFile.content);
+      const envs = parsed?.docker?.Environments ?? {};
+      return Object.keys(envs);
+    } catch {
+      return [];
+    }
+  }, [dockerfileDetailQuery.data]);
 
   const referencedSecrets = useMemo(
     () =>
@@ -336,14 +377,8 @@ export function AgentEditorPage() {
     }
   }
 
-  async function handleDeleteProfile(profile: AgentProfileSummary) {
-    if (
-      !window.confirm(
-        t("agent_editor.profile_confirm_delete", { name: profile.name }),
-      )
-    )
-      return;
-    await profilesHook.deleteMutation.mutateAsync(profile.id);
+  function handleDeleteProfile(profile: AgentProfileSummary) {
+    setDeleteProfileTarget({ id: profile.id, name: profile.name });
   }
 
   async function handleSaveProfileDocs(
@@ -366,14 +401,9 @@ export function AgentEditorPage() {
     navigate(`/agents/${copy.id}`);
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (isNew || !id) return;
-    if (
-      !window.confirm(t("agents.confirm_delete", { name: form.display_name }))
-    )
-      return;
-    await deleteMutation.mutateAsync(id);
-    navigate("/agents");
+    setShowDeleteAgentDialog(true);
   }
 
   if (!isNew && agentLoading)
@@ -399,38 +429,140 @@ export function AgentEditorPage() {
         {t("agent_editor.back_to_agents")}
       </button>
 
-      {/* Header with title + actions */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-8">
-        <div className="min-w-0">
-          <h1 className="text-[22px] md:text-[26px] font-semibold text-foreground tracking-tight truncate">
-            {title}
-          </h1>
-          {!isNew && form.slug && (
-            <p className="text-muted-foreground mt-1 font-mono text-[12px]">
-              {form.slug}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {!isNew && (
-            <>
-              <Button variant="outline" onClick={() => handlePreview(null)}>
-                <Eye className="w-4 h-4" />
-                {t("agent_editor.preview_identity_only")}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setShowDuplicateDialog(true)}
-              >
-                <Copy className="w-4 h-4" />
-                {t("agent_editor.duplicate_button")}
-              </Button>
-            </>
-          )}
-          <Button onClick={handleSave}>
-            <Save className="w-4 h-4" />
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <h1 className="text-[20px] font-semibold text-foreground truncate">
+          {title}
+        </h1>
+        {!isNew && form.slug && (
+          <span className="text-muted-foreground font-mono text-[12px]">
+            {form.slug}
+          </span>
+        )}
+
+        <div className="flex items-center gap-2 ml-auto">
+          <Button size="sm" onClick={handleSave}>
+            <Save className="w-3.5 h-3.5" />
             {t("agent_editor.save")}
           </Button>
+
+          {!isNew && (
+            <>
+              <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  onClick={() => handlePreview(null)}
+                  title={t("agent_editor.preview_identity_only")}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  onClick={() => setShowDuplicateDialog(true)}
+                  title={t("agent_editor.duplicate_button")}
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-destructive"
+                  onClick={() => setShowDeleteAgentDialog(true)}
+                  title={t("agents.delete_button")}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  disabled={generating}
+                  title={t("agent_editor.generate_button")}
+                  onClick={async () => {
+                    if (!id) return;
+                    setGenerating(true);
+                    try {
+                      let secrets: Record<string, string> = {};
+                      if (vaultState === "unlocked") {
+                        try {
+                          const list = await userSecretsApi.list();
+                          for (const s of list) {
+                            try { secrets[s.name] = decryptSecret(s.ciphertext, s.iv); } catch { /* skip */ }
+                          }
+                        } catch { /* no vault */ }
+                      }
+                      await agentsApi.generate(id, { secrets });
+                      const files = await agentsApi.listGenerated(id);
+                      setGeneratedFiles(files);
+                    } catch (e) {
+                      setError(String(e));
+                    } finally {
+                      setGenerating(false);
+                    }
+                  }}
+                >
+                  <Cog className={`w-3.5 h-3.5 ${generating ? "animate-spin" : ""}`} />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  title={t("agent_editor.launch_button")}
+                  onClick={async () => {
+                    if (!form.dockerfile_id) return;
+                    try {
+                      let secrets: Record<string, string> = {};
+                      if (vaultState === "unlocked") {
+                        try {
+                          const list = await userSecretsApi.list();
+                          for (const s of list) {
+                            try { secrets[s.name] = decryptSecret(s.ciphertext, s.iv); } catch { /* skip */ }
+                          }
+                        } catch { /* no vault */ }
+                      }
+                      const c = await containersApi.run(form.dockerfile_id, secrets);
+                      setRunningContainerId(c.id);
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                >
+                  <Play className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  title={t("agent_editor.chat_button")}
+                  disabled={!form.dockerfile_id}
+                  onClick={() => setChatOpenFor(form.dockerfile_id)}
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  title={t("agent_editor.terminal_button")}
+                  disabled={!runningContainerId}
+                  onClick={() => {
+                    if (runningContainerId) {
+                      setTerminalContainer({ id: runningContainerId, name: form.slug || "agent" });
+                    }
+                  }}
+                >
+                  <TerminalSquare className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -825,10 +957,58 @@ export function AgentEditorPage() {
               </div>
             );
           })}
-          <Button variant="outline" size="sm" onClick={addEnv}>
-            <Plus className="w-3.5 h-3.5" />
-            {t("agent_editor.env_add")}
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={addEnv}>
+              <Plus className="w-3.5 h-3.5" />
+              {t("agent_editor.env_add")}
+            </Button>
+            {dockerfileEnvKeys.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const existingKeys = new Set(form.env_entries.map((e) => e.key));
+                  const toAdd = dockerfileEnvKeys.filter((k) => !existingKeys.has(k));
+                  if (toAdd.length === 0) return;
+                  setForm((prev) => ({
+                    ...prev,
+                    env_entries: [
+                      ...prev.env_entries,
+                      ...toAdd.map((k) => ({ key: k, value: `$${k}` })),
+                    ],
+                  }));
+                }}
+              >
+                <FileCode2 className="w-3.5 h-3.5" />
+                {t("agent_editor.env_from_dockerfile")}
+              </Button>
+            )}
+            {referencedSecrets.some(
+              (name) => envStatus.data?.[name] === "missing",
+            ) && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-amber-600"
+                onClick={async () => {
+                  const missing = referencedSecrets.filter(
+                    (name) => envStatus.data?.[name] === "missing",
+                  );
+                  for (const name of missing) {
+                    try {
+                      await secretsApi.create({ var_name: name, value: "" });
+                    } catch {
+                      // already exists or error — skip
+                    }
+                  }
+                  envStatus.refetch();
+                }}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {t("agent_editor.env_create_missing")}
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -894,6 +1074,50 @@ export function AgentEditorPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Generated files explorer */}
+      {!isNew && generatedFiles.length > 0 && (
+        <>
+          <SectionLabel>{t("agent_editor.section_generated")}</SectionLabel>
+          <Card className="mb-6">
+            <CardContent className="pt-5">
+              <div className="flex gap-4 min-h-[200px]">
+                <div className="w-48 shrink-0 border-r pr-3 overflow-y-auto max-h-[400px]">
+                  <ul className="space-y-0.5">
+                    {generatedFiles.map((f) => (
+                      <li key={f.path}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedGenFile(f.path)}
+                          className={`w-full text-left px-2 py-1 rounded text-[12px] font-mono flex items-center gap-1.5 transition-colors ${
+                            selectedGenFile === f.path
+                              ? "bg-primary/10 text-primary"
+                              : "hover:bg-secondary text-foreground"
+                          }`}
+                        >
+                          <FileCode2 className="w-3 h-3 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{f.path}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="flex-1 min-w-0 overflow-auto">
+                  {selectedGenFile ? (
+                    <pre className="text-[12px] font-mono whitespace-pre-wrap bg-muted rounded p-3 max-h-[400px] overflow-auto">
+                      {generatedFiles.find((f) => f.path === selectedGenFile)?.content ?? ""}
+                    </pre>
+                  ) : (
+                    <p className="text-[12px] text-muted-foreground italic p-3">
+                      {t("agent_editor.generated_select_file")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       {/* Assistant toggle */}
       {!isNew && agent && (
@@ -1046,6 +1270,45 @@ export function AgentEditorPage() {
           },
         ]}
       />
+
+      <ConfirmDialog
+        open={deleteProfileTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteProfileTarget(null); }}
+        title={t("agent_editor.profile_confirm_delete_title")}
+        description={t("agent_editor.profile_confirm_delete_message", { name: deleteProfileTarget?.name ?? "" })}
+        destructive
+        onConfirm={async () => {
+          if (deleteProfileTarget) await profilesHook.deleteMutation.mutateAsync(deleteProfileTarget.id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={showDeleteAgentDialog}
+        onOpenChange={setShowDeleteAgentDialog}
+        title={t("agents.confirm_delete_title")}
+        description={t("agents.confirm_delete_message", { name: form.display_name })}
+        destructive
+        onConfirm={async () => {
+          if (id) {
+            await deleteMutation.mutateAsync(id);
+            navigate("/agents");
+          }
+        }}
+      />
+      {chatOpenFor && (
+        <ChatWindow
+          dockerfileId={chatOpenFor}
+          onClose={() => setChatOpenFor(null)}
+        />
+      )}
+
+      {terminalContainer && (
+        <TerminalWindow
+          containerId={terminalContainer.id}
+          containerName={terminalContainer.name}
+          onClose={() => setTerminalContainer(null)}
+        />
+      )}
     </PageShell>
   );
 }

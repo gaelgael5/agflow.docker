@@ -32,7 +32,22 @@ export function useRoleDocumentMutations(roleId: string) {
   const updateDoc = useMutation({
     mutationFn: ({ docId, payload }: { docId: string; payload: DocumentUpdate }) =>
       rolesApi.updateDocument(roleId, docId, payload),
-    onSuccess: invalidate,
+    onSuccess: (_data, variables) => {
+      qc.setQueryData<RoleDetail>(["role", roleId], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          sections: old.sections.map((s) => ({
+            ...s,
+            documents: s.documents.map((d) =>
+              d.id === variables.docId
+                ? { ...d, ...variables.payload }
+                : d,
+            ),
+          })),
+        };
+      });
+    },
   });
 
   const deleteDoc = useMutation({

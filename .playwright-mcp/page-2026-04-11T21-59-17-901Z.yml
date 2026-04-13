@@ -1,0 +1,137 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - link "agflow docker" [ref=e6] [cursor=pointer]:
+      - /url: /
+      - img [ref=e8]
+      - generic [ref=e18]: agflow
+      - generic [ref=e19]: docker
+    - navigation [ref=e20]:
+      - generic [ref=e21]:
+        - generic [ref=e22]: Plateforme
+        - link "Secrets & variables d'environnement" [ref=e23] [cursor=pointer]:
+          - /url: /secrets
+          - img [ref=e24]
+          - generic [ref=e27]: Secrets & variables d'environnement
+        - link "Dockerfiles (runtimes des agents)" [ref=e28] [cursor=pointer]:
+          - /url: /dockerfiles
+          - img [ref=e29]
+          - generic [ref=e34]: Dockerfiles (runtimes des agents)
+        - link "Rôles (personnalités d'agents)" [ref=e35] [cursor=pointer]:
+          - /url: /roles
+          - img [ref=e36]
+          - generic [ref=e48]: Rôles (personnalités d'agents)
+        - link "Types de services" [ref=e49] [cursor=pointer]:
+          - /url: /service-types
+          - img [ref=e50]
+          - generic [ref=e54]: Types de services
+      - generic [ref=e55]:
+        - generic [ref=e56]: Catalogues
+        - link "Services de découverte" [ref=e57] [cursor=pointer]:
+          - /url: /discovery-services
+          - img [ref=e58]
+          - generic [ref=e65]: Services de découverte
+        - link "Catalogue MCP" [ref=e66] [cursor=pointer]:
+          - /url: /mcp-catalog
+          - img [ref=e67]
+          - generic [ref=e73]: Catalogue MCP
+        - link "Catalogue Skills" [ref=e74] [cursor=pointer]:
+          - /url: /skills-catalog
+          - img [ref=e75]
+          - generic [ref=e78]: Catalogue Skills
+      - generic [ref=e79]:
+        - generic [ref=e80]: Orchestration
+        - link "Agents (compositions)" [ref=e81] [cursor=pointer]:
+          - /url: /agents
+          - img [ref=e82]
+          - generic [ref=e85]: Agents (compositions)
+        - generic [ref=e86]:
+          - img [ref=e87]
+          - generic [ref=e90]: API publique
+          - generic [ref=e91]: soon
+        - generic [ref=e92]:
+          - img [ref=e93]
+          - generic [ref=e95]: Supervision
+          - generic [ref=e96]: soon
+    - generic [ref=e97]:
+      - button "Thème sombre" [ref=e98] [cursor=pointer]:
+        - img [ref=e99]
+        - generic [ref=e101]: Thème sombre
+      - button "Déconnexion" [ref=e102] [cursor=pointer]:
+        - img [ref=e103]
+        - generic [ref=e106]: Déconnexion
+  - generic [ref=e107]:
+    - banner [ref=e108]:
+      - generic [ref=e109]:
+        - generic [ref=e110]: Plateforme
+        - img [ref=e111]
+        - generic [ref=e113]: Dockerfiles (runtimes des agents)
+      - generic [ref=e114]:
+        - button "Search" [ref=e115] [cursor=pointer]:
+          - img [ref=e116]
+        - button "Notifications" [ref=e119] [cursor=pointer]:
+          - img [ref=e120]
+        - generic [ref=e124]: GB
+    - main [ref=e125]:
+      - generic [ref=e126]:
+        - complementary [ref=e127]:
+          - generic [ref=e128]:
+            - heading "Dockerfiles (runtimes des agents)" [level=2] [ref=e129]
+            - generic [ref=e130]:
+              - button "+ Ajouter un dockerfile" [ref=e131] [cursor=pointer]:
+                - img
+                - text: + Ajouter un dockerfile
+              - button "Créer via chat" [ref=e132] [cursor=pointer]:
+                - img
+                - text: Créer via chat
+          - list [ref=e134]:
+            - listitem [ref=e135]:
+              - button "codex 🟢 Image à jour" [ref=e136] [cursor=pointer]:
+                - generic [ref=e137]: codex
+                - generic [ref=e138]: 🟢 Image à jour
+          - button "Supprimer" [ref=e141] [cursor=pointer]:
+            - img
+            - text: Supprimer
+        - complementary [ref=e142]:
+          - generic [ref=e143]:
+            - generic [ref=e144]: Fichiers
+            - button "+ Nouveau fichier" [ref=e145] [cursor=pointer]:
+              - img
+          - list [ref=e147]:
+            - listitem [ref=e148]:
+              - button "Dockerfile" [ref=e149] [cursor=pointer]:
+                - img [ref=e150]
+                - generic [ref=e155]: Dockerfile
+            - listitem [ref=e156]:
+              - button "entrypoint.sh" [ref=e157] [cursor=pointer]:
+                - img [ref=e158]
+                - generic [ref=e163]: entrypoint.sh
+        - main [ref=e164]:
+          - generic [ref=e165]:
+            - generic [ref=e166]:
+              - heading "codex" [level=2] [ref=e167]
+              - generic [ref=e168]:
+                - generic [ref=e169]: 🟢 Image à jour
+                - generic [ref=e170]:
+                  - text: "Hash courant:"
+                  - code [ref=e171]: d7f431fbb27c
+            - generic [ref=e172]:
+              - button "Paramètres" [ref=e173] [cursor=pointer]:
+                - img
+                - text: Paramètres
+              - button "Exporter" [ref=e174] [cursor=pointer]:
+                - img
+                - text: Exporter
+              - button "Importer" [ref=e175] [cursor=pointer]:
+                - img
+                - text: Importer
+              - button "Compiler" [ref=e176] [cursor=pointer]:
+                - img
+                - text: Compiler
+          - generic [ref=e177]:
+            - generic [ref=e179]:
+              - code [ref=e180]: entrypoint.sh
+              - generic [ref=e181]: fichier standard, non supprimable
+            - generic [ref=e182]:
+              - generic: "#!/usr/bin/env bashset -euo pipefailTASK_JSON=$(cat)TASK_ID=$(echo \"$TASK_JSON\" | jq -r '.task_id')INSTRUCTION=$(echo \"$TASK_JSON\" | jq -r '.payload.instruction')TIMEOUT=$(echo \"$TASK_JSON\" | jq -r '.timeout_seconds // 300')emit_event() { local type=$1 local data=$2 echo \"{\\\"task_id\\\":\\\"$TASK_ID\\\",\\\"type\\\":\\\"$type\\\",\\\"data\\\":$data}\"}emit_event \"progress\" \"\\\"Agent $AGENT_ROLE démarré — tâche $TASK_ID\\\"\"EXIT_CODE=0RESULT=$(timeout \"$TIMEOUT\" codex \\ --full-auto \"$INSTRUCTION\" \\ 2>/dev/null) || EXIT_CODE=$?echo \"$RESULT\" | while IFS= read -r line; do [ -z \"$line\" ] && continue emit_event \"progress\" \"$(echo \"$line\" | jq -c '.' 2>/dev/null || echo \"\\\"$(echo \"$line\" | sed 's/\"/\\\\\"/g')\\\"\" )\"doneif [ \"$EXIT_CODE\" -eq 0 ]; then emit_event \"result\" \"{\\\"status\\\":\\\"success\\\",\\\"exit_code\\\":0}\"else emit_event \"result\" \"{\\\"status\\\":\\\"failure\\\",\\\"exit_code\\\":$EXIT_CODE}\"fiexit $EXIT_CODE"
+              - textbox [active] [ref=e183]: "#!/usr/bin/env bash set -euo pipefail TASK_JSON=$(cat) TASK_ID=$(echo \"$TASK_JSON\" | jq -r '.task_id') INSTRUCTION=$(echo \"$TASK_JSON\" | jq -r '.payload.instruction') TIMEOUT=$(echo \"$TASK_JSON\" | jq -r '.timeout_seconds // 300') emit_event() { local type=$1 local data=$2 echo \"{\\\"task_id\\\":\\\"$TASK_ID\\\",\\\"type\\\":\\\"$type\\\",\\\"data\\\":$data}\" } emit_event \"progress\" \"\\\"Agent $AGENT_ROLE démarré — tâche $TASK_ID\\\"\" EXIT_CODE=0 RESULT=$(timeout \"$TIMEOUT\" codex \\ --full-auto \"$INSTRUCTION\" \\ 2>/dev/null) || EXIT_CODE=$? echo \"$RESULT\" | while IFS= read -r line; do [ -z \"$line\" ] && continue emit_event \"progress\" \"$(echo \"$line\" | jq -c '.' 2>/dev/null || echo \"\\\"$(echo \"$line\" | sed 's/\"/\\\\\"/g')\\\"\" )\" done if [ \"$EXIT_CODE\" -eq 0 ]; then emit_event \"result\" \"{\\\"status\\\":\\\"success\\\",\\\"exit_code\\\":0}\" else emit_event \"result\" \"{\\\"status\\\":\\\"failure\\\",\\\"exit_code\\\":$EXIT_CODE}\" fi exit $EXIT_CODE"
+  - region "Notifications alt+T"

@@ -34,7 +34,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { UserSummary } from "@/lib/usersApi";
-import { ScopesEditor, ALL_SCOPES } from "@/components/ScopesEditor";
+import { ScopesEditor } from "@/components/ScopesEditor";
+import { useScopes } from "@/hooks/useScopes";
 
 // ─── Scope catalogue ─────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ const STANDARD_PROFILE_SCOPES = [
   "containers:read",
   "containers:run",
   "containers.logs:read",
+  "containers.chat:read",
   "containers.chat:write",
   "keys:manage",
 ];
@@ -62,6 +64,7 @@ interface ScopesDialogProps {
 
 function ScopesDialog({ open, onOpenChange, user, onSave }: ScopesDialogProps) {
   const { t } = useTranslation();
+  const { allScopes } = useScopes();
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
@@ -78,7 +81,7 @@ function ScopesDialog({ open, onOpenChange, user, onSave }: ScopesDialogProps) {
   }
 
   function checkAll() {
-    setChecked(new Set(ALL_SCOPES));
+    setChecked(new Set(allScopes));
   }
 
   function uncheckAll() {

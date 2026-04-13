@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Search, Trash2 } from "lucide-react";
 import { useDiscoveryServices, useSkillsCatalog } from "@/hooks/useCatalogs";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SearchModal } from "@/components/SearchModal";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ export function SkillsCatalogPage() {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
     null,
   );
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (selectedServiceId === null && services && services.length > 0) {
@@ -40,9 +42,8 @@ export function SkillsCatalogPage() {
     }
   }, [services, selectedServiceId]);
 
-  async function handleDelete(id: string, name: string) {
-    if (!window.confirm(t("skills_catalog.confirm_delete", { name }))) return;
-    await deleteMutation.mutateAsync(id);
+  function handleDelete(id: string, name: string) {
+    setDeleteTarget({ id, name });
   }
 
   async function handleSearch(query: string) {
@@ -152,6 +153,17 @@ export function SkillsCatalogPage() {
           </Table>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={t("skills_catalog.confirm_delete_title")}
+        description={t("skills_catalog.confirm_delete_message", { name: deleteTarget?.name ?? "" })}
+        destructive
+        onConfirm={async () => {
+          if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id);
+        }}
+      />
 
       {searchOpen && selectedServiceId && (
         <SearchModal<SkillSearchItem>

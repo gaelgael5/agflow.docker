@@ -24,9 +24,13 @@ export const containersApi = {
     const res = await api.get<ContainerInfo[]>("/admin/containers");
     return res.data;
   },
-  async run(dockerfileId: string): Promise<ContainerInfo> {
+  async run(
+    dockerfileId: string,
+    secrets?: Record<string, string>,
+  ): Promise<ContainerInfo> {
     const res = await api.post<ContainerInfo>(
       `/admin/dockerfiles/${dockerfileId}/run`,
+      secrets && Object.keys(secrets).length > 0 ? { secrets } : undefined,
     );
     return res.data;
   },

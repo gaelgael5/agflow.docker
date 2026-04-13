@@ -146,10 +146,12 @@ async def list_for_dockerfile(dockerfile_id: str) -> list[FileSummary]:
     if not os.path.isdir(slug_dir):
         return []
     results: list[FileSummary] = []
-    for filename in sorted(os.listdir(slug_dir)):
-        full_path = os.path.join(slug_dir, filename)
-        if os.path.isfile(full_path):
-            results.append(_file_summary(dockerfile_id, filename, full_path))
+    for dirpath, _dirnames, filenames in os.walk(slug_dir):
+        for filename in filenames:
+            full_path = os.path.join(dirpath, filename)
+            rel_path = os.path.relpath(full_path, slug_dir).replace("\\", "/")
+            results.append(_file_summary(dockerfile_id, rel_path, full_path))
+    results.sort(key=lambda f: f.path)
     return results
 
 
@@ -165,6 +167,7 @@ async def create(
         raise DuplicateFileError(
             f"File '{path}' already exists in dockerfile '{dockerfile_id}'"
         )
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
     with open(full_path, "w", encoding="utf-8") as fh:
         fh.write(content)
     _log.info("dockerfile_files.create", dockerfile_id=dockerfile_id, path=path)
@@ -180,12 +183,12 @@ async def get_by_id(file_id: UUID) -> FileSummary:
         slug_path = os.path.join(base, slug)
         if not os.path.isdir(slug_path):
             continue
-        for filename in os.listdir(slug_path):
-            full_path = os.path.join(slug_path, filename)
-            if not os.path.isfile(full_path):
-                continue
-            if _file_id(slug, filename) == file_id:
-                return _file_summary(slug, filename, full_path)
+        for dirpath, _dirnames, filenames in os.walk(slug_path):
+            for filename in filenames:
+                full_path = os.path.join(dirpath, filename)
+                rel_path = os.path.relpath(full_path, slug_path).replace("\\", "/")
+                if _file_id(slug, rel_path) == file_id:
+                    return _file_summary(slug, rel_path, full_path)
     raise FileNotFoundError(f"File {file_id} not found")
 
 
@@ -206,8 +209,13 @@ async def delete(file_id: UUID) -> None:
         raise ProtectedFileError(
             f"File '{existing.path}' is protected and cannot be deleted"
         )
-    full_path = os.path.join(_slug_dir(existing.dockerfile_id), existing.path)
+    slug_dir = _slug_dir(existing.dockerfile_id)
+    full_path = os.path.join(slug_dir, existing.path)
     os.unlink(full_path)
+    parent = os.path.dirname(full_path)
+    while parent != slug_dir and os.path.isdir(parent) and not os.listdir(parent):
+        os.rmdir(parent)
+        parent = os.path.dirname(parent)
     _log.info("dockerfile_files.delete", file_id=str(file_id))
 
 
@@ -222,17 +230,15 @@ async def replace_all(
     coming from the import, not removed.
     """
     slug_dir = _slug_dir(dockerfile_id)
-    # Remove existing files
     if os.path.isdir(slug_dir):
-        for filename in os.listdir(slug_dir):
-            full_path = os.path.join(slug_dir, filename)
-            if os.path.isfile(full_path):
-                os.unlink(full_path)
-    else:
-        os.makedirs(slug_dir, exist_ok=True)
-    # Write new files
+        import shutil
+
+        shutil.rmtree(slug_dir)
+    os.makedirs(slug_dir, exist_ok=True)
     for path, content in files_map.items():
-        with open(os.path.join(slug_dir, path), "w", encoding="utf-8") as fh:
+        full_path = os.path.join(slug_dir, path)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, "w", encoding="utf-8") as fh:
             fh.write(content)
     _log.info(
         "dockerfile_files.replace_all",

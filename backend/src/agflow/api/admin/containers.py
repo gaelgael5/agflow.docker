@@ -35,7 +35,13 @@ router = APIRouter(
     response_model=ContainerInfo,
     status_code=status.HTTP_201_CREATED,
 )
-async def run_dockerfile(dockerfile_id: str) -> ContainerInfo:
+class RunPayload(BaseModel):
+    secrets: dict[str, str] = Field(default_factory=dict)
+
+
+async def run_dockerfile(
+    dockerfile_id: str, payload: RunPayload | None = None
+) -> ContainerInfo:
     """Launch a container from a previously-built image of the dockerfile.
 
     Reads Dockerfile.json for the runtime config, resolves all {KEY} templates,
@@ -76,6 +82,7 @@ async def run_dockerfile(dockerfile_id: str) -> ContainerInfo:
             dockerfile_id,
             params_json_content=params_file.content,
             content_hash=dockerfile.current_hash,
+            user_secrets=(payload.secrets if payload else None) or None,
         )
     except container_runner.ImageNotBuiltError as exc:
         raise HTTPException(

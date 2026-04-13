@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
 import { useSecrets } from "@/hooks/useSecrets";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { SecretForm } from "@/components/SecretForm";
 import { RevealButton } from "@/components/RevealButton";
@@ -27,6 +28,7 @@ export function SecretsPage() {
   const { secrets, isLoading, createMutation, deleteMutation } = useSecrets();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const envStatus = useEnvVarStatuses(
     (secrets ?? []).map((s) => s.var_name),
@@ -48,10 +50,8 @@ export function SecretsPage() {
     }
   }
 
-  async function handleDelete(secret: SecretSummary) {
-    if (!window.confirm(t("secrets.confirm_delete", { name: secret.var_name })))
-      return;
-    await deleteMutation.mutateAsync(secret.id);
+  function handleDelete(secret: SecretSummary) {
+    setDeleteTarget({ id: secret.id, name: secret.var_name });
   }
 
   return (
@@ -150,6 +150,17 @@ export function SecretsPage() {
           </Table>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={t("secrets.confirm_delete_title")}
+        description={t("secrets.confirm_delete_message", { name: deleteTarget?.name ?? "" })}
+        destructive
+        onConfirm={async () => {
+          if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id);
+        }}
+      />
     </PageShell>
   );
 }

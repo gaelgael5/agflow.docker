@@ -33,6 +33,7 @@ export interface MCPSearchItem {
   repo: string;
   repo_url: string;
   transport: Transport;
+  category: string;
   short_description: string;
   long_description: string;
   documentation_url: string;

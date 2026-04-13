@@ -14,11 +14,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface Props<T> {
   title: string;
-  /** Kept for API compat — no-op since real registry doesn't support it. */
   showSemantic?: boolean;
   onSearch: (query: string, semantic: boolean) => Promise<T[]>;
   onAdd: (item: T) => Promise<void>;
   renderItem: (item: T) => ReactNode;
+  groupBy?: (item: T) => string;
   onClose: () => void;
 }
 
@@ -28,6 +28,7 @@ export function SearchModal<T>({
   onSearch,
   onAdd,
   renderItem,
+  groupBy,
   onClose,
 }: Props<T>) {
   const { t } = useTranslation();
@@ -61,7 +62,7 @@ export function SearchModal<T>({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("search_modal.title", { title })}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -121,6 +122,36 @@ export function SearchModal<T>({
             <p className="text-muted-foreground text-[13px] italic py-3">
               {t("search_modal.no_results")}
             </p>
+          ) : groupBy ? (
+            (() => {
+              const groups: Record<string, T[]> = {};
+              for (const item of results) {
+                const key = groupBy(item) || "—";
+                (groups[key] ??= []).push(item);
+              }
+              return (
+                <div className="space-y-3 py-2">
+                  {Object.entries(groups).map(([group, items]) => (
+                    <div key={group}>
+                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-1">
+                        {group} ({items.length})
+                      </div>
+                      <ul className="divide-y">
+                        {items.map((item, idx) => (
+                          <li key={idx} className="flex items-center gap-3 py-2">
+                            <div className="flex-1 min-w-0">{renderItem(item)}</div>
+                            <Button variant="outline" size="sm" onClick={() => handleAdd(item)}>
+                              <Plus className="w-3.5 h-3.5" />
+                              {t("search_modal.add_button")}
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
           ) : (
             <ul className="divide-y">
               {results.map((item, idx) => (

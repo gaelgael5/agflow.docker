@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     admin_password_hash: str
     secrets_master_key: str
 
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     redis_url: str = "redis://localhost:6379/0"
     environment: str = "dev"
     log_level: str = "INFO"

@@ -75,6 +75,7 @@ export interface DocumentCreate {
 }
 
 export interface DocumentUpdate {
+  name?: string;
   content_md?: string;
   protected?: boolean;
 }
@@ -145,5 +146,21 @@ export const rolesApi = {
   },
   async deleteSection(roleId: string, name: string): Promise<void> {
     await api.delete(`/admin/roles/${roleId}/sections/${name}`);
+  },
+  async exportZip(roleId: string): Promise<Blob> {
+    const res = await api.get(`/admin/roles/${roleId}/export`, {
+      responseType: "blob",
+    });
+    return res.data as Blob;
+  },
+  async importZip(roleId: string, file: File): Promise<RoleDetail> {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await api.post<RoleDetail>(
+      `/admin/roles/${roleId}/import`,
+      form,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return res.data;
   },
 };

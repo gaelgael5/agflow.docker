@@ -2,6 +2,9 @@
   "app": {
     "title": "agflow.docker"
   },
+  "api_docs": {
+    "subtitle": "Interactive REST API documentation"
+  },
   "assistant": {
     "not_configured": "No agent is configured as assistant. Designate one in the agent editor.",
     "toggle_label": "Use as assistant",
@@ -13,7 +16,9 @@
     "create": "Create",
     "add": "Add",
     "duplicate": "Duplicate",
-    "invalid_slug": "Allowed characters: a-z, 0-9, hyphen and underscore"
+    "invalid_slug": "Allowed characters: a-z, 0-9, hyphen and underscore",
+    "export": "Export",
+    "import": "Import"
   },
   "sidebar": {
     "section_platform": "Platform",
@@ -37,7 +42,8 @@
     "prompt_display_name": "Type label (e.g. UX Design)",
     "prompt_name": "Slug (technical identifier)",
     "add_dialog_title": "New service type",
-    "confirm_delete": "Delete type \"{{name}}\"?",
+    "confirm_delete_title": "Delete service type",
+    "confirm_delete_message": "Delete type \"{{name}}\"? This action is irreversible.",
     "error_generic": "An error occurred"
   },
   "login": {
@@ -45,7 +51,10 @@
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
-    "error_invalid": "Invalid credentials"
+    "google": "Continue with Google",
+    "or": "or",
+    "error_invalid": "Invalid credentials",
+    "error_disabled": "Account disabled"
   },
   "home": {
     "welcome": "Welcome to agflow.docker",
@@ -81,7 +90,8 @@
     "form_value_placeholder": "Secret value",
     "form_save": "Save",
     "form_cancel": "Cancel",
-    "confirm_delete": "Delete {{name}}?",
+    "confirm_delete_title": "Delete secret",
+    "confirm_delete_message": "Delete secret \"{{name}}\"? This action is irreversible.",
     "test_ok": "Key is valid",
     "test_ko": "Key is invalid",
     "test_unsupported": "Test not available for this variable type",
@@ -94,6 +104,10 @@
     "page_subtitle": "Identity, facets, missions and competences — composable",
     "add_button": "+ Add role",
     "delete_button": "Delete role",
+    "confirm_delete_title": "Delete role",
+    "confirm_delete_message": "Delete role \"{{name}}\" and all its documents? This action is irreversible.",
+    "confirm_delete_section_title": "Delete section",
+    "confirm_delete_section_message": "Delete section \"{{name}}\"? This action is irreversible.",
     "no_roles": "No roles — create your first role",
     "select_role": "Select a role",
     "tab_general": "General",
@@ -156,7 +170,8 @@
     "delete_button": "Delete",
     "save_button": "Save",
     "build_button": "Build",
-    "new_file_button": "+ New file",
+    "new_file_button": "New file",
+    "new_folder_button": "New folder",
     "no_dockerfiles": "No dockerfiles — create your first",
     "select_dockerfile": "Select a dockerfile",
     "no_files": "No files",
@@ -196,6 +211,8 @@
     "confirm_delete_message": "Delete \"{{name}}\" and all its files? This action is irreversible.",
     "confirm_delete_file_title": "Delete file",
     "confirm_delete_file_message": "Delete file \"{{path}}\"? This action is irreversible.",
+    "confirm_delete_folder_title": "Delete folder",
+    "confirm_delete_folder_message": "Delete folder \"{{folder}}\" and all its files? This action is irreversible.",
     "confirm_delete_button": "Delete",
     "params_button": "Parameters",
     "export_button": "Export",
@@ -328,7 +345,8 @@
     "prompt_base_url": "Base URL (e.g. https://mcp.yoops.org/api/v1)",
     "prompt_api_key_var": "API key env var name (optional, e.g. YOOPS_API_KEY)",
     "add_dialog_title": "New discovery registry",
-    "confirm_delete": "Delete registry \"{{name}}\"?",
+    "confirm_delete_title": "Delete registry",
+    "confirm_delete_message": "Delete registry \"{{name}}\"? This action is irreversible.",
     "no_services": "No registry — add mcp.yoops.org to start"
   },
   "mcp_catalog": {
@@ -345,7 +363,8 @@
     "col_actions": "Actions",
     "configure_button": "Configure",
     "delete_button": "Delete",
-    "confirm_delete": "Remove \"{{name}}\" from catalog?",
+    "confirm_delete_title": "Remove from MCP catalog",
+    "confirm_delete_message": "Remove \"{{name}}\" from catalog? This action is irreversible.",
     "show_summary": "Summary",
     "hide_summary": "Hide summary",
     "loading_summary": "Loading…",
@@ -364,7 +383,8 @@
     "col_actions": "Actions",
     "view_button": "View",
     "delete_button": "Delete",
-    "confirm_delete": "Remove \"{{name}}\" from catalog?"
+    "confirm_delete_title": "Remove from Skills catalog",
+    "confirm_delete_message": "Remove \"{{name}}\" from catalog? This action is irreversible."
   },
   "search_modal": {
     "title": "Search — {{title}}",
@@ -392,7 +412,8 @@
     "edit_button": "Edit",
     "duplicate_button": "Duplicate",
     "delete_button": "Delete",
-    "confirm_delete": "Delete agent \"{{name}}\"?",
+    "confirm_delete_title": "Delete agent",
+    "confirm_delete_message": "Delete agent \"{{name}}\"? This action is irreversible.",
     "duplicate_prompt_slug": "New slug",
     "duplicate_prompt_name": "New display name",
     "duplicate_dialog_title": "Duplicate agent",
@@ -527,6 +548,7 @@
     "containers:run": "Start a container",
     "containers:stop": "Stop a container",
     "containers.logs:read": "Read container logs",
+    "containers.chat:read": "List tasks launched via chat",
     "containers.chat:write": "Send tasks via chat",
     "keys:manage": "Manage own API keys (always active)"
   },
@@ -558,7 +580,8 @@
     "hide_button": "Hide",
     "edit_button": "Edit",
     "delete_button": "Delete",
-    "confirm_delete": "Delete secret \"{{name}}\"?",
+    "confirm_delete_title": "Delete secret",
+    "confirm_delete_message": "Delete secret \"{{name}}\"? This action is irreversible.",
     "add_dialog_title": "New secret",
     "edit_dialog_title": "Edit secret",
     "field_name": "Variable name",
@@ -587,6 +610,14 @@
     "skill_add": "+ Add a skill",
     "skill_remove": "Remove",
     "env_add": "+ Add a variable",
+    "env_create_missing": "Create missing",
+    "env_from_dockerfile": "Import from Dockerfile",
+    "generate_button": "Generate",
+    "launch_button": "Launch",
+    "chat_button": "Chat",
+    "terminal_button": "Terminal",
+    "section_generated": "Generated files",
+    "generated_select_file": "Select a file to view its content",
     "env_key_placeholder": "KEY",
     "env_value_placeholder": "value or $SECRET_NAME",
     "env_remove": "×",
@@ -627,7 +658,8 @@
     "profile_dialog_title": "New mission profile",
     "profile_edit": "Edit",
     "profile_delete": "Delete",
-    "profile_confirm_delete": "Delete profile \"{{name}}\"?",
+    "profile_confirm_delete_title": "Delete profile",
+    "profile_confirm_delete_message": "Delete profile \"{{name}}\"? This action is irreversible.",
     "profile_editor_title": "Profile — {{name}}",
     "profile_editor_pick_docs": "Documents included in this profile",
     "profile_broken_refs": "{{count}} document(s) referenced by this profile no longer exist (role changed or docs deleted)",

@@ -18,8 +18,8 @@ Plateforme d'instanciation d'agents IA packagés en Docker (claude-code, aider, 
 
 ## Dev & cible
 
-- **Développement** : local Windows (uv + node), tests connectés à l'infra LXC 201 (Postgres/Redis hébergés sur `192.168.10.68`)
-- **Intégration / cible MVP** : LXC 201 (`agflow-docker-test`, 192.168.10.68) — Docker 29.4 + Compose v5.1 déjà installés
+- **Développement** : local Windows (uv + node), tests connectés à l'infra LXC 201 (Postgres/Redis hébergés sur `192.168.10.154`)
+- **Intégration / cible MVP** : LXC 201 (`agflow-docker-test`, 192.168.10.154) — Docker 29.4 + Compose v5.1 déjà installés
 - **Prod future** : à définir quand le MVP vertical sera validé
 
 ## Commandes essentielles

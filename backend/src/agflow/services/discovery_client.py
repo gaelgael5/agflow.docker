@@ -80,6 +80,7 @@ def _map_mcp_item(raw: dict[str, Any]) -> dict[str, Any]:
         "repo": full_name,
         "repo_url": raw.get("source_url") or "",
         "transport": raw.get("transport") or "stdio",
+        "category": raw.get("category") or "",
         "short_description": short_desc,
         "long_description": "",
         "documentation_url": raw.get("doc_url") or "",

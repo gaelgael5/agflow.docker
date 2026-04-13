@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Plus, X } from "lucide-react";
+import { Lock, Plus, Unlock, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type {
@@ -7,6 +7,14 @@ import type {
   Section,
   SectionSummary,
 } from "@/lib/rolesApi";
+
+export function isDocLocked(doc: DocumentSummary): boolean {
+  return doc.name.endsWith("_");
+}
+
+export function docDisplayName(doc: DocumentSummary): string {
+  return doc.name.endsWith("_") ? doc.name.slice(0, -1) : doc.name;
+}
 
 interface Props {
   sections: SectionSummary[];
@@ -16,6 +24,7 @@ interface Props {
   onAdd: (section: Section) => void;
   onAddSection: () => void;
   onDeleteSection: (name: string) => void;
+  onToggleLock?: (doc: DocumentSummary) => void;
 }
 
 export function RoleSidebar({
@@ -26,6 +35,7 @@ export function RoleSidebar({
   onAdd,
   onAddSection,
   onDeleteSection,
+  onToggleLock,
 }: Props) {
   const { t } = useTranslation();
 
@@ -72,23 +82,37 @@ export function RoleSidebar({
                 <ul className="space-y-0.5">
                   {docs.map((doc) => {
                     const active = selectedDocId === doc.id;
+                    const locked = isDocLocked(doc);
                     return (
-                      <li key={doc.id}>
-                        <button
-                          type="button"
-                          onClick={() => onSelect(doc.id)}
-                          className={cn(
-                            "w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-md text-[13px] transition-colors",
-                            active
-                              ? "bg-primary/10 text-primary"
-                              : "hover:bg-secondary text-foreground",
+                      <li key={doc.id} className="group">
+                        <div className="flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => onSelect(doc.id)}
+                            className={cn(
+                              "flex-1 text-left flex items-center gap-1.5 px-2 py-1 rounded-md text-[13px] transition-colors",
+                              active
+                                ? "bg-primary/10 text-primary"
+                                : "hover:bg-secondary text-foreground",
+                            )}
+                          >
+                            <span className="truncate">{docDisplayName(doc)}</span>
+                          </button>
+                          {onToggleLock && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onToggleLock(doc); }}
+                              className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-secondary transition-opacity shrink-0 mr-1"
+                              title={locked ? "Déverrouiller" : "Verrouiller"}
+                            >
+                              {locked ? (
+                                <Lock className="w-3 h-3 text-amber-500" />
+                              ) : (
+                                <Unlock className="w-3 h-3 text-muted-foreground" />
+                              )}
+                            </button>
                           )}
-                        >
-                          <span className="text-[11px]">
-                            {doc.protected ? "🔒" : "📄"}
-                          </span>
-                          <span className="truncate">{doc.name}</span>
-                        </button>
+                        </div>
                       </li>
                     );
                   })}

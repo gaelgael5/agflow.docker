@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CircleCheck, CircleX, Plus, Play, Trash2 } from "lucide-react";
 import { useDiscoveryServices } from "@/hooks/useCatalogs";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
 import { PromptDialog } from "@/components/PromptDialog";
@@ -27,6 +28,7 @@ export function DiscoveryServicesPage() {
     {},
   );
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const apiKeyVars = (services ?? [])
     .map((s) => s.api_key_var)
@@ -47,14 +49,8 @@ export function DiscoveryServicesPage() {
     setTestResults((prev) => ({ ...prev, [id]: result }));
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!window.confirm(t("discovery.confirm_delete", { name }))) return;
-    await deleteMutation.mutateAsync(id);
-    setTestResults((prev) => {
-      const n = { ...prev };
-      delete n[id];
-      return n;
-    });
+  function handleDelete(id: string, name: string) {
+    setDeleteTarget({ id, name });
   }
 
   return (
@@ -194,6 +190,24 @@ export function DiscoveryServicesPage() {
           </Table>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={t("discovery.confirm_delete_title")}
+        description={t("discovery.confirm_delete_message", { name: deleteTarget?.name ?? "" })}
+        destructive
+        onConfirm={async () => {
+          if (deleteTarget) {
+            await deleteMutation.mutateAsync(deleteTarget.id);
+            setTestResults((prev) => {
+              const n = { ...prev };
+              delete n[deleteTarget.id];
+              return n;
+            });
+          }
+        }}
+      />
     </PageShell>
   );
 }

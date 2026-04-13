@@ -1,15 +1,16 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Save, Trash2 } from "lucide-react";
+import { Download, Lock, Plus, Save, Trash2, Upload } from "lucide-react";
 import { useRoles } from "@/hooks/useRoles";
 import {
   useRoleDetail,
   useRoleDocumentMutations,
 } from "@/hooks/useRoleDocuments";
-import { RoleSidebar } from "@/components/RoleSidebar";
+import { RoleSidebar, isDocLocked, docDisplayName } from "@/components/RoleSidebar";
 import { RoleGeneralTab } from "@/components/RoleGeneralTab";
 import { RolePromptTab } from "@/components/RolePromptTab";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,9 +26,9 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { RoleSummary, Section } from "@/lib/rolesApi";
+import { rolesApi, type RoleSummary, type Section } from "@/lib/rolesApi";
 
-type Tab = "general" | "prompt" | "chat";
+type Tab = "general" | "prompt" | "document";
 
 export function RolesPage() {
   const { t } = useTranslation();
@@ -49,6 +50,11 @@ export function RolesPage() {
   const [addDocSection, setAddDocSection] = useState<Section | null>(null);
   const [showAddSectionDialog, setShowAddSectionDialog] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
+  const [showDeleteRoleConfirm, setShowDeleteRoleConfirm] = useState(false);
+  const [deleteSectionTarget, setDeleteSectionTarget] = useState<string | null>(null);
+  const [draftDocContent, setDraftDocContent] = useState<string | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const detail = useRoleDetail(selectedRoleId);
   const docMutations = useRoleDocumentMutations(selectedRoleId ?? "");
@@ -69,11 +75,26 @@ export function RolesPage() {
 
   async function handleDeleteRole() {
     if (!selectedRoleId) return;
-    if (!window.confirm(`${t("roles.delete_button")} "${selectedRoleId}"?`))
-      return;
     await deleteMutation.mutateAsync(selectedRoleId);
     setSelectedRoleId(null);
     setDraftRole(null);
+  }
+
+  async function handleExportRole() {
+    if (!selectedRoleId) return;
+    const blob = await rolesApi.exportZip(selectedRoleId);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${selectedRoleId}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportRole(file: File) {
+    if (!selectedRoleId) return;
+    await rolesApi.importZip(selectedRoleId, file);
+    detail.refetch();
   }
 
   async function handleSaveRole() {
@@ -122,6 +143,7 @@ export function RolesPage() {
       protected: false,
     });
     setSelectedDocId(doc.id);
+    setTab("document");
   }
 
   async function handleAddSectionSubmit(values: Record<string, string>) {
@@ -140,25 +162,28 @@ export function RolesPage() {
     }
   }
 
-  async function handleDeleteSection(name: string) {
-    if (!selectedRoleId) return;
-    if (!window.confirm(t("roles.sidebar.confirm_delete_section", { name })))
-      return;
-    try {
-      await docMutations.deleteSection.mutateAsync(name);
-    } catch (e) {
-      const detail = (e as { response?: { data?: { detail?: string } } })
-        .response?.data?.detail;
-      window.alert(detail ?? t("roles.errors.generic"));
-    }
+  async function handleDeleteSection() {
+    if (!selectedRoleId || !deleteSectionTarget) return;
+    await docMutations.deleteSection.mutateAsync(deleteSectionTarget);
   }
 
-  async function handleDocumentChange(content: string) {
+  const flushDocDraft = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+  }, []);
+
+  function handleDocumentChange(content: string) {
     if (!selectedDoc || !selectedRoleId) return;
-    await docMutations.updateDoc.mutateAsync({
-      docId: selectedDoc.id,
-      payload: { content_md: content },
-    });
+    setDraftDocContent(content);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      docMutations.updateDoc.mutate({
+        docId: selectedDoc.id,
+        payload: { content_md: content },
+      });
+      setDraftDocContent(null);
+      saveTimerRef.current = null;
+    }, 800);
   }
 
   function handleRoleFieldChange(updates: Partial<RoleSummary>) {
@@ -172,7 +197,7 @@ export function RolesPage() {
   return (
     <div className="flex flex-col h-full min-h-[calc(100vh-3.5rem)] overflow-hidden">
       {/* Header row: dropdown + action buttons */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b bg-background shrink-0 flex-wrap">
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b bg-muted/30 shrink-0">
         <Select
           value={selectedRoleId ?? ""}
           onValueChange={(value) => {
@@ -193,30 +218,63 @@ export function RolesPage() {
           </SelectContent>
         </Select>
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setShowCreateRoleDialog(true)}
-        >
-          <Plus className="w-3.5 h-3.5" />
-          {t("roles.add_button")}
-        </Button>
+        <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            onClick={() => setShowCreateRoleDialog(true)}
+            title={t("roles.add_button")}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
+        </div>
 
         {selectedRoleId && currentRole && (
           <>
-            <div className="w-px h-5 bg-border mx-1 shrink-0" />
             <span className="text-[12px] text-muted-foreground font-mono">
               {currentRole.id}
             </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleDeleteRole}
-              className="text-destructive ml-auto"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              {t("roles.delete_button")}
-            </Button>
+            <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5 ml-auto">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={handleExportRole}
+                title={t("common.export")}
+              >
+                <Download className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => importInputRef.current?.click()}
+                title={t("common.import")}
+              >
+                <Upload className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-destructive"
+                onClick={() => setShowDeleteRoleConfirm(true)}
+                title={t("roles.delete_button")}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".zip"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImportRole(f);
+                e.target.value = "";
+              }}
+            />
           </>
         )}
       </div>
@@ -230,13 +288,22 @@ export function RolesPage() {
               sections={sections}
               documents={allDocuments}
               selectedDocId={selectedDocId}
-              onSelect={setSelectedDocId}
+              onSelect={(id) => { flushDocDraft(); setDraftDocContent(null); setSelectedDocId(id); setTab("document"); }}
               onAdd={handleAddDocument}
               onAddSection={() => {
                 setSectionError(null);
                 setShowAddSectionDialog(true);
               }}
-              onDeleteSection={handleDeleteSection}
+              onDeleteSection={(name) => setDeleteSectionTarget(name)}
+              onToggleLock={(doc) => {
+                const newName = isDocLocked(doc)
+                  ? doc.name.slice(0, -1)
+                  : doc.name + "_";
+                docMutations.updateDoc.mutate({
+                  docId: doc.id,
+                  payload: { name: newName },
+                });
+              }}
             />
 
             {/* Right: main content */}
@@ -250,77 +317,76 @@ export function RolesPage() {
                 </p>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-                {selectedDoc ? (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <h3 className="text-[15px] font-semibold">
-                        {selectedDoc.name}
-                      </h3>
-                      {selectedDoc.protected && (
-                        <span className="text-[11px] text-muted-foreground">
-                          🔒
-                        </span>
-                      )}
-                    </div>
-                    <MarkdownEditor
-                      value={selectedDoc.content_md}
-                      onChange={handleDocumentChange}
-                      readOnly={selectedDoc.protected}
-                      minHeight={400}
-                    />
-                  </div>
-                ) : (
-                  <Tabs
-                    value={tab}
-                    onValueChange={(v) => {
-                      setTab(v as Tab);
+              <div className={`flex-1 min-h-0 px-6 py-5 flex flex-col ${tab === "document" ? "" : "overflow-y-auto"}`}>
+                <Tabs
+                  value={tab}
+                  onValueChange={(v) => {
+                    setTab(v as Tab);
+                    if (v !== "document") {
+                      flushDocDraft();
+                      setDraftDocContent(null);
                       setSelectedDocId(null);
-                    }}
-                  >
-                    <TabsList>
-                      <TabsTrigger value="general">
-                        {t("roles.tab_general")}
+                    }
+                  }}
+                  className={tab === "document" ? "flex-1 flex flex-col min-h-0" : ""}
+                >
+                  <TabsList>
+                    <TabsTrigger value="general">
+                      {t("roles.tab_general")}
+                    </TabsTrigger>
+                    <TabsTrigger value="prompt">
+                      {t("roles.tab_prompt")}
+                    </TabsTrigger>
+                    {selectedDoc && (
+                      <TabsTrigger value="document">
+                        {docDisplayName(selectedDoc)}
                       </TabsTrigger>
-                      <TabsTrigger value="prompt">
-                        {t("roles.tab_prompt")}
-                      </TabsTrigger>
-                      <TabsTrigger value="chat">
-                        {t("roles.tab_chat")}
-                      </TabsTrigger>
-                    </TabsList>
+                    )}
+                  </TabsList>
 
-                    <TabsContent value="general">
-                      <RoleGeneralTab
-                        role={currentRole}
-                        onChange={handleRoleFieldChange}
+                  <TabsContent value="general">
+                    <RoleGeneralTab
+                      role={currentRole}
+                      onChange={handleRoleFieldChange}
+                    />
+                    {draftRole && (
+                      <div className="mt-4">
+                        <Button onClick={handleSaveRole}>
+                          <Save className="w-4 h-4" />
+                          {t("roles.save")}
+                        </Button>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="prompt">
+                    <RolePromptTab
+                      role={currentRole}
+                      onRegenerate={handleGenerate}
+                      regenerating={generateMutation.isPending}
+                      error={generateError}
+                    />
+                  </TabsContent>
+
+                  {selectedDoc && (
+                    <TabsContent value="document" className="flex-1 flex flex-col min-h-0">
+                      <div className="flex items-center gap-2 mb-3 shrink-0">
+                        <h3 className="text-[15px] font-semibold">
+                          {docDisplayName(selectedDoc)}
+                        </h3>
+                        {isDocLocked(selectedDoc) && (
+                          <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        )}
+                      </div>
+                      <MarkdownEditor
+                        value={draftDocContent ?? selectedDoc.content_md}
+                        onChange={handleDocumentChange}
+                        readOnly={isDocLocked(selectedDoc)}
+                        fill
                       />
-                      {draftRole && (
-                        <div className="mt-4">
-                          <Button onClick={handleSaveRole}>
-                            <Save className="w-4 h-4" />
-                            {t("roles.save")}
-                          </Button>
-                        </div>
-                      )}
                     </TabsContent>
-
-                    <TabsContent value="prompt">
-                      <RolePromptTab
-                        role={currentRole}
-                        onRegenerate={handleGenerate}
-                        regenerating={generateMutation.isPending}
-                        error={generateError}
-                      />
-                    </TabsContent>
-
-                    <TabsContent value="chat">
-                      <p className="text-muted-foreground italic text-[13px]">
-                        {t("roles.chat_placeholder")}
-                      </p>
-                    </TabsContent>
-                  </Tabs>
-                )}
+                  )}
+                </Tabs>
               </div>
             </main>
           </>
@@ -378,6 +444,24 @@ export function RolesPage() {
             monospace: true,
           },
         ]}
+      />
+
+      <ConfirmDialog
+        open={showDeleteRoleConfirm}
+        onOpenChange={setShowDeleteRoleConfirm}
+        title={t("roles.confirm_delete_title")}
+        description={t("roles.confirm_delete_message", { name: currentRole?.display_name ?? "" })}
+        destructive
+        onConfirm={handleDeleteRole}
+      />
+
+      <ConfirmDialog
+        open={deleteSectionTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteSectionTarget(null); }}
+        title={t("roles.confirm_delete_section_title")}
+        description={t("roles.confirm_delete_section_message", { name: deleteSectionTarget ?? "" })}
+        destructive
+        onConfirm={handleDeleteSection}
       />
     </div>
   );

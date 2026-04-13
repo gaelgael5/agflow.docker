@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Pencil, KeyRound, Copy, Check } from "lucide-react";
 import { useApiKeys } from "@/hooks/useApiKeys";
@@ -278,14 +278,13 @@ function EditDialog({ open, onOpenChange, apiKey, onSave }: EditDialogProps) {
   const [rateLimit, setRateLimit] = useState("120");
   const [saving, setSaving] = useState(false);
 
-  function handleOpenChange(val: boolean) {
-    if (val && apiKey) {
+  useEffect(() => {
+    if (apiKey) {
       setName(apiKey.name);
       setChecked(new Set(apiKey.scopes));
       setRateLimit(String(apiKey.rate_limit ?? 120));
     }
-    onOpenChange(val);
-  }
+  }, [apiKey]);
 
   async function handleSave() {
     setSaving(true);
@@ -302,7 +301,7 @@ function EditDialog({ open, onOpenChange, apiKey, onSave }: EditDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("api_keys.edit_dialog_title")}</DialogTitle>

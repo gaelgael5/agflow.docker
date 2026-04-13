@@ -2,6 +2,9 @@
   "app": {
     "title": "agflow.docker"
   },
+  "api_docs": {
+    "subtitle": "Documentation interactive de l'API REST"
+  },
   "assistant": {
     "not_configured": "Aucun agent n'est configuré comme assistant. Désignez-en un dans l'éditeur d'agent.",
     "toggle_label": "Utiliser comme assistant",
@@ -13,7 +16,9 @@
     "create": "Créer",
     "add": "Ajouter",
     "duplicate": "Dupliquer",
-    "invalid_slug": "Caractères autorisés : a-z, 0-9, tiret et underscore"
+    "invalid_slug": "Caractères autorisés : a-z, 0-9, tiret et underscore",
+    "export": "Exporter",
+    "import": "Importer"
   },
   "sidebar": {
     "section_platform": "Plateforme",
@@ -37,7 +42,8 @@
     "prompt_display_name": "Libellé du type (ex: Design UX)",
     "prompt_name": "Slug (identifiant technique)",
     "add_dialog_title": "Nouveau type de service",
-    "confirm_delete": "Supprimer le type \"{{name}}\" ?",
+    "confirm_delete_title": "Supprimer le type de service",
+    "confirm_delete_message": "Supprimer le type \"{{name}}\" ? Cette action est irréversible.",
     "error_generic": "Une erreur est survenue"
   },
   "login": {
@@ -45,7 +51,10 @@
     "email": "Email",
     "password": "Mot de passe",
     "submit": "Se connecter",
-    "error_invalid": "Identifiants invalides"
+    "google": "Continuer avec Google",
+    "or": "ou",
+    "error_invalid": "Identifiants invalides",
+    "error_disabled": "Compte desactive"
   },
   "home": {
     "welcome": "Bienvenue sur agflow.docker",
@@ -81,7 +90,8 @@
     "form_value_placeholder": "Valeur du secret",
     "form_save": "Enregistrer",
     "form_cancel": "Annuler",
-    "confirm_delete": "Supprimer {{name}} ?",
+    "confirm_delete_title": "Supprimer le secret",
+    "confirm_delete_message": "Supprimer le secret \"{{name}}\" ? Cette action est irréversible.",
     "test_ok": "Clé valide",
     "test_ko": "Clé invalide",
     "test_unsupported": "Test non disponible pour ce type de variable",
@@ -94,6 +104,10 @@
     "page_subtitle": "Identité, facettes, missions et compétences composables",
     "add_button": "+ Ajouter un rôle",
     "delete_button": "Supprimer le rôle",
+    "confirm_delete_title": "Supprimer le rôle",
+    "confirm_delete_message": "Supprimer le rôle \"{{name}}\" et tous ses documents ? Cette action est irréversible.",
+    "confirm_delete_section_title": "Supprimer la section",
+    "confirm_delete_section_message": "Supprimer la section \"{{name}}\" ? Cette action est irréversible.",
     "no_roles": "Aucun rôle — crée ton premier rôle",
     "select_role": "Sélectionne un rôle",
     "tab_general": "Général",
@@ -156,7 +170,8 @@
     "delete_button": "Supprimer",
     "save_button": "Enregistrer",
     "build_button": "Compiler",
-    "new_file_button": "+ Nouveau fichier",
+    "new_file_button": "Nouveau fichier",
+    "new_folder_button": "Nouveau dossier",
     "no_dockerfiles": "Aucun dockerfile — crée ton premier",
     "select_dockerfile": "Sélectionne un dockerfile",
     "no_files": "Aucun fichier",
@@ -196,6 +211,8 @@
     "confirm_delete_message": "Supprimer \"{{name}}\" et tous ses fichiers ? Cette action est irréversible.",
     "confirm_delete_file_title": "Supprimer le fichier",
     "confirm_delete_file_message": "Supprimer le fichier \"{{path}}\" ? Cette action est irréversible.",
+    "confirm_delete_folder_title": "Supprimer le dossier",
+    "confirm_delete_folder_message": "Supprimer le dossier \"{{folder}}\" et tous ses fichiers ? Cette action est irréversible.",
     "confirm_delete_button": "Supprimer",
     "params_button": "Paramètres",
     "export_button": "Exporter",
@@ -328,7 +345,8 @@
     "prompt_base_url": "URL de base (ex: https://mcp.yoops.org/api/v1)",
     "prompt_api_key_var": "Nom de variable d'env pour la clé API (optionnel, ex: YOOPS_API_KEY)",
     "add_dialog_title": "Nouveau registre de découverte",
-    "confirm_delete": "Supprimer le registre \"{{name}}\" ?",
+    "confirm_delete_title": "Supprimer le registre",
+    "confirm_delete_message": "Supprimer le registre \"{{name}}\" ? Cette action est irréversible.",
     "no_services": "Aucun registre — ajoute mcp.yoops.org pour commencer"
   },
   "mcp_catalog": {
@@ -345,7 +363,8 @@
     "col_actions": "Actions",
     "configure_button": "Configurer",
     "delete_button": "Supprimer",
-    "confirm_delete": "Supprimer \"{{name}}\" du catalogue ?",
+    "confirm_delete_title": "Supprimer du catalogue MCP",
+    "confirm_delete_message": "Supprimer \"{{name}}\" du catalogue ? Cette action est irréversible.",
     "show_summary": "Résumé",
     "hide_summary": "Masquer le résumé",
     "loading_summary": "Chargement…",
@@ -364,7 +383,8 @@
     "col_actions": "Actions",
     "view_button": "Voir",
     "delete_button": "Supprimer",
-    "confirm_delete": "Supprimer \"{{name}}\" du catalogue ?"
+    "confirm_delete_title": "Supprimer du catalogue Skills",
+    "confirm_delete_message": "Supprimer \"{{name}}\" du catalogue ? Cette action est irréversible."
   },
   "search_modal": {
     "title": "Recherche — {{title}}",
@@ -392,7 +412,8 @@
     "edit_button": "Éditer",
     "duplicate_button": "Dupliquer",
     "delete_button": "Supprimer",
-    "confirm_delete": "Supprimer l'agent \"{{name}}\" ?",
+    "confirm_delete_title": "Supprimer l'agent",
+    "confirm_delete_message": "Supprimer l'agent \"{{name}}\" ? Cette action est irréversible.",
     "duplicate_prompt_slug": "Nouveau slug",
     "duplicate_prompt_name": "Nouveau nom d'affichage",
     "duplicate_dialog_title": "Dupliquer l'agent",
@@ -527,6 +548,7 @@
     "containers:run": "Lancer un container",
     "containers:stop": "Arrêter un container",
     "containers.logs:read": "Lire les logs d'un container",
+    "containers.chat:read": "Lister les tâches lancées via le chat",
     "containers.chat:write": "Envoyer des tâches via le chat",
     "keys:manage": "Gérer ses propres clés API (toujours actif)"
   },
@@ -558,7 +580,8 @@
     "hide_button": "Masquer",
     "edit_button": "Modifier",
     "delete_button": "Supprimer",
-    "confirm_delete": "Supprimer le secret \"{{name}}\" ?",
+    "confirm_delete_title": "Supprimer le secret",
+    "confirm_delete_message": "Supprimer le secret \"{{name}}\" ? Cette action est irréversible.",
     "add_dialog_title": "Nouveau secret",
     "edit_dialog_title": "Modifier le secret",
     "field_name": "Nom de la variable",
@@ -587,6 +610,14 @@
     "skill_add": "+ Ajouter un skill",
     "skill_remove": "Retirer",
     "env_add": "+ Ajouter une variable",
+    "env_create_missing": "Créer les manquantes",
+    "env_from_dockerfile": "Importer du Dockerfile",
+    "generate_button": "Générer",
+    "launch_button": "Lancer",
+    "chat_button": "Chat",
+    "terminal_button": "Terminal",
+    "section_generated": "Fichiers generés",
+    "generated_select_file": "Sélectionne un fichier pour voir son contenu",
     "env_key_placeholder": "KEY",
     "env_value_placeholder": "valeur ou $SECRET_NAME",
     "env_remove": "×",
@@ -627,7 +658,8 @@
     "profile_dialog_title": "Nouveau profil de mission",
     "profile_edit": "Éditer",
     "profile_delete": "Supprimer",
-    "profile_confirm_delete": "Supprimer le profil \"{{name}}\" ?",
+    "profile_confirm_delete_title": "Supprimer le profil",
+    "profile_confirm_delete_message": "Supprimer le profil \"{{name}}\" ? Cette action est irréversible.",
     "profile_editor_title": "Profil — {{name}}",
     "profile_editor_pick_docs": "Documents inclus dans ce profil",
     "profile_broken_refs": "{{count}} document(s) référencé(s) par ce profil n'existent plus (rôle changé ou docs supprimés)",

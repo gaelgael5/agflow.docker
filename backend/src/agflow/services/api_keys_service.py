@@ -13,41 +13,26 @@ from agflow.schemas.api_keys import ApiKeyCreated, ApiKeySummary
 
 _log = structlog.get_logger(__name__)
 
-ALL_SCOPES: set[str] = {
-    "*",
-    "platform_secrets:read",
-    "platform_secrets:write",
-    "user_secrets:read",
-    "user_secrets:write",
-    "dockerfiles:read",
-    "dockerfiles:write",
-    "dockerfiles:delete",
-    "dockerfiles:build",
-    "dockerfiles.files:read",
-    "dockerfiles.files:write",
-    "dockerfiles.files:delete",
-    "dockerfiles.params:read",
-    "dockerfiles.params:write",
-    "discovery:read",
-    "discovery:write",
-    "service_types:read",
-    "service_types:write",
-    "users:manage",
-    "roles:read",
-    "roles:write",
-    "roles:delete",
-    "catalogs:read",
-    "catalogs:write",
-    "agents:read",
-    "agents:write",
-    "agents:delete",
-    "agents:run",
-    "containers:read",
-    "containers:run",
-    "containers:stop",
-    "containers.logs:read",
-    "containers.chat:write",
-    "keys:manage",
+SCOPE_CATALOGUE: list[dict[str, Any]] = [
+    {"group": "platform_secrets", "scopes": ["platform_secrets:read", "platform_secrets:write"]},
+    {"group": "user_secrets", "scopes": ["user_secrets:read", "user_secrets:write"]},
+    {"group": "dockerfiles", "scopes": ["dockerfiles:read", "dockerfiles:write", "dockerfiles:delete", "dockerfiles:build"]},
+    {"group": "dockerfiles.files", "scopes": ["dockerfiles.files:read", "dockerfiles.files:write", "dockerfiles.files:delete"]},
+    {"group": "dockerfiles.params", "scopes": ["dockerfiles.params:read", "dockerfiles.params:write"]},
+    {"group": "discovery", "scopes": ["discovery:read", "discovery:write"]},
+    {"group": "service_types", "scopes": ["service_types:read", "service_types:write"]},
+    {"group": "users", "scopes": ["users:manage"]},
+    {"group": "roles", "scopes": ["roles:read", "roles:write", "roles:delete"]},
+    {"group": "catalogs", "scopes": ["catalogs:read", "catalogs:write"]},
+    {"group": "agents", "scopes": ["agents:read", "agents:write", "agents:delete", "agents:run"]},
+    {"group": "containers", "scopes": ["containers:read", "containers:run", "containers:stop"]},
+    {"group": "containers.logs", "scopes": ["containers.logs:read"]},
+    {"group": "containers.chat", "scopes": ["containers.chat:read", "containers.chat:write"]},
+    {"group": "keys", "scopes": ["keys:manage"], "always_on": True},
+]
+
+ALL_SCOPES: set[str] = {"*"} | {
+    scope for entry in SCOPE_CATALOGUE for scope in entry["scopes"]
 }
 
 _EXPIRY_MAP: dict[str, timedelta | None] = {

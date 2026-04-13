@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 
 export interface ChatWindowProps {
   dockerfileId: string;
+  title?: string;
   onClose: () => void;
 }
 
@@ -38,7 +39,7 @@ function randomId(): string {
   return Math.random().toString(36).slice(2, 11);
 }
 
-export function ChatWindow({ dockerfileId, onClose }: ChatWindowProps) {
+export function ChatWindow({ dockerfileId, title, onClose }: ChatWindowProps) {
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -357,7 +358,7 @@ export function ChatWindow({ dockerfileId, onClose }: ChatWindowProps) {
       }}
       className="flex flex-col rounded-lg border border-border bg-card shadow-2xl overflow-hidden"
       role="dialog"
-      aria-label={t("dockerfiles.chat_window.title", { id: dockerfileId })}
+      aria-label={title ?? t("dockerfiles.chat_window.title", { id: dockerfileId })}
     >
       {/* Header (draggable) */}
       <div
@@ -366,7 +367,7 @@ export function ChatWindow({ dockerfileId, onClose }: ChatWindowProps) {
       >
         <div className="flex flex-col min-w-0">
           <span className="text-[12px] font-semibold truncate">
-            {t("dockerfiles.chat_window.title", { id: dockerfileId })}
+            {title ?? t("dockerfiles.chat_window.title", { id: dockerfileId })}
           </span>
           <span className="text-[10px] text-zinc-400">
             {streaming

@@ -194,4 +194,35 @@ export const agentsApi = {
   clearAssistant: async (): Promise<void> => {
     await api.delete("/admin/agents/assistant");
   },
+
+  listGenerated: async (agentId: string): Promise<{ path: string; content: string }[]> => {
+    const res = await api.get<{ path: string; content: string }[]>(
+      `/admin/agents/${agentId}/generated`,
+    );
+    return res.data;
+  },
+
+  generate: async (
+    agentId: string,
+    payload?: { profile_id?: string; secrets?: Record<string, string> },
+  ): Promise<{ slug: string; path: string; files: string[] }> => {
+    const res = await api.post(`/admin/agents/${agentId}/generate`, payload ?? {});
+    return res.data;
+  },
+
+  importZip: async (file: File): Promise<AgentDetail> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await api.post<AgentDetail>("/admin/agents/import", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  },
+
+  exportZip: async (agentId: string): Promise<Blob> => {
+    const res = await api.get(`/admin/agents/${agentId}/export`, {
+      responseType: "blob",
+    });
+    return res.data as Blob;
+  },
 };

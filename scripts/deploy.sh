@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Deploy agflow.docker to LXC 201 (192.168.10.68)
+# Deploy agflow.docker to LXC 201 (192.168.10.154)
 #
 # Prereqs :
 #   - ssh alias `pve` in ~/.ssh/config
@@ -43,7 +43,19 @@ scp /tmp/agflow-deploy.tar.gz pve:/tmp/
 
 echo "==> Pushing into CT ${CTID} and extracting..."
 ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz && \
-         pct exec ${CTID} -- bash -c 'rm -rf ${REPO_DIR_ON_CT} && mkdir -p ${REPO_DIR_ON_CT} && cd ${REPO_DIR_ON_CT} && tar xzf /tmp/agflow-deploy.tar.gz'"
+         pct exec ${CTID} -- bash -c '
+           mkdir -p ${REPO_DIR_ON_CT}
+           # Preserve the data/ directory (persistent file storage)
+           if [ -d ${REPO_DIR_ON_CT}/data ]; then
+             mv ${REPO_DIR_ON_CT}/data /tmp/_agflow_data_backup
+           fi
+           rm -rf ${REPO_DIR_ON_CT}
+           mkdir -p ${REPO_DIR_ON_CT}
+           cd ${REPO_DIR_ON_CT} && tar xzf /tmp/agflow-deploy.tar.gz
+           if [ -d /tmp/_agflow_data_backup ]; then
+             mv /tmp/_agflow_data_backup ${REPO_DIR_ON_CT}/data
+           fi
+         '"
 
 if [ "$REBUILD" -eq 1 ]; then
     echo "==> Rebuilding images on CT ${CTID}..."
@@ -56,5 +68,5 @@ ssh pve "pct exec ${CTID} -- bash -c 'cd ${REPO_DIR_ON_CT} && docker compose -f 
 
 echo ""
 echo "==> Deployed. Smoke test:"
-echo "    curl http://192.168.10.68/health"
-echo "    curl http://192.168.10.68/api/admin/auth/login -X POST -H 'Content-Type: application/json' -d '{\"email\":\"<admin_email>\",\"password\":\"<admin_password>\"}'"
+echo "    curl http://192.168.10.154/health"
+echo "    curl http://192.168.10.154/api/admin/auth/login -X POST -H 'Content-Type: application/json' -d '{\"email\":\"<admin_email>\",\"password\":\"<admin_password>\"}'"

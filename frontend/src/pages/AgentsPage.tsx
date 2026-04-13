@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Copy, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Copy, Download, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { agentsApi } from "@/lib/agentsApi";
 import { useAgents } from "@/hooks/useAgents";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -27,10 +29,11 @@ export function AgentsPage() {
   const [duplicateTargetId, setDuplicateTargetId] = useState<string | null>(
     null,
   );
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleDelete(id: string, name: string) {
-    if (!window.confirm(t("agents.confirm_delete", { name }))) return;
-    await deleteMutation.mutateAsync(id);
+  function handleDelete(id: string, name: string) {
+    setDeleteTarget({ id, name });
   }
 
   async function handleDuplicateSubmit(values: Record<string, string>) {
@@ -59,10 +62,33 @@ export function AgentsPage() {
         title={t("agents.page_title")}
         subtitle={t("agents.page_subtitle")}
         actions={
-          <Button onClick={() => navigate("/agents/new")}>
-            <Plus className="w-4 h-4" />
-            {t("agents.add_button")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={() => navigate("/agents/new")}>
+              <Plus className="w-4 h-4" />
+              {t("agents.add_button")}
+            </Button>
+            <Button variant="outline" onClick={() => importInputRef.current?.click()}>
+              <Upload className="w-4 h-4" />
+              {t("common.import")}
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".zip"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                e.target.value = "";
+                try {
+                  const agent = await agentsApi.importZip(f);
+                  navigate(`/agents/${agent.id}`);
+                } catch {
+                  // error handled by axios interceptor
+                }
+              }}
+            />
+          </div>
         }
       />
 
@@ -155,6 +181,22 @@ export function AgentsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={async () => {
+                          const blob = await agentsApi.exportZip(a.id);
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement("a");
+                          link.href = url;
+                          link.download = `${a.slug}.zip`;
+                          link.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        aria-label={t("common.export")}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => handleDelete(a.id, a.display_name)}
                         aria-label={t("agents.delete_button")}
                       >
@@ -168,6 +210,17 @@ export function AgentsPage() {
           </Table>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={t("agents.confirm_delete_title")}
+        description={t("agents.confirm_delete_message", { name: deleteTarget?.name ?? "" })}
+        destructive
+        onConfirm={async () => {
+          if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id);
+        }}
+      />
 
       <PromptDialog
         open={duplicateTargetId !== null}

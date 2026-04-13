@@ -62,6 +62,7 @@ export function AppLayout({ children }: Props) {
       {assistantOpen && assistantAgent && (
         <ChatWindow
           dockerfileId={assistantAgent.dockerfile_id}
+          title={assistantAgent.display_name}
           onClose={() => setAssistantOpen(false)}
         />
       )}

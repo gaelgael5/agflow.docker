@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useServiceTypes } from "@/hooks/useServiceTypes";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ export function ServiceTypesPage() {
     useServiceTypes();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ name: string; displayName: string } | null>(null);
 
   async function handleAdd(values: Record<string, string>) {
     setAddError(null);
@@ -39,20 +41,8 @@ export function ServiceTypesPage() {
     }
   }
 
-  async function handleDelete(name: string, display_name: string) {
-    if (
-      !window.confirm(
-        t("service_types.confirm_delete", { name: display_name }),
-      )
-    )
-      return;
-    try {
-      await deleteMutation.mutateAsync(name);
-    } catch (e) {
-      const detail = (e as { response?: { data?: { detail?: string } } })
-        .response?.data?.detail;
-      window.alert(detail ?? t("service_types.error_generic"));
-    }
+  function handleDelete(name: string, display_name: string) {
+    setDeleteTarget({ name, displayName: display_name });
   }
 
   return (
@@ -159,6 +149,17 @@ export function ServiceTypesPage() {
           </Table>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={t("service_types.confirm_delete_title")}
+        description={t("service_types.confirm_delete_message", { name: deleteTarget?.displayName ?? "" })}
+        destructive
+        onConfirm={async () => {
+          if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.name);
+        }}
+      />
     </PageShell>
   );
 }

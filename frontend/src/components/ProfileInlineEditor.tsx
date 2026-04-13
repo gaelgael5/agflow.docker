@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ChevronRight } from "lucide-react";
 import type { RoleDetail } from "@/lib/rolesApi";
 import type { AgentProfileSummary } from "@/lib/agentsApi";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ export function ProfileInlineEditor({
   );
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
 
   useEffect(() => {
     setSelected(
@@ -104,21 +106,32 @@ export function ProfileInlineEditor({
           ) : (
             <div className="flex flex-col">
               {section.documents.map((doc) => (
-                <label
-                  key={doc.id}
-                  className={cn(
-                    "flex items-center gap-2 py-1 text-[13px] cursor-pointer hover:bg-secondary/30 rounded px-1 -mx-1",
+                <div key={doc.id}>
+                  <div className="flex items-center gap-1.5 py-1 hover:bg-secondary/30 rounded px-1 -mx-1">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(doc.id)}
+                      onChange={() => toggle(doc.id)}
+                      className="accent-primary cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-[13px] cursor-pointer flex-1 min-w-0 text-left"
+                      onClick={() => setExpandedDoc(expandedDoc === doc.id ? null : doc.id)}
+                    >
+                      <ChevronRight className={cn(
+                        "w-3 h-3 shrink-0 transition-transform text-muted-foreground",
+                        expandedDoc === doc.id && "rotate-90",
+                      )} />
+                      <span className="truncate">{doc.name}</span>
+                    </button>
+                  </div>
+                  {expandedDoc === doc.id && doc.content_md && (
+                    <div className="ml-7 mb-2 p-2 rounded bg-muted text-[11px] text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto">
+                      {doc.content_md}
+                    </div>
                   )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(doc.id)}
-                    onChange={() => toggle(doc.id)}
-                    className="accent-primary"
-                  />
-                  <span>{doc.protected ? "🔒" : "📄"}</span>
-                  <span>{doc.name}</span>
-                </label>
+                </div>
               ))}
             </div>
           )}

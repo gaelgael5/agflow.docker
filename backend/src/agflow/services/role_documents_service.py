@@ -90,6 +90,7 @@ async def list_for_role(role_id: str) -> list[DocumentSummary]:
 
 async def update(
     doc_id: UUID,
+    name: str | None = None,
     content_md: str | None = None,
     protected: bool | None = None,
 ) -> DocumentSummary:
@@ -103,6 +104,10 @@ async def update(
     sets: list[str] = []
     args: list[object] = []
     idx = 1
+    if name is not None:
+        sets.append(f"name = ${idx}")
+        args.append(name)
+        idx += 1
     if content_md is not None:
         sets.append(f"content_md = ${idx}")
         args.append(content_md)

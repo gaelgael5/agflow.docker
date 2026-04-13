@@ -31,6 +31,23 @@ _TEMPLATE_RE = re.compile(r"\{(\w+)\}")
 _SHELL_VAR_RE = re.compile(r"\$\{(\w+)(?::-([^}]*))?\}")
 
 
+async def _load_platform_secrets() -> dict[str, str]:
+    """Load all global platform secrets as a dict for env var injection."""
+    from agflow.config import get_settings
+    from agflow.db.pool import fetch_all
+
+    master = get_settings().secrets_master_key
+    rows = await fetch_all(
+        """
+        SELECT var_name, pgp_sym_decrypt(value_encrypted, $1) AS value
+        FROM secrets
+        WHERE scope = 'global'
+        """,
+        master,
+    )
+    return {r["var_name"]: r["value"] for r in rows}
+
+
 class ContainerRunnerError(Exception):
     """Base class for predictable errors raised by the runner."""
 
@@ -72,23 +89,26 @@ def resolve_templates(
     return current
 
 
-def expand_shell_vars(s: str) -> str:
-    """Expand ${VAR} and ${VAR:-default} against os.environ.
+def expand_shell_vars(s: str, extra_env: dict[str, str] | None = None) -> str:
+    """Expand ${VAR} and ${VAR:-default} against os.environ + extra_env.
 
     Called AFTER agflow's own {KEY} resolution. Missing env vars fall back
     to the ``:-default`` clause if present, otherwise to an empty string.
     """
     if not s:
         return s
+    merged = {**os.environ, **(extra_env or {})}
     return _SHELL_VAR_RE.sub(
-        lambda m: os.environ.get(m.group(1), m.group(2) or ""),
+        lambda m: merged.get(m.group(1), m.group(2) or ""),
         s,
     )
 
 
-def full_resolve(s: str, vars: dict[str, str]) -> str:
+def full_resolve(
+    s: str, vars: dict[str, str], extra_env: dict[str, str] | None = None
+) -> str:
     """agflow {KEY} templating followed by shell ${VAR} expansion."""
-    return expand_shell_vars(resolve_templates(s, vars))
+    return expand_shell_vars(resolve_templates(s, vars), extra_env)
 
 
 def _data_host_dir() -> str:
@@ -103,6 +123,7 @@ def resolve_mount_source(
     raw_source: str,
     dockerfile_id: str,
     vars: dict[str, str],
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[str, str | None, bool]:
     """Resolve a user-supplied mount source to the path Docker should use.
 
@@ -124,7 +145,7 @@ def resolve_mount_source(
          ``{AGFLOW_DATA_HOST_DIR}/{slug}/``. The same path under
          ``{AGFLOW_DATA_DIR}/{slug}/`` is returned for existence checks.
     """
-    resolved = full_resolve(raw_source, vars).strip()
+    resolved = full_resolve(raw_source, vars, extra_env).strip()
     if resolved.startswith("/"):
         return resolved, None, False
 
@@ -240,7 +261,9 @@ def ensure_mount_paths(
 
 
 def _resolve_list(
-    items: list[dict[str, Any]] | None, vars: dict[str, str]
+    items: list[dict[str, Any]] | None,
+    vars: dict[str, str],
+    extra_env: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     if not items:
         return []
@@ -251,7 +274,7 @@ def _resolve_list(
         resolved: dict[str, Any] = {}
         for k, v in item.items():
             if isinstance(v, str):
-                resolved[k] = full_resolve(v, vars)
+                resolved[k] = full_resolve(v, vars, extra_env)
             else:
                 resolved[k] = v
         out.append(resolved)
@@ -259,14 +282,16 @@ def _resolve_list(
 
 
 def _resolve_dict(
-    d: dict[str, Any] | None, vars: dict[str, str]
+    d: dict[str, Any] | None,
+    vars: dict[str, str],
+    extra_env: dict[str, str] | None = None,
 ) -> dict[str, str]:
     if not d:
         return {}
     out: dict[str, str] = {}
     for k, v in d.items():
         if isinstance(v, str):
-            out[k] = full_resolve(v, vars)
+            out[k] = full_resolve(v, vars, extra_env)
         else:
             out[k] = str(v)
     return out
@@ -318,6 +343,7 @@ def build_run_config(
     params_json_content: str,
     content_hash: str,
     instance_id: str,
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Parse Dockerfile.json and produce (container_name, aiodocker config).
 
@@ -360,13 +386,13 @@ def build_run_config(
     environments = docker_cfg.get("Environments") or {}
     mounts = docker_cfg.get("Mounts") or []
 
-    name = full_resolve(str(container.get("Name", "")), vars_map).strip()
+    name = full_resolve(str(container.get("Name", "")), vars_map, extra_env).strip()
     if not name:
         raise InvalidParamsError("Container.Name template resolved to empty")
 
     # Environment vars: docker expects list of "KEY=VALUE".
     env_dict = _resolve_dict(
-        environments if isinstance(environments, dict) else {}, vars_map
+        environments if isinstance(environments, dict) else {}, vars_map, extra_env
     )
     env_list = [f"{k}={v}" for k, v in env_dict.items()]
 
@@ -379,17 +405,17 @@ def build_run_config(
         if not isinstance(m, dict):
             continue
         raw_source = str(m.get("source", "")).strip()
-        target = full_resolve(str(m.get("target", "")).strip(), vars_map)
+        target = full_resolve(str(m.get("target", "")).strip(), vars_map, extra_env)
         if not raw_source or not target:
             continue
         host_source, _container_path, _auto = resolve_mount_source(
-            raw_source, dockerfile_id, vars_map
+            raw_source, dockerfile_id, vars_map, extra_env
         )
         ro_flag = ":ro" if bool(m.get("readonly")) else ""
         binds.append(f"{host_source}:{target}{ro_flag}")
 
     network_mode = full_resolve(
-        str(network.get("Mode", "bridge")), vars_map
+        str(network.get("Mode", "bridge")), vars_map, extra_env
     ) or "bridge"
 
     memory_bytes = parse_memory_bytes(str(resources.get("Memory", "")))
@@ -403,13 +429,13 @@ def build_run_config(
         raise InvalidParamsError(
             f"Runtime.StopTimeout must be an integer, got {stop_timeout_raw!r}"
         ) from exc
-    working_dir = full_resolve(str(runtime.get("WorkingDir", "")), vars_map) or None
+    working_dir = full_resolve(str(runtime.get("WorkingDir", "")), vars_map, extra_env) or None
     init_enabled = bool(runtime.get("Init", True))
 
     image_template = str(
         container.get("Image", f"agflow-{dockerfile_id}:{{hash}}")
     )
-    image = full_resolve(image_template, vars_map)
+    image = full_resolve(image_template, vars_map, extra_env)
 
     host_config: dict[str, Any] = {
         "NetworkMode": network_mode,
@@ -519,6 +545,7 @@ async def start(
     *,
     params_json_content: str,
     content_hash: str,
+    user_secrets: dict[str, str] | None = None,
 ) -> ContainerInfo:
     """Create and start a container for a given dockerfile.
 
@@ -537,11 +564,13 @@ async def start(
         )
 
     instance_id = secrets.token_hex(3)
+    platform_secrets = await _load_platform_secrets()
     name, config = build_run_config(
         dockerfile_id=dockerfile_id,
         params_json_content=params_json_content,
         content_hash=content_hash,
         instance_id=instance_id,
+        extra_env=platform_secrets,
     )
 
     # Pre-create auto-prefixed mount directories so the default workspace/
@@ -550,9 +579,14 @@ async def start(
         dockerfile_id, params_json_content, instance_id, content_hash
     )
 
+    if user_secrets:
+        existing_env = config.get("Env", [])
+        for k, v in user_secrets.items():
+            existing_env.append(f"{k}={v}")
+        config["Env"] = existing_env
+
     docker = aiodocker.Docker()
     try:
-        # Verify the image exists before trying to run it.
         try:
             await docker.images.inspect(config["Image"])
         except aiodocker.exceptions.DockerError as exc:
@@ -597,6 +631,7 @@ async def run_task(
     task_payload: dict[str, Any],
     timeout_seconds: int = 600,
     user_secrets: dict[str, str] | None = None,
+    on_container_started: Any | None = None,
 ) -> "AsyncIterator[dict[str, Any]]":
     """One-shot: start a container, feed the task on stdin, stream stdout events.
 
@@ -621,11 +656,13 @@ async def run_task(
         )
 
     instance_id = secrets.token_hex(3)
+    platform_secrets = await _load_platform_secrets()
     name, config = build_run_config(
         dockerfile_id=dockerfile_id,
         params_json_content=params_json_content,
         content_hash=content_hash,
         instance_id=instance_id,
+        extra_env=platform_secrets,
     )
     _ensure_mount_paths_from_config(
         dockerfile_id, params_json_content, instance_id, content_hash
@@ -675,6 +712,13 @@ async def run_task(
         container = await docker.containers.create(config=config, name=name)
         try:
             await container.start()
+
+            # Notify the caller with the Docker container ID + name.
+            if on_container_started is not None:
+                inspect = await container.show()
+                cid = inspect.get("Id", "")
+                cname = (inspect.get("Name") or "").lstrip("/")
+                await on_container_started(cid, cname)
 
             # Stream stdout + stderr — the entrypoint emits newline-delimited
             # JSON on stdout; stderr carries diagnostics (e.g. "command not

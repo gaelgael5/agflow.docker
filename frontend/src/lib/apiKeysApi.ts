@@ -30,7 +30,18 @@ export interface ApiKeyUpdate {
   rate_limit?: number;
 }
 
+export interface ScopeGroup {
+  group: string;
+  scopes: string[];
+  always_on?: boolean;
+}
+
 export const apiKeysApi = {
+  async listScopes(): Promise<ScopeGroup[]> {
+    const res = await api.get<ScopeGroup[]>("/v1/scopes");
+    return res.data;
+  },
+
   async list(): Promise<ApiKeySummary[]> {
     const res = await api.get<ApiKeySummary[]>("/admin/api-keys");
     return res.data;

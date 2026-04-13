@@ -45,6 +45,19 @@ class DockerfileSummary(BaseModel):
     updated_at: datetime
 
 
+def _validate_file_path(v: str) -> str:
+    v = v.strip().replace("\\", "/")
+    if not v:
+        raise ValueError("path cannot be empty")
+    if v.startswith("/"):
+        raise ValueError("path must be relative")
+    parts = v.split("/")
+    for part in parts:
+        if not part or part in (".", ".."):
+            raise ValueError("path contains invalid segment")
+    return v
+
+
 class FileCreate(BaseModel):
     path: str = Field(min_length=1, max_length=200)
     content: str = ""
@@ -52,12 +65,7 @@ class FileCreate(BaseModel):
     @field_validator("path")
     @classmethod
     def _clean_path(cls, v: str) -> str:
-        v = v.strip()
-        if "/" in v or "\\" in v:
-            raise ValueError("path must be a flat filename (no directories)")
-        if not v:
-            raise ValueError("path cannot be empty")
-        return v
+        return _validate_file_path(v)
 
 
 class FileCreateBase64(BaseModel):
@@ -70,12 +78,7 @@ class FileCreateBase64(BaseModel):
     @field_validator("path")
     @classmethod
     def _clean_path(cls, v: str) -> str:
-        v = v.strip()
-        if "/" in v or "\\" in v:
-            raise ValueError("path must be a flat filename (no directories)")
-        if not v:
-            raise ValueError("path cannot be empty")
-        return v
+        return _validate_file_path(v)
 
 
 class FileUpdate(BaseModel):

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import io
+import json
+import zipfile
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 
 from agflow.auth.dependencies import require_admin
 from agflow.schemas.roles import (
@@ -102,6 +106,96 @@ async def delete_role(role_id: str) -> None:
         ) from exc
 
 
+@router.get("/{role_id}/export")
+async def export_role(role_id: str) -> StreamingResponse:
+    try:
+        role = await roles_service.get_by_id(role_id)
+    except roles_service.RoleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    sections = await role_sections_service.list_for_role(role_id)
+    documents = await role_documents_service.list_for_role(role_id)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        meta = {
+            "id": role.id,
+            "display_name": role.display_name,
+            "description": role.description,
+            "identity_md": role.identity_md,
+            "service_types": role.service_types,
+            "sections": [
+                {"name": s.name, "display_name": s.display_name, "is_native": s.is_native, "position": s.position}
+                for s in sections
+            ],
+        }
+        zf.writestr("role.json", json.dumps(meta, ensure_ascii=False, indent=2))
+        for doc in documents:
+            zf.writestr(f"{doc.section}/{doc.name}.md", doc.content_md)
+
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{role_id}.zip"'},
+    )
+
+
+@router.post("/{role_id}/import")
+async def import_role(role_id: str, file: UploadFile = File(...)) -> RoleDetail:
+    try:
+        await roles_service.get_by_id(role_id)
+    except roles_service.RoleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    data = await file.read()
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(400, "Invalid zip file") from exc
+
+    meta = {}
+    if "role.json" in zf.namelist():
+        meta = json.loads(zf.read("role.json"))
+
+    if meta.get("identity_md") is not None or meta.get("description") is not None:
+        updates = {}
+        if "identity_md" in meta:
+            updates["identity_md"] = meta["identity_md"]
+        if "description" in meta:
+            updates["description"] = meta["description"]
+        if "display_name" in meta:
+            updates["display_name"] = meta["display_name"]
+        if updates:
+            await roles_service.update(role_id, **updates)
+
+    existing_docs = await role_documents_service.list_for_role(role_id)
+    existing_by_key = {(d.section, d.name): d for d in existing_docs}
+
+    for info in zf.infolist():
+        if info.is_dir() or info.filename == "role.json":
+            continue
+        parts = info.filename.split("/", 1)
+        if len(parts) != 2 or not parts[1].endswith(".md"):
+            continue
+        section = parts[0]
+        doc_name = parts[1][:-3]
+        content = zf.read(info).decode("utf-8")
+
+        existing = existing_by_key.get((section, doc_name))
+        if existing:
+            await role_documents_service.update(existing.id, content_md=content)
+        else:
+            sections = await role_sections_service.list_for_role(role_id)
+            if not any(s.name == section for s in sections):
+                await role_sections_service.create(role_id, name=section, display_name=section.capitalize())
+            await role_documents_service.create(
+                role_id=role_id, section=section, name=doc_name, content_md=content,
+            )
+
+    return await get_role(role_id)
+
+
 @router.post("/{role_id}/generate-prompts", response_model=RoleSummary)
 async def generate_prompts_endpoint(role_id: str) -> RoleSummary:
     try:
@@ -159,7 +253,7 @@ async def update_document(
 ) -> DocumentSummary:
     try:
         return await role_documents_service.update(
-            doc_id, content_md=payload.content_md, protected=payload.protected
+            doc_id, name=payload.name, content_md=payload.content_md, protected=payload.protected
         )
     except role_documents_service.DocumentNotFoundError as exc:
         raise HTTPException(

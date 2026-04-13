@@ -17,7 +17,13 @@ export function useContainers() {
   });
 
   const runMutation = useMutation({
-    mutationFn: (dockerfileId: string) => containersApi.run(dockerfileId),
+    mutationFn: ({
+      dockerfileId,
+      secrets,
+    }: {
+      dockerfileId: string;
+      secrets?: Record<string, string>;
+    }) => containersApi.run(dockerfileId, secrets),
     onSuccess: () => qc.invalidateQueries({ queryKey: CONTAINERS_KEY }),
   });
 

@@ -73,7 +73,7 @@ function AddDialog({ open, onOpenChange, onSubmit }: AddDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t("my_secrets.add_dialog_title")}</DialogTitle>
         </DialogHeader>
@@ -161,7 +161,7 @@ function EditDialog({ open, secret, onOpenChange, onSubmit }: EditDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t("my_secrets.edit_dialog_title")}</DialogTitle>
         </DialogHeader>

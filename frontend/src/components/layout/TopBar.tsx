@@ -108,7 +108,7 @@ export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive, assi
           onClick={onToggleAssistant}
           disabled={!onToggleAssistant}
           className={cn(
-            "hidden sm:flex w-8 h-8 rounded-md items-center justify-center transition-colors",
+            "flex w-8 h-8 rounded-md items-center justify-center transition-colors",
             !onToggleAssistant && "opacity-30 cursor-not-allowed",
             onToggleAssistant && assistantActive && "bg-primary text-primary-foreground",
             onToggleAssistant && !assistantActive && "hover:bg-secondary text-muted-foreground",

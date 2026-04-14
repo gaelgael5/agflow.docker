@@ -140,6 +140,14 @@ export const dockerfilesApi = {
     );
     return res.data;
   },
+  async regenerateTmp(
+    dockerfileId: string,
+    secrets?: Record<string, string>,
+  ): Promise<void> {
+    await api.post(`/admin/dockerfiles/${dockerfileId}/regenerate-tmp`, {
+      secrets: secrets ?? {},
+    });
+  },
   async importZip(
     dockerfileId: string,
     file: File,

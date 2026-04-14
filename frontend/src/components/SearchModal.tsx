@@ -62,7 +62,7 @@ export function SearchModal<T>({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-5xl sm:max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("search_modal.title", { title })}</DialogTitle>
           <DialogDescription className="sr-only">

@@ -40,7 +40,7 @@ export function RoleSidebar({
   const { t } = useTranslation();
 
   return (
-    <aside className="w-64 shrink-0 border-r bg-background overflow-y-auto">
+    <aside className="hidden md:block w-64 shrink-0 border-r bg-background overflow-y-auto">
       <div className="p-3 space-y-4">
         {sections.map((section) => {
           const docs = documents.filter((d) => d.section === section.name);

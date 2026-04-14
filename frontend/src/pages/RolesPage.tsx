@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, Lock, Plus, Save, Trash2, Upload } from "lucide-react";
 import { useRoles } from "@/hooks/useRoles";
@@ -53,13 +53,38 @@ export function RolesPage() {
   const [showDeleteRoleConfirm, setShowDeleteRoleConfirm] = useState(false);
   const [deleteSectionTarget, setDeleteSectionTarget] = useState<string | null>(null);
   const [draftDocContent, setDraftDocContent] = useState<string | null>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const detail = useRoleDetail(selectedRoleId);
   const docMutations = useRoleDocumentMutations(selectedRoleId ?? "");
 
   const currentRole = draftRole ?? detail.data?.role ?? null;
+  const hasDirtyDoc = draftDocContent !== null;
+  const hasDirtyRole = draftRole !== null;
+  const hasDirty = hasDirtyDoc || hasDirtyRole;
+
+  // Ctrl+S
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        if (hasDirtyDoc) handleSaveDocument();
+        else if (hasDirtyRole) handleSaveRole();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
+
+  // beforeunload
+  useEffect(() => {
+    if (!hasDirty) return;
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasDirty]);
   const sections = detail.data?.sections ?? [];
   const allDocuments = sections.flatMap((s) => s.documents);
   const selectedDoc = allDocuments.find((d) => d.id === selectedDocId) ?? null;
@@ -167,23 +192,18 @@ export function RolesPage() {
     await docMutations.deleteSection.mutateAsync(deleteSectionTarget);
   }
 
-  const flushDocDraft = useCallback(() => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = null;
-  }, []);
-
   function handleDocumentChange(content: string) {
     if (!selectedDoc || !selectedRoleId) return;
     setDraftDocContent(content);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      docMutations.updateDoc.mutate({
-        docId: selectedDoc.id,
-        payload: { content_md: content },
-      });
-      setDraftDocContent(null);
-      saveTimerRef.current = null;
-    }, 800);
+  }
+
+  async function handleSaveDocument() {
+    if (!selectedDoc || !selectedRoleId || draftDocContent === null) return;
+    docMutations.updateDoc.mutate({
+      docId: selectedDoc.id,
+      payload: { content_md: draftDocContent },
+    });
+    setDraftDocContent(null);
   }
 
   function handleRoleFieldChange(updates: Partial<RoleSummary>) {
@@ -197,16 +217,18 @@ export function RolesPage() {
   return (
     <div className="flex flex-col h-full min-h-[calc(100vh-3.5rem)] overflow-hidden">
       {/* Header row: dropdown + action buttons */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b bg-muted/30 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 md:gap-3 px-4 py-2.5 border-b bg-muted/30 shrink-0">
         <Select
           value={selectedRoleId ?? ""}
           onValueChange={(value) => {
+            if (hasDirty && !window.confirm(t("common.unsaved_changes"))) return;
             setSelectedRoleId(value || null);
             setSelectedDocId(null);
             setDraftRole(null);
+            setDraftDocContent(null);
           }}
         >
-          <SelectTrigger className="w-56">
+          <SelectTrigger className="w-40 md:w-56">
             <SelectValue placeholder={t("roles.select_role")} />
           </SelectTrigger>
           <SelectContent>
@@ -288,7 +310,10 @@ export function RolesPage() {
               sections={sections}
               documents={allDocuments}
               selectedDocId={selectedDocId}
-              onSelect={(id) => { flushDocDraft(); setDraftDocContent(null); setSelectedDocId(id); setTab("document"); }}
+              onSelect={(id) => {
+                if (hasDirtyDoc && !window.confirm(t("common.unsaved_changes"))) return;
+                setDraftDocContent(null); setSelectedDocId(id); setTab("document");
+              }}
               onAdd={handleAddDocument}
               onAddSection={() => {
                 setSectionError(null);
@@ -308,22 +333,44 @@ export function RolesPage() {
 
             {/* Right: main content */}
             <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-              <div className="px-6 py-4 border-b shrink-0">
+              <div className="px-4 md:px-6 py-4 border-b shrink-0">
                 <h2 className="text-[18px] font-semibold text-foreground truncate">
                   {currentRole.display_name}
                 </h2>
                 <p className="text-[12px] text-muted-foreground font-mono mt-0.5">
                   {currentRole.id}
                 </p>
+                {/* Mobile-only document picker */}
+                {allDocuments.length > 0 && (
+                  <div className="md:hidden mt-2">
+                    <Select
+                      value={selectedDocId ?? ""}
+                      onValueChange={(v) => {
+                        if (v) { setDraftDocContent(null); setSelectedDocId(v); setTab("document"); }
+                      }}
+                    >
+                      <SelectTrigger className="w-full h-8 text-[12px]">
+                        <SelectValue placeholder={t("roles.select_document")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allDocuments.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            <span className="text-[12px]">{d.section} / {d.name}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
-              <div className={`flex-1 min-h-0 px-6 py-5 flex flex-col ${tab === "document" ? "" : "overflow-y-auto"}`}>
+              <div className={`flex-1 min-h-0 px-4 md:px-6 py-5 flex flex-col ${tab === "document" ? "" : "overflow-y-auto"}`}>
                 <Tabs
                   value={tab}
                   onValueChange={(v) => {
+                    if (hasDirtyDoc && v !== "document" && !window.confirm(t("common.unsaved_changes"))) return;
                     setTab(v as Tab);
                     if (v !== "document") {
-                      flushDocDraft();
                       setDraftDocContent(null);
                       setSelectedDocId(null);
                     }
@@ -376,6 +423,12 @@ export function RolesPage() {
                         </h3>
                         {isDocLocked(selectedDoc) && (
                           <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        )}
+                        {draftDocContent !== null && (
+                          <Button size="sm" onClick={handleSaveDocument} className="ml-auto">
+                            <Save className="w-3.5 h-3.5" />
+                            {t("roles.save")}
+                          </Button>
                         )}
                       </div>
                       <MarkdownEditor

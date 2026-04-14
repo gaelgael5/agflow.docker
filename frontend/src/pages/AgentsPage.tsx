@@ -62,14 +62,24 @@ export function AgentsPage() {
         title={t("agents.page_title")}
         subtitle={t("agents.page_subtitle")}
         actions={
-          <div className="flex items-center gap-2">
-            <Button onClick={() => navigate("/agents/new")}>
-              <Plus className="w-4 h-4" />
-              {t("agents.add_button")}
+          <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={() => navigate("/agents/new")}
+              title={t("agents.add_button")}
+            >
+              <Plus className="w-3.5 h-3.5" />
             </Button>
-            <Button variant="outline" onClick={() => importInputRef.current?.click()}>
-              <Upload className="w-4 h-4" />
-              {t("common.import")}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={() => importInputRef.current?.click()}
+              title={t("common.import")}
+            >
+              <Upload className="w-3.5 h-3.5" />
             </Button>
             <input
               ref={importInputRef}
@@ -119,8 +129,8 @@ export function AgentsPage() {
               <TableRow>
                 <TableHead>{t("agents.col_slug")}</TableHead>
                 <TableHead>{t("agents.col_name")}</TableHead>
-                <TableHead>{t("agents.col_dockerfile")}</TableHead>
-                <TableHead>{t("agents.col_role")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("agents.col_dockerfile")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("agents.col_role")}</TableHead>
                 <TableHead>{t("agents.col_status")}</TableHead>
                 <TableHead className="text-right">
                   {t("agents.col_actions")}
@@ -140,12 +150,12 @@ export function AgentsPage() {
                     </code>
                   </TableCell>
                   <TableCell className="font-medium">{a.display_name}</TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <code className="text-[12px] text-muted-foreground font-mono">
                       {a.dockerfile_id}
                     </code>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <code className="text-[12px] text-muted-foreground font-mono">
                       {a.role_id}
                     </code>
@@ -166,7 +176,7 @@ export function AgentsPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => navigate(`/agents/${a.id}`)}
-                        aria-label={t("agents.edit_button")}
+                        title={t("agents.edit_button")}
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
@@ -174,7 +184,7 @@ export function AgentsPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => setDuplicateTargetId(a.id)}
-                        aria-label={t("agents.duplicate_button")}
+                        title={t("agents.duplicate_button")}
                       >
                         <Copy className="w-3.5 h-3.5" />
                       </Button>
@@ -190,7 +200,7 @@ export function AgentsPage() {
                           link.click();
                           URL.revokeObjectURL(url);
                         }}
-                        aria-label={t("common.export")}
+                        title={t("common.export")}
                       >
                         <Download className="w-3.5 h-3.5" />
                       </Button>
@@ -198,7 +208,7 @@ export function AgentsPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDelete(a.id, a.display_name)}
-                        aria-label={t("agents.delete_button")}
+                        title={t("agents.delete_button")}
                       >
                         <Trash2 className="w-3.5 h-3.5 text-destructive" />
                       </Button>

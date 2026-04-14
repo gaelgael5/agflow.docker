@@ -3,9 +3,11 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   ArrowLeft,
   BookMarked,
+  ChevronRight,
+  Lock,
+  Unlock,
   Cog,
   Copy,
   Eye,
@@ -17,7 +19,6 @@ import {
   Save,
   TerminalSquare,
   Trash2,
-  UserRoundCog,
   X,
 } from "lucide-react";
 import { useDockerfiles, useDockerfileDetail } from "@/hooks/useDockerfiles";
@@ -30,20 +31,20 @@ import {
   useConfigPreview,
 } from "@/hooks/useAgents";
 import { useRoleDetail } from "@/hooks/useRoleDocuments";
-import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
-import { secretsApi } from "@/lib/secretsApi";
 import { useVault } from "@/hooks/useVault";
 import { userSecretsApi } from "@/lib/userSecretsApi";
 import { containersApi } from "@/lib/containersApi";
 import { ChatWindow } from "@/components/ChatWindow";
+import { CodeEditor } from "@/components/CodeEditor";
 import { TerminalWindow } from "@/components/TerminalWindow";
 import { ProfileInlineEditor } from "@/components/ProfileInlineEditor";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { VaultUnlockDialog } from "@/components/VaultUnlockDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { PageShell } from "@/components/layout/PageHeader";
 import { slugify } from "@/lib/slugify";
-import { cn } from "@/lib/utils";
+import { cn, maskEnvSecrets } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -57,6 +58,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -75,7 +77,16 @@ import {
   type NetworkMode,
 } from "@/lib/agentsApi";
 
-type EnvEntry = { key: string; value: string };
+
+interface FieldOverride {
+  value?: string;
+  excluded?: boolean;
+}
+
+interface MountOverride {
+  source?: string;
+  excluded?: boolean;
+}
 
 interface FormState {
   slug: string;
@@ -83,7 +94,9 @@ interface FormState {
   description: string;
   dockerfile_id: string;
   role_id: string;
-  env_entries: EnvEntry[];
+  env_overrides: Record<string, FieldOverride>;
+  mount_overrides: Record<string, MountOverride>;
+  param_overrides: Record<string, FieldOverride>;
   timeout_seconds: number;
   workspace_path: string;
   network_mode: NetworkMode;
@@ -99,7 +112,9 @@ const EMPTY_FORM: FormState = {
   description: "",
   dockerfile_id: "",
   role_id: "",
-  env_entries: [],
+  env_overrides: {},
+  mount_overrides: {},
+  param_overrides: {},
   timeout_seconds: 3600,
   workspace_path: "/workspace",
   network_mode: "bridge",
@@ -108,18 +123,6 @@ const EMPTY_FORM: FormState = {
   mcp_bindings: [],
   skill_bindings: [],
 };
-
-function envObjectToEntries(obj: Record<string, string>): EnvEntry[] {
-  return Object.entries(obj).map(([key, value]) => ({ key, value }));
-}
-
-function envEntriesToObject(entries: EnvEntry[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const e of entries) {
-    if (e.key.trim()) out[e.key.trim()] = e.value;
-  }
-  return out;
-}
 
 export function AgentEditorPage() {
   const { t } = useTranslation();
@@ -146,6 +149,7 @@ export function AgentEditorPage() {
   const roleDetailQuery = useRoleDetail(isNew ? null : agent?.role_id ?? null);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [formDirty, setFormDirty] = useState(false);
   const dockerfileDetailQuery = useDockerfileDetail(form.dockerfile_id || null);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -162,6 +166,37 @@ export function AgentEditorPage() {
   const [generatedFiles, setGeneratedFiles] = useState<{ path: string; content: string }[]>([]);
   const [selectedGenFile, setSelectedGenFile] = useState<string | null>(null);
   const [chatOpenFor, setChatOpenFor] = useState<string | null>(null);
+  const [decryptedSecrets, setDecryptedSecrets] = useState<Record<string, string> | null>(null);
+  const [showVaultUnlock, setShowVaultUnlock] = useState(false);
+
+  async function decryptUserSecrets(): Promise<Record<string, string>> {
+    if (vaultState !== "unlocked") return {};
+    try {
+      const list = await userSecretsApi.list();
+      const result: Record<string, string> = {};
+      for (const s of list) {
+        try { result[s.name] = decryptSecret(s.ciphertext, s.iv); } catch { /* skip */ }
+      }
+      return result;
+    } catch {
+      return {};
+    }
+  }
+
+  const vaultIsOpen = vaultState === "unlocked";
+
+  // Auto-detect vault already unlocked on mount
+  useEffect(() => {
+    if (vaultIsOpen && !decryptedSecrets) {
+      void decryptUserSecrets().then((s) => {
+        if (Object.keys(s).length > 0) setDecryptedSecrets(s);
+      });
+    }
+    if (!vaultIsOpen && decryptedSecrets) {
+      setDecryptedSecrets(null);
+    }
+  }, [vaultIsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [terminalContainer, setTerminalContainer] = useState<{ id: string; name: string } | null>(null);
   const [runningContainerId, setRunningContainerId] = useState<string | null>(null);
 
@@ -173,7 +208,9 @@ export function AgentEditorPage() {
         description: agent.description,
         dockerfile_id: agent.dockerfile_id,
         role_id: agent.role_id,
-        env_entries: envObjectToEntries(agent.env_vars),
+        env_overrides: (agent.env_vars as Record<string, unknown>)?.env_overrides as Record<string, FieldOverride> ?? {},
+        mount_overrides: (agent.env_vars as Record<string, unknown>)?.mount_overrides as Record<string, MountOverride> ?? {},
+        param_overrides: (agent.env_vars as Record<string, unknown>)?.param_overrides as Record<string, FieldOverride> ?? {},
         timeout_seconds: agent.timeout_seconds,
         workspace_path: agent.workspace_path,
         network_mode: agent.network_mode,
@@ -191,6 +228,28 @@ export function AgentEditorPage() {
     }
   }, [isNew, id]);
 
+  // Ctrl+S
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        if (formDirty) handleSave();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
+
+  // beforeunload
+  useEffect(() => {
+    if (!formDirty) return;
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [formDirty]);
+
   const availableMCPs = useMemo(() => mcps ?? [], [mcps]);
   const availableSkills = useMemo(() => skills ?? [], [skills]);
 
@@ -207,14 +266,70 @@ export function AgentEditorPage() {
     }
   }, [dockerfileDetailQuery.data]);
 
-  const referencedSecrets = useMemo(
-    () =>
-      form.env_entries
-        .filter((e) => e.value.startsWith("$") && e.value.length > 1)
-        .map((e) => e.value.slice(1)),
-    [form.env_entries],
-  );
-  const envStatus = useEnvVarStatuses(referencedSecrets);
+  const dockerfileMounts = useMemo(() => {
+    const files = dockerfileDetailQuery.data?.files ?? [];
+    const paramsFile = files.find((f) => f.path === "Dockerfile.json");
+    if (!paramsFile) return [];
+    try {
+      const parsed = JSON.parse(paramsFile.content);
+      return (parsed?.docker?.Mounts ?? []) as { source: string; target: string; readonly: boolean }[];
+    } catch {
+      return [];
+    }
+  }, [dockerfileDetailQuery.data]);
+
+  const dockerfileParams = useMemo(() => {
+    const files = dockerfileDetailQuery.data?.files ?? [];
+    const paramsFile = files.find((f) => f.path === "Dockerfile.json");
+    if (!paramsFile) return {} as Record<string, string>;
+    try {
+      const parsed = JSON.parse(paramsFile.content);
+      return (parsed?.Params ?? {}) as Record<string, string>;
+    } catch {
+      return {} as Record<string, string>;
+    }
+  }, [dockerfileDetailQuery.data]);
+
+  // Extract variable name from ${VAR}, ${VAR:-default}, or $VAR
+  function extractSecretName(val: string): string | null {
+    if (!val) return null;
+    // ${VAR:-default} or ${VAR}
+    const braceMatch = val.match(/^\$\{(\w+)(?::-[^}]*)?\}$/);
+    if (braceMatch) return braceMatch[1] ?? null;
+    // $VAR
+    if (val.startsWith("$") && val.length > 1 && !val.startsWith("${")) return val.slice(1);
+    return null;
+  }
+
+  // Get the base value from Dockerfile.json for a given env key
+  function getBaseEnvValue(key: string): string {
+    try {
+      const files = dockerfileDetailQuery.data?.files ?? [];
+      const pf = files.find((f) => f.path === "Dockerfile.json");
+      if (!pf) return "";
+      const parsed = JSON.parse(pf.content);
+      return String((parsed?.docker?.Environments ?? {})[key] ?? "");
+    } catch { return ""; }
+  }
+
+  // Resolve secret status from user vault (not platform secrets)
+  const vaultSecretStatus = useMemo(() => {
+    if (!decryptedSecrets) return {} as Record<string, "ok" | "empty" | "missing">;
+    const status: Record<string, "ok" | "empty" | "missing"> = {};
+    for (const key of dockerfileEnvKeys) {
+      const override = form.env_overrides[key];
+      if (override?.excluded) continue;
+      const val = override?.value ?? getBaseEnvValue(key);
+      const name = extractSecretName(val);
+      if (!name) continue;
+      if (name in decryptedSecrets) {
+        status[name] = decryptedSecrets[name] ? "ok" : "empty";
+      } else {
+        status[name] = "missing";
+      }
+    }
+    return status;
+  }, [dockerfileEnvKeys, form.env_overrides, decryptedSecrets, dockerfileDetailQuery.data]);
 
   const mcpName = (mcpId: string): string =>
     availableMCPs.find((m) => m.id === mcpId)?.name ?? mcpId;
@@ -224,6 +339,7 @@ export function AgentEditorPage() {
     availableSkills.find((s) => s.id === sid)?.name ?? sid;
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setFormDirty(true);
     setForm((prev) => {
       const next = { ...prev, [key]: value };
       if (key === "display_name" && isNew && !slugTouched) {
@@ -233,23 +349,28 @@ export function AgentEditorPage() {
     });
   }
 
-  function addEnv() {
-    updateField("env_entries", [...form.env_entries, { key: "", value: "" }]);
+  function setEnvOverride(key: string, override: FieldOverride | undefined) {
+    const next = { ...form.env_overrides };
+    if (override === undefined) {
+      delete next[key];
+    } else {
+      next[key] = override;
+    }
+    updateField("env_overrides", next);
   }
 
-  function removeEnv(idx: number) {
-    updateField(
-      "env_entries",
-      form.env_entries.filter((_, i) => i !== idx),
-    );
+  function setMountOverride(target: string, override: MountOverride | undefined) {
+    const next = { ...form.mount_overrides };
+    if (override === undefined) delete next[target];
+    else next[target] = override;
+    updateField("mount_overrides", next);
   }
 
-  function setEnv(idx: number, field: keyof EnvEntry, value: string) {
-    const next = [...form.env_entries];
-    const entry = next[idx];
-    if (!entry) return;
-    next[idx] = { ...entry, [field]: value };
-    updateField("env_entries", next);
+  function setParamOverride(key: string, override: FieldOverride | undefined) {
+    const next = { ...form.param_overrides };
+    if (override === undefined) delete next[key];
+    else next[key] = override;
+    updateField("param_overrides", next);
   }
 
   function addMCP() {
@@ -312,7 +433,11 @@ export function AgentEditorPage() {
       description: form.description,
       dockerfile_id: form.dockerfile_id,
       role_id: form.role_id,
-      env_vars: envEntriesToObject(form.env_entries),
+      env_vars: {
+        env_overrides: form.env_overrides,
+        mount_overrides: form.mount_overrides,
+        param_overrides: form.param_overrides,
+      } as unknown as Record<string, string>,
       timeout_seconds: form.timeout_seconds,
       workspace_path: form.workspace_path,
       network_mode: form.network_mode,
@@ -328,11 +453,13 @@ export function AgentEditorPage() {
     try {
       if (isNew) {
         const created = await createMutation.mutateAsync(buildPayload());
+        setFormDirty(false);
         navigate(`/agents/${created.id}`);
       } else {
         const { slug: _slug, ...updatePayload } = buildPayload();
         void _slug;
         await updateMutation.mutateAsync(updatePayload);
+        setFormDirty(false);
       }
     } catch (e) {
       const err = e as {
@@ -489,15 +616,7 @@ export function AgentEditorPage() {
                     if (!id) return;
                     setGenerating(true);
                     try {
-                      let secrets: Record<string, string> = {};
-                      if (vaultState === "unlocked") {
-                        try {
-                          const list = await userSecretsApi.list();
-                          for (const s of list) {
-                            try { secrets[s.name] = decryptSecret(s.ciphertext, s.iv); } catch { /* skip */ }
-                          }
-                        } catch { /* no vault */ }
-                      }
+                      const secrets = decryptedSecrets ?? await decryptUserSecrets();
                       await agentsApi.generate(id, { secrets });
                       const files = await agentsApi.listGenerated(id);
                       setGeneratedFiles(files);
@@ -518,15 +637,7 @@ export function AgentEditorPage() {
                   onClick={async () => {
                     if (!form.dockerfile_id) return;
                     try {
-                      let secrets: Record<string, string> = {};
-                      if (vaultState === "unlocked") {
-                        try {
-                          const list = await userSecretsApi.list();
-                          for (const s of list) {
-                            try { secrets[s.name] = decryptSecret(s.ciphertext, s.iv); } catch { /* skip */ }
-                          }
-                        } catch { /* no vault */ }
-                      }
+                      const secrets = decryptedSecrets ?? await decryptUserSecrets();
                       const c = await containersApi.run(form.dockerfile_id, secrets);
                       setRunningContainerId(c.id);
                     } catch (e) {
@@ -561,6 +672,28 @@ export function AgentEditorPage() {
                   <TerminalSquare className="w-3.5 h-3.5" />
                 </Button>
               </div>
+
+              {/* Vault lock/unlock */}
+              <Button
+                size="icon"
+                variant={vaultIsOpen ? "secondary" : "outline"}
+                className={`h-7 w-7 ${vaultIsOpen ? "border-emerald-500 bg-emerald-500/10" : ""}`}
+                title={vaultIsOpen ? t("agent_editor.vault_locked") : t("agent_editor.vault_unlock")}
+                onClick={async () => {
+                  if (vaultIsOpen) return;
+                  if (vaultState === "locked") {
+                    setShowVaultUnlock(true);
+                  } else {
+                    setError(t("agent_editor.vault_not_unlocked"));
+                  }
+                }}
+              >
+                {vaultIsOpen ? (
+                  <Unlock className="w-3.5 h-3.5 text-emerald-500" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5" />
+                )}
+              </Button>
             </>
           )}
         </div>
@@ -576,9 +709,17 @@ export function AgentEditorPage() {
         </Card>
       )}
 
+      <Tabs defaultValue="general" className="mb-6">
+        <TabsList>
+          <TabsTrigger value="general">{t("agent_editor.tab_general")}</TabsTrigger>
+          <TabsTrigger value="dockerfile">{t("agent_editor.tab_dockerfile")}</TabsTrigger>
+          <TabsTrigger value="roles">{t("agent_editor.tab_roles")}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="general">
       {/* General */}
-      <SectionLabel>{t("agent_editor.section_general")}</SectionLabel>
-      <Card className="mb-6">
+      <CollapsibleSection label={t("agent_editor.section_general")} defaultOpen={false}>
+      <Card className="mb-0">
         <CardContent className="pt-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
@@ -611,6 +752,43 @@ export function AgentEditorPage() {
           </div>
         </CardContent>
       </Card>
+      </CollapsibleSection>
+
+      {/* Assistant toggle */}
+      {!isNew && agent && (
+        <Card className="mb-6">
+          <CardContent className="pt-5">
+            <div className="flex items-center gap-3">
+              <input
+                id="is-assistant"
+                type="checkbox"
+                checked={agent.is_assistant}
+                onChange={async (e) => {
+                  try {
+                    if (e.target.checked) {
+                      await agentsApi.setAssistant(agent.id);
+                    } else {
+                      await agentsApi.clearAssistant();
+                    }
+                    qc.invalidateQueries({ queryKey: ["agents"] });
+                    if (id) qc.invalidateQueries({ queryKey: ["agent", id] });
+                    qc.invalidateQueries({ queryKey: ["assistant-agent"] });
+                  } catch {
+                    // silently fail
+                  }
+                }}
+                className="h-4 w-4 rounded border border-input accent-primary"
+              />
+              <Label htmlFor="is-assistant" className="cursor-pointer">
+                {t("assistant.toggle_label")}
+              </Label>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1 ml-7">
+              {t("assistant.toggle_hint")}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Composition — brick cards */}
       <div className="flex items-center justify-between mb-3">
@@ -626,58 +804,6 @@ export function AgentEditorPage() {
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {/* Dockerfile brick */}
-        <BrickCard
-          icon={
-            <div className="w-8 h-8 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 flex items-center justify-center">
-              <FileCode2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            </div>
-          }
-          kind={t("agent_editor.section_dockerfile")}
-        >
-          <Select
-            value={form.dockerfile_id}
-            onValueChange={(v) => updateField("dockerfile_id", v)}
-          >
-            <SelectTrigger className="mt-2">
-              <SelectValue placeholder="—" />
-            </SelectTrigger>
-            <SelectContent>
-              {(dockerfiles ?? []).map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.display_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </BrickCard>
-
-        {/* Role brick */}
-        <BrickCard
-          icon={
-            <div className="w-8 h-8 rounded-md bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/50 flex items-center justify-center">
-              <UserRoundCog className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-            </div>
-          }
-          kind={t("agent_editor.section_role")}
-        >
-          <Select
-            value={form.role_id}
-            onValueChange={(v) => updateField("role_id", v)}
-          >
-            <SelectTrigger className="mt-2">
-              <SelectValue placeholder="—" />
-            </SelectTrigger>
-            <SelectContent>
-              {(roles ?? []).map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  {r.display_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </BrickCard>
-
         {/* MCPs brick — spans 2 columns */}
         <Card className="md:col-span-2">
           <CardHeader className="pb-3">
@@ -809,10 +935,37 @@ export function AgentEditorPage() {
         </Card>
       </div>
 
+        </TabsContent>
+
+        <TabsContent value="roles">
+      {/* Role selection */}
+      <Card className="mb-6">
+        <CardContent className="pt-5">
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("agent_editor.section_role")}</Label>
+            <Select
+              value={form.role_id}
+              onValueChange={(v) => updateField("role_id", v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="—" />
+              </SelectTrigger>
+              <SelectContent>
+                {(roles ?? []).map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.display_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Profiles */}
       {!isNew && (
         <>
-          <SectionLabel>{t("agent_editor.section_profiles")}</SectionLabel>
+          <CollapsibleSection label={t("agent_editor.section_profiles")} defaultOpen={false}>
           <Card className="mb-6">
             <CardContent className="pt-5">
               <p className="text-muted-foreground text-[12px] mb-3">
@@ -910,111 +1063,244 @@ export function AgentEditorPage() {
               </Button>
             </CardContent>
           </Card>
+          </CollapsibleSection>
         </>
       )}
 
-      {/* Env vars */}
-      <SectionLabel>{t("agent_editor.section_env")}</SectionLabel>
+        </TabsContent>
+
+        <TabsContent value="dockerfile">
+      {/* Dockerfile selection */}
       <Card className="mb-6">
-        <CardContent className="pt-5 space-y-2">
-          {form.env_entries.map((entry, idx) => {
-            const secretRef =
-              entry.value.startsWith("$") && entry.value.length > 1
-                ? entry.value.slice(1)
-                : null;
-            return (
-              <div
-                key={idx}
-                className="flex flex-wrap items-center gap-2"
-              >
-                <Input
-                  placeholder={t("agent_editor.env_key_placeholder")}
-                  value={entry.key}
-                  onChange={(e) => setEnv(idx, "key", e.target.value)}
-                  className="font-mono text-[12px] w-40 md:w-48"
-                />
-                <Input
-                  placeholder={t("agent_editor.env_value_placeholder")}
-                  value={entry.value}
-                  onChange={(e) => setEnv(idx, "value", e.target.value)}
-                  className="flex-1 min-w-[180px] font-mono text-[12px]"
-                />
-                {secretRef && (
-                  <EnvVarStatus
-                    name={secretRef}
-                    status={envStatus.data?.[secretRef]}
-                    compact
-                  />
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeEnv(idx)}
-                  aria-label={t("agent_editor.env_remove")}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            );
-          })}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={addEnv}>
-              <Plus className="w-3.5 h-3.5" />
-              {t("agent_editor.env_add")}
-            </Button>
-            {dockerfileEnvKeys.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const existingKeys = new Set(form.env_entries.map((e) => e.key));
-                  const toAdd = dockerfileEnvKeys.filter((k) => !existingKeys.has(k));
-                  if (toAdd.length === 0) return;
-                  setForm((prev) => ({
-                    ...prev,
-                    env_entries: [
-                      ...prev.env_entries,
-                      ...toAdd.map((k) => ({ key: k, value: `$${k}` })),
-                    ],
-                  }));
-                }}
-              >
-                <FileCode2 className="w-3.5 h-3.5" />
-                {t("agent_editor.env_from_dockerfile")}
-              </Button>
-            )}
-            {referencedSecrets.some(
-              (name) => envStatus.data?.[name] === "missing",
-            ) && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-amber-600"
-                onClick={async () => {
-                  const missing = referencedSecrets.filter(
-                    (name) => envStatus.data?.[name] === "missing",
-                  );
-                  for (const name of missing) {
-                    try {
-                      await secretsApi.create({ var_name: name, value: "" });
-                    } catch {
-                      // already exists or error — skip
-                    }
-                  }
-                  envStatus.refetch();
-                }}
-              >
-                <AlertTriangle className="w-3.5 h-3.5" />
-                {t("agent_editor.env_create_missing")}
-              </Button>
-            )}
+        <CardContent className="pt-5">
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("agent_editor.section_dockerfile")}</Label>
+            <Select
+              value={form.dockerfile_id}
+              onValueChange={(v) => updateField("dockerfile_id", v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="—" />
+              </SelectTrigger>
+              <SelectContent>
+                {(dockerfiles ?? []).map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.display_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
 
+      {/* Env vars from Dockerfile.json + overrides */}
+      <CollapsibleSection label={t("agent_editor.section_env")} defaultOpen={false}>
+      <Card className="mb-0">
+        <CardContent className="pt-5 space-y-2">
+          {dockerfileEnvKeys.length === 0 ? (
+            <p className="text-muted-foreground text-[12px] italic">
+              {t("agent_editor.env_no_dockerfile")}
+            </p>
+          ) : (
+            dockerfileEnvKeys.map((key) => {
+              const baseValue = (() => {
+                try {
+                  const files = dockerfileDetailQuery.data?.files ?? [];
+                  const pf = files.find((f) => f.path === "Dockerfile.json");
+                  if (!pf) return "";
+                  const parsed = JSON.parse(pf.content);
+                  return String((parsed?.docker?.Environments ?? {})[key] ?? "");
+                } catch { return ""; }
+              })();
+              const override = form.env_overrides[key];
+              const isOverridden = override?.value !== undefined;
+              const isExcluded = override?.excluded ?? false;
+              const displayValue = isOverridden ? (override.value ?? "") : baseValue;
+              const secretRef = extractSecretName(displayValue) ?? (displayValue.startsWith("$") && displayValue.length > 1 ? displayValue.slice(1) : null);
+
+              return (
+                <div key={key} className={`flex items-center gap-2 ${isExcluded ? "opacity-40" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={isExcluded}
+                    onChange={(e) => {
+                      setEnvOverride(key, {
+                        ...override,
+                        excluded: e.target.checked,
+                      });
+                    }}
+                    title={t("agent_editor.env_exclude")}
+                    className="h-3.5 w-3.5 accent-primary shrink-0"
+                  />
+                  <span className="font-mono text-[12px] text-muted-foreground w-44 shrink-0 truncate" title={key}>
+                    {key}
+                  </span>
+                  <Input
+                    value={displayValue}
+                    onChange={(e) => {
+                      setEnvOverride(key, {
+                        ...override,
+                        value: e.target.value,
+                      });
+                    }}
+                    disabled={isExcluded}
+                    className={`flex-1 min-w-[180px] font-mono text-[12px] ${isOverridden ? "border-amber-500/50" : ""}`}
+                  />
+                  {secretRef && !isExcluded && (
+                    <EnvVarStatus
+                      name={secretRef}
+                      status={vaultSecretStatus[secretRef]}
+                      compact
+                    />
+                  )}
+                  {isOverridden && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => {
+                        const next = { ...override };
+                        delete next.value;
+                        if (!next.excluded) {
+                          setEnvOverride(key, undefined);
+                        } else {
+                          setEnvOverride(key, next);
+                        }
+                      }}
+                      title={t("agent_editor.env_reset")}
+                    >
+                      <X className="w-3.5 h-3.5 text-amber-500" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })
+          )}
+          {!decryptedSecrets && (
+            <p className="text-[11px] text-muted-foreground italic mt-2">
+              {t("agent_editor.vault_hint")}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      </CollapsibleSection>
+
+      {/* Mounts from Dockerfile.json + overrides */}
+      <CollapsibleSection label={t("agent_editor.section_mounts")} defaultOpen={false}>
+      <Card className="mb-0">
+        <CardContent className="pt-5 space-y-2">
+          {dockerfileMounts.length === 0 ? (
+            <p className="text-muted-foreground text-[12px] italic">
+              {t("agent_editor.env_no_dockerfile")}
+            </p>
+          ) : (
+            dockerfileMounts.map((mount) => {
+              const override = form.mount_overrides[mount.target];
+              const isOverridden = override?.source !== undefined;
+              const isExcluded = override?.excluded ?? false;
+              const displaySource = isOverridden ? (override.source ?? "") : mount.source;
+              return (
+                <div key={mount.target} className={`flex items-center gap-2 ${isExcluded ? "opacity-40" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={isExcluded}
+                    onChange={(e) => setMountOverride(mount.target, { ...override, excluded: e.target.checked })}
+                    className="h-3.5 w-3.5 accent-primary shrink-0"
+                  />
+                  <span className="font-mono text-[11px] text-muted-foreground w-40 shrink-0 truncate" title={mount.target}>
+                    {mount.target}
+                  </span>
+                  <Input
+                    value={displaySource}
+                    onChange={(e) => setMountOverride(mount.target, { ...override, source: e.target.value })}
+                    disabled={isExcluded}
+                    className={`flex-1 min-w-[150px] font-mono text-[12px] ${isOverridden ? "border-amber-500/50" : ""}`}
+                  />
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {mount.readonly ? "ro" : "rw"}
+                  </span>
+                  {isOverridden && (
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+                      onClick={() => {
+                        const next = { ...override };
+                        delete next.source;
+                        if (!next.excluded) setMountOverride(mount.target, undefined);
+                        else setMountOverride(mount.target, next);
+                      }}
+                      title={t("agent_editor.env_reset")}
+                    >
+                      <X className="w-3.5 h-3.5 text-amber-500" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+
+      </CollapsibleSection>
+
+      {/* Params from Dockerfile.json + overrides */}
+      <CollapsibleSection label={t("agent_editor.section_params")} defaultOpen={false}>
+      <Card className="mb-0">
+        <CardContent className="pt-5 space-y-2">
+          {Object.keys(dockerfileParams).length === 0 ? (
+            <p className="text-muted-foreground text-[12px] italic">
+              {t("agent_editor.env_no_dockerfile")}
+            </p>
+          ) : (
+            Object.entries(dockerfileParams).map(([key, baseValue]) => {
+              const override = form.param_overrides[key];
+              const isOverridden = override?.value !== undefined;
+              const isExcluded = override?.excluded ?? false;
+              const displayValue = isOverridden ? (override.value ?? "") : baseValue;
+              return (
+                <div key={key} className={`flex items-center gap-2 ${isExcluded ? "opacity-40" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={isExcluded}
+                    onChange={(e) => setParamOverride(key, { ...override, excluded: e.target.checked })}
+                    className="h-3.5 w-3.5 accent-primary shrink-0"
+                  />
+                  <span className="font-mono text-[12px] text-muted-foreground w-44 shrink-0 truncate" title={key}>
+                    {key}
+                  </span>
+                  <Input
+                    value={displayValue}
+                    onChange={(e) => setParamOverride(key, { ...override, value: e.target.value })}
+                    disabled={isExcluded}
+                    className={`flex-1 min-w-[180px] font-mono text-[12px] ${isOverridden ? "border-amber-500/50" : ""}`}
+                  />
+                  {isOverridden && (
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+                      onClick={() => {
+                        const next = { ...override };
+                        delete next.value;
+                        if (!next.excluded) setParamOverride(key, undefined);
+                        else setParamOverride(key, next);
+                      }}
+                      title={t("agent_editor.env_reset")}
+                    >
+                      <X className="w-3.5 h-3.5 text-amber-500" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+
+      </CollapsibleSection>
+
       {/* Lifecycle */}
-      <SectionLabel>{t("agent_editor.section_lifecycle")}</SectionLabel>
-      <Card className="mb-6">
+      <CollapsibleSection label={t("agent_editor.section_lifecycle")} defaultOpen={false}>
+      <Card className="mb-0">
         <CardContent className="pt-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div className="flex flex-col gap-1.5">
             <Label>{t("agent_editor.timeout")}</Label>
@@ -1074,15 +1360,19 @@ export function AgentEditorPage() {
           </div>
         </CardContent>
       </Card>
+      </CollapsibleSection>
+
+        </TabsContent>
+      </Tabs>
 
       {/* Generated files explorer */}
       {!isNew && generatedFiles.length > 0 && (
         <>
-          <SectionLabel>{t("agent_editor.section_generated")}</SectionLabel>
+          <CollapsibleSection label={t("agent_editor.section_generated")}>
           <Card className="mb-6">
             <CardContent className="pt-5">
-              <div className="flex gap-4 min-h-[200px]">
-                <div className="w-48 shrink-0 border-r pr-3 overflow-y-auto max-h-[400px]">
+              <div className="flex gap-4 min-h-[400px]">
+                <div className="w-48 shrink-0 border-r pr-3 overflow-y-auto max-h-[800px]">
                   <ul className="space-y-0.5">
                     {generatedFiles.map((f) => (
                       <li key={f.path}>
@@ -1104,9 +1394,17 @@ export function AgentEditorPage() {
                 </div>
                 <div className="flex-1 min-w-0 overflow-auto">
                   {selectedGenFile ? (
-                    <pre className="text-[12px] font-mono whitespace-pre-wrap bg-muted rounded p-3 max-h-[400px] overflow-auto">
-                      {generatedFiles.find((f) => f.path === selectedGenFile)?.content ?? ""}
-                    </pre>
+                    <CodeEditor
+                      value={(() => {
+                        const raw = generatedFiles.find((f) => f.path === selectedGenFile)?.content ?? "";
+                        return selectedGenFile === ".env" ? maskEnvSecrets(raw) : raw;
+                      })()}
+                      onChange={() => {}}
+                      readOnly
+                      path={selectedGenFile}
+                      minHeight={400}
+                      fill
+                    />
                   ) : (
                     <p className="text-[12px] text-muted-foreground italic p-3">
                       {t("agent_editor.generated_select_file")}
@@ -1116,44 +1414,10 @@ export function AgentEditorPage() {
               </div>
             </CardContent>
           </Card>
+          </CollapsibleSection>
         </>
       )}
 
-      {/* Assistant toggle */}
-      {!isNew && agent && (
-        <Card className="mb-6">
-          <CardContent className="pt-5">
-            <div className="flex items-center gap-3">
-              <input
-                id="is-assistant"
-                type="checkbox"
-                checked={agent.is_assistant}
-                onChange={async (e) => {
-                  try {
-                    if (e.target.checked) {
-                      await agentsApi.setAssistant(agent.id);
-                    } else {
-                      await agentsApi.clearAssistant();
-                    }
-                    qc.invalidateQueries({ queryKey: ["agents"] });
-                    if (id) qc.invalidateQueries({ queryKey: ["agent", id] });
-                    qc.invalidateQueries({ queryKey: ["assistant-agent"] });
-                  } catch {
-                    // silently fail
-                  }
-                }}
-                className="h-4 w-4 rounded border border-input accent-primary"
-              />
-              <Label htmlFor="is-assistant" className="cursor-pointer">
-                {t("assistant.toggle_label")}
-              </Label>
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1 ml-7">
-              {t("assistant.toggle_hint")}
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Danger zone */}
       {!isNew && (
@@ -1170,7 +1434,7 @@ export function AgentEditorPage() {
         open={showPreview && preview !== null}
         onOpenChange={(o) => !o && setShowPreview(false)}
       >
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl sm:max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("agent_editor.preview_title")}</DialogTitle>
             <DialogDescription>
@@ -1212,7 +1476,7 @@ export function AgentEditorPage() {
                 {JSON.stringify(preview.tools_json, null, 2)}
               </PreviewBlock>
               <PreviewBlock label="/config/.env">
-                {preview.env_file || "(empty)"}
+                {preview.env_file ? maskEnvSecrets(preview.env_file) : "(empty)"}
               </PreviewBlock>
               {preview.skills.length > 0 && (
                 <div>
@@ -1309,6 +1573,16 @@ export function AgentEditorPage() {
           onClose={() => setTerminalContainer(null)}
         />
       )}
+      <VaultUnlockDialog
+        open={showVaultUnlock}
+        email="admin@agflow.example.com"
+        onComplete={async () => {
+          setShowVaultUnlock(false);
+          const s = await decryptUserSecrets();
+          if (Object.keys(s).length > 0) setDecryptedSecrets(s);
+        }}
+        onClose={() => setShowVaultUnlock(false)}
+      />
     </PageShell>
   );
 }
@@ -1336,31 +1610,32 @@ function SectionLabel({
   );
 }
 
-function BrickCard({
-  icon,
-  kind,
+
+function CollapsibleSection({
+  label,
+  defaultOpen = true,
   children,
 }: {
-  icon: React.ReactNode;
-  kind: string;
+  label: string;
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <Card>
-      <CardContent className="pt-5">
-        <div className="flex items-start gap-2.5">
-          {icon}
-          <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-              {kind}
-            </div>
-            {children}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="mb-6">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
+      >
+        <ChevronRight className={cn("w-3 h-3 transition-transform", open && "rotate-90")} />
+        {label}
+      </button>
+      {open && children}
+    </div>
   );
 }
+
 
 function PreviewBlock({
   label,

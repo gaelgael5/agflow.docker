@@ -97,7 +97,7 @@ function CreateDialog({ open, onOpenChange, onCreate }: CreateDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl sm:max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("api_keys.create_dialog_title")}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -116,7 +116,7 @@ function CreateDialog({ open, onOpenChange, onCreate }: CreateDialogProps) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="key-rate-limit">{t("api_keys.field_rate_limit")}</Label>
               <div className="flex items-center gap-2">
@@ -216,7 +216,7 @@ function TokenRevealDialog({ created, onClose }: TokenRevealDialogProps) {
 
   return (
     <Dialog open={!!created} onOpenChange={() => undefined}>
-      <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent className="sm:max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{t("api_keys.token_created_title")}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -302,7 +302,7 @@ function EditDialog({ open, onOpenChange, apiKey, onSave }: EditDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl sm:max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("api_keys.edit_dialog_title")}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -448,11 +448,11 @@ export function ApiKeysPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t("api_keys.col_name")}</TableHead>
-                <TableHead>{t("api_keys.col_prefix")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("api_keys.col_prefix")}</TableHead>
                 <TableHead>{t("api_keys.col_scopes")}</TableHead>
-                <TableHead>{t("api_keys.col_rate_limit")}</TableHead>
-                <TableHead>{t("api_keys.col_expires")}</TableHead>
-                <TableHead>{t("api_keys.col_last_used")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("api_keys.col_rate_limit")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("api_keys.col_expires")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("api_keys.col_last_used")}</TableHead>
                 <TableHead>{t("api_keys.col_status")}</TableHead>
                 <TableHead className="text-right">{t("api_keys.col_actions")}</TableHead>
               </TableRow>
@@ -461,7 +461,7 @@ export function ApiKeysPage() {
               {(apiKeys ?? []).map((key) => (
                 <TableRow key={key.id} className={key.revoked ? "opacity-60" : ""}>
                   <TableCell className="font-medium">{key.name}</TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
                       {key.prefix}…
                     </code>
@@ -471,15 +471,15 @@ export function ApiKeysPage() {
                       {t("api_keys.scopes_count", { count: key.scopes.length })}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     {key.rate_limit != null
                       ? `${key.rate_limit}${t("api_keys.rate_unit")}`
                       : "—"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     {formatDate(key.expires_at, t("api_keys.never_expires"))}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     {formatDate(key.last_used_at, "—")}
                   </TableCell>
                   <TableCell>

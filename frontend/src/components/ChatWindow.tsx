@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 export interface ChatWindowProps {
   dockerfileId: string;
@@ -41,6 +42,7 @@ function randomId(): string {
 
 export function ChatWindow({ dockerfileId, title, onClose }: ChatWindowProps) {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -348,22 +350,25 @@ export function ChatWindow({ dockerfileId, title, onClose }: ChatWindowProps) {
 
   return (
     <div
-      style={{
-        position: "fixed",
-        left: position.x,
-        top: position.y,
-        width: size.w,
-        height: size.h,
-        zIndex: 50,
-      }}
-      className="flex flex-col rounded-lg border border-border bg-card shadow-2xl overflow-hidden"
+      style={
+        isMobile
+          ? { position: "fixed", inset: 0, width: "100%", height: "100%", zIndex: 50 }
+          : { position: "fixed", left: position.x, top: position.y, width: size.w, height: size.h, zIndex: 50 }
+      }
+      className={cn(
+        "flex flex-col border border-border bg-card shadow-2xl overflow-hidden",
+        !isMobile && "rounded-lg",
+      )}
       role="dialog"
       aria-label={title ?? t("dockerfiles.chat_window.title", { id: dockerfileId })}
     >
-      {/* Header (draggable) */}
+      {/* Header (draggable on desktop) */}
       <div
-        className="flex items-center justify-between px-4 py-2 bg-zinc-900 text-zinc-100 cursor-move select-none border-b border-zinc-800"
-        onMouseDown={onHeaderMouseDown}
+        className={cn(
+          "flex items-center justify-between px-4 py-2 bg-zinc-900 text-zinc-100 select-none border-b border-zinc-800",
+          !isMobile && "cursor-move",
+        )}
+        onMouseDown={isMobile ? undefined : onHeaderMouseDown}
       >
         <div className="flex flex-col min-w-0">
           <span className="text-[12px] font-semibold truncate">
@@ -403,8 +408,8 @@ export function ChatWindow({ dockerfileId, title, onClose }: ChatWindowProps) {
         )}
       </div>
 
-      {/* Resize handle — bottom-right corner */}
-      <div
+      {/* Resize handle — bottom-right corner (desktop only) */}
+      {!isMobile && <div
         onMouseDown={onResizeMouseDown}
         className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize z-10"
         style={{
@@ -412,7 +417,7 @@ export function ChatWindow({ dockerfileId, title, onClose }: ChatWindowProps) {
             "linear-gradient(135deg, transparent 50%, hsl(var(--border)) 50%)",
         }}
         aria-hidden
-      />
+      />}
 
       {/* Input */}
       <div className="border-t p-2 bg-muted/30">

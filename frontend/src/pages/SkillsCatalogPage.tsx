@@ -55,7 +55,7 @@ export function SkillsCatalogPage() {
     if (!selectedServiceId) return;
     await installMutation.mutateAsync({
       discoveryServiceId: selectedServiceId,
-      skillId: item.skill_id,
+      skillId: String(item.skill_id),
     });
     setSearchOpen(false);
   }
@@ -118,7 +118,7 @@ export function SkillsCatalogPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t("skills_catalog.col_name")}</TableHead>
-                <TableHead>{t("skills_catalog.col_id")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("skills_catalog.col_id")}</TableHead>
                 <TableHead>{t("skills_catalog.col_description")}</TableHead>
                 <TableHead className="text-right">
                   {t("skills_catalog.col_actions")}
@@ -129,7 +129,7 @@ export function SkillsCatalogPage() {
               {skills?.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.name}</TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <code className="text-[11px] text-muted-foreground font-mono">
                       {s.skill_id}
                     </code>

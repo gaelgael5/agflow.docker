@@ -100,7 +100,7 @@ function ScopesDialog({ open, onOpenChange, user, onSave }: ScopesDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl sm:max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t("users.scopes_dialog_title")}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -197,7 +197,7 @@ function CreateDialog({ open, onOpenChange, onCreate }: CreateDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t("users.create_dialog_title")}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -361,9 +361,9 @@ export function UsersPage() {
               <TableRow>
                 <TableHead>{t("users.col_name")}</TableHead>
                 <TableHead>{t("users.col_role")}</TableHead>
-                <TableHead>{t("users.col_scopes")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("users.col_scopes")}</TableHead>
                 <TableHead>{t("users.col_status")}</TableHead>
-                <TableHead>{t("users.col_keys")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("users.col_keys")}</TableHead>
                 <TableHead className="text-right">{t("users.col_actions")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -383,7 +383,7 @@ export function UsersPage() {
                       <Badge variant="secondary">{t("users.role_user")}</Badge>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <Badge variant="outline">
                       {t("users.scopes_count", { count: user.scopes.length })}
                     </Badge>
@@ -391,7 +391,7 @@ export function UsersPage() {
                   <TableCell>
                     <StatusBadge status={user.status} />
                   </TableCell>
-                  <TableCell>{user.api_key_count}</TableCell>
+                  <TableCell className="hidden md:table-cell">{user.api_key_count}</TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       {user.status === "pending" && (

@@ -14,7 +14,6 @@ export interface RoleSummary {
   service_types: string[];
   identity_md: string;
   prompt_orchestrator_md: string;
-  runtime_config: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }

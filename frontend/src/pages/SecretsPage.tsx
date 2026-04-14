@@ -100,8 +100,8 @@ export function SecretsPage() {
               <TableRow>
                 <TableHead>{t("secrets.col_name")}</TableHead>
                 <TableHead>{t("secrets.col_value")}</TableHead>
-                <TableHead>{t("secrets.col_scope")}</TableHead>
-                <TableHead>{t("secrets.col_used_by")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("secrets.col_scope")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("secrets.col_used_by")}</TableHead>
                 <TableHead className="text-right">
                   {t("secrets.col_actions")}
                 </TableHead>
@@ -119,14 +119,14 @@ export function SecretsPage() {
                   <TableCell>
                     <RevealButton secretId={secret.id} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <Badge variant="secondary">
                       {secret.scope === "global"
                         ? t("secrets.scope_global")
                         : t("secrets.scope_agent")}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-[12px]">
+                  <TableCell className="hidden md:table-cell text-muted-foreground text-[12px]">
                     {secret.used_by.length === 0
                       ? t("secrets.none_used_by")
                       : secret.used_by.join(", ")}

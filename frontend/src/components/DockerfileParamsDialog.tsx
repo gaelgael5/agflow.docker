@@ -59,6 +59,12 @@ interface ResourcesState {
   Cpus: string;
 }
 
+interface ExcludedState {
+  environments: string[];
+  mounts: string[];
+  params: string[];
+}
+
 interface ParamsState {
   slug: string;
   container: ContainerState;
@@ -68,6 +74,8 @@ interface ParamsState {
   environments: KVEntry[];
   mounts: MountEntry[];
   params: KVEntry[];
+  excluded: ExcludedState;
+  testOverrides: KVEntry[];
 }
 
 // Environment variable names — POSIX rule: letter or underscore followed
@@ -156,9 +164,14 @@ function resolveTemplates(
 // the current state. {id} and {hash} are left literal so the user
 // understands they are resolved by the orchestrator at launch.
 // ─────────────────────────────────────────────────────────────
-function buildDockerRunCommand(state: ParamsState): string {
+function buildDockerRunCommand(state: ParamsState, applyExclusions: boolean): string {
+  const excludedEnvs = applyExclusions ? new Set(state.excluded.environments) : new Set<string>();
+  const excludedMounts = applyExclusions ? new Set(state.excluded.mounts) : new Set<string>();
+  const excludedParams = applyExclusions ? new Set(state.excluded.params) : new Set<string>();
+
+  const filteredParams = state.params.filter((p) => !excludedParams.has(p.key));
   const vars: Record<string, string> = {
-    ...entriesToRecord(state.params),
+    ...entriesToRecord(filteredParams),
     slug: state.slug,
   };
   const resolve = (s: string) => resolveTemplates(s, vars);
@@ -195,15 +208,23 @@ function buildDockerRunCommand(state: ParamsState): string {
 
   for (const env of state.environments) {
     const key = env.key.trim();
-    if (!key) continue;
+    if (!key || excludedEnvs.has(key)) continue;
     const value = resolve(env.value);
     lines.push(`-e ${key}="${value}"`);
+  }
+
+  if (applyExclusions) {
+    for (const to of state.testOverrides) {
+      const key = to.key.trim();
+      if (!key) continue;
+      lines.push(`-e ${key}="${to.value}"`);
+    }
   }
 
   for (const mount of state.mounts) {
     const source = mount.source.trim();
     const target = mount.target.trim();
-    if (!source || !target) continue;
+    if (!source || !target || excludedMounts.has(target)) continue;
     const resolvedSource = resolve(source);
     const ro = mount.readonly ? ":ro" : "";
     lines.push(`-v "${resolvedSource}:${target}${ro}"`);
@@ -243,18 +264,18 @@ function highlightBash(source: string): BashToken[] {
       loneBackslash,
     ] = m;
     if (dq !== undefined) {
-      out.push({ text: dq, cls: "text-amber-300" });
+      out.push({ text: dq, cls: "text-amber-700 dark:text-amber-300" });
       isStartOfLogicalLine = false;
     } else if (sq !== undefined) {
-      out.push({ text: sq, cls: "text-amber-300" });
+      out.push({ text: sq, cls: "text-amber-700 dark:text-amber-300" });
       isStartOfLogicalLine = false;
     } else if (trailingBackslash !== undefined) {
       out.push({ text: trailingBackslash, cls: "text-zinc-500" });
     } else if (flag !== undefined) {
-      out.push({ text: flag, cls: "text-cyan-300" });
+      out.push({ text: flag, cls: "text-cyan-700 dark:text-cyan-300" });
       isStartOfLogicalLine = false;
     } else if (shellVar !== undefined) {
-      out.push({ text: shellVar, cls: "text-violet-300" });
+      out.push({ text: shellVar, cls: "text-violet-600 dark:text-violet-300" });
       isStartOfLogicalLine = false;
     } else if (ws !== undefined) {
       out.push({ text: ws, cls: "" });
@@ -263,7 +284,7 @@ function highlightBash(source: string): BashToken[] {
       const isCommand = isStartOfLogicalLine && /^[a-zA-Z]/.test(word);
       out.push({
         text: word,
-        cls: isCommand ? "text-emerald-300 font-semibold" : "text-zinc-100",
+        cls: isCommand ? "text-emerald-700 dark:text-emerald-300 font-semibold" : "text-zinc-800 dark:text-zinc-100",
       });
       isStartOfLogicalLine = false;
     } else if (loneBackslash !== undefined) {
@@ -292,6 +313,8 @@ const DEFAULT_STATE = (slug: string): ParamsState => ({
   environments: [],
   mounts: [],
   params: [],
+  excluded: { environments: [], mounts: [], params: [] },
+  testOverrides: [],
 });
 
 function substituteSlug(template: string, slug: string): string {
@@ -395,6 +418,18 @@ function parseContent(content: string, slug: string): Parsed {
     environments: recordToEntries(environments),
     mounts,
     params: recordToEntries(params),
+    testOverrides: recordToEntries((root.TestOverrides ?? {}) as Record<string, unknown>),
+    excluded: {
+      environments: Array.isArray((root.Excluded as Record<string, unknown>)?.environments)
+        ? ((root.Excluded as Record<string, unknown>).environments as string[])
+        : [],
+      mounts: Array.isArray((root.Excluded as Record<string, unknown>)?.mounts)
+        ? ((root.Excluded as Record<string, unknown>).mounts as string[])
+        : [],
+      params: Array.isArray((root.Excluded as Record<string, unknown>)?.params)
+        ? ((root.Excluded as Record<string, unknown>).params as string[])
+        : [],
+    },
   };
 
   return { state, parseError: null };
@@ -417,6 +452,18 @@ function serialize(state: ParamsState): string {
         })),
     },
     Params: entriesToRecord(state.params),
+    ...(state.testOverrides.length > 0
+      ? { TestOverrides: entriesToRecord(state.testOverrides) }
+      : {}),
+    ...(state.excluded.environments.length || state.excluded.mounts.length || state.excluded.params.length
+      ? {
+          Excluded: {
+            ...(state.excluded.environments.length ? { environments: state.excluded.environments } : {}),
+            ...(state.excluded.mounts.length ? { mounts: state.excluded.mounts } : {}),
+            ...(state.excluded.params.length ? { params: state.excluded.params } : {}),
+          },
+        }
+      : {}),
   };
   return `${JSON.stringify(output, null, 2)}\n`;
 }
@@ -465,9 +512,10 @@ export function DockerfileParamsDialog({
     () => substituteSlug(state.container.Image, state.slug),
     [state.container.Image, state.slug],
   );
+  const [previewTest, setPreviewTest] = useState(true);
   const dockerCommand = useMemo(
-    () => buildDockerRunCommand(state),
-    [state],
+    () => buildDockerRunCommand(state, previewTest),
+    [state, previewTest],
   );
   const dockerTokens = useMemo(() => highlightBash(dockerCommand), [dockerCommand]);
 
@@ -618,7 +666,7 @@ export function DockerfileParamsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[1200px] max-w-[95vw] h-[760px] max-h-[92vh] flex flex-col overflow-hidden p-0">
+      <DialogContent className="sm:w-[1200px] sm:max-w-[95vw] sm:h-[760px] sm:max-h-[92vh] flex flex-col overflow-hidden p-0">
         <form
           onSubmit={handleSubmit}
           className="flex flex-col h-full min-h-0"
@@ -661,6 +709,9 @@ export function DockerfileParamsDialog({
               </TabsTrigger>
               <TabsTrigger value="params">
                 {t("dockerfiles.params.tab_params")}
+              </TabsTrigger>
+              <TabsTrigger value="test">
+                {t("dockerfiles.params.tab_test")}
               </TabsTrigger>
             </TabsList>
 
@@ -879,6 +930,12 @@ export function DockerfileParamsDialog({
                 removeLabel={t("dockerfiles.params.remove")}
                 validateKey={validateEnvKey}
                 keyErrorHint={t("dockerfiles.params.env_key_error")}
+                excludedKeys={state.excluded.environments}
+                onToggleExclude={(key) => {
+                  const list = state.excluded.environments;
+                  const next = list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
+                  setState((s) => ({ ...s, excluded: { ...s.excluded, environments: next } }));
+                }}
               />
             </TabsContent>
 
@@ -892,13 +949,14 @@ export function DockerfileParamsDialog({
               <p className="text-[11px] text-muted-foreground px-1">
                 {t("dockerfiles.params.mounts_hint")}
               </p>
-              <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_3rem_2rem] gap-2 px-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)_2rem_2rem] gap-2 px-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                <span className="text-[9px] -ml-2">excl.</span>
                 <span className="sr-only">
                   {t("dockerfiles.params.mount_status")}
                 </span>
                 <span>{t("dockerfiles.params.mount_source")}</span>
                 <span>{t("dockerfiles.params.mount_target")}</span>
-                <span className="text-center">
+                <span className="text-center pl-4">
                   {t("dockerfiles.params.mount_readonly")}
                 </span>
                 <span className="sr-only">
@@ -937,9 +995,21 @@ export function DockerfileParamsDialog({
                       : status === "unknown"
                         ? t("dockerfiles.params.mount_status_unknown")
                         : "";
+                const isMountExcluded = state.excluded.mounts.includes(m.target);
                 return (
-                  <div key={idx}>
-                    <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_3rem_2rem] gap-2 items-center">
+                  <div key={idx} className={isMountExcluded ? "opacity-40" : ""}>
+                    <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)_2rem_2rem] gap-2 items-center">
+                      <input
+                        type="checkbox"
+                        checked={isMountExcluded}
+                        onChange={() => {
+                          const list = state.excluded.mounts;
+                          const next = list.includes(m.target) ? list.filter((t) => t !== m.target) : [...list, m.target];
+                          setState((s) => ({ ...s, excluded: { ...s.excluded, mounts: next } }));
+                        }}
+                        title="Exclure"
+                        className="h-3.5 w-3.5 accent-primary"
+                      />
                       <span
                         className={cn(
                           "w-2 h-2 rounded-full shrink-0 justify-self-center",
@@ -971,7 +1041,7 @@ export function DockerfileParamsDialog({
                           updateMount(idx, { readonly: e.target.checked })
                         }
                         aria-label={t("dockerfiles.params.mount_readonly")}
-                        className="h-4 w-4 rounded border border-input accent-primary justify-self-center"
+                        className="h-4 w-4 rounded border border-input accent-primary justify-self-center ml-4"
                       />
                       <Button
                         type="button"
@@ -1043,20 +1113,66 @@ export function DockerfileParamsDialog({
                 removeLabel={t("dockerfiles.params.remove")}
                 validateKey={validateEnvKey}
                 keyErrorHint={t("dockerfiles.params.env_key_error")}
+                excludedKeys={state.excluded.params}
+                onToggleExclude={(key) => {
+                  const list = state.excluded.params;
+                  const next = list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
+                  setState((s) => ({ ...s, excluded: { ...s.excluded, params: next } }));
+                }}
+              />
+            </TabsContent>
+
+            {/* Test overrides */}
+            <TabsContent value="test" className="space-y-2">
+              <p className="text-[11px] text-muted-foreground px-1">
+                {t("dockerfiles.params.test_hint")}
+              </p>
+              <KVTable
+                entries={state.testOverrides}
+                onUpdate={(idx, patch) => {
+                  const next = [...state.testOverrides];
+                  next[idx] = { ...next[idx]!, ...patch };
+                  setState((s) => ({ ...s, testOverrides: next }));
+                }}
+                onRemove={(idx) => {
+                  setState((s) => ({
+                    ...s,
+                    testOverrides: s.testOverrides.filter((_, i) => i !== idx),
+                  }));
+                }}
+                onAdd={() => {
+                  setState((s) => ({
+                    ...s,
+                    testOverrides: [...s.testOverrides, { key: "", value: "" }],
+                  }));
+                }}
+                keyPlaceholder="MISTRAL_API_KEY"
+                valuePlaceholder="sk-test-..."
+                emptyLabel={t("dockerfiles.params.test_empty")}
+                addLabel={t("dockerfiles.params.test_add")}
+                removeLabel={t("dockerfiles.params.remove")}
               />
             </TabsContent>
           </Tabs>
             </div>
 
             {/* Right: live command preview */}
-            <div className="min-h-0 flex flex-col bg-zinc-950">
-              <div className="px-4 pt-4 pb-2 border-b border-zinc-800 flex items-center justify-between shrink-0">
-                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+            <div className="min-h-0 flex flex-col bg-muted">
+              <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between shrink-0">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   {t("dockerfiles.params.preview_title")}
                 </span>
-                <span className="text-[10px] text-zinc-500 font-mono">
-                  bash
-                </span>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={previewTest}
+                    onChange={(e) => setPreviewTest(e.target.checked)}
+                    className="h-3 w-3 accent-primary"
+                  />
+                  <span className="text-[10px] text-muted-foreground">
+                    {t("dockerfiles.params.preview_test_mode")}
+                  </span>
+                </label>
               </div>
               <pre className="flex-1 min-h-0 overflow-auto p-4 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all">
                 {dockerTokens.map((tok, i) => (
@@ -1106,6 +1222,8 @@ interface KVTableProps {
   removeLabel: string;
   validateKey?: (key: string) => string | null;
   keyErrorHint?: string;
+  excludedKeys?: string[];
+  onToggleExclude?: (key: string) => void;
 }
 
 function KVTable({
@@ -1120,6 +1238,8 @@ function KVTable({
   removeLabel,
   validateKey,
   keyErrorHint,
+  excludedKeys,
+  onToggleExclude,
 }: KVTableProps) {
   return (
     <>
@@ -1128,7 +1248,8 @@ function KVTable({
           {emptyLabel}
         </p>
       )}
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] gap-2 px-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto] gap-2 px-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+        {onToggleExclude ? <span className="text-[9px] -ml-2">excl.</span> : <span />}
         <span>key</span>
         <span>value</span>
         <span className="sr-only">{removeLabel}</span>
@@ -1136,9 +1257,19 @@ function KVTable({
       {entries.map((entry, idx) => {
         const keyError =
           validateKey && entry.key.length > 0 ? validateKey(entry.key) : null;
+        const isExcluded = excludedKeys?.includes(entry.key) ?? false;
         return (
-          <div key={idx}>
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] gap-2 items-center">
+          <div key={idx} className={isExcluded ? "opacity-40" : ""}>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto] gap-2 items-center">
+              {onToggleExclude ? (
+                <input
+                  type="checkbox"
+                  checked={isExcluded}
+                  onChange={() => onToggleExclude(entry.key)}
+                  title="Exclure"
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+              ) : <span />}
               <Input
                 value={entry.key}
                 onChange={(e) => onUpdate(idx, { key: e.target.value })}

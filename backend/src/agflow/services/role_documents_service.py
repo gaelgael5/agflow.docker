@@ -1,19 +1,28 @@
+"""Role documents — fully filesystem-based.
+
+Documents live at {AGFLOW_DATA_DIR}/roles/{role_id}/{section}/{name}.md.
+IDs are deterministic UUID5 based on (role_id, section, name).
+The `protected` flag is encoded as a trailing `_` in the filename.
+"""
 from __future__ import annotations
 
+import os
+import uuid
+from datetime import UTC, datetime
 from uuid import UUID
 
-import asyncpg
 import structlog
 
-from agflow.db.pool import fetch_all, fetch_one, get_pool
 from agflow.schemas.roles import DocumentSummary, Section
+from agflow.services import role_files_service
 
 _log = structlog.get_logger(__name__)
 
-_DOC_COLS = (
-    "id, role_id, section, parent_path, name, content_md, protected, "
-    "created_at, updated_at"
-)
+_DOC_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+
+def _doc_id(role_id: str, section: str, name: str) -> UUID:
+    return uuid.uuid5(_DOC_NS, f"{role_id}:{section}:{name}")
 
 
 class DocumentNotFoundError(Exception):
@@ -28,8 +37,32 @@ class ProtectedDocumentError(Exception):
     pass
 
 
-def _row(row: dict) -> DocumentSummary:
-    return DocumentSummary(**row)
+def _role_dir(role_id: str) -> str:
+    base = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+    return os.path.join(base, "roles", role_id)
+
+
+def _file_to_summary(role_id: str, section: str, filename: str) -> DocumentSummary:
+    """Convert a .md file on disk to a DocumentSummary."""
+    name = filename[:-3]  # strip .md
+    content = role_files_service.read_document(role_id, section, name)
+    full_path = os.path.join(_role_dir(role_id), section, filename)
+    try:
+        mtime = os.path.getmtime(full_path)
+        ctime = os.path.getctime(full_path)
+    except OSError:
+        mtime = ctime = 0
+    return DocumentSummary(
+        id=_doc_id(role_id, section, name),
+        role_id=role_id,
+        section=section,
+        parent_path="",
+        name=name,
+        content_md=content,
+        protected=name.endswith("_"),
+        created_at=datetime.fromtimestamp(ctime, tz=UTC),
+        updated_at=datetime.fromtimestamp(mtime, tz=UTC),
+    )
 
 
 async def create(
@@ -40,52 +73,55 @@ async def create(
     content_md: str = "",
     protected: bool = False,
 ) -> DocumentSummary:
-    try:
-        row = await fetch_one(
-            f"""
-            INSERT INTO role_documents (
-                role_id, section, parent_path, name, content_md, protected
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING {_DOC_COLS}
-            """,
-            role_id,
-            section,
-            parent_path,
-            name,
-            content_md,
-            protected,
-        )
-    except asyncpg.UniqueViolationError as exc:
+    path = os.path.join(_role_dir(role_id), section, f"{name}.md")
+    if os.path.isfile(path):
         raise DuplicateDocumentError(
             f"Document '{name}' already exists in {section} for role '{role_id}'"
-        ) from exc
-    assert row is not None
-    _log.info(
-        "role_documents.create", role_id=role_id, section=section, name=name
-    )
-    return _row(row)
+        )
+    role_files_service.write_document(role_id, section, name, content_md)
+    _log.info("role_documents.create", role_id=role_id, section=section, name=name)
+    return _file_to_summary(role_id, section, f"{name}.md")
 
 
 async def get_by_id(doc_id: UUID) -> DocumentSummary:
-    row = await fetch_one(
-        f"SELECT {_DOC_COLS} FROM role_documents WHERE id = $1", doc_id
-    )
-    if row is None:
+    base = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+    roles_dir = os.path.join(base, "roles")
+    if not os.path.isdir(roles_dir):
         raise DocumentNotFoundError(f"Document {doc_id} not found")
-    return _row(row)
+    for role_id in os.listdir(roles_dir):
+        role_path = os.path.join(roles_dir, role_id)
+        if not os.path.isdir(role_path):
+            continue
+        for section in os.listdir(role_path):
+            section_path = os.path.join(role_path, section)
+            if not os.path.isdir(section_path):
+                continue
+            for filename in os.listdir(section_path):
+                if not filename.endswith(".md"):
+                    continue
+                name = filename[:-3]
+                if _doc_id(role_id, section, name) == doc_id:
+                    return _file_to_summary(role_id, section, filename)
+    raise DocumentNotFoundError(f"Document {doc_id} not found")
 
 
 async def list_for_role(role_id: str) -> list[DocumentSummary]:
-    rows = await fetch_all(
-        f"""
-        SELECT {_DOC_COLS} FROM role_documents
-        WHERE role_id = $1
-        ORDER BY section ASC, parent_path ASC, name ASC
-        """,
-        role_id,
-    )
-    return [_row(r) for r in rows]
+    role_path = _role_dir(role_id)
+    if not os.path.isdir(role_path):
+        return []
+    results: list[DocumentSummary] = []
+    for section in sorted(os.listdir(role_path)):
+        section_path = os.path.join(role_path, section)
+        if not os.path.isdir(section_path):
+            continue
+        # Skip non-section dirs (like "agents")
+        if section in (".", ".."):
+            continue
+        for filename in sorted(os.listdir(section_path)):
+            if not filename.endswith(".md"):
+                continue
+            results.append(_file_to_summary(role_id, section, filename))
+    return results
 
 
 async def update(
@@ -96,51 +132,33 @@ async def update(
 ) -> DocumentSummary:
     current = await get_by_id(doc_id)
 
-    if current.protected and content_md is not None:
+    if current.name.endswith("_") and content_md is not None:
         raise ProtectedDocumentError(
-            f"Document '{current.name}' is protected; unlock it first"
+            f"Document '{current.name}' is locked; unlock it first"
         )
 
-    sets: list[str] = []
-    args: list[object] = []
-    idx = 1
-    if name is not None:
-        sets.append(f"name = ${idx}")
-        args.append(name)
-        idx += 1
-    if content_md is not None:
-        sets.append(f"content_md = ${idx}")
-        args.append(content_md)
-        idx += 1
-    if protected is not None:
-        sets.append(f"protected = ${idx}")
-        args.append(protected)
-        idx += 1
-    if not sets:
-        return current
-    sets.append("updated_at = NOW()")
-    args.append(doc_id)
+    effective_name = current.name
 
-    row = await fetch_one(
-        f"""
-        UPDATE role_documents SET {", ".join(sets)}
-        WHERE id = ${idx}
-        RETURNING {_DOC_COLS}
-        """,
-        *args,
-    )
-    assert row is not None
+    if name is not None and name != current.name:
+        role_files_service.rename_document(
+            current.role_id, current.section, current.name, name
+        )
+        effective_name = name
+
+    if content_md is not None:
+        role_files_service.write_document(
+            current.role_id, current.section, effective_name, content_md
+        )
+
     _log.info("role_documents.update", doc_id=str(doc_id))
-    return _row(row)
+    return _file_to_summary(current.role_id, current.section, f"{effective_name}.md")
 
 
 async def delete(doc_id: UUID) -> None:
     current = await get_by_id(doc_id)
-    if current.protected:
+    if current.name.endswith("_"):
         raise ProtectedDocumentError(
-            f"Document '{current.name}' is protected; unlock it first"
+            f"Document '{current.name}' is locked; unlock it first"
         )
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM role_documents WHERE id = $1", doc_id)
+    role_files_service.delete_document(current.role_id, current.section, current.name)
     _log.info("role_documents.delete", doc_id=str(doc_id))

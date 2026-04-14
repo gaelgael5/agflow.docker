@@ -43,11 +43,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from pathlib import Path
 
     from agflow.db.migrations import run_migrations
-    from agflow.services import dockerfile_files_service, dockerfiles_service, users_service
+    from agflow.services import (
+        agent_files_service,
+        dockerfile_files_service,
+        dockerfiles_service,
+        role_files_service,
+        users_service,
+    )
 
     migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    await run_migrations(migrations_dir)
+    # Migrate content to disk BEFORE SQL migrations drop the columns
+    await role_files_service.migrate_db_to_disk()
+    await agent_files_service.migrate_db_to_disk()
     await dockerfile_files_service.migrate_db_to_disk()
+    await run_migrations(migrations_dir)
     await users_service.seed_admin(settings.admin_email)
     for df in await dockerfiles_service.list_all():
         await dockerfile_files_service.seed_standard_files(df.id)

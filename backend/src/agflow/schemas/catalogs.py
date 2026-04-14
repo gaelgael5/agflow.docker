@@ -67,7 +67,7 @@ class MCPSearchItem(BaseModel):
 
 class MCPInstallPayload(BaseModel):
     discovery_service_id: str
-    package_id: str
+    package_id: str | int
 
 
 class MCPServerSummary(BaseModel):
@@ -99,7 +99,7 @@ class SkillSearchItem(BaseModel):
 
 class SkillInstallPayload(BaseModel):
     discovery_service_id: str
-    skill_id: str
+    skill_id: str | int
 
 
 class SkillSummary(BaseModel):

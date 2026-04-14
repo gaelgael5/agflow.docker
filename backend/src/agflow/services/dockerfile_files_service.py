@@ -146,7 +146,8 @@ async def list_for_dockerfile(dockerfile_id: str) -> list[FileSummary]:
     if not os.path.isdir(slug_dir):
         return []
     results: list[FileSummary] = []
-    for dirpath, _dirnames, filenames in os.walk(slug_dir):
+    for dirpath, dirnames, filenames in os.walk(slug_dir):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") or d == ".tmp"]
         for filename in filenames:
             full_path = os.path.join(dirpath, filename)
             rel_path = os.path.relpath(full_path, slug_dir).replace("\\", "/")
@@ -183,7 +184,8 @@ async def get_by_id(file_id: UUID) -> FileSummary:
         slug_path = os.path.join(base, slug)
         if not os.path.isdir(slug_path):
             continue
-        for dirpath, _dirnames, filenames in os.walk(slug_path):
+        for dirpath, dirnames, filenames in os.walk(slug_path):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".") or d == ".tmp"]
             for filename in filenames:
                 full_path = os.path.join(dirpath, filename)
                 rel_path = os.path.relpath(full_path, slug_path).replace("\\", "/")

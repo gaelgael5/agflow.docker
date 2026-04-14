@@ -7,14 +7,18 @@ import {
   FilePlus,
   FolderPlus,
   Hammer,
+  Lock,
   MessageSquare,
   Play,
   Plus,
+  RefreshCw,
   Save,
   Settings2,
   Square,
+  ScrollText,
   TerminalSquare,
   Trash2,
+  Unlock,
   Upload,
 } from "lucide-react";
 import {
@@ -29,13 +33,15 @@ import { FileTree } from "@/components/FileTree";
 import { useVault } from "@/hooks/useVault";
 import { userSecretsApi } from "@/lib/userSecretsApi";
 import { TerminalWindow } from "@/components/TerminalWindow";
+import { LogsWindow } from "@/components/LogsWindow";
 import { DockerChatModal } from "@/components/DockerChatModal";
 import { DockerfileParamsDialog } from "@/components/DockerfileParamsDialog";
 import { ChatWindow } from "@/components/ChatWindow";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { VaultUnlockDialog } from "@/components/VaultUnlockDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { dockerfilesApi } from "@/lib/dockerfilesApi";
-import { cn } from "@/lib/utils";
+import { cn, maskEnvSecrets } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -101,6 +107,12 @@ export function DockerfilesPage() {
   const [actionErrors, setActionErrors] = useState<string[]>([]);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [chatOpenFor, setChatOpenFor] = useState<string | null>(null);
+  const [decryptedSecrets, setDecryptedSecrets] = useState<Record<string, string> | null>(null);
+  const [showVaultUnlock, setShowVaultUnlock] = useState(false);
+  const [logsContainer, setLogsContainer] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [terminalContainer, setTerminalContainer] = useState<{
     id: string;
     name: string;
@@ -109,6 +121,30 @@ export function DockerfilesPage() {
     (() => void) | null
   >(null);
   const hasUnsavedChanges = draftContent !== null;
+  const vaultIsOpen = vaultState === "unlocked";
+
+  // Auto-detect vault already unlocked on mount
+  useEffect(() => {
+    if (vaultIsOpen && !decryptedSecrets) {
+      void decryptUserSecrets().then((s) => {
+        if (Object.keys(s).length > 0) setDecryptedSecrets(s);
+      });
+    }
+    if (!vaultIsOpen && decryptedSecrets) {
+      setDecryptedSecrets(null);
+    }
+  }, [vaultIsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        if (hasUnsavedChanges) handleSaveFile();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
 
   const detail = useDockerfileDetail(selectedId);
   const currentDockerfile = detail.data?.dockerfile ?? null;
@@ -308,13 +344,25 @@ export function DockerfilesPage() {
   async function handleRunContainer() {
     if (!selectedId) return;
     try {
-      const secrets = await decryptUserSecrets();
+      // Merge: vault secrets + test overrides from Dockerfile.json
+      const vaultSecrets = decryptedSecrets ?? await decryptUserSecrets();
+      const testOverrides: Record<string, string> = {};
+      if (dockerfileJsonFile) {
+        try {
+          const parsed = JSON.parse(dockerfileJsonFile.content);
+          const to = parsed?.TestOverrides ?? {};
+          for (const [k, v] of Object.entries(to)) {
+            if (typeof v === "string") testOverrides[k] = v;
+          }
+        } catch { /* ignore */ }
+      }
+      const secrets = { ...vaultSecrets, ...testOverrides };
       await runContainerMutation.mutateAsync({
         dockerfileId: selectedId,
-        secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
+        secrets,
       });
-    } catch (err) {
-      reportError(err);
+    } catch {
+      // Error handled by mutation state
     }
   }
 
@@ -397,7 +445,7 @@ export function DockerfilesPage() {
   return (
     <div className="flex flex-col h-full min-h-[calc(100vh-3.5rem)] overflow-hidden">
       {/* Header row: dropdown + action buttons */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b bg-muted/30 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 md:gap-3 px-4 py-2.5 border-b bg-muted/30 shrink-0">
         {/* Dropdown to pick a dockerfile */}
         <Select
           value={selectedId ?? ""}
@@ -409,7 +457,7 @@ export function DockerfilesPage() {
             })
           }
         >
-          <SelectTrigger className="w-56">
+          <SelectTrigger className="w-40 md:w-56">
             <SelectValue placeholder={t("dockerfiles.select_dockerfile")} />
           </SelectTrigger>
           <SelectContent>
@@ -470,14 +518,21 @@ export function DockerfilesPage() {
               >
                 <Upload className="w-3.5 h-3.5" />
               </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={async () => {
+                  if (!selectedId) return;
+                  const secrets = decryptedSecrets ?? await decryptUserSecrets();
+                  await dockerfilesApi.regenerateTmp(selectedId, secrets);
+                  qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
+                }}
+                title={t("dockerfiles.regenerate_tmp_button")}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </Button>
             </div>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".zip,application/zip"
-              onChange={handleImportFilePicked}
-              className="hidden"
-            />
 
             <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
               <Button
@@ -513,6 +568,33 @@ export function DockerfilesPage() {
                 <MessageSquare className="w-3.5 h-3.5" />
               </Button>
             </div>
+            <Button
+              size="icon"
+              variant="outline"
+              className={`h-7 w-7 ${vaultIsOpen ? "border-emerald-500 bg-emerald-500/10" : ""}`}
+              title={vaultIsOpen ? t("dockerfiles.vault_unlocked") : t("dockerfiles.vault_unlock")}
+              onClick={async () => {
+                if (vaultIsOpen) return;
+                if (vaultState === "locked") {
+                  setShowVaultUnlock(true);
+                } else {
+                  navigate("/my-secrets");
+                }
+              }}
+            >
+              {vaultIsOpen ? (
+                <Unlock className="w-3.5 h-3.5 text-emerald-500" />
+              ) : (
+                <Lock className="w-3.5 h-3.5" />
+              )}
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              onChange={handleImportFilePicked}
+              className="hidden"
+            />
           </>
         )}
       </div>
@@ -524,7 +606,7 @@ export function DockerfilesPage() {
             {/* Left sidebar: file list + running instances + delete */}
             <aside
               style={{ width: `${sidebarWidth}px` }}
-              className="shrink-0 border-r flex flex-col overflow-hidden"
+              className="hidden md:flex shrink-0 border-r flex-col overflow-hidden"
             >
               <div className="p-3 border-b flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -611,6 +693,15 @@ export function DockerfilesPage() {
                             {c.dockerfile_id}
                           </div>
                         </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => setLogsContainer({ id: c.id, name: c.name })}
+                          title="Logs"
+                        >
+                          <ScrollText className="w-3 h-3" />
+                        </Button>
                         {c.status === "running" && (
                           <Button
                             size="icon"
@@ -653,9 +744,9 @@ export function DockerfilesPage() {
               </div>
             </aside>
 
-            {/* Resizable drag handle */}
+            {/* Resizable drag handle (desktop only) */}
             <div
-              className="w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors shrink-0"
+              className="hidden md:block w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors shrink-0"
               onMouseDown={handleSidebarDragStart}
             />
 
@@ -664,8 +755,26 @@ export function DockerfilesPage() {
               {/* File info bar */}
               <div className="flex items-center justify-between gap-3 px-4 py-2 border-b bg-muted/20 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
+                  {/* Mobile-only file picker */}
+                  <Select
+                    value={selectedFileId ?? ""}
+                    onValueChange={(v) => {
+                      if (v) { setSelectedFileId(v); setDraftContent(null); }
+                    }}
+                  >
+                    <SelectTrigger className="md:hidden w-32 h-7 text-[11px]">
+                      <SelectValue placeholder={t("dockerfiles.files_title")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {files.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          <span className="font-mono text-[11px]">{f.path}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <BuildStatusBadge status={currentDockerfile.display_status} />
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="hidden md:inline text-[11px] text-muted-foreground">
                     {t("dockerfiles.current_hash")}:{" "}
                     <code className="font-mono">
                       {currentDockerfile.current_hash}
@@ -707,7 +816,12 @@ export function DockerfilesPage() {
                     </div>
                   </div>
                   <CodeEditor
-                    value={draftContent ?? selectedFile.content}
+                    value={
+                      draftContent ??
+                      (selectedFile.path === ".tmp/.env"
+                        ? maskEnvSecrets(selectedFile.content)
+                        : selectedFile.content)
+                    }
                     onChange={(v) => setDraftContent(v)}
                     path={selectedFile.path}
                     fill
@@ -874,6 +988,14 @@ export function DockerfilesPage() {
         />
       )}
 
+      {logsContainer && (
+        <LogsWindow
+          containerId={logsContainer.id}
+          containerName={logsContainer.name}
+          onClose={() => setLogsContainer(null)}
+        />
+      )}
+
       {terminalContainer && (
         <TerminalWindow
           containerId={terminalContainer.id}
@@ -881,6 +1003,16 @@ export function DockerfilesPage() {
           onClose={() => setTerminalContainer(null)}
         />
       )}
+      <VaultUnlockDialog
+        open={showVaultUnlock}
+        email="admin@agflow.example.com"
+        onComplete={async () => {
+          setShowVaultUnlock(false);
+          const s = await decryptUserSecrets();
+          if (Object.keys(s).length > 0) setDecryptedSecrets(s);
+        }}
+        onClose={() => setShowVaultUnlock(false)}
+      />
     </div>
   );
 }
@@ -914,7 +1046,7 @@ function UnsavedChangesDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t("dockerfiles.unsaved.title")}</DialogTitle>
           <DialogDescription>
@@ -961,7 +1093,7 @@ function ImportErrorsDialog({ errors, onClose }: ImportErrorsDialogProps) {
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("dockerfiles.import.errors_title")}</DialogTitle>
           <DialogDescription>

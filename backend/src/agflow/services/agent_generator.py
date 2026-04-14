@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 from uuid import UUID
 
+import httpx
 import structlog
 
 from agflow.services import (
+    agent_files_service,
     agent_profiles_service,
     agents_service,
     dockerfile_files_service,
@@ -15,9 +18,109 @@ from agflow.services import (
     role_sections_service,
     roles_service,
 )
-from agflow.services.container_runner import _load_platform_secrets, build_run_config
+from agflow.services.container_runner import resolve_templates
 
 _log = structlog.get_logger(__name__)
+
+_MACRO_RE = re.compile(r"\[!(\w+)\(([^)]*)\)\]")
+
+
+async def _expand_macros(text: str) -> str:
+    """Expand [!function(argument)] macros in markdown text."""
+    result = text
+    for match in _MACRO_RE.finditer(text):
+        func_name = match.group(1)
+        argument = match.group(2).strip()
+        try:
+            if func_name == "openapi":
+                replacement = await _macro_openapi(argument)
+            else:
+                replacement = f"<!-- unknown macro: {func_name} -->"
+            result = result.replace(match.group(0), replacement)
+        except Exception as exc:
+            _log.warning("macro.error", func=func_name, arg=argument, error=str(exc))
+            result = result.replace(match.group(0), f"<!-- macro error: {exc} -->")
+    return result
+
+
+async def _macro_openapi(url: str) -> str:
+    """Fetch an OpenAPI spec and render it as markdown endpoint list."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        res = await client.get(url)
+        res.raise_for_status()
+        spec = res.json()
+
+    paths = spec.get("paths", {})
+    groups: dict[str, list[str]] = {}
+
+    for path, methods in sorted(paths.items()):
+        for method, detail in methods.items():
+            if method in ("parameters", "servers", "summary", "description"):
+                continue
+            method_upper = method.upper()
+            tags = detail.get("tags", ["Other"])
+            summary = detail.get("summary", "")
+            line = f"- `{method_upper} {path}` : {summary}"
+            for tag in tags:
+                groups.setdefault(tag, []).append(line)
+
+    parts: list[str] = []
+    for tag, lines in groups.items():
+        parts.append(f"### {tag}")
+        parts.extend(lines)
+        parts.append("")
+
+    return "\n".join(parts)
+
+
+def _apply_overrides(
+    params_json: str,
+    env_overrides: dict[str, Any],
+    mount_overrides: dict[str, Any],
+    param_overrides: dict[str, Any],
+) -> str:
+    """Apply agent overrides to a Dockerfile.json content string."""
+    try:
+        parsed = json.loads(params_json)
+    except (json.JSONDecodeError, TypeError):
+        return params_json
+
+    docker = parsed.get("docker", {})
+
+    # Apply env overrides
+    envs = docker.get("Environments", {})
+    for k, override in env_overrides.items():
+        if override.get("excluded"):
+            envs.pop(k, None)
+        elif "value" in override:
+            envs[k] = override["value"]
+    docker["Environments"] = envs
+
+    # Apply mount overrides
+    mounts = docker.get("Mounts", [])
+    new_mounts = []
+    for m in mounts:
+        target = m.get("target", "")
+        override = mount_overrides.get(target, {})
+        if override.get("excluded"):
+            continue
+        if "source" in override:
+            m = {**m, "source": override["source"]}
+        new_mounts.append(m)
+    docker["Mounts"] = new_mounts
+
+    parsed["docker"] = docker
+
+    # Apply param overrides
+    params = parsed.get("Params", {})
+    for k, override in param_overrides.items():
+        if override.get("excluded"):
+            params.pop(k, None)
+        elif "value" in override:
+            params[k] = override["value"]
+    parsed["Params"] = params
+
+    return json.dumps(parsed)
 
 
 def _agents_dir() -> str:
@@ -42,7 +145,7 @@ async def generate(
     agent = await agents_service.get_by_id(agent_id)
     slug = agent.slug
 
-    out_dir = os.path.join(_agents_dir(), slug)
+    out_dir = os.path.join(_agents_dir(), slug, "generated")
     os.makedirs(out_dir, exist_ok=True)
 
     role = await roles_service.get_by_id(agent.role_id)
@@ -65,19 +168,70 @@ async def generate(
             prompt_parts.append(f"\n---\n\n{doc.content_md}")
 
     prompt_md = "\n".join(prompt_parts)
+    prompt_md = await _expand_macros(prompt_md)
     _write(out_dir, "prompt.md", prompt_md)
 
-    # Build .env
-    platform_secrets = await _load_platform_secrets()
-    all_secrets = {**platform_secrets, **(user_secrets or {})}
+    # Build .env — merge Dockerfile.json Environments with agent overrides
+    # Secrets come exclusively from the user's vault — never from platform secrets
+    all_secrets = user_secrets or {}
+
+    # Read base env vars + params from Dockerfile.json
+    base_env: dict[str, str] = {}
+    base_params: dict[str, str] = {}
+    files = await dockerfile_files_service.list_for_dockerfile(agent.dockerfile_id)
+    params_file = next((f for f in files if f.path == "Dockerfile.json"), None)
+    if params_file:
+        try:
+            parsed = json.loads(params_file.content)
+            base_env = parsed.get("docker", {}).get("Environments", {})
+            base_params = parsed.get("Params", {})
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+    # Read overrides from agent.json
+    agent_data = agent_files_service.read_agent(slug)
+    env_overrides = agent_data.get("env_overrides", {})
+    param_overrides = agent_data.get("param_overrides", {})
+
+    # Build resolved params (apply overrides, then use as template vars)
+    resolved_params: dict[str, str] = {}
+    for k, v in base_params.items():
+        override = param_overrides.get(k, {})
+        if override.get("excluded"):
+            continue
+        resolved_params[k] = str(override.get("value", v))
+
+    _secret_ref_re = re.compile(r"^\$\{(\w+)(?::-([^}]*))?\}$")
+
+    def _resolve_secret(value: str) -> str:
+        """Resolve $VAR and ${VAR} and ${VAR:-default} against vault secrets."""
+        if not isinstance(value, str):
+            return str(value)
+        # $VAR (no braces)
+        if value.startswith("$") and not value.startswith("${") and len(value) > 1:
+            return all_secrets.get(value[1:], "")
+        # ${VAR} or ${VAR:-default}
+        m = _secret_ref_re.match(value)
+        if m:
+            return all_secrets.get(m.group(1), m.group(2) or "")
+        return value
 
     env_lines = []
-    for k, v in agent.env_vars.items():
-        if v.startswith("$") and len(v) > 1:
-            resolved = all_secrets.get(v[1:], "")
-            env_lines.append(f"{k}={resolved}")
-        else:
-            env_lines.append(f"{k}={v}")
+    # Environment variables
+    for k, v in base_env.items():
+        override = env_overrides.get(k, {})
+        if override.get("excluded"):
+            continue
+        raw = str(override.get("value", v))
+        # Step 1: resolve {KEY} agflow templates via Params
+        templated = resolve_templates(raw, resolved_params)
+        # Step 2: resolve $SECRET / ${SECRET} against vault secrets
+        env_lines.append(f"{k}={_resolve_secret(templated)}")
+    # Params (exposed as env vars too)
+    for k, v in resolved_params.items():
+        templated = resolve_templates(str(v), resolved_params)
+        env_lines.append(f"{k}={_resolve_secret(templated)}")
+
     _write(out_dir, ".env", "\n".join(env_lines) + "\n")
 
     # Build mcp.json
@@ -95,45 +249,77 @@ async def generate(
     for binding in agent.skill_bindings:
         _write(skills_dir, f"{binding.catalog_skill_id}.md", "")
 
-    # Build run.sh from Dockerfile.json
+    # Build run.sh from Dockerfile.json with agent overrides applied
     files = await dockerfile_files_service.list_for_dockerfile(agent.dockerfile_id)
     params_file = next((f for f in files if f.path == "Dockerfile.json"), None)
 
-    run_sh_lines = ["#!/usr/bin/env bash", "set -euo pipefail", ""]
+    run_sh_lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "",
+        "# Source resolved secrets",
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+        'if [ -f "$SCRIPT_DIR/.env" ]; then',
+        '  set -a; source "$SCRIPT_DIR/.env"; set +a',
+        "fi",
+        "",
+    ]
     if params_file:
         import secrets as _secrets
         instance_id = _secrets.token_hex(3)
-        try:
-            from agflow.services import build_service
-            tag = build_service.image_tag_for(agent.dockerfile_id, "latest")
-        except Exception:
-            tag = f"agflow-{agent.dockerfile_id}:latest"
+
+        patched_content = _apply_overrides(params_file.content, env_overrides,
+            agent_data.get("mount_overrides", {}),
+            agent_data.get("param_overrides", {}))
 
         try:
-            name, config = build_run_config(
-                dockerfile_id=agent.dockerfile_id,
-                params_json_content=params_file.content,
-                content_hash="latest",
-                instance_id=instance_id,
-                extra_env=all_secrets,
-            )
-            # Build docker run command from config
-            cmd_parts = ["docker run"]
-            cmd_parts.append(f"--name {name}")
-            if config.get("HostConfig", {}).get("NetworkMode"):
-                cmd_parts.append(f"--network {config['HostConfig']['NetworkMode']}")
-            for env in config.get("Env", []):
-                cmd_parts.append(f'-e "{env}"')
-            for bind in config.get("HostConfig", {}).get("Binds", []):
-                cmd_parts.append(f'-v "{bind}"')
-            if config.get("HostConfig", {}).get("Memory"):
-                mem_mb = config["HostConfig"]["Memory"] // (1024 * 1024)
-                cmd_parts.append(f"--memory {mem_mb}m")
-            cmd_parts.append(config.get("Image", tag))
-            run_sh_lines.append(" \\\n  ".join(cmd_parts))
-        except Exception as exc:
-            run_sh_lines.append(f"# Error generating docker command: {exc}")
-            run_sh_lines.append(f"# docker run agflow-{agent.dockerfile_id}:latest")
+            patched = json.loads(patched_content)
+        except (json.JSONDecodeError, TypeError):
+            patched = {}
+
+        docker_cfg = patched.get("docker", {})
+        container = docker_cfg.get("Container", {})
+        runtime = docker_cfg.get("Runtime", {})
+        resources = docker_cfg.get("Resources", {})
+        network = docker_cfg.get("Network", {})
+        environments = docker_cfg.get("Environments", {})
+        mounts = docker_cfg.get("Mounts", [])
+
+        image = container.get("Image", f"agflow-{agent.dockerfile_id}:latest")
+        name = container.get("Name", f"agent-{slug}-{instance_id}")
+
+        cmd_parts = ["docker run"]
+        cmd_parts.append(f"--name {name}")
+        net_mode = network.get("Mode", "bridge")
+        if net_mode:
+            cmd_parts.append(f"--network {net_mode}")
+        if runtime.get("Init"):
+            cmd_parts.append("--init")
+        stop_signal = runtime.get("StopSignal")
+        if stop_signal:
+            cmd_parts.append(f"--stop-signal {stop_signal}")
+        stop_timeout = runtime.get("StopTimeout")
+        if stop_timeout:
+            cmd_parts.append(f"--stop-timeout {stop_timeout}")
+        workdir = runtime.get("WorkingDir")
+        if workdir:
+            cmd_parts.append(f"-w {workdir}")
+        mem = resources.get("Memory")
+        if mem:
+            cmd_parts.append(f"--memory {mem}")
+        cpus = resources.get("Cpus")
+        if cpus:
+            cmd_parts.append(f"--cpus {cpus}")
+        for k, v in environments.items():
+            cmd_parts.append(f'-e "{k}={v}"')
+        for m in mounts:
+            src = m.get("source", "")
+            tgt = m.get("target", "")
+            ro = ":ro" if m.get("readonly") else ""
+            cmd_parts.append(f'-v "{src}:{tgt}{ro}"')
+        cmd_parts.append(image)
+
+        run_sh_lines.append(" \\\n  ".join(cmd_parts))
     else:
         run_sh_lines.append("# No Dockerfile.json found")
         run_sh_lines.append(f"docker run agflow-{agent.dockerfile_id}:latest")
@@ -152,7 +338,7 @@ async def generate(
 
 async def list_generated_files(slug: str) -> list[dict[str, Any]]:
     """List all files in the generated agent directory."""
-    out_dir = os.path.join(_agents_dir(), slug)
+    out_dir = os.path.join(_agents_dir(), slug, "generated")
     if not os.path.isdir(out_dir):
         return []
     results: list[dict[str, Any]] = []

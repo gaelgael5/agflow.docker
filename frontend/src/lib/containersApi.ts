@@ -30,7 +30,7 @@ export const containersApi = {
   ): Promise<ContainerInfo> {
     const res = await api.post<ContainerInfo>(
       `/admin/dockerfiles/${dockerfileId}/run`,
-      secrets && Object.keys(secrets).length > 0 ? { secrets } : undefined,
+      { secrets: secrets ?? {} },
     );
     return res.data;
   },

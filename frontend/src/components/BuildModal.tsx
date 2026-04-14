@@ -102,7 +102,7 @@ export function BuildModal({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-3xl sm:max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {t("dockerfiles.build_modal.title", { dockerfile: dockerfileName })}

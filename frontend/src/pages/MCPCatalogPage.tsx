@@ -55,7 +55,7 @@ export function MCPCatalogPage() {
     if (!selectedServiceId) return;
     await installMutation.mutateAsync({
       discoveryServiceId: selectedServiceId,
-      packageId: item.package_id,
+      packageId: String(item.package_id),
     });
     setSearchOpen(false);
   }

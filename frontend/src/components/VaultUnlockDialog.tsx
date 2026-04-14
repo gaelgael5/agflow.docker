@@ -18,12 +18,14 @@ interface VaultUnlockDialogProps {
   open: boolean;
   email: string;
   onComplete: () => void;
+  onClose?: () => void;
 }
 
-export function VaultUnlockDialog({ open, email, onComplete }: VaultUnlockDialogProps) {
+export function VaultUnlockDialog({ open, email, onComplete, onClose }: VaultUnlockDialogProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const vault = useVault();
+  const handleClose = onClose ?? (() => navigate("/"));
 
   const [passphrase, setPassphrase] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export function VaultUnlockDialog({ open, email, onComplete }: VaultUnlockDialog
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) navigate("/"); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
       <DialogContent onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{t("vault.unlock_title")}</DialogTitle>
@@ -92,7 +94,7 @@ export function VaultUnlockDialog({ open, email, onComplete }: VaultUnlockDialog
             <Button
               type="button"
               variant="outline"
-              onClick={() => navigate("/")}
+              onClick={handleClose}
               disabled={submitting}
             >
               {t("common.cancel")}

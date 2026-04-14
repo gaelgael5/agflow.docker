@@ -107,7 +107,7 @@ export function DiscoveryServicesPage() {
                 <TableHead>{t("discovery.col_id")}</TableHead>
                 <TableHead>{t("discovery.col_name")}</TableHead>
                 <TableHead>{t("discovery.col_base_url")}</TableHead>
-                <TableHead>{t("discovery.col_api_key")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("discovery.col_api_key")}</TableHead>
                 <TableHead className="text-right">
                   {t("discovery.col_actions")}
                 </TableHead>
@@ -129,7 +129,7 @@ export function DiscoveryServicesPage() {
                         {s.base_url}
                       </code>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       {s.api_key_var ? (
                         <EnvVarStatus
                           name={s.api_key_var}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -29,7 +29,7 @@ class _AgentBase(BaseModel):
     description: str = ""
     dockerfile_id: str = Field(min_length=1)
     role_id: str = Field(min_length=1)
-    env_vars: dict[str, str] = Field(default_factory=dict)
+    env_vars: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = Field(default=3600, gt=0)
     workspace_path: str = "/workspace"
     network_mode: NetworkMode = "bridge"
@@ -65,7 +65,7 @@ class AgentSummary(BaseModel):
     description: str
     dockerfile_id: str
     role_id: str
-    env_vars: dict[str, str]
+    env_vars: dict[str, Any]
     timeout_seconds: int
     workspace_path: str
     network_mode: NetworkMode

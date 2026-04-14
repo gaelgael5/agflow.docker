@@ -36,7 +36,11 @@ def compute_hash(files: Iterable[dict | FileDTO]) -> str:
             normalized.append(FileDTO(path=f["path"], content=f["content"]))
 
     relevant = sorted(
-        (f for f in normalized if f.path == "Dockerfile" or f.path.endswith(".sh")),
+        (
+            f for f in normalized
+            if (f.path == "Dockerfile" or f.path.endswith(".sh"))
+            and not f.path.startswith(".tmp/")
+        ),
         key=lambda f: f.path,
     )
     h = hashlib.sha256()

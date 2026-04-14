@@ -30,15 +30,15 @@ router = APIRouter(
 )
 
 
+class RunPayload(BaseModel):
+    secrets: dict[str, str] = Field(default_factory=dict)
+
+
 @router.post(
     "/dockerfiles/{dockerfile_id}/run",
     response_model=ContainerInfo,
     status_code=status.HTTP_201_CREATED,
 )
-class RunPayload(BaseModel):
-    secrets: dict[str, str] = Field(default_factory=dict)
-
-
 async def run_dockerfile(
     dockerfile_id: str, payload: RunPayload | None = None
 ) -> ContainerInfo:
@@ -98,10 +98,72 @@ async def run_dockerfile(
         ) from exc
 
 
+@router.post(
+    "/dockerfiles/{dockerfile_id}/regenerate-tmp",
+    status_code=status.HTTP_200_OK,
+)
+async def regenerate_tmp_files(
+    dockerfile_id: str, payload: RunPayload | None = None
+) -> dict[str, str]:
+    """Regenerate .tmp/run.sh and .tmp/.env without starting a container."""
+    try:
+        dockerfile = await dockerfiles_service.get_by_id(dockerfile_id)
+    except dockerfiles_service.DockerfileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    files = await dockerfile_files_service.list_for_dockerfile(dockerfile_id)
+    params_file = next((f for f in files if f.path == "Dockerfile.json"), None)
+    if params_file is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dockerfile.json manquant.",
+        )
+
+    # Load platform secrets + user vault secrets, same as container start.
+    platform_secrets = await container_runner._load_platform_secrets()
+    user_secrets = (payload.secrets if payload else None) or {}
+    all_secrets = {**platform_secrets, **user_secrets}
+
+    try:
+        name, config = container_runner.build_run_config(
+            dockerfile_id=dockerfile_id,
+            params_json_content=params_file.content,
+            content_hash=dockerfile.current_hash,
+            instance_id="preview",
+            extra_env=all_secrets,
+        )
+    except container_runner.InvalidParamsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+    container_runner._generate_tmp_files(dockerfile_id, name, config)
+    return {"status": "ok"}
+
+
 @router.get("/containers", response_model=list[ContainerInfo])
 async def list_containers() -> list[ContainerInfo]:
     """List all agflow-managed containers (running, stopped, etc.)."""
     return await container_runner.list_running()
+
+
+@router.get("/containers/{container_id}/logs")
+async def container_logs(container_id: str, tail: int = 200) -> str:
+    import aiodocker
+
+    docker = aiodocker.Docker()
+    try:
+        container = await docker.containers.get(container_id)
+        lines = await container.log(stdout=True, stderr=True, tail=tail)
+        return "".join(lines)
+    except aiodocker.exceptions.DockerError as exc:
+        if exc.status == 404:
+            raise HTTPException(status_code=404, detail="Container not found") from exc
+        raise
+    finally:
+        await docker.close()
 
 
 @router.delete(

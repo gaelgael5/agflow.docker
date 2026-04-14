@@ -48,7 +48,6 @@ class RoleUpdate(BaseModel):
     description: str | None = None
     service_types: list[str] | None = None
     identity_md: str | None = None
-    runtime_config: dict | None = None
 
 
 class RoleSummary(BaseModel):
@@ -58,7 +57,6 @@ class RoleSummary(BaseModel):
     service_types: list[str]
     identity_md: str
     prompt_orchestrator_md: str
-    runtime_config: dict
     created_at: datetime
     updated_at: datetime
 

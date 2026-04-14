@@ -9,13 +9,14 @@ import {
 import { useTranslation } from "react-i18next";
 import { Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { bringToFront, cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 export interface ChatWindowProps {
   dockerfileId: string;
   title?: string;
   onClose: () => void;
+  secrets?: Record<string, string>;
 }
 
 interface ChatMessage {
@@ -40,7 +41,12 @@ function randomId(): string {
   return Math.random().toString(36).slice(2, 11);
 }
 
-export function ChatWindow({ dockerfileId, title, onClose }: ChatWindowProps) {
+export function ChatWindow({
+  dockerfileId,
+  title,
+  onClose,
+  secrets,
+}: ChatWindowProps) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -66,6 +72,7 @@ export function ChatWindow({ dockerfileId, title, onClose }: ChatWindowProps) {
     }
     return { w: 520, h: 600 };
   });
+  const [zIndex, setZIndex] = useState(() => bringToFront());
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragOffsetRef = useRef<{ dx: number; dy: number } | null>(null);
@@ -216,7 +223,12 @@ export function ChatWindow({ dockerfileId, title, onClose }: ChatWindowProps) {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ instruction: text }),
+          body: JSON.stringify({
+            instruction: text,
+            ...(secrets && Object.keys(secrets).length > 0
+              ? { secrets }
+              : {}),
+          }),
         },
       );
 
@@ -352,13 +364,14 @@ export function ChatWindow({ dockerfileId, title, onClose }: ChatWindowProps) {
     <div
       style={
         isMobile
-          ? { position: "fixed", inset: 0, width: "100%", height: "100%", zIndex: 50 }
-          : { position: "fixed", left: position.x, top: position.y, width: size.w, height: size.h, zIndex: 50 }
+          ? { position: "fixed", inset: 0, width: "100%", height: "100%", zIndex }
+          : { position: "fixed", left: position.x, top: position.y, width: size.w, height: size.h, zIndex }
       }
       className={cn(
         "flex flex-col border border-border bg-card shadow-2xl overflow-hidden",
         !isMobile && "rounded-lg",
       )}
+      onMouseDown={() => setZIndex(bringToFront())}
       role="dialog"
       aria-label={title ?? t("dockerfiles.chat_window.title", { id: dockerfileId })}
     >

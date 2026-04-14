@@ -5,6 +5,15 @@ export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
+// Shared z-index counter for floating windows (logs, chat, terminal).
+// Calling bringToFront() returns the next highest value so the caller
+// can assign it to their own z-index state and appear above all others.
+let _floatingZIndex = 50;
+export function bringToFront(): number {
+  _floatingZIndex += 1;
+  return _floatingZIndex;
+}
+
 const _SECRET_KEY_RE = /_(API_KEY|SECRET|TOKEN|PASSWORD|PASS|KEY)$/i;
 
 /** Mask secret values in .env content for display only. */

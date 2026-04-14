@@ -9,6 +9,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { bringToFront } from "@/lib/utils";
 import "@xterm/xterm/css/xterm.css";
 
 export interface TerminalWindowProps {
@@ -47,6 +48,7 @@ export function TerminalWindow({
     }
     return { w: 720, h: 480 };
   });
+  const [zIndex, setZIndex] = useState(() => bringToFront());
 
   const dragOffsetRef = useRef<{ dx: number; dy: number } | null>(null);
   const resizeRef = useRef<{
@@ -203,13 +205,15 @@ export function TerminalWindow({
 
   return (
     <div
-      className="fixed z-50 flex flex-col rounded-lg border bg-background shadow-2xl overflow-hidden"
+      className="fixed flex flex-col rounded-lg border bg-background shadow-2xl overflow-hidden"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
         width: `${size.w}px`,
         height: `${size.h}px`,
+        zIndex,
       }}
+      onMouseDown={() => setZIndex(bringToFront())}
     >
       {/* Header */}
       <div

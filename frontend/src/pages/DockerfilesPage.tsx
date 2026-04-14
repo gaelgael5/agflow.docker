@@ -985,6 +985,7 @@ export function DockerfilesPage() {
         <ChatWindow
           dockerfileId={chatOpenFor}
           onClose={() => setChatOpenFor(null)}
+          secrets={decryptedSecrets ?? undefined}
         />
       )}
 

@@ -8,6 +8,7 @@ import {
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { bringToFront } from "@/lib/utils";
 
 export interface LogsWindowProps {
   containerId: string;
@@ -41,6 +42,7 @@ export function LogsWindow({
     } catch { /* ignore */ }
     return { w: 700, h: 400 };
   });
+  const [zIndex, setZIndex] = useState(() => bringToFront());
 
   const dragOffsetRef = useRef<{ dx: number; dy: number } | null>(null);
   const resizeRef = useRef<{
@@ -135,13 +137,15 @@ export function LogsWindow({
 
   return (
     <div
-      className="fixed z-50 flex flex-col rounded-lg border bg-background shadow-2xl overflow-hidden"
+      className="fixed flex flex-col rounded-lg border bg-background shadow-2xl overflow-hidden"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
         width: `${size.w}px`,
         height: `${size.h}px`,
+        zIndex,
       }}
+      onMouseDown={() => setZIndex(bringToFront())}
     >
       <div
         className="flex items-center justify-between px-3 py-1.5 bg-muted/60 border-b cursor-move select-none shrink-0"

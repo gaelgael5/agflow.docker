@@ -15,6 +15,10 @@ export function useDockerfiles() {
   const listQuery = useQuery<DockerfileSummary[]>({
     queryKey: DOCKERFILES_KEY,
     queryFn: () => dockerfilesApi.list(),
+    // Poll so each row's display_status badge stays in sync with disk state
+    // (file edits, background builds, etc.) without manual F5.
+    refetchInterval: 3_000,
+    refetchIntervalInBackground: false,
   });
 
   const invalidate = (id?: string) => {
@@ -87,5 +91,10 @@ export function useDockerfileDetail(id: string | null) {
       return dockerfilesApi.get(id);
     },
     enabled: !!id,
+    // Poll every 3s while the page is visible so external changes (file edit
+    // via SSH, background build completing, container creating workspace dirs)
+    // surface in the file tree and the build-status badge without manual F5.
+    refetchInterval: 3_000,
+    refetchIntervalInBackground: false,
   });
 }

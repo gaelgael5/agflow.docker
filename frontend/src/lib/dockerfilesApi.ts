@@ -25,6 +25,8 @@ export interface FileSummary {
   dockerfile_id: string;
   path: string;
   content: string;
+  type?: "file" | "dir";
+  size?: number;
   created_at: string;
   updated_at: string;
 }
@@ -139,6 +141,11 @@ export const dockerfilesApi = {
       payload,
     );
     return res.data;
+  },
+  async deleteDir(dockerfileId: string, path: string): Promise<void> {
+    await api.delete(`/admin/dockerfiles/${dockerfileId}/dirs`, {
+      params: { path },
+    });
   },
   async regenerateTmp(
     dockerfileId: string,

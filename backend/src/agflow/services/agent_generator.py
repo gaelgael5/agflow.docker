@@ -337,22 +337,25 @@ async def generate(
 
 
 async def list_generated_files(slug: str) -> list[dict[str, Any]]:
-    """List all files in the generated agent directory."""
+    """List all files and directories in the generated agent directory.
+
+    Empty directories are also returned (with content="" and type="dir") so the
+    UI explorer can render them — useful for runtime mounts like workspace/.
+    """
+    from agflow.services.fs_walker import walk_tree
+
     out_dir = os.path.join(_agents_dir(), slug, "generated")
-    if not os.path.isdir(out_dir):
-        return []
     results: list[dict[str, Any]] = []
-    for dirpath, _dirnames, filenames in os.walk(out_dir):
-        for filename in filenames:
-            full_path = os.path.join(dirpath, filename)
-            rel_path = os.path.relpath(full_path, out_dir).replace("\\", "/")
-            try:
-                with open(full_path, encoding="utf-8") as fh:
-                    content = fh.read()
-            except Exception:
-                content = "<binary>"
-            results.append({"path": rel_path, "content": content})
-    results.sort(key=lambda f: f["path"])
+    for entry in walk_tree(out_dir):
+        if entry.type == "dir":
+            results.append({"path": entry.path, "content": "", "type": "dir"})
+            continue
+        try:
+            with open(entry.full_path, encoding="utf-8") as fh:
+                content = fh.read()
+        except Exception:
+            content = "<binary>"
+        results.append({"path": entry.path, "content": content, "type": "file"})
     return results
 
 

@@ -127,11 +127,11 @@ export function CodeEditor({
           paddingRight: `${GUTTER_PADDING_RIGHT}px`,
           overflow: "hidden",
           textAlign: "right",
-          color: "var(--color-muted-foreground)",
+          color: "hsl(var(--muted-foreground))",
           pointerEvents: "none",
           userSelect: "none",
-          borderRight: "1px solid var(--color-border)",
-          background: "var(--color-muted)",
+          borderRight: "1px solid hsl(var(--border))",
+          background: "hsl(var(--muted))",
         }}
       >
         {Array.from({ length: lineCount }, (_, i) => `${i + 1}\n`).join("")}
@@ -152,7 +152,7 @@ export function CodeEditor({
           paddingRight: `${PADDING_X}px`,
           overflow: "auto",
           pointerEvents: "none",
-          color: "var(--color-foreground)",
+          color: "hsl(var(--foreground))",
         }}
       >
         {tokensToRender.map((tok, i) => (
@@ -184,7 +184,12 @@ export function CodeEditor({
           resize: "none",
           background: "transparent",
           color: "transparent",
-          caretColor: "var(--color-foreground)",
+          // currentColor lets the textarea inherit a real color from the
+          // wrapper, while we keep the text transparent via -webkit-text-fill.
+          // hsl(var(--foreground)) sometimes failed to resolve for caret-color
+          // depending on browser timing — fall back to a literal color value.
+          WebkitTextFillColor: "transparent",
+          caretColor: "var(--caret-color, #18181b)",
           border: "none",
           outline: "none",
           overflow: "auto",

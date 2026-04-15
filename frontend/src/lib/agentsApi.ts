@@ -195,10 +195,12 @@ export const agentsApi = {
     await api.delete("/admin/agents/assistant");
   },
 
-  listGenerated: async (agentId: string): Promise<{ path: string; content: string }[]> => {
-    const res = await api.get<{ path: string; content: string }[]>(
-      `/admin/agents/${agentId}/generated`,
-    );
+  listGenerated: async (
+    agentId: string,
+  ): Promise<{ path: string; content: string; type?: "file" | "dir" }[]> => {
+    const res = await api.get<
+      { path: string; content: string; type?: "file" | "dir" }[]
+    >(`/admin/agents/${agentId}/generated`);
     return res.data;
   },
 

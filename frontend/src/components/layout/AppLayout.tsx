@@ -6,6 +6,7 @@ import { TopBar } from "./TopBar";
 import { ChatWindow } from "@/components/ChatWindow";
 import { Toaster } from "@/components/ui/sonner";
 import { agentsApi, type AgentSummary } from "@/lib/agentsApi";
+import { useDockerfileDetail } from "@/hooks/useDockerfiles";
 
 interface Props {
   children: ReactNode;
@@ -22,6 +23,13 @@ export function AppLayout({ children }: Props) {
     staleTime: 30_000,
   });
   const assistantAgent = assistantQuery.data ?? null;
+  const assistantDockerfileDetail = useDockerfileDetail(
+    assistantAgent?.dockerfile_id ?? null,
+  );
+  const assistantDockerfileJson =
+    assistantDockerfileDetail.data?.files.find(
+      (f) => f.path === "Dockerfile.json",
+    )?.content ?? null;
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -64,6 +72,7 @@ export function AppLayout({ children }: Props) {
           dockerfileId={assistantAgent.dockerfile_id}
           title={assistantAgent.display_name}
           onClose={() => setAssistantOpen(false)}
+          dockerfileJsonContent={assistantDockerfileJson}
         />
       )}
 

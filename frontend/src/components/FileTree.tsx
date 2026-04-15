@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 interface FileEntry {
   id: string;
   path: string;
+  type?: "file" | "dir";
 }
 
 interface TreeNode {
@@ -17,21 +18,26 @@ interface TreeNode {
 function buildTree(files: FileEntry[]): TreeNode[] {
   const root: TreeNode[] = [];
 
-  for (const file of files) {
-    const parts = file.path.split("/");
+  for (const entry of files) {
+    const parts = entry.path.split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+    const isDirEntry = entry.type === "dir";
     let current = root;
 
     for (let i = 0; i < parts.length; i++) {
       const name = parts[i]!;
-      const isFile = i === parts.length - 1;
+      const isLeaf = i === parts.length - 1;
+      const isFileLeaf = isLeaf && !isDirEntry;
       const fullPath = parts.slice(0, i + 1).join("/");
 
-      let node = current.find((n) => n.name === name && !n.file === !isFile);
+      let node = current.find(
+        (n) => n.name === name && !n.file === !isFileLeaf,
+      );
       if (!node) {
         node = {
           name,
           fullPath,
-          file: isFile ? file : undefined,
+          file: isFileLeaf ? entry : undefined,
           children: [],
         };
         current.push(node);
@@ -60,6 +66,7 @@ export interface FileTreeProps {
   onSelect: (fileId: string) => void;
   onAddFileInFolder?: (folderPath: string) => void;
   onDeleteFolder?: (folderPath: string) => void;
+  onDeleteFile?: (fileId: string) => void;
   protectedFiles?: readonly string[];
 }
 
@@ -69,6 +76,7 @@ export function FileTree({
   onSelect,
   onAddFileInFolder,
   onDeleteFolder,
+  onDeleteFile,
   protectedFiles = [],
 }: FileTreeProps) {
   const tree = buildTree(files);
@@ -83,6 +91,7 @@ export function FileTree({
           onSelect={onSelect}
           onAddFileInFolder={onAddFileInFolder}
           onDeleteFolder={onDeleteFolder}
+          onDeleteFile={onDeleteFile}
           protectedFiles={protectedFiles}
         />
       ))}
@@ -99,6 +108,7 @@ interface TreeItemProps {
   onSelect: (fileId: string) => void;
   onAddFileInFolder?: (folderPath: string) => void;
   onDeleteFolder?: (folderPath: string) => void;
+  onDeleteFile?: (fileId: string) => void;
   protectedFiles: readonly string[];
 }
 
@@ -109,6 +119,7 @@ function TreeItem({
   onSelect,
   onAddFileInFolder,
   onDeleteFolder,
+  onDeleteFile,
   protectedFiles,
 }: TreeItemProps) {
   const [open, setOpen] = useState(true);
@@ -116,22 +127,35 @@ function TreeItem({
 
   if (node.file) {
     const active = selectedId === node.file.id;
+    const fileIsProtected = protectedFiles.includes(node.file.path);
     return (
       <li>
-        <button
-          type="button"
-          onClick={() => onSelect(node.file!.id)}
-          style={{ paddingLeft: `${indent + 8}px` }}
-          className={cn(
-            "w-full text-left pr-2 py-1 rounded-md font-mono text-[12px] flex items-center gap-1.5 transition-colors",
-            active
-              ? "bg-primary/10 text-primary"
-              : "hover:bg-secondary text-foreground",
+        <div className="group flex items-center">
+          <button
+            type="button"
+            onClick={() => onSelect(node.file!.id)}
+            style={{ paddingLeft: `${indent + 8}px` }}
+            className={cn(
+              "flex-1 text-left pr-2 py-1 rounded-md font-mono text-[12px] flex items-center gap-1.5 transition-colors",
+              active
+                ? "bg-primary/10 text-primary"
+                : "hover:bg-secondary text-foreground",
+            )}
+          >
+            <FileCode2 className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{node.name}</span>
+          </button>
+          {onDeleteFile && !fileIsProtected && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDeleteFile(node.file!.id); }}
+              className="hidden group-hover:flex p-0.5 rounded hover:bg-secondary mr-1"
+              title="Delete file"
+            >
+              <Trash2 className="w-3 h-3 text-destructive" />
+            </button>
           )}
-        >
-          <FileCode2 className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{node.name}</span>
-        </button>
+        </div>
       </li>
     );
   }
@@ -196,6 +220,7 @@ function TreeItem({
               onSelect={onSelect}
               onAddFileInFolder={onAddFileInFolder}
               onDeleteFolder={onDeleteFolder}
+              onDeleteFile={onDeleteFile}
               protectedFiles={protectedFiles}
             />
           ))}

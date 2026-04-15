@@ -11,7 +11,6 @@ import {
   Cog,
   Copy,
   Eye,
-  FileCode2,
   MessageSquare,
   Play,
   Plus,
@@ -37,9 +36,11 @@ import { userSecretsApi } from "@/lib/userSecretsApi";
 import { containersApi } from "@/lib/containersApi";
 import { ChatWindow } from "@/components/ChatWindow";
 import { CodeEditor } from "@/components/CodeEditor";
+import { FileTree } from "@/components/FileTree";
 import { TerminalWindow } from "@/components/TerminalWindow";
 import { ProfileInlineEditor } from "@/components/ProfileInlineEditor";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useEmptyLaunchKeys } from "@/hooks/useEmptyLaunchKeys";
 import { VaultUnlockDialog } from "@/components/VaultUnlockDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { PageShell } from "@/components/layout/PageHeader";
@@ -163,11 +164,24 @@ export function AgentEditorPage() {
   const [deleteProfileTarget, setDeleteProfileTarget] = useState<{ id: string; name: string } | null>(null);
   const [showDeleteAgentDialog, setShowDeleteAgentDialog] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [generatedFiles, setGeneratedFiles] = useState<{ path: string; content: string }[]>([]);
+  const [generatedFiles, setGeneratedFiles] = useState<
+    { path: string; content: string; type?: "file" | "dir" }[]
+  >([]);
   const [selectedGenFile, setSelectedGenFile] = useState<string | null>(null);
   const [chatOpenFor, setChatOpenFor] = useState<string | null>(null);
   const [decryptedSecrets, setDecryptedSecrets] = useState<Record<string, string> | null>(null);
   const [showVaultUnlock, setShowVaultUnlock] = useState(false);
+  const [launchPendingSecrets, setLaunchPendingSecrets] = useState<
+    Record<string, string> | null
+  >(null);
+  const dockerfileJsonContentForLaunch =
+    dockerfileDetailQuery.data?.files.find(
+      (f) => f.path === "Dockerfile.json",
+    )?.content ?? null;
+  const { emptyKeys: launchEmptyKeys } = useEmptyLaunchKeys({
+    dockerfileJsonContent: dockerfileJsonContentForLaunch,
+    decryptedSecrets,
+  });
 
   async function decryptUserSecrets(): Promise<Record<string, string>> {
     if (vaultState !== "unlocked") return {};
@@ -638,6 +652,10 @@ export function AgentEditorPage() {
                     if (!form.dockerfile_id) return;
                     try {
                       const secrets = decryptedSecrets ?? await decryptUserSecrets();
+                      if (launchEmptyKeys.length > 0) {
+                        setLaunchPendingSecrets(secrets);
+                        return;
+                      }
                       const c = await containersApi.run(form.dockerfile_id, secrets);
                       setRunningContainerId(c.id);
                     } catch (e) {
@@ -1373,24 +1391,15 @@ export function AgentEditorPage() {
             <CardContent className="pt-5">
               <div className="flex gap-4 min-h-[400px]">
                 <div className="w-48 shrink-0 border-r pr-3 overflow-y-auto max-h-[800px]">
-                  <ul className="space-y-0.5">
-                    {generatedFiles.map((f) => (
-                      <li key={f.path}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedGenFile(f.path)}
-                          className={`w-full text-left px-2 py-1 rounded text-[12px] font-mono flex items-center gap-1.5 transition-colors ${
-                            selectedGenFile === f.path
-                              ? "bg-primary/10 text-primary"
-                              : "hover:bg-secondary text-foreground"
-                          }`}
-                        >
-                          <FileCode2 className="w-3 h-3 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{f.path}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <FileTree
+                    files={generatedFiles.map((f) => ({
+                      id: f.path,
+                      path: f.path,
+                      type: f.type,
+                    }))}
+                    selectedId={selectedGenFile}
+                    onSelect={(id) => setSelectedGenFile(id)}
+                  />
                 </div>
                 <div className="flex-1 min-w-0 overflow-auto">
                   {selectedGenFile ? (
@@ -1563,8 +1572,32 @@ export function AgentEditorPage() {
         <ChatWindow
           dockerfileId={chatOpenFor}
           onClose={() => setChatOpenFor(null)}
+          secrets={decryptedSecrets ?? undefined}
+          dockerfileJsonContent={dockerfileJsonContentForLaunch}
         />
       )}
+
+      <ConfirmDialog
+        open={launchPendingSecrets !== null}
+        onOpenChange={(open) => {
+          if (!open) setLaunchPendingSecrets(null);
+        }}
+        title={t("launch_warning.title")}
+        description={t("launch_warning.description", {
+          keys: launchEmptyKeys.join(", "),
+        })}
+        confirmLabel={t("launch_warning.confirm")}
+        cancelLabel={t("launch_warning.cancel")}
+        onConfirm={async () => {
+          if (!form.dockerfile_id || !launchPendingSecrets) return;
+          const c = await containersApi.run(
+            form.dockerfile_id,
+            launchPendingSecrets,
+          );
+          setRunningContainerId(c.id);
+          setLaunchPendingSecrets(null);
+        }}
+      />
 
       {terminalContainer && (
         <TerminalWindow

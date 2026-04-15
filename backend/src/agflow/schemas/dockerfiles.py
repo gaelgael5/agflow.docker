@@ -98,6 +98,8 @@ class FileSummary(BaseModel):
     path: str
     content: str
     encoding: str = "utf-8"
+    type: Literal["file", "dir"] = "file"
+    size: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -110,6 +112,8 @@ class FileSummaryBase64(BaseModel):
     path: str
     content: str
     encoding: str = "base64"
+    type: Literal["file", "dir"] = "file"
+    size: int = 0
     created_at: datetime
     updated_at: datetime
 

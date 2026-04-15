@@ -20,10 +20,11 @@ import {
 } from "@/lib/vault";
 import { vaultApi } from "@/lib/userSecretsApi";
 
-type VaultState = "loading" | "uninitialized" | "locked" | "unlocked";
+type VaultState = "loading" | "uninitialized" | "locked" | "unlocked" | "error";
 
 interface VaultContextValue {
   state: VaultState;
+  lastError: string | null;
   setupVault: (passphrase: string) => Promise<void>;
   unlockVault: (passphrase: string) => Promise<boolean>;
   lockVault: () => void;
@@ -36,11 +37,13 @@ const VaultContext = createContext<VaultContextValue | null>(null);
 
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<VaultState>("loading");
+  const [lastError, setLastError] = useState<string | null>(null);
   const keyRef = useRef<VaultKey | null>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
       const status = await vaultApi.getStatus();
+      setLastError(null);
       if (!status.initialized) {
         setState("uninitialized");
       } else if (keyRef.current) {
@@ -48,8 +51,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       } else {
         setState("locked");
       }
-    } catch {
-      setState("loading");
+    } catch (err) {
+      setLastError(err instanceof Error ? err.message : String(err));
+      setState("error");
     }
   }, []);
 
@@ -101,7 +105,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   return (
     <VaultContext.Provider
-      value={{ state, setupVault, unlockVault, lockVault, encryptSecret, decryptSecret, refreshStatus }}
+      value={{ state, lastError, setupVault, unlockVault, lockVault, encryptSecret, decryptSecret, refreshStatus }}
     >
       {children}
     </VaultContext.Provider>

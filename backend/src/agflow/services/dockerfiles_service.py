@@ -162,6 +162,9 @@ async def update(
 
 
 async def delete(dockerfile_id: str) -> None:
+    import os
+    import shutil
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
@@ -169,4 +172,17 @@ async def delete(dockerfile_id: str) -> None:
         )
     if result == "DELETE 0":
         raise DockerfileNotFoundError(f"Dockerfile '{dockerfile_id}' not found")
+    # Wipe the on-disk slug dir (sources, generated .tmp/, workspace, etc.).
+    # Best-effort: log a warning if it fails, don't undo the DB delete.
+    slug_dir = dockerfile_files_service._slug_dir(dockerfile_id)
+    if os.path.isdir(slug_dir):
+        try:
+            shutil.rmtree(slug_dir)
+        except OSError as exc:
+            _log.warning(
+                "dockerfiles.delete.fs_cleanup_failed",
+                dockerfile_id=dockerfile_id,
+                slug_dir=slug_dir,
+                error=str(exc),
+            )
     _log.info("dockerfiles.delete", dockerfile_id=dockerfile_id)

@@ -372,6 +372,22 @@ export function MySecretsPage() {
     );
   }
 
+  if (vault.state === "error") {
+    return (
+      <PageShell>
+        <div className="space-y-4 max-w-xl">
+          <h2 className="text-lg font-semibold text-destructive">
+            {t("my_secrets.vault_status_error")}
+          </h2>
+          {vault.lastError && (
+            <p className="text-sm text-muted-foreground break-all">{vault.lastError}</p>
+          )}
+          <Button onClick={() => vault.refreshStatus()}>{t("my_secrets.retry")}</Button>
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell>
       <VaultSetupDialog

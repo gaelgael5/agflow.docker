@@ -2,6 +2,15 @@
   "app": {
     "title": "agflow.docker"
   },
+  "chat": {
+    "empty_launch_keys": "Empty launch keys: {{keys}}. The agent may fail if it needs them."
+  },
+  "launch_warning": {
+    "title": "Empty keys detected",
+    "description": "The following keys are empty and will be passed empty to the container: {{keys}}. Launch anyway?",
+    "confirm": "Launch anyway",
+    "cancel": "Cancel"
+  },
   "api_docs": {
     "subtitle": "Interactive REST API documentation"
   },
@@ -250,6 +259,9 @@
       "errors_close": "Close",
       "error_unknown": "Unknown error during import."
     },
+    "action_errors_title": "Action failed",
+    "action_errors_subtitle": "The operation could not be completed:",
+    "action_errors_close": "Close",
     "params": {
       "dialog_title": "Dockerfile parameters",
       "dialog_subtitle": "Docker runtime configuration for this agent — grouped by domain. {KEY} placeholders are resolved from the Params tab (agflow templating); ${VAR} and ${VAR:-default} are left for the shell.",
@@ -597,7 +609,9 @@
     "field_name": "Variable name",
     "field_value": "Value",
     "decrypt_error": "Decryption error",
-    "empty": "No secrets — add your first API key"
+    "empty": "No secrets — add your first API key",
+    "vault_status_error": "Could not load vault status",
+    "retry": "Retry"
   },
   "agent_editor": {
     "title_new": "New agent",

@@ -218,7 +218,9 @@ async def import_dockerfile(
 
     # Return the fresh detail.
     dockerfile = await dockerfiles_service.get_by_id(dockerfile_id)
-    files = await dockerfile_files_service.list_for_dockerfile(dockerfile_id)
+    files = await dockerfile_files_service.list_for_dockerfile(
+        dockerfile_id, include_dirs=True
+    )
     return DockerfileDetail(dockerfile=dockerfile, files=files)
 
 
@@ -262,7 +264,9 @@ async def get_dockerfile(dockerfile_id: str) -> DockerfileDetail:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
-    files = await dockerfile_files_service.list_for_dockerfile(dockerfile_id)
+    files = await dockerfile_files_service.list_for_dockerfile(
+        dockerfile_id, include_dirs=True
+    )
     return DockerfileDetail(dockerfile=dockerfile, files=files)
 
 
@@ -337,6 +341,20 @@ async def delete_file(dockerfile_id: str, file_id: UUID) -> None:
     except dockerfile_files_service.ProtectedFileError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+        ) from exc
+
+
+@router.delete(
+    "/{dockerfile_id}/dirs",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_dir(dockerfile_id: str, path: str) -> None:
+    """Recursively delete a directory inside the dockerfile's data dir."""
+    try:
+        await dockerfile_files_service.delete_dir(dockerfile_id, path)
+    except dockerfile_files_service.FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
 
 

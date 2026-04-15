@@ -2,6 +2,15 @@
   "app": {
     "title": "agflow.docker"
   },
+  "chat": {
+    "empty_launch_keys": "Clés vides au lancement : {{keys}}. L'agent risque d'échouer s'il en a besoin."
+  },
+  "launch_warning": {
+    "title": "Clés vides détectées",
+    "description": "Les clés suivantes sont vides et seront passées vides au conteneur : {{keys}}. Lancer quand même ?",
+    "confirm": "Lancer quand même",
+    "cancel": "Annuler"
+  },
   "api_docs": {
     "subtitle": "Documentation interactive de l'API REST"
   },
@@ -250,6 +259,9 @@
       "errors_close": "Fermer",
       "error_unknown": "Erreur inconnue lors de l'import."
     },
+    "action_errors_title": "Action échouée",
+    "action_errors_subtitle": "L'opération n'a pas pu être réalisée :",
+    "action_errors_close": "Fermer",
     "params": {
       "dialog_title": "Paramètres du Dockerfile",
       "dialog_subtitle": "Configuration du runtime Docker pour cet agent — onglets regroupés par domaine. Les placeholders {KEY} sont résolus depuis l'onglet Params (templating agflow) ; ${VAR} et ${VAR:-default} sont laissés au shell.",
@@ -597,7 +609,9 @@
     "field_name": "Nom de la variable",
     "field_value": "Valeur",
     "decrypt_error": "Erreur de déchiffrement",
-    "empty": "Aucun secret — ajoute ta première clé API"
+    "empty": "Aucun secret — ajoute ta première clé API",
+    "vault_status_error": "Impossible de charger l'état du coffre-fort",
+    "retry": "Réessayer"
   },
   "agent_editor": {
     "title_new": "Nouvel agent",

@@ -46,6 +46,7 @@
     --ring: 243 75% 59%;               /* indigo-600 */
 
     --radius: 0.5rem;
+    --caret-color: #18181b;
   }
 
   .dark {
@@ -82,6 +83,7 @@
     --border: 240 6% 18%;
     --input: 240 6% 16%;
     --ring: 243 75% 65%;
+    --caret-color: #fafafa;
   }
 }
 

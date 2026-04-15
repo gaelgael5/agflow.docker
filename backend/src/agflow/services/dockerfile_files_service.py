@@ -41,10 +41,7 @@ _DOCKERFILE_JSON_DEFAULT = """{
       "ANTHROPIC_API_KEY": "{API_KEY_NAME}"
     },
     "Mounts": [
-      { "source": "{WORKSPACE_PATH}", "target": "/app/workspace", "readonly": false },
-      { "source": "./config",         "target": "/app/config",    "readonly": true  },
-      { "source": "./skills",         "target": "/app/skills",    "readonly": true  },
-      { "source": "./output",         "target": "/app/output",    "readonly": false }
+      { "source": "{WORKSPACE_PATH}", "target": "/app/workspace", "readonly": false }
     ]
   },
   "Params": {
@@ -54,10 +51,24 @@ _DOCKERFILE_JSON_DEFAULT = """{
 }
 """
 
+_DESCRIPTION_MD_DEFAULT = """# Description
+
+Décris ici le rôle et le comportement attendu de cet agent.
+"""
+
+_ENTRYPOINT_SH_DEFAULT = """#!/usr/bin/env bash
+set -euo pipefail
+
+# Keep the container alive so you can `docker exec -ti` into it for
+# exploration. Replace with the real agent command when ready.
+exec sleep infinity
+"""
+
 STANDARD_FILE_CONTENTS: dict[str, str] = {
     "Dockerfile": "",
-    "entrypoint.sh": "",
+    "entrypoint.sh": _ENTRYPOINT_SH_DEFAULT,
     "Dockerfile.json": _DOCKERFILE_JSON_DEFAULT,
+    "description.md": _DESCRIPTION_MD_DEFAULT,
 }
 
 # All files auto-seeded on dockerfile creation.
@@ -70,6 +81,7 @@ PROTECTED_FILES: tuple[str, ...] = (
     "Dockerfile",
     "entrypoint.sh",
     "Dockerfile.json",
+    "description.md",
 )
 
 
@@ -112,6 +124,22 @@ def _file_summary(dockerfile_id: str, path: str, full_path: str) -> FileSummary:
         dockerfile_id=dockerfile_id,
         path=path,
         content=content,
+        type="file",
+        size=stat.st_size,
+        created_at=datetime.fromtimestamp(stat.st_ctime, tz=UTC),
+        updated_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
+    )
+
+
+def _dir_summary(dockerfile_id: str, path: str, full_path: str) -> FileSummary:
+    stat = os.stat(full_path)
+    return FileSummary(
+        id=_file_id(dockerfile_id, path),
+        dockerfile_id=dockerfile_id,
+        path=path,
+        content="",
+        type="dir",
+        size=0,
         created_at=datetime.fromtimestamp(stat.st_ctime, tz=UTC),
         updated_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
     )
@@ -141,18 +169,21 @@ async def seed_standard_files(dockerfile_id: str) -> list[FileSummary]:
     return created
 
 
-async def list_for_dockerfile(dockerfile_id: str) -> list[FileSummary]:
+async def list_for_dockerfile(
+    dockerfile_id: str, *, include_dirs: bool = False
+) -> list[FileSummary]:
+    from agflow.services.fs_walker import walk_tree
+
     slug_dir = _slug_dir(dockerfile_id)
-    if not os.path.isdir(slug_dir):
-        return []
     results: list[FileSummary] = []
-    for dirpath, dirnames, filenames in os.walk(slug_dir):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".") or d == ".tmp"]
-        for filename in filenames:
-            full_path = os.path.join(dirpath, filename)
-            rel_path = os.path.relpath(full_path, slug_dir).replace("\\", "/")
-            results.append(_file_summary(dockerfile_id, rel_path, full_path))
-    results.sort(key=lambda f: f.path)
+    for entry in walk_tree(slug_dir):
+        if entry.type == "dir":
+            if include_dirs:
+                results.append(
+                    _dir_summary(dockerfile_id, entry.path, entry.full_path)
+                )
+            continue
+        results.append(_file_summary(dockerfile_id, entry.path, entry.full_path))
     return results
 
 
@@ -219,6 +250,28 @@ async def delete(file_id: UUID) -> None:
         os.rmdir(parent)
         parent = os.path.dirname(parent)
     _log.info("dockerfile_files.delete", file_id=str(file_id))
+
+
+async def delete_dir(dockerfile_id: str, rel_path: str) -> None:
+    """Recursively delete a directory inside the dockerfile's data dir.
+
+    Used by the file explorer to drop dirs that have no registered files (e.g.
+    empty mount targets like ``config/``). Refuses any path that escapes the
+    dockerfile's slug dir.
+    """
+    import shutil
+
+    slug_dir = os.path.realpath(_slug_dir(dockerfile_id))
+    norm_rel = rel_path.strip().strip("/").replace("\\", "/")
+    if not norm_rel:
+        raise FileNotFoundError("Empty directory path")
+    target = os.path.realpath(os.path.join(slug_dir, norm_rel))
+    if not target.startswith(slug_dir + os.sep):
+        raise FileNotFoundError(f"Path '{rel_path}' is outside the dockerfile dir")
+    if not os.path.isdir(target):
+        raise FileNotFoundError(f"Directory '{rel_path}' not found")
+    shutil.rmtree(target)
+    _log.info("dockerfile_files.delete_dir", dockerfile_id=dockerfile_id, path=norm_rel)
 
 
 async def replace_all(

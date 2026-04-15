@@ -24,7 +24,12 @@ export function useContainers() {
       dockerfileId: string;
       secrets?: Record<string, string>;
     }) => containersApi.run(dockerfileId, secrets),
-    onSuccess: () => qc.invalidateQueries({ queryKey: CONTAINERS_KEY }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: CONTAINERS_KEY });
+      // Container start auto-creates mount dirs (workspace/, etc.) — refresh
+      // the dockerfile detail so the file tree picks them up.
+      qc.invalidateQueries({ queryKey: ["dockerfile", variables.dockerfileId] });
+    },
   });
 
   const stopMutation = useMutation({

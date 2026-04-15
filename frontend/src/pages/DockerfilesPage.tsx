@@ -31,6 +31,7 @@ import { BuildModal } from "@/components/BuildModal";
 import { CodeEditor } from "@/components/CodeEditor";
 import { FileTree } from "@/components/FileTree";
 import { useVault } from "@/hooks/useVault";
+import { useEmptyLaunchKeys } from "@/hooks/useEmptyLaunchKeys";
 import { userSecretsApi } from "@/lib/userSecretsApi";
 import { TerminalWindow } from "@/components/TerminalWindow";
 import { LogsWindow } from "@/components/LogsWindow";
@@ -62,7 +63,11 @@ import {
 
 // Visible files that cannot be deleted — mirrors backend PROTECTED_FILES,
 // minus Dockerfile.json which is hidden from the UI entirely.
-const PROTECTED_FILES: readonly string[] = ["Dockerfile", "entrypoint.sh"];
+const PROTECTED_FILES: readonly string[] = [
+  "Dockerfile",
+  "entrypoint.sh",
+  "description.md",
+];
 
 // Files that are system-managed (seeded + protected) but hidden from the
 // file list sidebar. Dockerfile.json holds the default parameters and is
@@ -107,6 +112,7 @@ export function DockerfilesPage() {
   const [actionErrors, setActionErrors] = useState<string[]>([]);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [chatOpenFor, setChatOpenFor] = useState<string | null>(null);
+  const [regenSpin, setRegenSpin] = useState(false);
   const [decryptedSecrets, setDecryptedSecrets] = useState<Record<string, string> | null>(null);
   const [showVaultUnlock, setShowVaultUnlock] = useState(false);
   const [logsContainer, setLogsContainer] = useState<{
@@ -152,6 +158,13 @@ export function DockerfilesPage() {
   const files = allFiles.filter((f) => !HIDDEN_FILES.includes(f.path));
   const dockerfileJsonFile =
     allFiles.find((f) => f.path === "Dockerfile.json") ?? null;
+  const { emptyKeys: launchEmptyKeys } = useEmptyLaunchKeys({
+    dockerfileJsonContent: dockerfileJsonFile?.content ?? null,
+    decryptedSecrets,
+  });
+  const [launchPendingSecrets, setLaunchPendingSecrets] = useState<
+    Record<string, string> | null
+  >(null);
   const selectedFile = files.find((f) => f.id === selectedFileId) ?? null;
 
   async function handleCreate(values: Record<string, string>) {
@@ -357,6 +370,10 @@ export function DockerfilesPage() {
         } catch { /* ignore */ }
       }
       const secrets = { ...vaultSecrets, ...testOverrides };
+      if (launchEmptyKeys.length > 0) {
+        setLaunchPendingSecrets(secrets);
+        return;
+      }
       await runContainerMutation.mutateAsync({
         dockerfileId: selectedId,
         secrets,
@@ -364,6 +381,15 @@ export function DockerfilesPage() {
     } catch {
       // Error handled by mutation state
     }
+  }
+
+  async function confirmRunContainer() {
+    if (!selectedId || !launchPendingSecrets) return;
+    await runContainerMutation.mutateAsync({
+      dockerfileId: selectedId,
+      secrets: launchPendingSecrets,
+    });
+    setLaunchPendingSecrets(null);
   }
 
   async function handleStopContainer(containerId: string) {
@@ -521,16 +547,21 @@ export function DockerfilesPage() {
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-7 w-7"
+                className="h-7 w-7 active:scale-100 active:translate-y-0 active:shadow-none"
                 onClick={async () => {
                   if (!selectedId) return;
+                  setRegenSpin(true);
+                  window.setTimeout(() => setRegenSpin(false), 1400);
                   const secrets = decryptedSecrets ?? await decryptUserSecrets();
                   await dockerfilesApi.regenerateTmp(selectedId, secrets);
                   qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
                 }}
                 title={t("dockerfiles.regenerate_tmp_button")}
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw
+                  className="w-3.5 h-3.5"
+                  style={regenSpin ? { animation: "spin 0.7s linear 2" } : undefined}
+                />
               </Button>
             </div>
 
@@ -655,6 +686,11 @@ export function DockerfilesPage() {
                       setShowAddFileDialog(true);
                     }}
                     onDeleteFolder={(folder) => setDeleteFolderPath(folder)}
+                    onDeleteFile={(id) => {
+                      setSelectedFileId(id);
+                      setDraftContent(null);
+                      setShowDeleteFileConfirm(true);
+                    }}
                   />
                 )}
               </div>
@@ -853,7 +889,10 @@ export function DockerfilesPage() {
           dockerfileId={selectedId}
           dockerfileName={currentDockerfile.display_name}
           buildId={buildId}
-          onClose={() => setBuildId(null)}
+          onClose={() => {
+            setBuildId(null);
+            qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
+          }}
         />
       )}
 
@@ -907,6 +946,20 @@ export function DockerfilesPage() {
       )}
 
       <ConfirmDialog
+        open={launchPendingSecrets !== null}
+        onOpenChange={(open) => {
+          if (!open) setLaunchPendingSecrets(null);
+        }}
+        title={t("launch_warning.title")}
+        description={t("launch_warning.description", {
+          keys: launchEmptyKeys.join(", "),
+        })}
+        confirmLabel={t("launch_warning.confirm")}
+        cancelLabel={t("launch_warning.cancel")}
+        onConfirm={confirmRunContainer}
+      />
+
+      <ConfirmDialog
         open={showDeleteDockerfileConfirm}
         onOpenChange={setShowDeleteDockerfileConfirm}
         title={t("dockerfiles.confirm_delete_title")}
@@ -944,11 +997,10 @@ export function DockerfilesPage() {
           const folderFiles = files.filter((f) =>
             f.path.startsWith(deleteFolderPath + "/"),
           );
-          await Promise.all(
-            folderFiles.map((f) =>
-              deleteFileMutation.mutateAsync({ dockerfileId: selectedId, fileId: f.id }),
-            ),
-          );
+          // Recursive dir delete handles both empty dirs (no files inside) and
+          // non-empty dirs in a single call.
+          await dockerfilesApi.deleteDir(selectedId, deleteFolderPath);
+          await qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
           if (selectedFileId && folderFiles.some((f) => f.id === selectedFileId)) {
             setSelectedFileId(null);
             setDraftContent(null);
@@ -986,6 +1038,7 @@ export function DockerfilesPage() {
           dockerfileId={chatOpenFor}
           onClose={() => setChatOpenFor(null)}
           secrets={decryptedSecrets ?? undefined}
+          dockerfileJsonContent={dockerfileJsonFile?.content ?? null}
         />
       )}
 
@@ -1096,9 +1149,9 @@ function ImportErrorsDialog({ errors, onClose }: ImportErrorsDialogProps) {
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{t("dockerfiles.import.errors_title")}</DialogTitle>
+          <DialogTitle>{t("dockerfiles.action_errors_title")}</DialogTitle>
           <DialogDescription>
-            {t("dockerfiles.import.errors_subtitle")}
+            {t("dockerfiles.action_errors_subtitle")}
           </DialogDescription>
         </DialogHeader>
         <ul className="space-y-1 list-disc list-inside text-[13px] text-destructive">
@@ -1108,7 +1161,7 @@ function ImportErrorsDialog({ errors, onClose }: ImportErrorsDialogProps) {
         </ul>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
-            {t("dockerfiles.import.errors_close")}
+            {t("dockerfiles.action_errors_close")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -7,16 +7,18 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Send, X } from "lucide-react";
+import { AlertTriangle, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bringToFront, cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useEmptyLaunchKeys } from "@/hooks/useEmptyLaunchKeys";
 
 export interface ChatWindowProps {
   dockerfileId: string;
   title?: string;
   onClose: () => void;
   secrets?: Record<string, string>;
+  dockerfileJsonContent?: string | null;
 }
 
 interface ChatMessage {
@@ -46,9 +48,14 @@ export function ChatWindow({
   title,
   onClose,
   secrets,
+  dockerfileJsonContent,
 }: ChatWindowProps) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const { emptyKeys } = useEmptyLaunchKeys({
+    dockerfileJsonContent,
+    decryptedSecrets: secrets,
+  });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -307,11 +314,7 @@ export function ChatWindow({
           }),
         });
       } else if (status === "success") {
-        appendMessage({
-          id: randomId(),
-          role: "system",
-          text: t("dockerfiles.chat_window.task_success"),
-        });
+        // no success banner — aider output speaks for itself
       } else {
         const snippet = renderEventData(event.data);
         if (snippet) updateLastAgentMessage((prev) => prev + snippet + "\n");
@@ -404,6 +407,16 @@ export function ChatWindow({
           <X className="w-3.5 h-3.5" />
         </Button>
       </div>
+
+      {/* Empty launch keys banner */}
+      {emptyKeys.length > 0 && (
+        <div className="flex items-start gap-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-950/40 border-b border-yellow-300 dark:border-yellow-900 text-yellow-900 dark:text-yellow-200 text-[12px]">
+          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>
+            {t("chat.empty_launch_keys", { keys: emptyKeys.join(", ") })}
+          </span>
+        </div>
+      )}
 
       {/* Messages */}
       <div

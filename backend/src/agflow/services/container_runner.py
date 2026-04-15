@@ -60,6 +60,7 @@ def _generate_tmp_files(
         task_path = os.path.join(tmp_dir, "task.json")
         with open(task_path, "w", encoding="utf-8") as f:
             _json.dump(task_payload, f, ensure_ascii=False)
+            f.write("\n")
 
     # run.sh
     lines = [
@@ -80,6 +81,8 @@ def _generate_tmp_files(
         cmd_parts.append(f"--network {host_config['NetworkMode']}")
     if host_config.get("Init"):
         cmd_parts.append("--init")
+    for label_key, label_value in (config.get("Labels") or {}).items():
+        cmd_parts.append(f'--label "{label_key}={label_value}"')
     for bind in host_config.get("Binds", []):
         cmd_parts.append(f'-v "{bind}"')
     if host_config.get("Memory"):
@@ -172,14 +175,30 @@ def expand_shell_vars(s: str, extra_env: dict[str, str] | None = None) -> str:
 
     Called AFTER agflow's own {KEY} resolution. Missing env vars fall back
     to the ``:-default`` clause if present, otherwise to an empty string.
+
+    Self-references (e.g. a Param ``WORKSPACE_PATH = "${WORKSPACE_PATH:-./x}"``
+    that ends up looking itself up via merged_env) are detected: if the value
+    obtained for ``VAR`` still mentions ``${VAR}``, we treat the lookup as a
+    miss and fall back to the inline default. Without this guard, the
+    self-referencing string would leak through to the consumer (Docker, the
+    .env file, etc.) and produce nonsense like ``invalid mode`` errors when
+    used inside bind mounts.
     """
     if not s:
         return s
     merged = {**os.environ, **(extra_env or {})}
-    return _SHELL_VAR_RE.sub(
-        lambda m: merged.get(m.group(1), m.group(2) or ""),
-        s,
-    )
+
+    def replacer(m: "re.Match[str]") -> str:
+        var_name = m.group(1)
+        default = m.group(2) or ""
+        value = merged.get(var_name)
+        if value is None:
+            return default
+        if f"${{{var_name}}}" in value or f"${{{var_name}:-" in value:
+            return default
+        return value
+
+    return _SHELL_VAR_RE.sub(replacer, s)
 
 
 def full_resolve(
@@ -529,6 +548,13 @@ def build_run_config(
         ) from exc
     working_dir = full_resolve(str(runtime.get("WorkingDir", "")), vars_map, extra_env) or None
     init_enabled = bool(runtime.get("Init", True))
+    # Tty + OpenStdin: opt-in via Runtime block. When True, the container is
+    # allocated a TTY and keeps stdin open, mimicking `docker run -ti`. The
+    # process inside stays alive while stdin remains open, which lets the
+    # operator `docker exec -ti <id>` for exploration even when the entrypoint
+    # would normally exit immediately (e.g. it expects a task on stdin).
+    tty_enabled = bool(runtime.get("Tty", False))
+    open_stdin = bool(runtime.get("OpenStdin", False))
 
     image_template = str(
         container.get("Image", f"agflow-{dockerfile_id}:{{hash}}")
@@ -559,8 +585,9 @@ def build_run_config(
         "Env": env_list,
         "Labels": labels,
         "StopSignal": stop_signal,
-        "Tty": False,
-        "OpenStdin": False,
+        "Tty": tty_enabled,
+        "OpenStdin": open_stdin,
+        "StdinOnce": False if open_stdin else True,
         "HostConfig": host_config,
     }
     if working_dir:
@@ -898,7 +925,14 @@ async def stop(container_id: str) -> None:
         except aiodocker.exceptions.DockerError:
             # Already stopped or in a weird state — still try to remove.
             pass
-        await container.delete(force=True)
+        try:
+            await container.delete(force=True)
+        except aiodocker.exceptions.DockerError as exc:
+            # 409 = "removal already in progress" (parallel click / polling
+            # double-trigger). 404 = already gone. Both mean the container is
+            # on its way out, treat as success.
+            if exc.status not in (404, 409):
+                raise
         _log.info("container.stop", container_id=container_id)
     finally:
         await docker.close()

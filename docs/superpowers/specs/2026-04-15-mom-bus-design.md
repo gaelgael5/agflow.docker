@@ -8,7 +8,27 @@
 
 Aujourd'hui, le chat de test d'un agent (M1) lance un container one-shot via `subprocess bash run.sh`, lui pousse une `task.json` sur stdin, lit stdout ligne par ligne, renvoie au client HTTP. Pas de bus, pas de persistance, pas de multi-consumer, pas d'inter-agents.
 
-Pour que M4 (composition multi-agents), M5 (API publique) et M6 (supervision) fonctionnent, il faut un **middleware orienté messages (MOM)** qui soit l'unique canal d'entrée/sortie des agents. La spec M5e impose **Redis Streams avec consumer groups** comme transport.
+Pour que M4 (composition multi-agents), M5 (API publique) et M6 (supervision) fonctionnent, il faut un **middleware orienté messages (MOM)** qui soit l'unique canal d'entrée/sortie des agents.
+
+### Choix de transport : PostgreSQL, pas Redis
+
+`specs/home.md` proposait initialement Redis Streams. Après analyse, on bascule sur **PostgreSQL comme transport du bus** (pattern `SELECT … FOR UPDATE SKIP LOCKED` + `LISTEN / NOTIFY`). Raisons :
+
+- **Redis ne sert presque à rien dans la stack actuelle** — une seule utilisation (rate-limiting d'un endpoint login). Le garder uniquement pour le MOM ajoute un service à maintenir sans gain significatif.
+- **Une seule source de vérité** : aligné avec la règle « PostgreSQL comme source de vérité unique » de `CLAUDE.md`. Le bus ET l'archive dans le même système, plus de divergence hot/cold.
+- **Atomicité transactionnelle** entre publish d'un message et modification d'état applicatif (pas besoin d'outbox pattern).
+- **Durabilité forte** native, sans tuning AOF/RDB.
+- **Traçabilité gratuite** : les messages sont déjà en DB dès la publication. Plus de consumer dédié juste pour persister.
+- **-1 service à opérer** dans le docker-compose.
+
+Compromis acceptés :
+- Latence ~50–100 ms (polling + `LISTEN/NOTIFY`) vs sub-ms Redis. Négligeable pour un stream LLM ligne-par-ligne (~500 ms entre lignes).
+- Implémentation soigneuse du claim/ack/reclaim à la main (pattern standard, bien documenté).
+- Charge DB additionnelle. Pour des dizaines de messages/s à notre échelle MVP, négligeable devant le reste du trafic CRUD.
+
+L'abstraction `MomPublisher`/`MomConsumer` reste identique à ce qu'elle aurait été avec Redis — si on veut pivoter vers Redis Streams ou NATS plus tard (ex: fédération multi-machines), seules ces deux classes changent.
+
+### Scope V1
 
 Le design ci-dessous traite ce point sans refondre tout le flux : le MOM remplace le pipe stdin/stdout direct entre backend et container, mais garde le modèle one-shot de la V1 (un container par instruction). Les agents long-running restent une évolution future.
 
@@ -49,7 +69,7 @@ Toute entrée/sortie sur le bus partage la même enveloppe, sérialisée JSON. C
 | Champ | Type | Obligatoire | Rempli par |
 |---|---|---|---|
 | `v` | int | oui | backend (constant = 1) |
-| `msg_id` | string | oui | backend (ID du `XADD`) |
+| `msg_id` | UUID | oui | backend (généré par `gen_random_uuid()` à l'INSERT) |
 | `session_id` | string | oui | backend (contexte HTTP / instance) |
 | `instance_id` | string | oui | backend (contexte HTTP / instance) |
 | `direction` | enum | oui | backend (`in` côté entrée, `out` côté sortie) |
@@ -117,14 +137,83 @@ Clés réservées fixées dès maintenant (pour cohérence future) :
 
 Toute autre clé K/V est autorisée (prépare les selectors futurs). V1 ne les lit pas.
 
-### Streams Redis — naming plat
+### Schéma Postgres du bus
 
-```
-agent:{instance_id}:in      # une instance, un stream entrant
-agent:{instance_id}:out     # une instance, un stream sortant
+Deux tables, rien d'autre :
+
+```sql
+-- Le log append-only. Jamais UPDATE, jamais DELETE (sauf purge planifiée).
+CREATE TABLE agent_messages (
+    msg_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    v            INT  NOT NULL DEFAULT 1,
+    session_id   UUID NOT NULL,
+    instance_id  UUID NOT NULL,   -- cible si direction='in', origine si direction='out'
+    direction    TEXT NOT NULL CHECK (direction IN ('in','out')),
+    kind         TEXT NOT NULL CHECK (kind IN ('instruction','cancel','event','result','error')),
+    payload      JSONB NOT NULL,
+    route        JSONB,           -- {target: "...", policy: "direct"} ou NULL
+    source       TEXT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ON agent_messages (instance_id, direction, created_at);
+CREATE INDEX ON agent_messages (session_id, created_at);
+
+-- L'état de livraison par consumer group. 1 ligne par (group, message).
+CREATE TABLE agent_message_delivery (
+    group_name    TEXT NOT NULL,
+    msg_id        UUID NOT NULL REFERENCES agent_messages(msg_id) ON DELETE CASCADE,
+    status        TEXT NOT NULL CHECK (status IN ('pending','claimed','acked','failed')),
+    claimed_at    TIMESTAMPTZ,
+    claimed_by    TEXT,            -- identité du consumer (pid@host / worker id)
+    acked_at      TIMESTAMPTZ,
+    retry_count   INT NOT NULL DEFAULT 0,
+    last_error    TEXT,
+    PRIMARY KEY (group_name, msg_id)
+);
+
+CREATE INDEX ON agent_message_delivery (group_name, status, msg_id)
+    WHERE status IN ('pending','claimed');
 ```
 
-Les labels vivent en DB, pas dans les noms de streams. Si on fédère sur plusieurs Redis un jour (un par pool sur une machine différente), on ajoutera un préfixe au niveau du **connecteur réseau**, pas du schema des streams.
+Analogie avec Redis Streams (pour comprendre la correspondance) :
+
+| Redis Streams | Postgres MOM |
+|---|---|
+| Stream `agent:{id}:in` | Lignes de `agent_messages` avec `instance_id=X AND direction='in'` |
+| Entrée `XADD` | INSERT transactionnel dans `agent_messages` + 1 INSERT delivery par group abonné |
+| Consumer group | Valeur de `group_name` dans `agent_message_delivery` |
+| `XREADGROUP` (claim) | `UPDATE … SET status='claimed' WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` |
+| `XACK` | `UPDATE … SET status='acked', acked_at=now()` |
+| Pending Entries List | Lignes `status='claimed'` |
+| `XAUTOCLAIM` (reclaim) | Balayage périodique : `UPDATE … SET status='pending' WHERE status='claimed' AND claimed_at < now() - interval '30 seconds'` |
+| `MAXLEN ~N` | Job périodique `DELETE FROM agent_messages WHERE created_at < now() - interval '30 days'` |
+
+### Wake-up des consumers
+
+Le polling seul donnerait 50–200 ms de latence. Pour descendre à ~10 ms, chaque `INSERT` suit d'un `pg_notify` :
+
+```sql
+SELECT pg_notify(
+    'agent_' || instance_id || '_' || direction,
+    msg_id::text
+);
+```
+
+Les consumers font `LISTEN agent_<instance_id>_<direction>` (ou un canal générique `LISTEN agent_bus`) et lisent dès réception du signal. Si le consumer rate un `NOTIFY` (reconnexion DB, démarrage), le polling backup (1 Hz) finit par le rattraper.
+
+### Consumer groups de la V1
+
+Pas de découverte dynamique : les groupes abonnés à chaque direction sont définis en config :
+
+| Direction | Groupes abonnés | Rôle |
+|---|---|---|
+| `in` (vers agent) | `dispatcher:{instance_id}` | lecture unique par le dispatcher de cet agent |
+| `out` (depuis agent) | `ws_push`, `router`, `tracing` | 3 groupes indépendants |
+
+À l'INSERT d'un message, le publisher génère les lignes de `agent_message_delivery` correspondantes (1 par groupe abonné à cette direction).
+
+Les labels vivent en DB (colonne `agents_instances.labels`), pas dans le naming des messages. Si un jour on fédère sur plusieurs machines, on réutilisera la même table via pg-réplication ou FDW — ou on pivotera sur NATS JetStream, la couche d'abstraction `MomPublisher` isolant le transport.
 
 ## Composants
 
@@ -166,7 +255,9 @@ class Envelope(BaseModel):
 
 ```python
 class MomPublisher:
-    def __init__(self, redis: aioredis.Redis): ...
+    def __init__(self, pool: asyncpg.Pool, groups_config: dict[Direction, list[str]]):
+        """groups_config déclare quels groups sont abonnés à chaque direction.
+        Ex: {IN: ["dispatcher"], OUT: ["ws_push", "router", "tracing"]}."""
 
     async def publish(
         self,
@@ -179,28 +270,69 @@ class MomPublisher:
         payload: dict,
         route: Route | None = None,
     ) -> str:
-        """Construit l'enveloppe, XADD, retourne le msg_id.
-        Seul endroit qui fait XADD dans tout le code."""
+        """Construit l'enveloppe, INSERT dans agent_messages + 1 delivery par
+        group abonné, émet un pg_notify, retourne le msg_id.
+        Seul endroit qui fait INSERT dans tout le code. Transactionnel."""
 ```
 
-Clé du stream déterminée par `direction` et `instance_id` (ou `target` si fan-out par le Router — mais le Router appelle aussi `publish()` comme tout le monde).
+Si le publisher est appelé à l'intérieur d'une transaction applicative (ex: lors d'un commit d'état), il réutilise la connexion en cours → atomicité gratuite entre publish et état métier.
 
 ### 3. `consumer.py` — générique
 
 ```python
 class MomConsumer:
-    def __init__(self, redis: aioredis.Redis, group: str, consumer_name: str): ...
+    def __init__(self, pool: asyncpg.Pool, group_name: str, consumer_id: str):
+        """consumer_id identifie l'instance de ce worker (ex: f'{pid}@{host}')."""
 
-    async def ensure_group(self, stream: str) -> None: ...
+    async def iter_messages(
+        self,
+        *,
+        instance_id: UUID | None = None,
+        direction: Direction | None = None,
+        batch_size: int = 50,
+    ) -> AsyncIterator[Envelope]:
+        """Boucle: LISTEN sur le canal notify, puis claim batch via
+        SELECT FOR UPDATE SKIP LOCKED + UPDATE status='claimed'.
+        Yield les enveloppes une par une. L'appelant doit ACK après traitement."""
 
-    async def iter_messages(self, stream: str) -> AsyncIterator[Envelope]:
-        """XREADGROUP boucle. Yield Envelope. L'appelant doit ACK."""
+    async def ack(self, msg_id: UUID) -> None:
+        """UPDATE status='acked', acked_at=now() pour (group_name, msg_id)."""
 
-    async def ack(self, stream: str, msg_id: str) -> None: ...
+    async def fail(self, msg_id: UUID, error: str) -> None:
+        """Marque échec: incrémente retry_count, repasse en pending ou 'failed'
+        selon un seuil max_retries configurable."""
 
-    async def autoclaim_pending(self, stream: str, min_idle_ms: int) -> list[Envelope]:
-        """XAUTOCLAIM pour récupérer les messages coincés par un consumer crashé."""
+    async def reclaim_stale(self, max_idle: timedelta = timedelta(seconds=30)) -> int:
+        """Balayage périodique: UPDATE status='pending' WHERE status='claimed'
+        AND claimed_at < now() - max_idle. Retourne le nombre rebasculé.
+        À appeler depuis un worker de supervision (M6)."""
 ```
+
+Le claim se fait en une seule requête :
+
+```sql
+WITH claimed AS (
+    SELECT d.msg_id
+    FROM agent_message_delivery d
+    JOIN agent_messages m USING (msg_id)
+    WHERE d.group_name = $1
+      AND d.status = 'pending'
+      AND ($2::uuid IS NULL OR m.instance_id = $2)
+      AND ($3::text IS NULL OR m.direction = $3)
+    ORDER BY m.created_at
+    FOR UPDATE OF d SKIP LOCKED
+    LIMIT $4
+)
+UPDATE agent_message_delivery d
+SET status = 'claimed',
+    claimed_at = now(),
+    claimed_by = $5
+FROM claimed
+WHERE d.group_name = $1 AND d.msg_id = claimed.msg_id
+RETURNING d.msg_id;
+```
+
+`SKIP LOCKED` permet à N consumers concurrents dans le même groupe de se partager la file sans se bloquer.
 
 ### 4. `adapters/base.py`
 
@@ -249,7 +381,7 @@ class AgentDispatcher:
 
     async def run(self) -> None:
         """Tâches concurrentes:
-        - in_loop: iter_messages agent:{id}:in → adapter.format_stdin → container.stdin
+        - in_loop: consumer.iter_messages(instance_id, IN) → adapter.format_stdin → container.stdin
         - out_loop: container.stdout line → adapter.parse_stdout_line → publisher.publish(OUT)
         - termination: quand result reçu ou container exit → publish result si manquant
         """
@@ -257,17 +389,21 @@ class AgentDispatcher:
 
 ### 8. `consumers/router.py` — spécialisé mais générique (aucune connaissance d'agent)
 
-S'abonne à `agent:*:out`. Quand `envelope.route.target` est présent :
+Consumer group `router`, lit `agent_messages WHERE direction='out'`. Quand `envelope.route.target` est présent :
 - `agent:X` → `publisher.publish(direction=IN, instance_id=X, kind=envelope.kind, payload=envelope.payload, source=envelope.source)`.
 - `team:*` / `pool:*` / `session:*` → `publisher.publish(OUT, kind=ERROR, payload={"message": "route_type_not_yet_supported", "target": target}, source="system")` vers la source initiale, puis ACK.
 
 ### 9. `consumers/tracing.py`
 
-S'abonne à `agent:*:out` (et optionnellement `:in`) ; insère chaque enveloppe en Postgres pour M5f. Non critique pour V1 du MOM mais trivial à brancher.
+Rôle particulier : comme les messages sont **déjà persistés** dans `agent_messages` par le publisher, ce consumer n'a **rien à écrire**. Il existe uniquement pour :
+- exposer des métriques (compteur par kind/direction),
+- ACK sa copie de delivery pour que le GC puisse purger les vieilles lignes proprement.
+
+C'est la force du transport Postgres : **la persistance est un effet de bord gratuit de la publication**. `GET /api/v1/sessions/{s}/agents/{i}/messages` est simplement `SELECT * FROM agent_messages WHERE … ORDER BY created_at` — pas de consumer dédié à écrire.
 
 ### 10. `consumers/ws_push.py`
 
-S'abonne à `agent:*:out` pour une `instance_id` donnée (stream d'une WebSocket client). Pousse les enveloppes vers le client. Sert le endpoint `WebSocket /api/v1/sessions/{s}/agents/{i}/stream`.
+Consumer group `ws_push_{ws_connection_id}` (un groupe éphémère par WebSocket cliente connectée). Lit `agent_messages WHERE instance_id=X AND direction='out'`. Pousse chaque enveloppe vers la WebSocket. À la déconnexion, le groupe est nettoyé (les lignes de delivery restantes peuvent être supprimées). Sert le endpoint `WebSocket /api/v1/sessions/{s}/agents/{i}/stream`.
 
 ## Flow de bout en bout
 
@@ -279,9 +415,9 @@ Web/HTTP client
 Backend REST handler
   │ enrichit l'enveloppe (msg_id, session_id, instance_id, direction=in, source, timestamp, v)
   ▼
-MomPublisher.publish()  ──XADD agent:{a}:in──▶ Redis
+MomPublisher.publish()  ──INSERT agent_messages + delivery + pg_notify──▶ Postgres
                                                     │
-                                                    │ XREADGROUP
+                                                    │ LISTEN + SELECT FOR UPDATE SKIP LOCKED
                                                     ▼
                                               AgentDispatcher (instance {a})
                                                     │
@@ -298,15 +434,15 @@ MomPublisher.publish()  ──XADD agent:{a}:in──▶ Redis
                                               AgentDispatcher
                                                     │ adapter.parse_stdout_line(line) → (kind, payload)
                                                     ▼
-                                              MomPublisher.publish() ──XADD agent:{a}:out──▶ Redis
+                                              MomPublisher.publish() ──INSERT agent_messages + delivery──▶ Postgres
                                                                                                 │
                                                                 ┌───────────────────────────────┼──────────────────────────┐
                                                                 ▼                               ▼                          ▼
                                                          ws_push consumer             tracing consumer              router consumer
-                                                         push vers WebSocket       insert en Postgres           si route.target présent
-                                                                                                                      ▼
+                                                         push vers WebSocket       (archive déjà en DB,          si route.target présent
+                                                                                    juste ACK pour le group)              ▼
                                                                                                            publish direction=in
-                                                                                                           vers agent:{target}:in
+                                                                                                           vers instance target
 ```
 
 ## Composition M4 — labels et peers
@@ -342,23 +478,36 @@ L'agent émet alors littéralement `route.target = "agent:specialist-python-xyz"
 | Routage `team:` / `pool:` / `session:` | MVP à 1 agent puis inter-agents directs suffit. | Router déjà câblé sur les préfixes, il suffit d'ajouter les branches de résolution. |
 | `route.policy` = `broadcast` / `any` / `round_robin` | Sans team/pool, pas d'usage. | Champ déjà déclaré dans l'enveloppe. |
 | Agents long-running | Complexifie le lifecycle et le cancel. | Dispatcher déjà une boucle `async for` sur les messages ; il suffira de ne pas terminer quand le container ne meurt pas. |
-| Fédération multi-Redis (1 par pool) | Un seul Redis suffit pour dizaines d'agents. | Préfixer les stream names au niveau du connecteur, pas du schema. |
+| Fédération multi-machines | MVP mono-nœud, un Postgres suffit largement. | Options : (a) pg-replication logique + FDW ; (b) pivoter `MomPublisher`/`MomConsumer` vers NATS JetStream. Les deux restent confinés derrière l'abstraction. |
 | MCP proxy pour audit | Latence et complexité, pas demandé pour V1. | Ajouter une classe qui s'interpose entre agent et serveur MCP et mirror vers le bus. |
 
 ## Livrables V1
 
-1. Module `backend/src/agflow/mom/` : `envelope.py`, `publisher.py`, `consumer.py`, `dispatcher.py`.
-2. Module `backend/src/agflow/mom/adapters/` : `base.py`, `generic.py`, `mistral.py`.
-3. Module `backend/src/agflow/mom/consumers/` : `router.py`, `ws_push.py`, `tracing.py`.
-4. Migration SQL : `agents_instances.labels JSONB` + 2 index + table messages pour traçabilité (schéma à préciser dans le plan d'impl).
+1. Migration SQL : `agent_messages` + `agent_message_delivery` + index + `agents_instances.labels JSONB`.
+2. Module `backend/src/agflow/mom/` : `envelope.py`, `publisher.py` (asyncpg), `consumer.py` (SKIP LOCKED + LISTEN/NOTIFY), `dispatcher.py`.
+3. Module `backend/src/agflow/mom/adapters/` : `base.py`, `generic.py`, `mistral.py`.
+4. Module `backend/src/agflow/mom/consumers/` : `router.py`, `ws_push.py`, `tracing.py`.
 5. Refactor de `container_runner.py` : l'ancien flux subprocess direct est remplacé par l'appel `AgentDispatcher.run()`.
 6. Refactor de `entrypoint.sh` (Mistral) : lit l'enveloppe complète sur stdin, émet `{kind, payload}` minimal sur stdout, un `result` final.
-7. Endpoints API : `POST /api/v1/sessions/{s}/agents/{a}/message`, `WS /api/v1/sessions/{s}/agents/{a}/stream`.
-8. Tests : producteur → consumer roundtrip, adapter Mistral (format_stdin + parse_stdout_line), router direct-to-agent, wrapping tolérant des lignes non-conformes.
+7. Endpoints API : `POST /api/v1/sessions/{s}/agents/{a}/message`, `WS /api/v1/sessions/{s}/agents/{a}/stream`, `GET /api/v1/sessions/{s}/agents/{a}/messages`.
+8. Worker de supervision (M6) : job périodique `reclaim_stale()` (rebascule les claims zombies) + purge `DELETE FROM agent_messages WHERE created_at < now() - retention`.
+9. Tests : producteur → consumer roundtrip, adapter Mistral (format_stdin + parse_stdout_line), router direct-to-agent, wrapping tolérant des lignes non-conformes, claim concurrent (deux consumers du même groupe ne prennent pas le même message), reclaim après crash.
+
+### Retrait de Redis (bonus inclus dans la bascule)
+
+La bascule Postgres rend Redis inutile dans la stack. À faire dans le même plan :
+
+10. Migrer le rate-limiting de `auth/api_key.py` (`INCR` + `EXPIRE`) vers Postgres : table `rate_limit_counters (prefix, window_start, count)` + `ON CONFLICT DO UPDATE`. ~30 lignes.
+11. Retirer le service `redis` de `docker-compose.prod.yml` et `docker-compose.yml`.
+12. Retirer la dépendance `redis` de `backend/pyproject.toml`.
+13. Supprimer le module `backend/src/agflow/redis/` et le réglage `redis_url` de `config.py`.
 
 ## Vérification
 
 - `pytest backend/tests/mom/` passe (TDD rouge → vert pour chaque brique).
-- Smoke test : depuis l'UI, envoyer un prompt à un agent Mistral dans une session → recevoir le stream propre via WebSocket, avec les messages archivés en Postgres.
+- Smoke test : depuis l'UI, envoyer un prompt à un agent Mistral dans une session → recevoir le stream propre via WebSocket, avec les messages archivés en Postgres (`SELECT * FROM agent_messages WHERE instance_id=... ORDER BY created_at`).
 - Inter-agent direct : composer 2 agents dans une session, prompt du tech-lead inclut l'`instance_id` du specialist, dispatcher un message → il arrive sur le specialist, son résultat revient.
+- Claim concurrent : lancer 2 workers dans le même consumer group, publier 100 messages → vérifier que chaque message est livré à **un** seul consumer (pas de doublon, pas de perte).
+- Reclaim : publier un message, simuler crash du consumer après claim (kill -9), attendre `max_idle` → vérifier qu'un autre consumer du même groupe récupère le message.
 - Cas d'erreur : route.target `team:x` → `error/route_type_not_yet_supported` renvoyée à la source ; ligne non-JSON d'un agent → wrapping `event/raw` sans crash.
+- Retrait de Redis : `docker compose ps` ne liste plus `agflow-redis`, les tests de rate-limiting passent sur le nouveau backend Postgres.

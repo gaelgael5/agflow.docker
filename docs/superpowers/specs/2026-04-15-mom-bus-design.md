@@ -49,7 +49,8 @@ Toute entrée/sortie sur le bus partage la même enveloppe, sérialisée JSON. C
 ```json
 {
   "v": 1,
-  "msg_id": "01HXY7ABC123...",
+  "msg_id": "a1b2c3d4-...",
+  "parent_msg_id": "e5f6a7b8-..." | null,
   "session_id": "sess-42",
   "instance_id": "agent-tech-lead-abc",
   "direction": "in" | "out",
@@ -70,6 +71,7 @@ Toute entrée/sortie sur le bus partage la même enveloppe, sérialisée JSON. C
 |---|---|---|---|
 | `v` | int | oui | backend (constant = 1) |
 | `msg_id` | UUID | oui | backend (généré par `gen_random_uuid()` à l'INSERT) |
+| `parent_msg_id` | UUID | non | backend (chaînage : dispatch, fan-out, réponse à instruction) |
 | `session_id` | string | oui | backend (contexte HTTP / instance) |
 | `instance_id` | string | oui | backend (contexte HTTP / instance) |
 | `direction` | enum | oui | backend (`in` côté entrée, `out` côté sortie) |
@@ -144,20 +146,22 @@ Deux tables, rien d'autre :
 ```sql
 -- Le log append-only. Jamais UPDATE, jamais DELETE (sauf purge planifiée).
 CREATE TABLE agent_messages (
-    msg_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    v            INT  NOT NULL DEFAULT 1,
-    session_id   UUID NOT NULL,
-    instance_id  UUID NOT NULL,   -- cible si direction='in', origine si direction='out'
-    direction    TEXT NOT NULL CHECK (direction IN ('in','out')),
-    kind         TEXT NOT NULL CHECK (kind IN ('instruction','cancel','event','result','error')),
-    payload      JSONB NOT NULL,
-    route        JSONB,           -- {target: "...", policy: "direct"} ou NULL
-    source       TEXT NOT NULL,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    msg_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    parent_msg_id  UUID REFERENCES agent_messages(msg_id),  -- chaînage : dispatch, fan-out, réponse
+    v              INT  NOT NULL DEFAULT 1,
+    session_id     UUID NOT NULL,
+    instance_id    UUID NOT NULL,   -- cible si direction='in', origine si direction='out'
+    direction      TEXT NOT NULL CHECK (direction IN ('in','out')),
+    kind           TEXT NOT NULL CHECK (kind IN ('instruction','cancel','event','result','error')),
+    payload        JSONB NOT NULL,
+    route          JSONB,           -- {target: "...", policy: "direct"} ou NULL
+    source         TEXT NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX ON agent_messages (instance_id, direction, created_at);
 CREATE INDEX ON agent_messages (session_id, created_at);
+CREATE INDEX ON agent_messages (parent_msg_id) WHERE parent_msg_id IS NOT NULL;
 
 -- L'état de livraison par consumer group. 1 ligne par (group, message).
 CREATE TABLE agent_message_delivery (
@@ -468,7 +472,89 @@ agent:
    - `AGFLOW_PEERS` (JSON liste `[{instance_id, labels}]`)
 4. Le system prompt de l'agent (défini au niveau du rôle M2) reçoit la liste des peers, avec des instructions explicites sur qui contacter pour quoi. **Le prompt dit quoi dispatcher à qui.**
 
-L'agent émet alors littéralement `route.target = "agent:specialist-python-xyz"` dans sa sortie. Pas de résolution côté adapter.
+L'agent émet alors littéralement `route_to = "agent:specialist-python-xyz"` dans sa sortie JSON. L'adapter reconnaît ce champ, le mappe vers `route.target` dans l'enveloppe, et le supprime du `payload`.
+
+## Chaînage des messages (`parent_msg_id`)
+
+Chaque message peut référencer le message qui l'a déclenché via `parent_msg_id`. Cela permet de reconstruire les arbres de conversations : instruction → events → result, dispatch → fan-out → réponses.
+
+### Quand `parent_msg_id` est rempli
+
+| Situation | `parent_msg_id` |
+|---|---|---|
+| Message initial (user → agent via API) | `NULL` |
+| Router re-publie un OUT comme IN vers un autre agent | `msg_id` du message OUT original |
+| Agent répond (direction=out) à une instruction reçue (direction=in) | `msg_id` du message IN qui l'a déclenché |
+| Événements de progression (stdout) pendant le traitement d'une instruction | `msg_id` de l'instruction IN en cours |
+
+Le dispatcher connaît le `msg_id` de l'instruction courante (il vient de la consommer) et le transmet au publisher pour chaque ligne de sortie.
+
+### Requêtes de traçabilité
+
+```sql
+-- Qui a consommé (reçu en IN) un message produit par l'agent tech-lead ?
+SELECT * FROM agent_messages WHERE parent_msg_id = $original_msg_id;
+
+-- Chaîne complète instruction → dispatch → sous-résultats (CTE récursif)
+WITH RECURSIVE chain AS (
+    SELECT *, 0 AS depth FROM agent_messages WHERE msg_id = $root_msg_id
+    UNION ALL
+    SELECT m.*, c.depth + 1 FROM agent_messages m JOIN chain c ON m.parent_msg_id = c.msg_id
+)
+SELECT depth, instance_id, direction, kind, payload->>'text' AS preview, source, created_at
+FROM chain ORDER BY created_at;
+```
+
+## Routage additif
+
+Le routage vers un autre agent est **additif** : le message reste visible par tous les consumer groups OUT habituels (ws_push, tracing, router). L'utilisateur voit toujours tout ce que l'agent produit, y compris les dispatches inter-agents. L'UI peut afficher les messages routés avec un badge "→ dispatché à X".
+
+Concrètement :
+- Message OUT avec `route=null` → ws_push + tracing l'ACK. Router ignore.
+- Message OUT avec `route.target="agent:X"` → ws_push + tracing l'ACK. Router crée un **nouveau** message IN pour agent X avec `parent_msg_id` pointant vers l'original.
+
+Fan-out (futur) : si `route.target="team:python"`, le Router crée N messages IN (un par agent du team), tous chaînés au même parent.
+
+## Signature adapter enrichie
+
+L'adapter retourne un 3e élément optionnel (`Route | None`) pour le routage :
+
+```python
+class AgentAdapter(Protocol):
+    name: str
+
+    def format_stdin(self, envelope: Envelope) -> bytes:
+        """Enveloppe entrante → octets à écrire sur stdin du container."""
+
+    def parse_stdout_line(self, raw: str) -> tuple[Kind, dict, Route | None]:
+        """Une ligne stdout → (kind, payload, route optionnel).
+        Route is extracted from agent-specific conventions (e.g. 'route_to' field).
+        GenericAdapter retourne toujours None pour route."""
+```
+
+Pour le `MistralAdapter` : si le JSON de la ligne contient un champ `route_to`, l'adapter le retire du payload et le convertit en `Route(target=route_to)`.
+
+## Observabilité
+
+Tout est en Postgres — l'observation est un `SELECT`.
+
+### Endpoints admin
+
+| Endpoint | Données |
+|---|---|
+| `GET /api/admin/mom/dashboard` | Agents : instance_id, status, labels, last_activity, error_count |
+| `GET /api/admin/mom/consumers` | Santé consumers : group_name, pending, in_flight, acked, failed, oldest_pending |
+| `GET /api/admin/mom/messages?instance_id=&kind=&direction=&limit=` | Timeline messages brute, enveloppes complètes |
+| `GET /api/admin/mom/chain?msg_id=` | CTE récursif : arbre complet depuis un msg_id racine |
+
+### SupervisionPage (M6)
+
+5 vues :
+1. **Dashboard agents** — table instance / type / status / team / dernière activité / erreurs.
+2. **Timeline messages** — chronologie d'une instance avec icônes direction, badges kind, preview texte.
+3. **Santé consumers** — lag par group, alertes visuelles si pending > seuil.
+4. **Erreurs** — liste filtrée `kind=error`, payload expandable.
+5. **Graphe routage** — qui parle à qui (source → route.target), volumes.
 
 ## Cas non traités en V1 (extensions prévues)
 

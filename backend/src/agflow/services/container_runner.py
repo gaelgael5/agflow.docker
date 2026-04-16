@@ -773,6 +773,7 @@ async def run_task(
     user_secrets: dict[str, str] | None = None,
     on_container_started: Any | None = None,
     cleanup: bool = False,
+    session_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """One-shot: regenerate .tmp/{.env, run.sh, task.json} then exec run.sh.
 
@@ -790,6 +791,7 @@ async def run_task(
     """
     import asyncio as _asyncio
     import json as _json
+    import secrets as _secrets
     import shutil as _shutil
 
     import aiodocker as _aiodocker
@@ -804,6 +806,7 @@ async def run_task(
             f"Maximum of {MAX_RUNNING_CONTAINERS} running containers reached."
         )
 
+    session_id = session_id or _secrets.token_hex(6)
     instance_id = secrets.token_hex(3)
     platform_secrets = await _load_platform_secrets()
     all_secrets = {**platform_secrets, **(user_secrets or {})}
@@ -832,6 +835,28 @@ async def run_task(
             raise
     finally:
         await _aio.close()
+
+    from agflow.db.pool import get_pool
+    from agflow.mom.envelope import Direction, Kind
+    from agflow.mom.publisher import MomPublisher
+
+    _mom_pool = await get_pool()
+    _mom_publisher = MomPublisher(
+        pool=_mom_pool,
+        groups_config={
+            Direction.IN: ["dispatcher"],
+            Direction.OUT: ["ws_push", "router"],
+        },
+    )
+    _in_msg_id = await _mom_publisher.publish(
+        session_id=session_id,
+        instance_id=instance_id,
+        direction=Direction.IN,
+        source="system",
+        kind=Kind.INSTRUCTION,
+        payload=task_payload,
+    )
+    _adapter = get_adapter(dockerfile_id)
 
     # Regenerate .tmp/{.env, run.sh, task.json} — run.sh is the source of
     # truth for the launch.
@@ -877,6 +902,24 @@ async def run_task(
                 text = line.decode("utf-8", errors="replace").rstrip("\r\n")
                 if not text:
                     continue
+
+                try:
+                    _parsed = _adapter.parse_stdout_line(text)
+                    if _parsed is not None:
+                        _kind, _payload, _route = _parsed
+                        await _mom_publisher.publish(
+                            session_id=session_id,
+                            instance_id=instance_id,
+                            direction=Direction.OUT,
+                            source=f"agent:{instance_id}",
+                            kind=_kind,
+                            payload=_payload,
+                            route=_route,
+                            parent_msg_id=_in_msg_id,
+                        )
+                except Exception as _exc:
+                    _log.warning("mom.publish_out_failed", error=str(_exc), text=text[:100])
+
                 try:
                     yield _json.loads(text)
                 except _json.JSONDecodeError:
@@ -892,6 +935,34 @@ async def run_task(
         await proc.wait()
 
         exit_code = proc.returncode or 0
+
+        try:
+            if timed_out:
+                await _mom_publisher.publish(
+                    session_id=session_id,
+                    instance_id=instance_id,
+                    direction=Direction.OUT,
+                    source="system",
+                    kind=Kind.ERROR,
+                    payload={"message": "timeout", "timeout_seconds": timeout_seconds},
+                    parent_msg_id=_in_msg_id,
+                )
+            elif exit_code != 0:
+                await _mom_publisher.publish(
+                    session_id=session_id,
+                    instance_id=instance_id,
+                    direction=Direction.OUT,
+                    source="system",
+                    kind=Kind.ERROR,
+                    payload={
+                        "message": f"container exited with code {exit_code}",
+                        "exit_code": exit_code,
+                    },
+                    parent_msg_id=_in_msg_id,
+                )
+        except Exception as _exc:
+            _log.warning("mom.publish_result_failed", error=str(_exc))
+
         yield {
             "type": "done",
             "status": "success" if exit_code == 0 else "failure",

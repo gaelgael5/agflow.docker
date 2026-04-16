@@ -207,7 +207,7 @@ def expand_shell_vars(s: str, extra_env: dict[str, str] | None = None) -> str:
         return s
     merged = {**os.environ, **(extra_env or {})}
 
-    def replacer(m: "re.Match[str]") -> str:
+    def replacer(m: re.Match[str]) -> str:
         var_name = m.group(1)
         default = m.group(2) or ""
         value = merged.get(var_name)
@@ -777,6 +777,7 @@ async def run_task(
     on_container_started: Any | None = None,
     cleanup: bool = False,
     session_id: str | None = None,
+    agent_instance_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """One-shot: regenerate .tmp/{.env, run.sh, task.json} then exec run.sh.
 
@@ -820,6 +821,16 @@ async def run_task(
         instance_id=instance_id,
         extra_env=all_secrets,
     )
+    if agent_instance_id is not None:
+        try:
+            from uuid import UUID as _UUID
+
+            from agflow.services.agents_instances_service import (
+                set_last_container as _set_lc,
+            )
+            await _set_lc(instance_id=_UUID(str(agent_instance_id)), container_name=name)
+        except Exception as _exc:
+            _log.warning("run_task.set_container.failed", error=str(_exc))
     _ensure_mount_paths_from_config(
         dockerfile_id, params_json_content, instance_id, content_hash
     )
@@ -987,6 +998,16 @@ async def run_task(
             except Exception:
                 pass
             _shutil.rmtree(tmp_dir, ignore_errors=True)
+        if agent_instance_id is not None:
+            try:
+                from uuid import UUID as _UUID
+
+                from agflow.services.agents_instances_service import (
+                    set_last_container as _set_lc,
+                )
+                await _set_lc(instance_id=_UUID(str(agent_instance_id)), container_name=None)
+            except Exception as _exc:
+                _log.warning("run_task.clear_container.failed", error=str(_exc))
 
 
 async def stop(container_id: str) -> None:

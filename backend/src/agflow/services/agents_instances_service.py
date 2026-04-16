@@ -98,3 +98,20 @@ async def destroy(*, session_id: UUID, instance_id: UUID) -> bool:
             instance_id=str(instance_id),
         )
     return ok
+
+
+async def set_last_container(
+    *, instance_id: UUID, container_name: str | None,
+) -> None:
+    await execute(
+        "UPDATE agents_instances SET last_container_name = $1 WHERE id = $2",
+        container_name, instance_id,
+    )
+
+
+async def get_last_container_name(instance_id: UUID) -> str | None:
+    row = await fetch_one(
+        "SELECT last_container_name FROM agents_instances WHERE id = $1",
+        instance_id,
+    )
+    return row["last_container_name"] if row else None

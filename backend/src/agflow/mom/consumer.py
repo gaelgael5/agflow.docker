@@ -63,9 +63,17 @@ WHERE status = 'claimed' AND claimed_at < now() - $1::interval
 MAX_RETRIES = 3
 
 
+def _decode_jsonb(value: object) -> object:
+    if isinstance(value, str):
+        import json
+        return json.loads(value)
+    return value
+
+
 def _row_to_envelope(row: asyncpg.Record) -> Envelope:
-    route_data = row["route"]
+    route_data = _decode_jsonb(row["route"])
     route = Route.model_validate(route_data) if route_data else None
+    payload = _decode_jsonb(row["payload"])
     return Envelope(
         v=row["v"],
         msg_id=str(row["msg_id"]),
@@ -76,7 +84,7 @@ def _row_to_envelope(row: asyncpg.Record) -> Envelope:
         timestamp=row["created_at"],
         source=row["source"],
         kind=Kind(row["kind"]),
-        payload=row["payload"],
+        payload=payload if isinstance(payload, dict) else {},
         route=route,
     )
 

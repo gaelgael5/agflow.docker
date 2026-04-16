@@ -13,12 +13,15 @@ import structlog
 
 from agflow.mom.adapters.generic import GenericAdapter
 from agflow.mom.adapters.mistral import MistralAdapter
+from agflow.mom.adapters.wrapped import WrappedEntrypointAdapter
 from agflow.schemas.containers import ContainerInfo
 
 _log = structlog.get_logger(__name__)
 
 _ADAPTER_REGISTRY: dict[str, type[GenericAdapter]] = {
     "mistral": MistralAdapter,
+    "aider": WrappedEntrypointAdapter,
+    "codex": WrappedEntrypointAdapter,
     "generic": GenericAdapter,
 }
 

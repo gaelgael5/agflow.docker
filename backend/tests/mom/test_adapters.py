@@ -4,6 +4,7 @@ import json
 
 from agflow.mom.adapters.generic import GenericAdapter
 from agflow.mom.adapters.mistral import MistralAdapter
+from agflow.mom.adapters.wrapped import WrappedEntrypointAdapter
 from agflow.mom.envelope import Direction, Envelope, Kind
 
 
@@ -148,3 +149,47 @@ class TestMistralAdapter:
         kind, payload, _route = adapter.parse_stdout_line(wrapper)
         assert kind == Kind.RESULT
         assert payload["status"] == "success"
+
+
+class TestWrappedEntrypointAdapter:
+    def test_aider_progress_line(self) -> None:
+        adapter = WrappedEntrypointAdapter()
+        line = json.dumps({
+            "task_id": "t1",
+            "type": "progress",
+            "data": "Aider: applied 3 changes",
+        })
+        kind, payload, _route = adapter.parse_stdout_line(line)
+        assert kind == Kind.EVENT
+        assert payload["text"] == "Aider: applied 3 changes"
+        assert payload["format"] == "raw"
+
+    def test_codex_result_line(self) -> None:
+        adapter = WrappedEntrypointAdapter()
+        line = json.dumps({
+            "task_id": "t1",
+            "type": "result",
+            "data": json.dumps({"status": "failure", "exit_code": 2}),
+        })
+        kind, payload, _route = adapter.parse_stdout_line(line)
+        assert kind == Kind.RESULT
+        assert payload["status"] == "failure"
+        assert payload["exit_code"] == 2
+
+    def test_non_wrapper_falls_back_to_generic(self) -> None:
+        adapter = WrappedEntrypointAdapter()
+        kind, payload, _route = adapter.parse_stdout_line("plain text")
+        assert kind == Kind.EVENT
+        assert payload["format"] == "raw"
+
+    def test_inner_object_wraps_raw_by_default(self) -> None:
+        adapter = WrappedEntrypointAdapter()
+        inner = json.dumps({"foo": "bar", "baz": 42})
+        line = json.dumps({
+            "task_id": "t1",
+            "type": "progress",
+            "data": inner,
+        })
+        kind, payload, _route = adapter.parse_stdout_line(line)
+        assert kind == Kind.EVENT
+        assert payload["format"] == "raw"

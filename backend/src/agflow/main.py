@@ -31,6 +31,7 @@ from agflow.api.public.messages import router as public_messages_router
 from agflow.api.public.params import router as public_params_router
 from agflow.api.public.roles import router as public_roles_router
 from agflow.api.public.scopes import router as public_scopes_router
+from agflow.api.public.sessions import router as public_sessions_router
 from agflow.config import get_settings
 from agflow.logging_setup import configure_logging
 
@@ -61,6 +62,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await users_service.seed_admin(settings.admin_email)
     for df in await dockerfiles_service.list_all():
         await dockerfile_files_service.seed_standard_files(df.id)
+    from agflow.services import agents_catalog_service
+    try:
+        await agents_catalog_service.sync_from_filesystem()
+    except Exception as exc:
+        log.warning("agents_catalog.sync.failed", error=str(exc))
     yield
     log.info("app.shutdown")
 
@@ -95,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(public_agents_router)
     app.include_router(public_containers_router)
     app.include_router(public_messages_router)
+    app.include_router(public_sessions_router)
     app.include_router(public_roles_router)
     return app
 

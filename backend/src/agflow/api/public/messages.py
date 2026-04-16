@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from agflow.auth.api_key import require_api_key
@@ -15,7 +17,7 @@ from agflow.db.pool import fetch_all, get_pool
 from agflow.mom.consumers.ws_push import WsPushConsumer
 from agflow.mom.envelope import Direction, Kind, Route
 from agflow.mom.publisher import MomPublisher
-from agflow.services import sessions_service
+from agflow.services import agents_instances_service, sessions_service
 
 _log = structlog.get_logger(__name__)
 
@@ -198,3 +200,71 @@ async def get_agent_logs(
         lines.append(f"[{ts}] [{kind}] {text}")
 
     return "\n".join(lines)
+
+
+def _workspace_root(agent_slug: str) -> Path:
+    base = Path(os.environ.get("AGFLOW_DATA_DIR", "/app/data"))
+    return (base / "agents" / agent_slug / "workspace").resolve()
+
+
+def _safe_subpath(root: Path, user_path: str) -> Path:
+    user_path = (user_path or "").lstrip("/")
+    target = (root / user_path).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "path traversal detected",
+        ) from exc
+    return target
+
+
+@router.get("/api/v1/sessions/{session_id}/agents/{instance_id}/files")
+async def browse_files(
+    session_id: UUID,
+    instance_id: UUID,
+    path: str = "",
+    api_key: dict = require_api_key(),  # noqa: B008
+):
+    ctx = AuthContext.from_api_key(api_key)
+    await _assert_session_owned(session_id, ctx)
+
+    instance = await agents_instances_service.get(
+        session_id=session_id, instance_id=instance_id,
+    )
+    if instance is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "instance not found")
+
+    root = _workspace_root(instance["agent_id"])
+    if not root.is_dir():
+        return {"type": "missing", "path": str(root), "entries": []}
+
+    target = _safe_subpath(root, path)
+
+    if target.is_file():
+        if target.stat().st_size > 1_000_000:
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                "file too large (>1MB); use a different tool",
+            )
+        return FileResponse(
+            path=str(target), media_type="application/octet-stream",
+        )
+
+    if target.is_dir():
+        entries = []
+        for child in sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name)):
+            stat = child.stat()
+            entries.append({
+                "name": child.name,
+                "type": "dir" if child.is_dir() else "file",
+                "size": stat.st_size if child.is_file() else None,
+                "modified": stat.st_mtime,
+            })
+        return {
+            "type": "dir",
+            "path": str(target.relative_to(root)) or ".",
+            "entries": entries,
+        }
+
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "path not found")

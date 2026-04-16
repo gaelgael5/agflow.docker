@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+import aiodocker as _aiodocker
 import structlog
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -268,3 +270,93 @@ async def browse_files(
         }
 
     raise HTTPException(status.HTTP_404_NOT_FOUND, "path not found")
+
+
+@router.websocket("/api/v1/sessions/{session_id}/agents/{instance_id}/exec")
+async def ws_agent_exec(
+    websocket: WebSocket,
+    session_id: UUID,
+    instance_id: UUID,
+) -> None:
+    # V1 limitation: one-shot agents only have a container alive during message
+    # processing. Callers must exec while the agent is busy or accept 4009.
+    await websocket.accept()
+
+    container_name = await agents_instances_service.get_last_container_name(
+        instance_id,
+    )
+    if not container_name:
+        await websocket.close(
+            code=4009, reason="no running container for this instance",
+        )
+        return
+
+    docker = _aiodocker.Docker()
+    try:
+        try:
+            container = await docker.containers.get(container_name)
+        except _aiodocker.exceptions.DockerError as exc:
+            if exc.status == 404:
+                await websocket.close(code=4004, reason="container not found")
+                return
+            raise
+
+        info = await container.show()
+        if not info.get("State", {}).get("Running", False):
+            await websocket.close(code=4009, reason="container not running")
+            return
+
+        exec_inst = await container.exec(
+            cmd=["/bin/sh"], stdin=True, stdout=True, stderr=True, tty=True,
+        )
+        stream = exec_inst.start()
+        async with stream:
+            _log.info(
+                "exec.open", instance_id=str(instance_id),
+                container=container_name,
+            )
+
+            async def _read_exec() -> None:
+                try:
+                    while True:
+                        msg = await stream.read_out()
+                        if msg is None:
+                            break
+                        await websocket.send_bytes(msg.data)
+                except (asyncio.CancelledError, WebSocketDisconnect):
+                    pass
+                except Exception as exc:
+                    _log.warning("exec.read_error", error=str(exc))
+
+            async def _write_exec() -> None:
+                try:
+                    while True:
+                        data = await websocket.receive_bytes()
+                        await stream.write_in(data)
+                except (WebSocketDisconnect, asyncio.CancelledError):
+                    pass
+                except Exception as exc:
+                    _log.warning("exec.write_error", error=str(exc))
+
+            read_task = asyncio.create_task(_read_exec())
+            write_task = asyncio.create_task(_write_exec())
+            try:
+                _, pending = await asyncio.wait(
+                    {read_task, write_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for t in pending:
+                    t.cancel()
+            except Exception:
+                read_task.cancel()
+                write_task.cancel()
+
+        _log.info("exec.close", instance_id=str(instance_id))
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        _log.error("exec.error", error=str(exc))
+        with contextlib.suppress(Exception):
+            await websocket.close(code=4500, reason="internal error")
+    finally:
+        await docker.close()

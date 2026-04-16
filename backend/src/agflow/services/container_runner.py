@@ -11,9 +11,25 @@ from typing import Any
 import aiodocker
 import structlog
 
+from agflow.mom.adapters.generic import GenericAdapter
+from agflow.mom.adapters.mistral import MistralAdapter
 from agflow.schemas.containers import ContainerInfo
 
 _log = structlog.get_logger(__name__)
+
+_ADAPTER_REGISTRY: dict[str, type[GenericAdapter]] = {
+    "mistral": MistralAdapter,
+    "generic": GenericAdapter,
+}
+
+
+def get_adapter(dockerfile_id: str) -> GenericAdapter:
+    """Return the adapter instance for a given dockerfile type.
+
+    Falls back to GenericAdapter if the dockerfile_id is unknown.
+    """
+    adapter_cls = _ADAPTER_REGISTRY.get(dockerfile_id, GenericAdapter)
+    return adapter_cls()
 
 # How many agflow-managed containers can run at once. Hard limit to avoid
 # accidental resource exhaustion on the test LXC.
@@ -936,3 +952,39 @@ async def stop(container_id: str) -> None:
         _log.info("container.stop", container_id=container_id)
     finally:
         await docker.close()
+
+
+async def publish_instruction_via_mom(
+    *,
+    session_id: str,
+    instance_id: str,
+    instruction: str,
+) -> str:
+    """Publish an IN instruction to the MOM bus.
+
+    Returns the msg_id. This is a building block for the future
+    MOM-driven task runner that will replace the subprocess-based flow.
+    Full integration (dispatcher + aiodocker container wrapper) is
+    tracked as a follow-up.
+    """
+    from agflow.db.pool import get_pool
+    from agflow.mom.envelope import Direction, Kind
+    from agflow.mom.publisher import MomPublisher
+
+    pool = await get_pool()
+    publisher = MomPublisher(
+        pool=pool,
+        groups_config={
+            Direction.IN: ["dispatcher"],
+            Direction.OUT: ["ws_push", "router"],
+        },
+    )
+    msg_id = await publisher.publish(
+        session_id=session_id,
+        instance_id=instance_id,
+        direction=Direction.IN,
+        source="system",
+        kind=Kind.INSTRUCTION,
+        payload={"text": instruction},
+    )
+    return str(msg_id)

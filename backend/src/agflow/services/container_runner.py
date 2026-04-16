@@ -974,6 +974,16 @@ async def run_task(
                     },
                     parent_msg_id=_in_msg_id,
                 )
+            else:
+                await _mom_publisher.publish(
+                    session_id=session_id,
+                    instance_id=instance_id,
+                    direction=Direction.OUT,
+                    source="system",
+                    kind=Kind.RESULT,
+                    payload={"status": "success", "exit_code": 0},
+                    parent_msg_id=_in_msg_id,
+                )
         except Exception as _exc:
             _log.warning("mom.publish_result_failed", error=str(_exc))
 

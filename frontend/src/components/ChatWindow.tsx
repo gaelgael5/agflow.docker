@@ -29,12 +29,17 @@ interface ChatMessage {
 }
 
 interface TaskEvent {
-  type: string;
+  type?: string;
   task_id?: string;
   data?: unknown;
   message?: string;
   status?: string;
   exit_code?: number;
+  role?: string;
+  content?: string;
+  kind?: string;
+  payload?: Record<string, unknown>;
+  tool_calls?: Array<Record<string, unknown>>;
 }
 
 const STORAGE_KEY_PREFIX = "agflow.chat.position.";
@@ -295,6 +300,46 @@ export function ChatWindow({
   }
 
   function handleEvent(event: TaskEvent) {
+    if (event.role === "system" || event.role === "user") {
+      return;
+    }
+    if (event.role === "assistant") {
+      const content = event.content ?? "";
+      const toolCalls = event.tool_calls ?? [];
+      const toolTxt = toolCalls
+        .map((tc) => {
+          const fn = (tc.function ?? {}) as Record<string, unknown>;
+          return `[tool:${fn.name ?? "?"}]`;
+        })
+        .join(" ");
+      const full = [content, toolTxt].filter(Boolean).join(" ");
+      if (full) updateLastAgentMessage((prev) => prev + full + "\n");
+      return;
+    }
+    if (event.role === "tool") {
+      const content = event.content ?? "";
+      if (content) updateLastAgentMessage((prev) => prev + `[tool] ${content}\n`);
+      return;
+    }
+    if (event.kind === "result" && event.payload) {
+      const status = event.payload.status;
+      const exitCode = event.payload.exit_code;
+      if (status === "failure") {
+        appendMessage({
+          id: randomId(),
+          role: "error",
+          text: t("dockerfiles.chat_window.task_failed", {
+            exit_code: String(exitCode ?? "?"),
+          }),
+        });
+      }
+      return;
+    }
+    if (event.kind === "event" && event.payload) {
+      const text = (event.payload.text as string | undefined) ?? "";
+      if (text) updateLastAgentMessage((prev) => prev + text + "\n");
+      return;
+    }
     if (event.type === "progress") {
       const snippet = renderEventData(event.data);
       if (snippet) updateLastAgentMessage((prev) => prev + snippet + "\n");

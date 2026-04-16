@@ -27,6 +27,7 @@ from agflow.api.public.containers import router as public_containers_router
 from agflow.api.public.dockerfiles import router as public_dockerfiles_router
 from agflow.api.public.files import router as public_files_router
 from agflow.api.public.launched import router as public_launched_router
+from agflow.api.public.messages import router as public_messages_router
 from agflow.api.public.params import router as public_params_router
 from agflow.api.public.roles import router as public_roles_router
 from agflow.api.public.scopes import router as public_scopes_router
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(public_scopes_router)
     app.include_router(public_agents_router)
     app.include_router(public_containers_router)
+    app.include_router(public_messages_router)
     app.include_router(public_roles_router)
     return app
 

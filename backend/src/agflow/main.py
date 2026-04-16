@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio as _asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -34,6 +35,7 @@ from agflow.api.public.scopes import router as public_scopes_router
 from agflow.api.public.sessions import router as public_sessions_router
 from agflow.config import get_settings
 from agflow.logging_setup import configure_logging
+from agflow.workers.session_expiry import run_expiry_loop as _run_expiry_loop
 
 
 @asynccontextmanager
@@ -67,8 +69,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await agents_catalog_service.sync_from_filesystem()
     except Exception as exc:
         log.warning("agents_catalog.sync.failed", error=str(exc))
+    _expiry_stop = _asyncio.Event()
+    _expiry_task = _asyncio.create_task(_run_expiry_loop(_expiry_stop))
     yield
     log.info("app.shutdown")
+    _expiry_stop.set()
+    try:
+        await _asyncio.wait_for(_expiry_task, timeout=5)
+    except TimeoutError:
+        _expiry_task.cancel()
 
 
 def create_app() -> FastAPI:

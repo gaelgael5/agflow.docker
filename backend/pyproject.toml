@@ -23,7 +23,6 @@ dependencies = [
     "pyjwt[crypto]>=2.9",
     "bcrypt>=4.2",
     "aiodocker>=0.24",
-    "redis[hiredis]>=5.1",
     "anthropic>=0.40",
 ]
 

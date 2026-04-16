@@ -9,6 +9,10 @@ packages = ["src/agflow"]
 name = "agflow-backend"
 version = "0.1.0"
 description = "agflow.docker backend — FastAPI + asyncpg platform for instantiating AI CLI agents"
+license = { text = "LicenseRef-PolyForm-Noncommercial-1.0.0" }
+authors = [
+    { name = "gaelgael5", email = "llm.beard.family@gmail.com" },
+]
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

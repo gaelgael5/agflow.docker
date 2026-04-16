@@ -1,0 +1,62 @@
+<h2>Quel feedback visuel pendant/après le drop ?</h2>
+<p class="subtitle">Quatre moments à designer : (1) hover initial (fichier au-dessus de la page), (2) hover sur une section cible, (3) pendant upload, (4) après succès/échec. Choisis une ambiance.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Sobre & inline — highlight vert + toast après</h3>
+      <p>Section cible : bordure et fond verts dashed. Pas d'overlay. Les autres sections restent visibles en gris neutre. Toast shadcn (sonner) en bas-droit après succès/échec.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Pendant hover sur MISSIONS</div>
+        <div class="mockup-body" style="font-family:monospace;font-size:12px;padding:10px;background:#1f1f1f">
+          <div style="opacity:0.4">📁 ROLES</div>
+          <div style="padding:6px;border:2px dashed #4ade80;background:rgba(74,222,128,0.1);margin:4px 0;color:#4ade80"><strong>📁 MISSIONS</strong> ← drop 2 fichiers ici</div>
+          <div style="opacity:0.4">📁 COMPETENCES</div>
+          <div style="opacity:0.4">📁 CUSTOM-1</div>
+        </div>
+      </div>
+      <p class="label" style="margin-top:8px;color:#888">Après succès : toast "✓ 2 documents créés dans MISSIONS"</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Overlay modal — liste des fichiers + progress</h3>
+      <p>Dès le hover initial, un petit panneau modal s'ouvre à côté de la sidebar, listant les fichiers en cours d'upload avec une barre de progression par fichier. Le panneau reste après le drop pour montrer le résultat final.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Modal de progression</div>
+        <div class="mockup-body" style="padding:10px;background:#1f1f1f;font-family:monospace;font-size:12px">
+          <div style="background:#0b1220;padding:10px;border:1px solid #444">
+            <strong>Import dans MISSIONS</strong><br/><br/>
+            📄 mission-a.md &nbsp; <span style="color:#4ade80">✓ créé</span><br/>
+            📄 mission-b.md &nbsp; <span style="color:#60a5fa">■■■■■□□ 60%</span><br/>
+            📄 mission-c.md &nbsp; <span style="color:#888">⏳ en attente</span>
+          </div>
+        </div>
+      </div>
+      <p class="label" style="margin-top:8px;color:#888">Avantage : l'utilisateur voit exactement où en est le batch · Coût : plus de code UI</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Minimaliste — juste un spinner inline + toast final</h3>
+      <p>Pendant le hover : juste le curseur change et un liseré vert discret sur la section. Pendant l'upload : spinner à côté du titre de section. Après : toast résumé unique.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Pendant upload</div>
+        <div class="mockup-body" style="font-family:monospace;font-size:12px;padding:10px;background:#1f1f1f">
+          📁 ROLES<br/>
+          📁 MISSIONS <span style="color:#60a5fa">⟳</span> <span style="color:#888;font-size:10px">(upload 2/3)</span><br/>
+          &nbsp;&nbsp;└─ existing.md<br/>
+          📁 COMPETENCES
+        </div>
+      </div>
+      <p class="label" style="margin-top:8px;color:#888">Le plus léger · l'utilisateur ne voit pas chaque fichier, juste le total</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:24px"><strong>Ma reco</strong> : <strong>A</strong>. Cohérent avec le reste de la page (déjà basée sur shadcn + sonner). Pour un batch normal (2-5 fichiers .md), pas besoin d'un panneau de progression (B). Si un jour tu imports 50 fichiers, on réévalue.</p>

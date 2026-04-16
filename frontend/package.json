@@ -3,6 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "gaelgael5 <llm.beard.family@gmail.com>",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

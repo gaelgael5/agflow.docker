@@ -1,0 +1,70 @@
+<h2>Drag-and-drop dans les sections du Rôle — quel comportement ?</h2>
+<p class="subtitle">Aujourd'hui les sections ("roles", "missions", "competences" + sections custom) contiennent des <strong>documents markdown texte</strong>. Le drop peut avoir plusieurs sens. Coche tout ce qui t'intéresse (plusieurs combinables).</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Drop .md / .txt → nouveau document</h3>
+      <p>Tu glisses un fichier texte depuis l'explorateur → le contenu devient un nouveau document markdown dans la section ciblée. Nom du fichier = nom du document. <em>(Cas simple, colle avec le modèle actuel)</em></p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Avant / Après</div>
+        <div class="mockup-body" style="display:flex;gap:16px;align-items:center">
+          <div class="placeholder" style="flex:1">📄 mission-audit.md<br/>(sur le bureau)</div>
+          <div style="font-size:20px">→</div>
+          <div style="flex:1;padding:8px;border:1px dashed #888">📁 MISSIONS<br/>├─ existing.md<br/>└─ <strong>mission-audit.md ✨</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Drop fichier binaire (PDF, image, doc) → attachment stocké</h3>
+      <p>Tu glisses un PDF, une image, un .docx → stocké côte à côte avec les documents markdown. Nouveau type de ressource. <em>(Demande migration DB : nouvelle table role_attachments, storage de blob)</em></p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Nouvelle nature de ressource</div>
+        <div class="mockup-body" style="display:flex;gap:16px;align-items:center">
+          <div class="placeholder" style="flex:1">📎 charte-rh.pdf<br/>🖼 logo.png</div>
+          <div style="font-size:20px">→</div>
+          <div style="flex:1;padding:8px;border:1px dashed #888">📁 COMPETENCES<br/>├─ 📄 text-doc.md<br/>├─ <strong>📎 charte-rh.pdf</strong><br/>└─ <strong>🖼 logo.png</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Drag document existant entre sections → déplacement</h3>
+      <p>Tu attrapes un document déjà dans la sidebar et tu le lâches dans une autre section pour le reclasser. Pas de fichier externe, juste réorganisation. <em>(UPDATE role_documents SET section=... — endpoint manquant)</em></p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Réorganisation interne</div>
+        <div class="mockup-body" style="display:flex;gap:16px;align-items:center">
+          <div style="flex:1;padding:8px;border:1px dashed #888">📁 ROLES<br/>└─ 📄 doc-A.md (drag)</div>
+          <div style="font-size:20px">→</div>
+          <div style="flex:1;padding:8px;border:1px dashed #888">📁 MISSIONS<br/>└─ <strong>📄 doc-A.md ✨</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="d" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>Drop multi-fichiers → import batch</h3>
+      <p>Tu sélectionnes plusieurs fichiers dans l'explorateur et tu les lâches d'un coup dans une section. Tout est créé en une seule opération. <em>(Orthogonal à A/B — c'est la multiplicité, pas le type)</em></p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Batch import</div>
+        <div class="mockup-body" style="display:flex;gap:16px;align-items:center">
+          <div class="placeholder" style="flex:1">📄 a.md 📄 b.md 📄 c.md</div>
+          <div style="font-size:20px">→</div>
+          <div style="flex:1;padding:8px;border:1px dashed #888">📁 ROLES<br/>├─ <strong>a.md ✨</strong><br/>├─ <strong>b.md ✨</strong><br/>└─ <strong>c.md ✨</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:24px"><strong>Ma recommandation</strong> : commencer par <strong>A + D</strong> (drop .md/.txt en mono ou multi) — collait au modèle actuel, aucune migration DB. Puis C si tu veux la réorg. B ouvre un chantier plus lourd (storage de blobs).</p>

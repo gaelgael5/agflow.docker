@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, Lock, Plus, Save, Trash2, Upload } from "lucide-react";
 import { useRoles } from "@/hooks/useRoles";
@@ -211,6 +211,19 @@ export function RolesPage() {
     setDraftRole({ ...currentRole, ...updates });
   }
 
+  const sortedRoles = useMemo(
+    () =>
+      (roles ?? [])
+        .slice()
+        .sort((a, b) =>
+          a.display_name.localeCompare(b.display_name, undefined, {
+            numeric: true,
+            sensitivity: "base",
+          }),
+        ),
+    [roles],
+  );
+
   if (isLoading)
     return <p className="p-6 text-muted-foreground">{t("secrets.loading")}</p>;
 
@@ -232,7 +245,7 @@ export function RolesPage() {
             <SelectValue placeholder={t("roles.select_role")} />
           </SelectTrigger>
           <SelectContent>
-            {(roles ?? []).map((r) => (
+            {sortedRoles.map((r) => (
               <SelectItem key={r.id} value={r.id}>
                 {r.display_name}
               </SelectItem>

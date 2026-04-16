@@ -1,0 +1,35 @@
+agflow.docker
+=============
+
+Copyright (c) 2026 gaelgael5 <llm.beard.family@gmail.com>
+
+This product is licensed under the PolyForm Noncommercial License 1.0.0.
+See LICENSE for the full license text.
+
+Commercial licensing
+--------------------
+Any commercial use (SaaS, hosted services, resale, integration in paid
+products, production use by for-profit entities) requires a separate
+commercial license from the copyright holder.
+
+See COMMERCIAL-LICENSE.md for details and to request a commercial license.
+Contact: llm.beard.family@gmail.com
+
+Required Notice
+---------------
+When redistributing any part of this software, you MUST preserve the
+following line verbatim (per the PolyForm Noncommercial 1.0.0 "Notices"
+section):
+
+    Required Notice: Copyright (c) 2026 gaelgael5 (https://github.com/gaelgael5)
+
+Third-party dependencies
+------------------------
+This product bundles no vendored third-party source code. Runtime
+dependencies are declared in:
+
+  - backend/pyproject.toml  (Python, managed by uv)
+  - frontend/package.json   (Node.js, managed by npm)
+
+Each dependency remains under its own license. Consult the respective
+package repositories for the applicable terms.

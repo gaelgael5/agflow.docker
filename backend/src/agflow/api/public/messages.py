@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
+from uuid import uuid4
 
-from fastapi import APIRouter, Request
+import structlog
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from agflow.auth.api_key import require_api_key
 from agflow.db.pool import fetch_all, get_pool
+from agflow.mom.consumers.ws_push import WsPushConsumer
 from agflow.mom.envelope import Direction, Kind, Route
 from agflow.mom.publisher import MomPublisher
+
+_log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["public-messages"])
 
@@ -93,3 +99,29 @@ async def get_messages(
         }
         for r in rows
     ]
+
+
+@router.websocket("/sessions/{session_id}/agents/{instance_id}/stream")
+async def ws_stream(
+    websocket: WebSocket,
+    session_id: str,
+    instance_id: str,
+) -> None:
+    await websocket.accept()
+    pool = await get_pool()
+    connection_id = uuid4().hex[:8]
+    ws_consumer = WsPushConsumer(
+        pool=pool,
+        instance_id=instance_id,
+        connection_id=connection_id,
+    )
+    _log.info("ws_stream.connected", session_id=session_id, instance_id=instance_id, connection_id=connection_id)
+    try:
+        async for event in ws_consumer.iter_events():
+            await websocket.send_json(event)
+    except WebSocketDisconnect:
+        _log.info("ws_stream.disconnected", connection_id=connection_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        _log.exception("ws_stream.error", error=str(exc))

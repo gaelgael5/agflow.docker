@@ -231,6 +231,7 @@ async def run_task(
                 timeout_seconds=payload.timeout_seconds,
                 user_secrets=payload.secrets,
                 cleanup=True,
+                session_id=task_payload["task_id"],
             ):
                 yield (json.dumps(event) + "\n").encode("utf-8")
         except container_runner.ImageNotBuiltError as exc:

@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from agflow.auth.api_key import require_api_key
@@ -158,3 +159,42 @@ async def ws_agent_stream(
         raise
     except Exception as exc:
         _log.exception("ws_agent_stream.error", error=str(exc))
+
+
+@router.get(
+    "/api/v1/sessions/{session_id}/agents/{instance_id}/logs",
+    response_class=PlainTextResponse,
+)
+async def get_agent_logs(
+    session_id: UUID,
+    instance_id: UUID,
+    limit: int = 500,
+    api_key: dict = require_api_key(),  # noqa: B008
+) -> str:
+    ctx = AuthContext.from_api_key(api_key)
+    await _assert_session_owned(session_id, ctx)
+
+    rows = await fetch_all(
+        """
+        SELECT created_at, kind, payload
+        FROM agent_messages
+        WHERE session_id = $1 AND instance_id = $2 AND direction = 'out'
+        ORDER BY created_at DESC
+        LIMIT $3
+        """,
+        str(session_id), str(instance_id), limit,
+    )
+    rows.reverse()
+
+    lines = []
+    for r in rows:
+        ts = r["created_at"].isoformat()
+        kind = r["kind"]
+        payload = r["payload"] if isinstance(r["payload"], dict) else {}
+        text = payload.get("text") or payload.get("message") or ""
+        if not text and payload:
+            import json as _json
+            text = _json.dumps(payload, ensure_ascii=False)
+        lines.append(f"[{ts}] [{kind}] {text}")
+
+    return "\n".join(lines)

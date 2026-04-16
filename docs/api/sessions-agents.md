@@ -739,6 +739,121 @@ wscat -c "ws://192.168.10.158/api/v1/sessions/$SESSION_ID/stream"
 
 ---
 
+## 13. GET /api/v1/sessions/{s}/agents/{i}/logs — Dump texte des logs
+
+Renvoie les messages `direction=out` de l'instance sous forme de texte plat, utile pour un `curl | less` ou un `tail`-like.
+
+**Scopes requis** : aucun (API key valide suffit).
+
+**Path params** : `session_id` (UUID), `instance_id` (UUID).
+
+**Query params** :
+
+| Param | Type | Défaut | Description |
+|---|---|---|---|
+| `limit` | int | 500 | nombre max de lignes (les plus récentes) |
+
+**Réponse 200** : `text/plain`
+
+```
+[2026-04-16T09:32:01Z] [event] Analyse de login.py
+[2026-04-16T09:32:03Z] [event] Trouvé 3 points de refactor
+[2026-04-16T09:32:10Z] [result] {"status":"success","exit_code":0}
+```
+
+**Erreurs** : 401, 404 (session not found/not yours), 429.
+
+**Exemple**
+
+```bash
+curl "$API/api/v1/sessions/$SID/agents/$INST/logs?limit=200" \
+    -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+## 14. GET /api/v1/sessions/{s}/agents/{i}/files — Navigation workspace
+
+Explore l'arborescence du workspace de l'agent, ou télécharge un fichier. Portée au répertoire `data/agents/{agent_slug}/workspace/` sur le host (le même mount que le container utilise).
+
+**Scopes requis** : aucun.
+
+**Path params** : `session_id` (UUID), `instance_id` (UUID).
+
+**Query params** :
+
+| Param | Type | Défaut | Description |
+|---|---|---|---|
+| `path` | string | `""` | chemin relatif dans le workspace. `..` et tentatives d'évasion rejetées. |
+
+**Réponse 200 (path pointe vers un répertoire)** : `application/json`
+
+```json
+{
+  "type": "dir",
+  "path": "src",
+  "entries": [
+    {"name": "lib", "type": "dir", "size": null, "modified": 1713255120.5},
+    {"name": "main.py", "type": "file", "size": 2847, "modified": 1713255130.1}
+  ]
+}
+```
+
+**Réponse 200 (path pointe vers un fichier)** : le contenu brut du fichier (`application/octet-stream`, téléchargement).
+
+**Réponse 200 (workspace inexistant)** :
+
+```json
+{"type": "missing", "path": "/app/data/agents/foo/workspace", "entries": []}
+```
+
+**Erreurs** : 400 (path traversal), 404 (path not found / instance gone), 413 (file > 1MB).
+
+**Exemples**
+
+```bash
+# Lister la racine du workspace
+curl "$API/api/v1/sessions/$SID/agents/$INST/files" \
+    -H "Authorization: Bearer $TOKEN" | jq
+
+# Lister un sous-dossier
+curl "$API/api/v1/sessions/$SID/agents/$INST/files?path=src/lib" \
+    -H "Authorization: Bearer $TOKEN" | jq
+
+# Télécharger un fichier
+curl -o main.py "$API/api/v1/sessions/$SID/agents/$INST/files?path=src/main.py" \
+    -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+## 15. WebSocket /api/v1/sessions/{s}/agents/{i}/exec — Shell interactif
+
+Ouvre un shell `/bin/sh` dans le container courant de l'instance via `docker exec`. Canal bidirectionnel en octets (TTY).
+
+**Scopes requis** : aucun (mais V1 ne vérifie PAS d'auth WebSocket — limitation connue, cf. tâche follow-up).
+
+**Limitation V1** : le modèle one-shot implique qu'un container n'existe que pendant le traitement d'un message (typiquement quelques secondes). Cet endpoint ferme immédiatement avec code `4009` si aucun container n'est vivant. Pour l'instant il ne devient utile qu'en combinaison avec un agent long-running (évolution future).
+
+**Codes de fermeture** :
+
+| Code | Sens |
+|---|---|
+| 1000 | fermeture normale (exit shell) |
+| 4004 | container introuvable côté Docker |
+| 4009 | aucun container vivant pour cette instance |
+| 4500 | erreur interne |
+
+**Exemple (wscat)**
+
+```bash
+# Tant que l'agent est busy, le container est up
+wscat -c "ws://$API_HOST/api/v1/sessions/$SID/agents/$INST/exec"
+# Puis taper des commandes shell: ls, cat, exit, etc.
+```
+
+---
+
 ## 6. Scénario bout en bout
 
 Script bash complet : ouvrir une session, instancier 2 agents, envoyer un message à chacun, lire les réponses, puis fermer la session.

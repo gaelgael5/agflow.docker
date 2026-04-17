@@ -197,7 +197,6 @@ async def generate(
     else:
         prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
     prompt_md = await _expand_macros(prompt_md)
-    _write(out_dir, "prompt.md", prompt_md)
 
     # Clean old profile files before regeneration
     import shutil
@@ -211,7 +210,8 @@ async def generate(
     docs_dir = os.path.join(out_dir, "docs")
     if os.path.isdir(docs_dir):
         shutil.rmtree(docs_dir)
-    os.makedirs(docs_dir, exist_ok=True)
+    docs_missions_dir = os.path.join(docs_dir, "missions")
+    os.makedirs(docs_missions_dir, exist_ok=True)
 
     # Build per-profile files from profile selections
     profiles = await agent_profiles_service.list_for_agent(agent_id)
@@ -259,7 +259,7 @@ async def generate(
                     load_section=_make_load_section(sections),
                 )
                 if rendered.strip():
-                    _write(docs_dir, f"{profile_slug}.md", rendered)
+                    _write(docs_missions_dir, f"{profile_slug}.md", rendered)
                 _log.info(
                     "agent_generator.profile_rendered",
                     profile=profile.name,
@@ -276,7 +276,7 @@ async def generate(
                     parts.extend(contents)
                 merged = "\n\n---\n\n".join(parts)
                 if merged.strip():
-                    _write(docs_dir, f"{profile_slug}.md", merged)
+                    _write(docs_missions_dir, f"{profile_slug}.md", merged)
         else:
             # No template: concat all sections into {profile_slug}.md
             parts = []
@@ -284,7 +284,7 @@ async def generate(
                 parts.extend(contents)
             merged = "\n\n---\n\n".join(parts)
             if merged.strip():
-                _write(out_dir, f"{profile_slug}.md", merged)
+                _write(docs_missions_dir, f"{profile_slug}.md", merged)
 
         _log.info(
             "agent_generator.profile_written",
@@ -292,6 +292,25 @@ async def generate(
             sections=list(sections.keys()),
             doc_count=sum(len(v) for v in sections.values()),
         )
+
+    # Append missions index to prompt.md
+    generated_profiles = []
+    for profile in profiles:
+        if not profile.document_ids:
+            continue
+        profile_slug = profile.name.lower().replace(" ", "_")
+        profile_file = os.path.join(docs_missions_dir, f"{profile_slug}.md")
+        if os.path.isfile(profile_file):
+            generated_profiles.append(profile)
+
+    if generated_profiles:
+        prompt_md += "\n\n### Missions\n"
+        for profile in generated_profiles:
+            profile_slug = profile.name.lower().replace(" ", "_")
+            prompt_md += f"\n- {profile.description} : `@docs/missions/{profile_slug}.md`"
+        prompt_md += "\n"
+
+    _write(out_dir, "prompt.md", prompt_md)
 
     # Build .env — merge Dockerfile.json Environments with agent overrides
     # Secrets come exclusively from the user's vault — never from platform secrets

@@ -57,7 +57,6 @@ export function SkillsCatalogPage() {
       discoveryServiceId: selectedServiceId,
       skillId: String(item.skill_id),
     });
-    setSearchOpen(false);
   }
 
   const hasServices = (services ?? []).length > 0;

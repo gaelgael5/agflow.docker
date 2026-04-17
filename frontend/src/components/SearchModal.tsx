@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Search } from "lucide-react";
+import { Check, Plus, Search, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,7 @@ export function SearchModal<T>({
   const [results, setResults] = useState<T[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addedSet, setAddedSet] = useState<Set<number>>(new Set());
 
   async function handleSearch() {
     setLoading(true);
@@ -52,9 +53,10 @@ export function SearchModal<T>({
     }
   }
 
-  async function handleAdd(item: T) {
+  async function handleAdd(item: T, idx: number) {
     try {
       await onAdd(item);
+      setAddedSet((prev) => new Set(prev).add(idx));
     } catch {
       setError(t("search_modal.error"));
     }
@@ -137,15 +139,26 @@ export function SearchModal<T>({
                         {group} ({items.length})
                       </div>
                       <ul className="divide-y">
-                        {items.map((item, idx) => (
-                          <li key={idx} className="flex items-center gap-3 py-2">
+                        {items.map((item) => {
+                          const gi = results!.indexOf(item);
+                          const added = addedSet.has(gi);
+                          return (
+                          <li key={gi} className="flex items-center gap-3 py-2">
                             <div className="flex-1 min-w-0">{renderItem(item)}</div>
-                            <Button variant="outline" size="sm" onClick={() => handleAdd(item)}>
-                              <Plus className="w-3.5 h-3.5" />
-                              {t("search_modal.add_button")}
-                            </Button>
+                            {added ? (
+                              <span className="text-green-500 text-xs flex items-center gap-1">
+                                <Check className="w-3.5 h-3.5" />
+                                {t("search_modal.added")}
+                              </span>
+                            ) : (
+                              <Button variant="outline" size="sm" onClick={() => handleAdd(item, gi)}>
+                                <Plus className="w-3.5 h-3.5" />
+                                {t("search_modal.add_button")}
+                              </Button>
+                            )}
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     </div>
                   ))}
@@ -154,24 +167,41 @@ export function SearchModal<T>({
             })()
           ) : (
             <ul className="divide-y">
-              {results.map((item, idx) => (
+              {results.map((item, idx) => {
+                const added = addedSet.has(idx);
+                return (
                 <li
                   key={idx}
                   className="flex items-center gap-3 py-3"
                 >
                   <div className="flex-1 min-w-0">{renderItem(item)}</div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleAdd(item)}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    {t("search_modal.add_button")}
-                  </Button>
+                  {added ? (
+                    <span className="text-green-500 text-xs flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" />
+                      {t("search_modal.added")}
+                    </span>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAdd(item, idx)}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      {t("search_modal.add_button")}
+                    </Button>
+                  )}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
+        </div>
+
+        <div className="flex justify-end pt-2 border-t shrink-0">
+          <Button variant="outline" onClick={onClose}>
+            <X className="w-3.5 h-3.5" />
+            {t("search_modal.close")}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

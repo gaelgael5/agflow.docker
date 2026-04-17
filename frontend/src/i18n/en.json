@@ -439,6 +439,7 @@
     "close": "Close",
     "no_results": "No results",
     "add_button": "Add",
+    "added": "Added",
     "loading": "Searching…",
     "error": "Error — check the registry URL and API key",
     "hint": "Type a query then click Search"

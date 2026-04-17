@@ -57,7 +57,6 @@ export function MCPCatalogPage() {
       discoveryServiceId: selectedServiceId,
       packageId: String(item.package_id),
     });
-    setSearchOpen(false);
   }
 
   const hasServices = (services ?? []).length > 0;

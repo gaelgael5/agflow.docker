@@ -230,13 +230,34 @@ export function RolesPage() {
     setDraftDocContent(content);
   }
 
+  async function handleRenameDocument(newName: string) {
+    if (!selectedDoc || !selectedRoleId) return;
+    try {
+      const result = await docMutations.updateDoc.mutateAsync({
+        docId: selectedDoc.id,
+        payload: { name: newName },
+      });
+      // UUID changes after rename (deterministic from name) — update selection
+      if (result && typeof result === "object" && "id" in result) {
+        setSelectedDocId(String((result as { id: string }).id));
+      }
+      queryClient.invalidateQueries({ queryKey: ["role", selectedRoleId] });
+    } catch {
+      // rename failed — silently ignore, user can retry
+    }
+  }
+
   async function handleSaveDocument() {
     if (!selectedDoc || !selectedRoleId || draftDocContent === null) return;
-    docMutations.updateDoc.mutate({
-      docId: selectedDoc.id,
-      payload: { content_md: draftDocContent },
-    });
-    setDraftDocContent(null);
+    try {
+      await docMutations.updateDoc.mutateAsync({
+        docId: selectedDoc.id,
+        payload: { content_md: draftDocContent },
+      });
+      setDraftDocContent(null);
+    } catch {
+      // Leave draft intact so user doesn't lose work
+    }
   }
 
   function handleRoleFieldChange(updates: Partial<RoleSummary>) {
@@ -699,10 +720,7 @@ export function RolesPage() {
                                 const trimmed = editingDocName.trim();
                                 if (trimmed && trimmed !== docDisplayName(selectedDoc)) {
                                   const newName = isDocLocked(selectedDoc) ? trimmed + "_" : trimmed;
-                                  docMutations.updateDoc.mutate({
-                                    docId: selectedDoc.id,
-                                    payload: { name: newName },
-                                  });
+                                  handleRenameDocument(newName);
                                 }
                                 setEditingDocName(null);
                               } else if (e.key === "Escape") {
@@ -713,10 +731,7 @@ export function RolesPage() {
                               const trimmed = editingDocName.trim();
                               if (trimmed && trimmed !== docDisplayName(selectedDoc)) {
                                 const newName = isDocLocked(selectedDoc) ? trimmed + "_" : trimmed;
-                                docMutations.updateDoc.mutate({
-                                  docId: selectedDoc.id,
-                                  payload: { name: newName },
-                                });
+                                handleRenameDocument(newName);
                               }
                               setEditingDocName(null);
                             }}

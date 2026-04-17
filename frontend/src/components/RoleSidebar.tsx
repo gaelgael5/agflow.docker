@@ -7,6 +7,7 @@ import type {
   Section,
   SectionSummary,
 } from "@/lib/rolesApi";
+import { useSectionDropzone } from "@/hooks/useSectionDropzone";
 
 export function isDocLocked(doc: DocumentSummary): boolean {
   return doc.name.endsWith("_");
@@ -25,6 +26,33 @@ interface Props {
   onAddSection: () => void;
   onDeleteSection: (name: string) => void;
   onToggleLock?: (doc: DocumentSummary) => void;
+  onFilesDropped?: (section: Section, files: File[]) => void;
+}
+
+function SectionDropzone({
+  sectionName,
+  children,
+  onFiles,
+}: {
+  sectionName: string;
+  children: React.ReactNode;
+  onFiles?: (section: Section, files: File[]) => void;
+}) {
+  const { isDragOver, dropzoneProps } = useSectionDropzone(
+    (files) => onFiles?.(sectionName as Section, files),
+  );
+  return (
+    <div
+      data-testid={`section-dropzone-${sectionName}`}
+      className={cn(
+        "rounded-md transition-colors",
+        isDragOver && "ring-2 ring-green-500 bg-green-500/10",
+      )}
+      {...dropzoneProps}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function RoleSidebar({
@@ -36,6 +64,7 @@ export function RoleSidebar({
   onAddSection,
   onDeleteSection,
   onToggleLock,
+  onFilesDropped,
 }: Props) {
   const { t } = useTranslation();
 
@@ -46,7 +75,12 @@ export function RoleSidebar({
           const docs = documents.filter((d) => d.section === section.name);
           const canDelete = !section.is_native && docs.length === 0;
           return (
-            <div key={section.name}>
+            <SectionDropzone
+              key={section.name}
+              sectionName={section.name}
+              onFiles={onFilesDropped}
+            >
+              <div>
               <div className="flex items-center justify-between px-1 mb-1">
                 <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   {section.display_name}
@@ -118,7 +152,8 @@ export function RoleSidebar({
                   })}
                 </ul>
               )}
-            </div>
+              </div>
+            </SectionDropzone>
           );
         })}
 

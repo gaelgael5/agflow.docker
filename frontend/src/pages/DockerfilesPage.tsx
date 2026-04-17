@@ -610,9 +610,23 @@ export function DockerfilesPage() {
               </Button>
             </div>
 
-            {currentTarget && (
-              <Badge variant="outline" className="text-[11px] font-mono">
+            {currentTarget ? (
+              <Badge
+                variant="outline"
+                className="text-[11px] font-mono cursor-pointer hover:bg-secondary transition-colors"
+                onClick={() => setShowTargetDialog(true)}
+                title={t("target.select_button")}
+              >
                 {currentTarget.name}
+              </Badge>
+            ) : (
+              <Badge
+                variant="secondary"
+                className="text-[11px] cursor-pointer hover:bg-secondary/80 transition-colors"
+                onClick={() => setShowTargetDialog(true)}
+                title={t("target.select_button")}
+              >
+                {t("target.none")}
               </Badge>
             )}
 

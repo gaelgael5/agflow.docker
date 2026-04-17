@@ -261,15 +261,15 @@ export function DockerfilesPage() {
       );
       if (insertMode?.config_path) {
         const configPath: string = insertMode.config_path;
-        // "~/.vibe/config.toml" → dir = "~/.vibe", source = ".vibe"
+        // "~/.vibe/config.toml" → source = ".vibe", target = "~/.vibe/config.toml"
         const lastSlash = configPath.lastIndexOf("/");
         const dirPath = lastSlash > 0 ? configPath.slice(0, lastSlash) : configPath;
         const source = dirPath.replace(/^~\//, "");
         const mounts: Array<{ source: string; target: string; readonly: boolean }> =
           parsed.docker?.Mounts ?? [];
         // Only add if no mount with this target already exists
-        if (!mounts.some((m) => m.target === dirPath)) {
-          mounts.push({ source, target: dirPath, readonly: false });
+        if (!mounts.some((m) => m.target === configPath)) {
+          mounts.push({ source, target: configPath, readonly: false });
           if (!parsed.docker) parsed.docker = {};
           parsed.docker.Mounts = mounts;
         }

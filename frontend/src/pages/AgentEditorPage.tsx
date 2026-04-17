@@ -1698,8 +1698,25 @@ export function AgentEditorPage() {
           <CollapsibleSection label={t("agent_editor.section_generated")}>
           <Card className="mb-6">
             <CardContent className="pt-5">
-              <div className="flex gap-4 min-h-[400px]">
-                <div className="w-48 shrink-0 border-r pr-3 overflow-y-auto max-h-[800px]">
+              <div className="flex min-h-[400px]" ref={(el) => {
+                if (el && !el.dataset.splitInit) {
+                  el.dataset.splitInit = "1";
+                  const left = el.children[0] as HTMLElement;
+                  const handle = el.children[1] as HTMLElement;
+                  if (!left || !handle) return;
+                  let startX = 0, startW = 0;
+                  const onMove = (e: MouseEvent) => {
+                    left.style.width = `${Math.max(120, Math.min(500, startW + e.clientX - startX))}px`;
+                  };
+                  const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+                  handle.addEventListener("mousedown", (e: MouseEvent) => {
+                    startX = e.clientX; startW = left.offsetWidth;
+                    document.addEventListener("mousemove", onMove);
+                    document.addEventListener("mouseup", onUp);
+                  });
+                }
+              }}>
+                <div className="shrink-0 overflow-y-auto max-h-[800px] pr-2" style={{ width: "200px" }}>
                   <FileTree
                     files={generatedFiles.map((f) => ({
                       id: f.path,
@@ -1710,7 +1727,8 @@ export function AgentEditorPage() {
                     onSelect={(id) => setSelectedGenFile(id)}
                   />
                 </div>
-                <div className="flex-1 min-w-0 overflow-auto">
+                <div className="w-1 shrink-0 cursor-col-resize bg-border hover:bg-primary/40 transition-colors rounded" />
+                <div className="flex-1 min-w-0 overflow-auto pl-2">
                   {selectedGenFile ? (
                     <CodeEditor
                       value={(() => {

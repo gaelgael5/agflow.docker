@@ -28,7 +28,9 @@
     "invalid_slug": "Caractères autorisés : a-z, 0-9, tiret et underscore",
     "export": "Exporter",
     "import": "Importer",
-    "unsaved_changes": "Des modifications ne sont pas enregistrées. Continuer sans sauvegarder ?"
+    "unsaved_changes": "Des modifications ne sont pas enregistrées. Continuer sans sauvegarder ?",
+    "search": "Rechercher…",
+    "no_results": "Aucun résultat"
   },
   "sidebar": {
     "section_platform": "Plateforme",

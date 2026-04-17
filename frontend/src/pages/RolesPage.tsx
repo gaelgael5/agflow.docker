@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, Lock, Plus, Save, Trash2, Upload } from "lucide-react";
+import { Download, Lock, Plus, Save, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRoles } from "@/hooks/useRoles";
@@ -77,6 +77,7 @@ export function RolesPage() {
   );
   const [draftDocContent, setDraftDocContent] = useState<string | null>(null);
   const [editingDocName, setEditingDocName] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
   const [conflicts, setConflicts] = useState<PendingConflict[]>([]);
   const pendingSummaryRef = useRef<{
@@ -424,6 +425,16 @@ export function RolesPage() {
     [roles],
   );
 
+  const filteredRoles = useMemo(
+    () =>
+      roleFilter
+        ? sortedRoles.filter((r) =>
+            r.display_name.toLowerCase().includes(roleFilter.toLowerCase()),
+          )
+        : sortedRoles,
+    [sortedRoles, roleFilter],
+  );
+
   if (isLoading)
     return <p className="p-6 text-muted-foreground">{t("secrets.loading")}</p>;
 
@@ -440,17 +451,34 @@ export function RolesPage() {
             setSelectedDocId(null);
             setDraftRole(null);
             setDraftDocContent(null);
+            setRoleFilter("");
           }}
         >
           <SelectTrigger className="w-40 md:w-56">
             <SelectValue placeholder={t("roles.select_role")} />
           </SelectTrigger>
           <SelectContent>
-            {sortedRoles.map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {r.display_name}
-              </SelectItem>
-            ))}
+            <div className="flex items-center gap-1.5 px-2 pb-1.5 border-b mb-1">
+              <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <input
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                placeholder={t("common.search")}
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </div>
+            {filteredRoles.length === 0 ? (
+              <div className="px-2 py-3 text-sm text-muted-foreground text-center">
+                {t("common.no_results")}
+              </div>
+            ) : (
+              filteredRoles.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.display_name}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
 

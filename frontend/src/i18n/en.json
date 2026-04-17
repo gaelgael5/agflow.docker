@@ -28,7 +28,9 @@
     "invalid_slug": "Allowed characters: a-z, 0-9, hyphen and underscore",
     "export": "Export",
     "import": "Import",
-    "unsaved_changes": "You have unsaved changes. Continue without saving?"
+    "unsaved_changes": "You have unsaved changes. Continue without saving?",
+    "search": "Search…",
+    "no_results": "No results"
   },
   "sidebar": {
     "section_platform": "Platform",

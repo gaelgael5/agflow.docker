@@ -166,6 +166,27 @@
       "protected": "Verrouillé",
       "unlock": "Déverrouiller"
     },
+    "drop": {
+      "hint": "Déposer des fichiers .md ici",
+      "confirm_batch_title": "Importer {{count}} fichiers",
+      "confirm_batch_message": "Importer {{count}} fichiers dans la section « {{section}} » ?",
+      "confirm_batch_confirm": "Importer",
+      "conflict_title": "Document déjà existant",
+      "conflict_message": "Le document « {{name}} » existe déjà dans « {{section}} ». Que faire ?",
+      "conflict_replace": "Remplacer",
+      "conflict_rename": "Renommer ({{suggested}})",
+      "conflict_cancel": "Ignorer ce fichier",
+      "conflict_apply_all": "Appliquer à tous les conflits de ce lot",
+      "toast_success": "{{count}} document(s) créé(s) dans {{section}}",
+      "toast_replaced": "{{count}} document(s) remplacé(s) dans {{section}}",
+      "toast_mixed": "{{created}} créés, {{replaced}} remplacés, {{failed}} échoués",
+      "toast_none": "Aucun document créé",
+      "error_extension": "{{name}} ignoré — seul le format .md est accepté",
+      "error_size": "{{name}} ignoré — taille supérieure à 1 Mio",
+      "error_encoding": "{{name}} ignoré — encodage non UTF-8",
+      "error_name": "{{name}} ignoré — nom de document invalide après normalisation",
+      "error_network": "{{name}} — échec réseau"
+    },
     "new_role_dialog_title": "Nouveau rôle",
     "errors": {
       "missing_anthropic_key": "ANTHROPIC_API_KEY manquante dans Module 0 (Secrets). Ajoute-la avant de générer les prompts.",

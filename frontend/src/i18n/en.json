@@ -166,6 +166,27 @@
       "protected": "Locked",
       "unlock": "Unlock"
     },
+    "drop": {
+      "hint": "Drop .md files here",
+      "confirm_batch_title": "Import {{count}} files",
+      "confirm_batch_message": "Import {{count}} files into section \"{{section}}\"?",
+      "confirm_batch_confirm": "Import",
+      "conflict_title": "Document already exists",
+      "conflict_message": "Document \"{{name}}\" already exists in \"{{section}}\". What would you like to do?",
+      "conflict_replace": "Replace",
+      "conflict_rename": "Rename ({{suggested}})",
+      "conflict_cancel": "Skip this file",
+      "conflict_apply_all": "Apply to all conflicts in this batch",
+      "toast_success": "{{count}} document(s) created in {{section}}",
+      "toast_replaced": "{{count}} document(s) replaced in {{section}}",
+      "toast_mixed": "{{created}} created, {{replaced}} replaced, {{failed}} failed",
+      "toast_none": "No documents created",
+      "error_extension": "{{name}} skipped — only .md is accepted",
+      "error_size": "{{name}} skipped — size exceeds 1 MiB",
+      "error_encoding": "{{name}} skipped — non-UTF-8 encoding",
+      "error_name": "{{name}} skipped — invalid document name after normalization",
+      "error_network": "{{name}} — network error"
+    },
     "errors": {
       "missing_anthropic_key": "ANTHROPIC_API_KEY is missing from Module 0 (Secrets). Add it before generating prompts.",
       "duplicate_id": "A role with this ID already exists",

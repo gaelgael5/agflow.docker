@@ -307,6 +307,42 @@ async def generate(
                 "path": f"@docs/missions/{profile_slug}.md",
             })
 
+    # ── Contrats API ────────────────────────────────────────
+    from agflow.services import api_contracts_service as _ctr_svc
+    from agflow.services import openapi_parser as _oapi
+
+    ctr_base_dir = os.path.join(out_dir, "docs", "ctr")
+    if os.path.isdir(ctr_base_dir):
+        shutil.rmtree(ctr_base_dir)
+
+    contracts = await _ctr_svc.list_for_agent(slug)
+    contract_context: list[dict[str, Any]] = []
+
+    for contract in contracts:
+        ctr_dir = os.path.join(ctr_base_dir, contract.slug)
+        os.makedirs(ctr_dir, exist_ok=True)
+
+        full_detail = await _ctr_svc.get_by_id(contract.id)
+        full_tags = _oapi.parse_openapi_tags(full_detail.spec_content)
+
+        for tag in full_tags:
+            md = _oapi.generate_tag_markdown(
+                tag=tag,
+                base_url=contract.base_url,
+                auth_header=contract.auth_header,
+                auth_prefix=contract.auth_prefix,
+                auth_secret_ref=contract.auth_secret_ref or "",
+            )
+            _write(ctr_dir, f"{tag['slug']}.md", md)
+
+        contract_context.append({
+            "slug": contract.slug,
+            "description": contract.description,
+            "tags": [{"name": t["name"], "slug": t["slug"]} for t in full_tags],
+        })
+
+    _log.info("agent_generator.contracts_written", count=len(contracts))
+
     # Render prompt.md — with template or fallback
     if _prompt_template is not None:
         prompt_md = _prompt_template.render(
@@ -314,6 +350,7 @@ async def generate(
             agent=agent,
             load_section=_prompt_loader,
             missions=generated_profiles,
+            api_contracts=contract_context,
         )
     else:
         prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
@@ -321,6 +358,13 @@ async def generate(
             prompt_md += "\n\n### Missions\n"
             for m in generated_profiles:
                 prompt_md += f"\n- {m['description']} : `{m['path']}`"
+            prompt_md += "\n"
+        if contract_context:
+            prompt_md += "\n\n## API disponibles\n"
+            for ctr in contract_context:
+                prompt_md += f"\n### {ctr['description']}\n"
+                for tag in ctr["tags"]:
+                    prompt_md += f"\n- {tag['name']} : `@docs/ctr/{ctr['slug']}/{tag['slug']}.md`"
             prompt_md += "\n"
 
     prompt_md = await _expand_macros(prompt_md)

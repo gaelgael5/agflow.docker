@@ -296,7 +296,23 @@ async def generate(
     for config_path, blocks in config_blocks.items():
         filename = os.path.basename(config_path)
         content = "\n\n".join(blocks) + "\n"
+        # Write to generated/ for reference
         _write(out_dir, filename, content)
+        # Also write to the actual mount source path so Docker can bind it
+        # config_path "~/.vibe/config.toml" → source dir ".vibe" → write to {data}/{dockerfile_id}/.vibe/config.toml
+        last_slash = config_path.rfind("/")
+        if last_slash > 0:
+            dir_path = config_path[:last_slash]
+            source_dir = dir_path.lstrip("~/")
+            data_base = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+            mount_dir = os.path.join(data_base, agent.dockerfile_id, source_dir)
+            os.makedirs(mount_dir, exist_ok=True)
+            with open(os.path.join(mount_dir, filename), "w", encoding="utf-8") as fh:
+                fh.write(content)
+            _log.info(
+                "agent_generator.mcp_config_written",
+                path=os.path.join(mount_dir, filename),
+            )
 
     # Also keep mcp.json for backward compat / debug
     mcp_config_legacy = []

@@ -185,18 +185,17 @@ async def generate(
                 keep_trailing_newline=True,
                 autoescape=False,
             )
-            template = env.from_string(tpl_content)
-            prompt_md = template.render(
-                role=role,
-                agent=agent,
-                load_section=_make_loader(all_sections),
-            )
+            _prompt_template = env.from_string(tpl_content)
+            _prompt_loader = _make_loader(all_sections)
         else:
             _log.warning("agent_generator.prompt_template_not_found", path=tpl_path)
-            prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
+            _prompt_env = None
+            _prompt_template = None
+            _prompt_loader = None
     else:
-        prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
-    prompt_md = await _expand_macros(prompt_md)
+        _prompt_env = None
+        _prompt_template = None
+        _prompt_loader = None
 
     # Clean old profile files before regeneration
     import shutil
@@ -293,7 +292,7 @@ async def generate(
             doc_count=sum(len(v) for v in sections.values()),
         )
 
-    # Append missions index to prompt.md
+    # Collect generated profiles for the prompt template
     generated_profiles = []
     for profile in profiles:
         if not profile.document_ids:
@@ -301,15 +300,30 @@ async def generate(
         profile_slug = profile.name.lower().replace(" ", "_")
         profile_file = os.path.join(docs_missions_dir, f"{profile_slug}.md")
         if os.path.isfile(profile_file):
-            generated_profiles.append(profile)
+            generated_profiles.append({
+                "name": profile.name,
+                "description": profile.description,
+                "slug": profile_slug,
+                "path": f"@docs/missions/{profile_slug}.md",
+            })
 
-    if generated_profiles:
-        prompt_md += "\n\n### Missions\n"
-        for profile in generated_profiles:
-            profile_slug = profile.name.lower().replace(" ", "_")
-            prompt_md += f"\n- {profile.description} : `@docs/missions/{profile_slug}.md`"
-        prompt_md += "\n"
+    # Render prompt.md — with template or fallback
+    if _prompt_template is not None:
+        prompt_md = _prompt_template.render(
+            role=role,
+            agent=agent,
+            load_section=_prompt_loader,
+            missions=generated_profiles,
+        )
+    else:
+        prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
+        if generated_profiles:
+            prompt_md += "\n\n### Missions\n"
+            for m in generated_profiles:
+                prompt_md += f"\n- {m['description']} : `{m['path']}`"
+            prompt_md += "\n"
 
+    prompt_md = await _expand_macros(prompt_md)
     _write(out_dir, "prompt.md", prompt_md)
 
     # Build .env — merge Dockerfile.json Environments with agent overrides

@@ -647,15 +647,8 @@ export function RolesPage() {
                       {t("roles.tab_prompt")}
                     </TabsTrigger>
                     {selectedDoc && (
-                      <TabsTrigger
-                        value="document"
-                        onClick={() => {
-                          if (tab === "document" && !isDocLocked(selectedDoc)) {
-                            setEditingDocName(docDisplayName(selectedDoc));
-                          }
-                        }}
-                      >
-                        {docDisplayName(selectedDoc)}
+                      <TabsTrigger value="document">
+                        Document
                       </TabsTrigger>
                     )}
                   </TabsList>
@@ -690,10 +683,10 @@ export function RolesPage() {
                       className="flex-1 flex flex-col min-h-0"
                     >
                       <div className="flex items-center gap-2 mb-3 shrink-0">
-                        {editingDocName !== null && (
+                        {editingDocName !== null ? (
                           <input
                             autoFocus
-                            className="text-[15px] font-semibold bg-transparent border-b border-primary outline-none px-0 py-0.5 min-w-[8rem]"
+                            className="text-[15px] font-semibold bg-transparent border-b border-primary outline-none px-0 py-0.5 min-w-[16rem] w-full max-w-md"
                             value={editingDocName}
                             onChange={(e) => setEditingDocName(e.target.value)}
                             onKeyDown={(e) => {
@@ -724,6 +717,17 @@ export function RolesPage() {
                               setEditingDocName(null);
                             }}
                           />
+                        ) : (
+                          <h3
+                            className="text-[15px] font-semibold cursor-pointer hover:text-primary transition-colors min-w-[16rem]"
+                            onClick={() => {
+                              if (!isDocLocked(selectedDoc)) {
+                                setEditingDocName(docDisplayName(selectedDoc));
+                              }
+                            }}
+                          >
+                            {docDisplayName(selectedDoc)}
+                          </h3>
                         )}
                         {draftDocContent !== null && (
                           <Button

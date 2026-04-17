@@ -10,6 +10,30 @@ import {
   syntaxHighlighting,
 } from "@codemirror/language";
 
+const agflowTheme = EditorView.theme({
+  "&": {
+    backgroundColor: "hsl(var(--background))",
+    color: "hsl(var(--foreground))",
+  },
+  ".cm-gutters": {
+    backgroundColor: "hsl(var(--muted))",
+    color: "hsl(var(--muted-foreground))",
+    borderRight: "1px solid hsl(var(--border))",
+  },
+  ".cm-activeLineGutter": {
+    backgroundColor: "hsl(var(--accent))",
+  },
+  ".cm-activeLine": {
+    backgroundColor: "hsl(var(--accent) / 0.3)",
+  },
+  ".cm-cursor": {
+    borderLeftColor: "hsl(var(--primary))",
+  },
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
+    backgroundColor: "hsl(var(--primary) / 0.2) !important",
+  },
+});
+
 interface Props {
   value: string;
   onChange: (value: string) => void;
@@ -31,6 +55,7 @@ export function JinjaEditor({ value, onChange, readOnly = false }: Props) {
         html(),
         syntaxHighlighting(defaultHighlightStyle),
         oneDark,
+        agflowTheme,
         history(),
         bracketMatching(),
         keymap.of([...defaultKeymap, ...historyKeymap]),

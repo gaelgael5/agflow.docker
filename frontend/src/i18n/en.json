@@ -731,7 +731,7 @@
     "section_composition": "Composition",
     "bricks_assembled": "bricks assembled",
     "mcp_add_short": "Add",
-    "mcp_count_suffix": "server(s)",
+    "mcp_count_suffix": "service(s)",
     "mcp_empty": "No MCP — click + Add to attach one",
     "skill_add_short": "Add",
     "skill_count_suffix": "skill(s)",

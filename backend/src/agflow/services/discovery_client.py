@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 import httpx
 import structlog
@@ -67,15 +68,11 @@ async def probe(
 
 
 def _map_mcp_item(raw: dict[str, Any]) -> dict[str, Any]:
-    """Normalize a yoops /services item into agflow's MCPSearchItem shape."""
+    """Normalize a yoops /search_mcp item into agflow's MCPSearchItem shape."""
     full_name: str = raw.get("name") or ""
-    # "user/repo" → short display name is the segment after the slash
     short_name = full_name.split("/")[-1] if "/" in full_name else full_name
-    tags = raw.get("tags") or []
-    short_desc = (
-        (raw.get("category") or "")
-        + (" — " + ", ".join(tags) if tags else "")
-    ).strip(" —")
+    description: str = raw.get("description") or ""
+    short_desc = description[:200] if description else (raw.get("category") or "")
     return {
         "package_id": raw.get("id", ""),
         "name": short_name or full_name,
@@ -84,9 +81,9 @@ def _map_mcp_item(raw: dict[str, Any]) -> dict[str, Any]:
         "transport": raw.get("transport") or "stdio",
         "category": raw.get("category") or "",
         "short_description": short_desc,
-        "long_description": "",
+        "long_description": description,
         "documentation_url": raw.get("doc_url") or "",
-        "has_summaries": bool(raw.get("has_summaries")),
+        "has_summaries": bool(description),
     }
 
 
@@ -97,12 +94,12 @@ async def search_mcp(
     semantic: bool = False,
     client: httpx.AsyncClient | None = None,
 ) -> list[dict[str, Any]]:
-    url = base_url.rstrip("/") + "/services"
-    params: dict[str, Any] = {"limit": 50}
+    url = base_url.rstrip("/") + "/search_mcp"
+    params: dict[str, Any] = {"per_page": 50}
     if query:
-        params["search"] = query
+        params["q"] = query
     if semantic:
-        params["semantic"] = 1
+        params["semantic"] = True
     async with _maybe_client(client) as c:
         response = await c.get(url, headers=_headers(api_key), params=params)
     response.raise_for_status()
@@ -166,7 +163,7 @@ async def get_service_summary(
 
 
 def _map_skill_item(raw: dict[str, Any]) -> dict[str, Any]:
-    """Normalize a yoops /skills item into agflow's SkillSearchItem shape."""
+    """Normalize a yoops /search_skills item into agflow's SkillSearchItem shape."""
     return {
         "skill_id": raw.get("id", ""),
         "name": raw.get("name") or "",
@@ -175,33 +172,22 @@ def _map_skill_item(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _matches_query(item: dict[str, Any], query: str) -> bool:
-    q = query.lower().strip()
-    if not q:
-        return True
-    haystack = " ".join(
-        str(item.get(f, "") or "")
-        for f in ("name", "description", "category", "target_type")
-    ).lower()
-    return q in haystack
-
-
 async def search_skills(
     base_url: str,
     api_key: str | None,
     query: str,
     client: httpx.AsyncClient | None = None,
 ) -> list[dict[str, Any]]:
-    url = base_url.rstrip("/") + "/skills"
+    url = base_url.rstrip("/") + "/search_skills"
+    params: dict[str, Any] = {"per_page": 50}
+    if query:
+        params["q"] = query
     async with _maybe_client(client) as c:
-        response = await c.get(
-            url, headers=_headers(api_key), params={"limit": 200}
-        )
+        response = await c.get(url, headers=_headers(api_key), params=params)
     response.raise_for_status()
     data = response.json()
-    items = data if isinstance(data, list) else data.get("items", [])
-    filtered = [i for i in items if _matches_query(i, query)]
-    return [_map_skill_item(item) for item in filtered]
+    items = data.get("items", []) if isinstance(data, dict) else data
+    return [_map_skill_item(item) for item in items]
 
 
 async def get_skill_detail(

@@ -442,7 +442,8 @@
     "added": "Added",
     "loading": "Searching…",
     "error": "Error — check the registry URL and API key",
-    "hint": "Type a query then click Search"
+    "hint": "Type a query then click Search",
+    "help": "Search syntax help"
   },
   "agents": {
     "page_title": "Agents (compositions)",

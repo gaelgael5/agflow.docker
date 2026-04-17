@@ -189,6 +189,46 @@ export function MCPCatalogPage() {
             )
           }
           groupBy={(item) => item.category}
+          helpContent={
+            <table className="w-full text-left text-[12px]">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="py-1 pr-3 font-medium">Syntaxe</th>
+                  <th className="py-1 font-medium">Description</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono">
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/name fetch</td>
+                  <td className="py-1 font-sans">Recherche par nom exact</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/tag reference</td>
+                  <td className="py-1 font-sans">Filtrer par catégorie</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/repo owner/repo</td>
+                  <td className="py-1 font-sans">Filtrer par dépôt GitHub</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/group classical_mcp</td>
+                  <td className="py-1 font-sans">Items d'un groupe nommé</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/pseudo gael</td>
+                  <td className="py-1 font-sans">Items des groupes publics d'un utilisateur</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">@database</td>
+                  <td className="py-1 font-sans">Recherche sémantique (IA)</td>
+                </tr>
+                <tr>
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/pseudo gael /tag reference</td>
+                  <td className="py-1 font-sans">Combinaison de filtres (AND)</td>
+                </tr>
+              </tbody>
+            </table>
+          }
           renderItem={(item) => (
             <MCPSearchResultItem
               item={item}

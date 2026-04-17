@@ -442,7 +442,8 @@
     "added": "Ajouté",
     "loading": "Recherche en cours…",
     "error": "Erreur — vérifie la clé API et l'URL du registre",
-    "hint": "Tape une requête puis clique Rechercher"
+    "hint": "Tape une requête puis clique Rechercher",
+    "help": "Aide sur la syntaxe de recherche"
   },
   "agents": {
     "page_title": "Agents (compositions)",

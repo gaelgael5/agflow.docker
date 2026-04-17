@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Plus, Search, X } from "lucide-react";
+import { Check, HelpCircle, Plus, Search, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,7 @@ interface Props<T> {
   isInstalled?: (item: T) => boolean;
   renderItem: (item: T) => ReactNode;
   groupBy?: (item: T) => string;
+  helpContent?: ReactNode;
   onClose: () => void;
 }
 
@@ -31,6 +32,7 @@ export function SearchModal<T>({
   isInstalled,
   renderItem,
   groupBy,
+  helpContent,
   onClose,
 }: Props<T>) {
   const { t } = useTranslation();
@@ -40,6 +42,7 @@ export function SearchModal<T>({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addedSet, setAddedSet] = useState<Set<number>>(new Set());
+  const [showHelp, setShowHelp] = useState(false);
 
   async function handleSearch() {
     setLoading(true);
@@ -103,7 +106,23 @@ export function SearchModal<T>({
               ? t("search_modal.loading")
               : t("search_modal.search_button")}
           </Button>
+          {helpContent && (
+            <Button
+              variant={showHelp ? "secondary" : "ghost"}
+              size="icon"
+              onClick={() => setShowHelp((v) => !v)}
+              aria-label={t("search_modal.help")}
+            >
+              <HelpCircle className="w-4 h-4" />
+            </Button>
+          )}
         </div>
+
+        {showHelp && helpContent && (
+          <div className="rounded-md bg-muted p-3 text-[12px] overflow-y-auto max-h-48">
+            {helpContent}
+          </div>
+        )}
 
         {error && (
           <p role="alert" className="text-destructive text-[12px]">

@@ -181,7 +181,6 @@ export function MCPCatalogPage() {
       {searchOpen && selectedServiceId && (
         <SearchModal<MCPSearchItem>
           title={t("mcp_catalog.page_title")}
-          showSemantic
           onSearch={handleSearch}
           onAdd={handleInstall}
           isInstalled={(item) =>

@@ -18,6 +18,7 @@ from agflow.api.admin.roles import router as admin_roles_router
 from agflow.api.admin.secrets import router as admin_secrets_router
 from agflow.api.admin.service_types import router as admin_service_types_router
 from agflow.api.admin.skills_catalog import router as admin_skills_catalog_router
+from agflow.api.admin.templates import router as admin_templates_router
 from agflow.api.admin.terminal import router as admin_terminal_router
 from agflow.api.admin.user_secrets import router as admin_user_secrets_router
 from agflow.api.admin.users import router as admin_users_router
@@ -97,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_mcp_catalog_router)
     app.include_router(admin_skills_catalog_router)
     app.include_router(admin_agents_router)
+    app.include_router(admin_templates_router)
     app.include_router(admin_terminal_router)
     app.include_router(admin_users_router)
     app.include_router(admin_api_keys_router)

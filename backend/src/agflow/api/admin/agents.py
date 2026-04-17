@@ -59,6 +59,11 @@ async def get_assistant() -> AgentSummary | None:
     return await agents_service.get_assistant()
 
 
+@router.post("/{agent_id}/set-assistant", status_code=status.HTTP_204_NO_CONTENT)
+async def set_assistant(agent_id: UUID) -> None:
+    await agents_service.set_assistant(agent_id)
+
+
 @router.delete("/assistant", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_assistant() -> None:
     await agents_service.clear_assistant()

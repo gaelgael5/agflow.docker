@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { html } from "@codemirror/lang-html";
+import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   bracketMatching,
-  defaultHighlightStyle,
   syntaxHighlighting,
 } from "@codemirror/language";
 
@@ -52,8 +52,9 @@ export function JinjaEditor({ value, onChange, readOnly = false }: Props) {
       doc: value,
       extensions: [
         html(),
-        syntaxHighlighting(defaultHighlightStyle),
+        syntaxHighlighting(oneDarkHighlightStyle),
         agflowTheme,
+        lineNumbers(),
         history(),
         bracketMatching(),
         keymap.of([...defaultKeymap, ...historyKeymap]),

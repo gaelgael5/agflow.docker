@@ -158,62 +158,39 @@ async def generate(
     prompt_md = await _expand_macros(prompt_md)
     _write(out_dir, "prompt.md", prompt_md)
 
-    # Group documents by section
-    docs_by_section: dict[str, list[str]] = {}
-    for doc in documents:
-        docs_by_section.setdefault(doc.section, []).append(doc.content_md)
+    # Clean missions directory before regeneration
+    import shutil
+    missions_dir = os.path.join(out_dir, "missions")
+    if os.path.isdir(missions_dir):
+        shutil.rmtree(missions_dir)
 
-    # All roles content (shared across profiles)
-    all_roles = "\n\n---\n\n".join(docs_by_section.get("roles", []))
-
-    # Build per-profile mission directories
+    # Build per-profile mission directories from profile selections
     profiles = await agent_profiles_service.list_for_agent(agent_id)
-    if profiles:
-        for profile in profiles:
-            profile_slug = profile.name.lower().replace(" ", "_")
-            profile_dir = os.path.join(out_dir, "missions", profile_slug)
-            os.makedirs(profile_dir, exist_ok=True)
+    for profile in profiles:
+        profile_slug = profile.name.lower().replace(" ", "_")
+        profile_dir = os.path.join(missions_dir, profile_slug)
+        os.makedirs(profile_dir, exist_ok=True)
 
-            # roles.md — always all roles
-            if all_roles:
-                _write(profile_dir, "roles.md", all_roles)
+        # Collect documents selected in this profile, grouped by section
+        doc_ids = set(str(d) for d in profile.document_ids)
+        sections: dict[str, list[str]] = {"roles": [], "missions": [], "competences": []}
+        for doc in documents:
+            if str(doc.id) in doc_ids and doc.section in sections:
+                sections[doc.section].append(doc.content_md)
 
-            # Filter documents belonging to this profile
-            doc_ids = set(str(d) for d in profile.document_ids)
-            profile_missions = []
-            profile_competences = []
-            for doc in documents:
-                if str(doc.id) in doc_ids:
-                    if doc.section == "missions":
-                        profile_missions.append(doc.content_md)
-                    elif doc.section == "competences":
-                        profile_competences.append(doc.content_md)
+        # Write each section file (skip empty/whitespace-only content)
+        for section_name, contents in sections.items():
+            merged = "\n\n---\n\n".join(contents)
+            if merged.strip():
+                _write(profile_dir, f"{section_name}.md", merged)
 
-            if profile_missions:
-                _write(profile_dir, "missions.md",
-                       "\n\n---\n\n".join(profile_missions))
-            if profile_competences:
-                _write(profile_dir, "competences.md",
-                       "\n\n---\n\n".join(profile_competences))
-
-            _log.info(
-                "agent_generator.profile_written",
-                profile=profile.name,
-                missions=len(profile_missions),
-                competences=len(profile_competences),
-            )
-    else:
-        # No profiles: generate a single "default" mission set with all docs
-        default_dir = os.path.join(out_dir, "missions", "default")
-        os.makedirs(default_dir, exist_ok=True)
-        if all_roles:
-            _write(default_dir, "roles.md", all_roles)
-        all_missions = "\n\n---\n\n".join(docs_by_section.get("missions", []))
-        all_competences = "\n\n---\n\n".join(docs_by_section.get("competences", []))
-        if all_missions:
-            _write(default_dir, "missions.md", all_missions)
-        if all_competences:
-            _write(default_dir, "competences.md", all_competences)
+        _log.info(
+            "agent_generator.profile_written",
+            profile=profile.name,
+            roles=len(sections["roles"]),
+            missions=len(sections["missions"]),
+            competences=len(sections["competences"]),
+        )
 
     # Build .env — merge Dockerfile.json Environments with agent overrides
     # Secrets come exclusively from the user's vault — never from platform secrets

@@ -468,6 +468,8 @@ export function AgentEditorPage() {
       force_kill_delay_secs: form.force_kill_delay_secs,
       mcp_bindings: form.mcp_bindings,
       skill_bindings: form.skill_bindings,
+      prompt_template_slug: form.prompt_template_slug,
+      prompt_template_culture: form.prompt_template_culture,
     };
   }
 

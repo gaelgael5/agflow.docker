@@ -83,6 +83,8 @@ export interface AgentCreatePayload {
   force_kill_delay_secs?: number;
   mcp_bindings?: AgentMCPBinding[];
   skill_bindings?: AgentSkillBinding[];
+  prompt_template_slug?: string;
+  prompt_template_culture?: string;
 }
 
 export type AgentUpdatePayload = Omit<AgentCreatePayload, "slug">;

@@ -164,7 +164,6 @@ export function AgentEditorPage() {
   const [deleteProfileTarget, setDeleteProfileTarget] = useState<{ id: string; name: string } | null>(null);
   const [showDeleteAgentDialog, setShowDeleteAgentDialog] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [regenSpin, setRegenSpin] = useState(false);
   const [generatedFiles, setGeneratedFiles] = useState<
     { path: string; content: string; type?: "file" | "dir" }[]
   >([]);
@@ -630,8 +629,6 @@ export function AgentEditorPage() {
                   onClick={async () => {
                     if (!id) return;
                     setGenerating(true);
-                    setRegenSpin(true);
-                    window.setTimeout(() => setRegenSpin(false), 1400);
                     try {
                       const secrets = decryptedSecrets ?? await decryptUserSecrets();
                       await agentsApi.generate(id, { secrets });
@@ -645,8 +642,7 @@ export function AgentEditorPage() {
                   }}
                 >
                   <RefreshCw
-                    className="w-3.5 h-3.5"
-                    style={regenSpin ? { animation: "spin 0.7s linear 2" } : undefined}
+                    className={`w-3.5 h-3.5 ${generating ? "animate-spin" : ""}`}
                   />
                 </Button>
                 <Button

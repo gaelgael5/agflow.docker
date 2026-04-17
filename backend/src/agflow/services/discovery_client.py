@@ -53,6 +53,19 @@ async def probe(
     )
 
 
+async def fetch_targets(
+    base_url: str,
+    api_key: str | None,
+    client: httpx.AsyncClient | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch all installation targets from the registry."""
+    url = base_url.rstrip("/") + "/targets"
+    async with _maybe_client(client) as c:
+        response = await c.get(url, headers=_headers(api_key))
+    response.raise_for_status()
+    return response.json()
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # MCP servers
 #
@@ -84,6 +97,8 @@ def _map_mcp_item(raw: dict[str, Any]) -> dict[str, Any]:
         "long_description": description,
         "documentation_url": raw.get("doc_url") or "",
         "has_summaries": bool(description),
+        "recipes": raw.get("recipes") or {},
+        "parameters": raw.get("parameters") or [],
     }
 
 

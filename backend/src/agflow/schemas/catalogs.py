@@ -52,6 +52,21 @@ class ProbeResult(BaseModel):
     detail: str
 
 
+class TargetMode(BaseModel):
+    runtime: str
+    action_type: str
+    template: str
+    config_path: str | None = None
+
+
+class TargetSummary(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    modes: list[TargetMode] = Field(default_factory=list)
+    skill_modes: list[dict] = Field(default_factory=list)
+
+
 class MCPSearchItem(BaseModel):
     package_id: str | int
     name: str

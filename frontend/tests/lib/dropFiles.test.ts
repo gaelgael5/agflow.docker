@@ -17,6 +17,7 @@ describe("isMarkdownFile", () => {
     expect(isMarkdownFile(new File([""], "foo.txt"))).toBe(false);
     expect(isMarkdownFile(new File([""], "foo.pdf"))).toBe(false);
     expect(isMarkdownFile(new File([""], "foo"))).toBe(false);
+    expect(isMarkdownFile(new File([""], "foo.md.backup"))).toBe(false);
   });
 });
 
@@ -32,7 +33,7 @@ describe("sanitizeDocName", () => {
     expect(sanitizeDocName("")).toBe("");
   });
 
-  it("keeps existing hyphens and digits", () => {
+  it("keeps existing hyphens, underscores, and digits", () => {
     expect(sanitizeDocName("mission-v2.md")).toBe("mission-v2");
     expect(sanitizeDocName("step_1.md")).toBe("step_1");
   });

@@ -1,10 +1,10 @@
 # M7 — Product Registry — Design Spec
 
-> **Date** : 2026-04-16
-> **Version** : 0.3 (post-itérations)
-> **Scope** : catalogue de produits, compositions virtuelles, registries d'images, génération d'artefacts, backends pour agents
+> **Date** : 2026-04-17
+> **Version** : 0.4 (intégration contrats OpenAPI)
+> **Scope** : catalogue de produits, compositions virtuelles, registries d'images, génération d'artefacts, backends pour agents, contrats OpenAPI auto-gérés
 > **Status** : design validé, prêt pour plan d'implémentation
-> **Prérequis** : M0 (Secrets), M1 (Dockerfiles), M3 (Catalogues MCP), M4 (Agents), Users & API Keys, MOM Bus, Sessions
+> **Prérequis** : M0 (Secrets), M1 (Dockerfiles), M3 (Catalogues MCP), M4 (Agents), Users & API Keys, MOM Bus, Sessions, Contrats OpenAPI (onglet agent), Templates Jinja2, Injection MCP
 
 ---
 
@@ -17,7 +17,7 @@ Permettre à un administrateur de :
 1. **Déclarer des produits** (Outline, OpenProject, Gitea, GitHub, Jira…) dans un catalogue avec leurs recettes de déploiement
 2. **Composer des instances virtuelles** en assemblant des produits avec leurs variables et secrets, sans se soucier de la plateforme cible
 3. **Générer des artefacts de déploiement** adaptés à la plateforme (docker-compose, helm, manual) téléchargeables en un clic
-4. **Exposer les produits déployés aux agents** via MCP et RAG, dans le contexte d'un projet
+4. **Exposer les produits déployés aux agents** via MCP, contrats OpenAPI auto-injectés, et RAG, dans le contexte d'un projet
 
 ### 1.2 Principes directeurs
 
@@ -28,7 +28,8 @@ Permettre à un administrateur de :
 | **Exécution hors scope V1** | agflow.docker génère des artefacts téléchargeables. L'utilisateur les applique manuellement. Les drivers d'exécution automatique sont V2+. |
 | **Secrets par référence** | Les secrets utilisent la syntaxe `${VAR_NAME}`, résolus via M0 `resolve_env()` au moment de la génération. |
 | **Registries par défaut** | `docker.io` et `ghcr.io` sont les registries de base. Possibilité d'en ajouter. |
-| **Projet = contexte agent** | Le projet regroupe les instances déployées et fournit aux agents leur contexte MCP (quel wiki, quel repo, quel Jira). |
+| **Projet = contexte agent** | Le projet regroupe les instances déployées et fournit aux agents leur contexte MCP + contrats API (quel wiki, quel repo, quel Jira). |
+| **Contrats API auto-gérés** | Quand un produit est activé et qu'il déclare un contrat OpenAPI, celui-ci est automatiquement attaché aux agents concernés. Les fichiers `@docs/ctr/` sont générés avec les commandes curl par tag. |
 
 ### 1.3 Positionnement dans la sidebar
 
@@ -38,13 +39,14 @@ PLATEFORME (admin only)
   🏷️ Types de services
   ⚙️ Secrets & variables d'env.
   🐳 Dockerfiles (runtimes agents)
+  📄 Templates Jinja2
   🔌 Catalogue MCP
   📚 Catalogue Skills
   👤 Utilisateurs
 
 RESSOURCES (admin only)
-  📦 Registries d'images              ← M7 nouveau
-  🧩 Instances (compositions)          ← M7 nouveau
+  📦 Registries d'images              ← M7
+  🧩 Instances (compositions)          ← M7
 
 ACCÈS (utilisateur, soi-même)
   🔑 Mes secrets
@@ -53,7 +55,7 @@ ACCÈS (utilisateur, soi-même)
 ORCHESTRATION (utilisateur, selon scopes)
   🎭 Rôles (personnalités)
   🤖 Agents (compositions)
-  ⚡ Instances (génération)             ← M7 nouveau
+  ⚡ Instances (génération)             ← M7
   📡 API publique
   👁️ Supervision (soon)
 ```
@@ -87,13 +89,13 @@ Les registries sont les sources d'images Docker pour les produits et les agents.
 
 ```sql
 CREATE TABLE IF NOT EXISTS image_registries (
-    id              TEXT PRIMARY KEY,               -- slug: "dockerhub", "ghcr", "pickup-acr"
+    id              TEXT PRIMARY KEY,
     display_name    TEXT NOT NULL,
-    url             TEXT NOT NULL,                   -- "docker.io", "ghcr.io", "pickup.azurecr.io"
+    url             TEXT NOT NULL,
     auth_type       TEXT NOT NULL DEFAULT 'none'
                     CHECK (auth_type IN ('none', 'basic', 'token')),
-    credential_ref  TEXT,                            -- "${REGISTRY_PICKUP_TOKEN}" — ref M0, nullable
-    is_default      BOOLEAN NOT NULL DEFAULT FALSE,  -- docker.io et ghcr.io = true
+    credential_ref  TEXT,
+    is_default      BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -107,23 +109,24 @@ Une recette est une description **purement déclarative** de ce qui compose un p
 
 ```sql
 CREATE TABLE IF NOT EXISTS product_catalog (
-    id              TEXT PRIMARY KEY,               -- slug: "outline", "openproject", "github"
+    id              TEXT PRIMARY KEY,
     display_name    TEXT NOT NULL,
     description     TEXT NOT NULL DEFAULT '',
     category        TEXT NOT NULL DEFAULT 'other'
                     CHECK (category IN ('wiki', 'tasks', 'code', 'design', 'infra', 'other')),
     tags            TEXT[] NOT NULL DEFAULT '{}',
     min_ram_mb      INTEGER NOT NULL DEFAULT 512,
-    mcp_package_id  TEXT,                           -- ref vers mcp_servers.package_id (nullable)
-    config_only     BOOLEAN NOT NULL DEFAULT FALSE, -- true pour GitHub, Jira (SaaS, rien à déployer)
-    recipe_yaml     TEXT NOT NULL,                   -- recette complète en YAML
+    mcp_package_id  TEXT,
+    config_only     BOOLEAN NOT NULL DEFAULT FALSE,
+    has_openapi     BOOLEAN NOT NULL DEFAULT FALSE,
+    recipe_yaml     TEXT NOT NULL,
     recipe_version  TEXT NOT NULL DEFAULT '1.0.0',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
-En V1, les recettes sont des fichiers YAML versionnés dans le code source (`data/products/*.yaml`) et chargés en base au démarrage (pattern identique au `data/agents/` existant). Pas de CRUD UI pour les recettes en V1.
+En V1, les recettes sont des fichiers YAML versionnés dans le code source (`data/products/*.yaml`) et chargés en base au démarrage. Pas de CRUD UI pour les recettes en V1.
 
 #### Anatomie d'une recette YAML
 
@@ -179,6 +182,14 @@ services:
       EMBEDDING_MODEL: "{{ embedding_model }}"
       EMBEDDING_ENDPOINT: "{{ embedding_endpoint }}"
 
+openapi:
+  source: url
+  url: "http://{{ services.app.host }}:3000/api/openapi.json"
+  base_url: "{{ service_url }}/api"
+  auth_header: Authorization
+  auth_prefix: Bearer
+  auth_secret_ref: "${OUTLINE_API_TOKEN}"
+
 secrets_required:
   - name: OUTLINE_SECRET_KEY
     description: Clé de chiffrement interne Outline
@@ -190,7 +201,7 @@ secrets_required:
     description: Mot de passe PostgreSQL
     generate: random_base64(24)
   - name: OUTLINE_API_TOKEN
-    description: Token API Outline pour le worker RAG
+    description: Token API Outline pour le worker RAG et les agents
     generate: null
 
 variables:
@@ -214,6 +225,19 @@ shared_dependencies:
   - pgvector
 ```
 
+#### Bloc `openapi` dans les recettes
+
+Le bloc `openapi` est **optionnel**. Quand il est présent, l'activation de l'instance déclenche l'auto-injection du contrat OpenAPI sur les agents du projet.
+
+| Champ | Description |
+|---|---|
+| `source` | `url` (fetch depuis l'instance déployée) ou `static` (contenu embarqué dans la recette) |
+| `url` | URL du contrat OpenAPI. Peut contenir des `{{ }}` résolus à l'activation (ex: `{{ service_url }}`) |
+| `base_url` | URL de base pour les commandes curl. Peut contenir `{{ service_url }}` |
+| `auth_header` | Header d'authentification (défaut `Authorization`) |
+| `auth_prefix` | Préfixe du token (défaut `Bearer`) |
+| `auth_secret_ref` | Référence M0 au secret d'auth (ex: `${OUTLINE_API_TOKEN}`) |
+
 #### Syntaxe de templating
 
 Deux syntaxes, deux moments de résolution :
@@ -224,6 +248,8 @@ Deux syntaxes, deux moments de résolution :
 | `{{ variable }}` | Variables de composition + refs inter-services | `{{ domain }}`, `{{ services.db.host }}` |
 
 Les deux sont résolus au moment de la **génération** des artefacts.
+
+Variable spéciale : `{{ service_url }}` est résolu à l'**activation** (quand l'utilisateur saisit l'URL du service déployé). Utilisé principalement dans le bloc `openapi`.
 
 #### Recettes "config only" (SaaS)
 
@@ -236,6 +262,14 @@ description: Hébergement de code (SaaS)
 category: code
 config_only: true
 mcp_package_id: github/mcp-github
+
+openapi:
+  source: url
+  url: "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json"
+  base_url: "https://api.github.com"
+  auth_header: Authorization
+  auth_prefix: "Bearer"
+  auth_secret_ref: "${GITHUB_TOKEN}"
 
 secrets_required:
   - name: GITHUB_TOKEN
@@ -255,19 +289,46 @@ variables:
     default: main
 ```
 
-Pas de `services`, pas de `shared_dependencies`. La page "Instances (compositions)" permet quand même de composer une instance GitHub (pour poser les variables et secrets), et la page "Instances (génération)" ne génère qu'un fichier de config (pas de docker-compose).
+```yaml
+id: jira
+display_name: Jira
+description: Gestion de tâches Atlassian (SaaS)
+category: tasks
+config_only: true
+mcp_package_id: atlassian/mcp-jira
+
+openapi:
+  source: url
+  url: "https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json"
+  base_url: "https://{{ org }}.atlassian.net/rest/api/3"
+  auth_header: Authorization
+  auth_prefix: "Basic"
+  auth_secret_ref: "${JIRA_API_TOKEN}"
+
+secrets_required:
+  - name: JIRA_API_TOKEN
+    description: Token API Jira (base64 email:token)
+    generate: null
+
+variables:
+  - name: org
+    description: Sous-domaine Atlassian
+    type: string
+    required: true
+    example: pickup
+```
 
 ### 2.3 Shared dependencies
 
 Services partagés entre produits sur un même projet. Exemple : pgvector est instancié une fois, tous les workers RAG y écrivent.
 
-Les shared dependencies sont elles-mêmes des mini-recettes stockées dans `data/products/shared/pgvector.yaml`.
+Les shared dependencies sont des mini-recettes stockées dans `data/products/shared/pgvector.yaml`.
 
 Quand un produit qui dépend de `pgvector` est composé dans un projet, le système vérifie si pgvector est déjà composé dans ce projet. Si non, il l'ajoute.
 
 ### 2.4 Instances (compositions virtuelles)
 
-Une instance est l'**assemblage abstrait** d'un produit avec ses variables et secrets concrets, rattachée à un projet. Pas d'IP, pas de plateforme cible, pas de profil technique.
+Une instance est l'**assemblage abstrait** d'un produit avec ses variables et secrets concrets, rattachée à un projet.
 
 #### Table `product_instances`
 
@@ -278,11 +339,11 @@ CREATE TABLE IF NOT EXISTS product_instances (
     project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     instance_name   TEXT NOT NULL,
     variables       JSONB NOT NULL DEFAULT '{}',
-    secret_refs     JSONB NOT NULL DEFAULT '{}',   -- {logical: "${M0_VAR_NAME}"}
-    service_role    TEXT,                            -- "wiki", "tasks", "code", "design" — rôle dans le projet
+    secret_refs     JSONB NOT NULL DEFAULT '{}',
+    service_role    TEXT,
     status          TEXT NOT NULL DEFAULT 'draft'
                     CHECK (status IN ('draft', 'active', 'stopped')),
-    service_url     TEXT,                            -- URL une fois déployé (saisi manuellement)
+    service_url     TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (project_id, instance_name)
@@ -294,13 +355,11 @@ CREATE INDEX IF NOT EXISTS idx_product_instances_catalog ON product_instances(ca
 
 #### Table `product_instance_secrets`
 
-Secrets auto-générés pour une instance (ex: DB_PASSWORD). Créés dans M0 avec un naming convention.
-
 ```sql
 CREATE TABLE IF NOT EXISTS product_instance_secrets (
     instance_id     UUID NOT NULL REFERENCES product_instances(id) ON DELETE CASCADE,
-    secret_name     TEXT NOT NULL,                   -- logical: "OUTLINE_DB_PASSWORD"
-    var_name        TEXT NOT NULL,                   -- actual M0 var_name
+    secret_name     TEXT NOT NULL,
+    var_name        TEXT NOT NULL,
     auto_generated  BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (instance_id, secret_name)
 );
@@ -314,7 +373,7 @@ Le projet est le **contexte de travail** qui regroupe des instances de produits 
 
 ```sql
 CREATE TABLE IF NOT EXISTS projects (
-    id              TEXT PRIMARY KEY,               -- slug: "pickup-prod", "startup-xyz-dev"
+    id              TEXT PRIMARY KEY,
     display_name    TEXT NOT NULL,
     description     TEXT NOT NULL DEFAULT '',
     environment     TEXT NOT NULL DEFAULT 'dev'
@@ -325,9 +384,7 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 ```
 
-Le lien projet → instances est dans `product_instances.project_id`.
-
-Le lien projet → agents se fait via la session : quand une session est créée, elle référence un projet.
+Le lien projet → agents se fait via la session :
 
 ```sql
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS project_id TEXT REFERENCES projects(id);
@@ -335,7 +392,7 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS project_id TEXT REFERENCES project
 
 ### 2.6 Génération d'artefacts
 
-La génération prend une composition abstraite et produit des **fichiers concrets** pour une plateforme cible. Le profil de déploiement est choisi au moment de la génération, pas stocké dans le target.
+La génération prend une composition abstraite et produit des **fichiers concrets** pour une plateforme cible. Le profil de déploiement est choisi au moment de la génération, pas stocké dans le projet.
 
 #### Table `generation_runs`
 
@@ -345,11 +402,11 @@ CREATE TABLE IF NOT EXISTS generation_runs (
     instance_id     UUID NOT NULL REFERENCES product_instances(id) ON DELETE CASCADE,
     generator_type  TEXT NOT NULL
                     CHECK (generator_type IN ('docker_compose', 'kubernetes_helm', 'swarm', 'manual')),
-    generator_options JSONB NOT NULL DEFAULT '{}',   -- options spécifiques (namespace, storage_class...)
+    generator_options JSONB NOT NULL DEFAULT '{}',
     status          TEXT NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending', 'success', 'failed')),
-    artifacts       JSONB NOT NULL DEFAULT '[]',     -- [{filename, artifact_type, size_bytes}]
-    artifacts_zip   BYTEA,                           -- zip complet téléchargeable
+    artifacts       JSONB NOT NULL DEFAULT '[]',
+    artifacts_zip   BYTEA,
     error_message   TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -359,7 +416,7 @@ CREATE INDEX IF NOT EXISTS idx_generation_runs_instance ON generation_runs(insta
 
 ### 2.7 Product Backends (exposition aux agents)
 
-Quand une instance est marquée `active` (l'utilisateur confirme le déploiement), un backend est auto-créé pour l'exposer aux agents.
+Quand une instance est marquée `active`, un backend est auto-créé pour l'exposer aux agents.
 
 #### Table `product_backends`
 
@@ -367,9 +424,11 @@ Quand une instance est marquée `active` (l'utilisateur confirme le déploiement
 CREATE TABLE IF NOT EXISTS product_backends (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     instance_id     UUID NOT NULL REFERENCES product_instances(id) ON DELETE CASCADE UNIQUE,
-    backend_type    TEXT NOT NULL,                   -- "wiki_outline", "tasks_jira", "code_github"
+    backend_type    TEXT NOT NULL,
     connection_url  TEXT NOT NULL,
     mcp_config      JSONB NOT NULL DEFAULT '{}',
+    openapi_url     TEXT,
+    openapi_spec    TEXT,
     rag_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
     rag_config      JSONB NOT NULL DEFAULT '{}',
     status          TEXT NOT NULL DEFAULT 'configured'
@@ -382,18 +441,39 @@ CREATE TABLE IF NOT EXISTS product_backends (
 CREATE INDEX IF NOT EXISTS idx_product_backends_instance ON product_backends(instance_id);
 ```
 
+Les champs `openapi_url` et `openapi_spec` stockent le contrat OpenAPI résolu au moment de l'activation. Le contrat est fetché depuis l'URL de la recette (avec `{{ service_url }}` résolu) et stocké pour être distribué aux agents.
+
+### 2.8 Lien avec les contrats OpenAPI agents
+
+#### Migration sur `agent_api_contracts`
+
+```sql
+ALTER TABLE agent_api_contracts
+    ADD COLUMN IF NOT EXISTS managed_by_instance UUID REFERENCES product_instances(id) ON DELETE SET NULL;
+```
+
+Quand `managed_by_instance IS NOT NULL`, le contrat est **auto-géré** par M7. L'UI de l'onglet "Contrats API" de l'agent l'affiche avec un badge "auto" en lecture seule. La source de vérité est l'instance de produit.
+
+Quand l'instance est désactivée (statut → `stopped`) ou supprimée, les contrats auto-gérés associés sont supprimés.
+
+Quand l'instance est réactivée ou le contrat OpenAPI est rafraîchi, les contrats auto-gérés sont mis à jour.
+
 ---
 
 ## 3. Comment les agents reçoivent le contexte
 
 ### 3.1 Le projet comme service discovery
 
-Quand une session est créée avec un `project_id`, les agents instanciés dans cette session héritent automatiquement des MCP des produits actifs du projet.
+Quand une session est créée avec un `project_id`, les agents instanciés dans cette session héritent automatiquement :
+
+1. **Des MCP** des produits actifs du projet (via injection MCP)
+2. **Des contrats OpenAPI** des produits actifs (via `agent_api_contracts` auto-gérés)
 
 Le système :
-1. Résout les `product_instances` du projet qui ont `status = 'active'` et un `service_role` assigné.
-2. Pour chaque instance active, récupère le `product_backend` et sa `mcp_config`.
-3. Injecte ces MCP dans le payload de l'agent au provisioning, en plus de ses MCP statiques (M4).
+1. Résout les `product_instances` du projet avec `status = 'active'` et un `service_role` assigné
+2. Pour chaque instance active, récupère le `product_backend` avec sa `mcp_config` et son `openapi_spec`
+3. Injecte les MCP dans le payload de l'agent au provisioning
+4. Les contrats OpenAPI auto-gérés sont déjà attachés aux agents (via `agent_api_contracts.managed_by_instance`)
 
 ```json
 {
@@ -417,20 +497,35 @@ Le système :
 }
 ```
 
-### 3.2 Le prompt agent référence des rôles de services
+### 3.2 Le prompt agent référence MCP + contrats API
 
-L'agent ne connaît pas les URLs ni les noms de produits. Il connaît des **rôles de services** :
+Le prompt généré contient deux sections complémentaires :
 
+```markdown
+## Missions
+
+- Assiste la création de role : `@docs/missions/roles.md`
+
+## API disponibles
+
+Tu disposes des API REST suivantes. Consulte les fiches pour les détails :
+
+### Wiki — Outline (pickup-prod)
+
+- Documents : `@docs/ctr/outline-api/documents.md`
+- Collections : `@docs/ctr/outline-api/collections.md`
+- Search : `@docs/ctr/outline-api/search.md`
+
+### Tâches — Jira (pickup-prod)
+
+- Issues : `@docs/ctr/jira-api/issues.md`
+- Projects : `@docs/ctr/jira-api/projects.md`
+- Search : `@docs/ctr/jira-api/search.md`
 ```
-Tu as accès aux services suivants :
-- wiki : pour déposer et consulter des documents
-- tasks : pour consulter le backlog et les tickets
-- code : pour consulter et modifier le code source
 
-Utilise les outils MCP correspondants pour interagir avec ces services.
-```
+Les fichiers `@docs/ctr/` contiennent les commandes curl par tag, générés par le module contrats OpenAPI existant. L'agent peut les lire comme documentation ET les exécuter.
 
-Le mapping rôle → produit concret est résolu par le projet.
+Les MCP sont disponibles en parallèle : l'agent peut choisir d'utiliser le MCP (plus riche, bidirectionnel) ou les curl (plus simple, unidirectionnel). Les deux coexistent.
 
 ### 3.3 Recherche sémantique transversale
 
@@ -467,7 +562,7 @@ class Generator(Protocol):
 class GeneratedArtifact:
     filename: str
     content: str
-    artifact_type: str  # "compose", "env", "helm_values", "manifest", "readme"
+    artifact_type: str
 ```
 
 ### 4.2 Generators V1
@@ -480,33 +575,25 @@ class GeneratedArtifact:
 
 **`manual`** :
 - Produit uniquement un `README.md` détaillé avec toutes les variables, images, ports, volumes
-- Pour les environnements exotiques ou les utilisateurs qui veulent tout contrôler
 
 ### 4.3 Options de génération
 
 Passées au moment de l'appel, pas stockées dans le projet :
 
 ```json
-{
-  "generator": "docker_compose",
-  "options": {}
-}
+{ "generator": "docker_compose", "options": {} }
 ```
 
 ```json
 {
   "generator": "kubernetes_helm",
-  "options": {
-    "namespace": "agflow-prod",
-    "storage_class": "ssd",
-    "ingress_class": "nginx"
-  }
+  "options": { "namespace": "agflow-prod", "storage_class": "ssd" }
 }
 ```
 
 ### 4.4 Résolution d'images
 
-Chaque recette référence des images par leur nom complet (`docker.getoutline.com/outlinewiki/outline:latest`). Les registries d'images déclarées dans la plateforme servent à vérifier la disponibilité et potentiellement à appliquer des overrides (mirror privée).
+Les registries d'images déclarées dans la plateforme servent à vérifier la disponibilité et appliquer des overrides (mirror privée) :
 
 ```python
 def resolve_image(original: str, registry_overrides: dict) -> str:
@@ -520,23 +607,87 @@ def resolve_image(original: str, registry_overrides: dict) -> str:
     return original
 ```
 
-Les overrides sont optionnels et vivent dans `image_registries` ou dans les options de génération.
+---
+
+## 5. Flow d'activation (détaillé)
+
+C'est le flux le plus important de M7 — il connecte tout.
+
+### Quand l'utilisateur clique "Marquer actif"
+
+```
+1. L'utilisateur saisit le service_url (ex: https://docs.pickup.io)
+2. Statut → active, service_url stocké
+
+3. ÉTAPE A — Créer le product_backend
+   - backend_type déduit du catalogue (wiki_outline, tasks_jira...)
+   - connection_url = service_url
+   - mcp_config = { server, env vars résolus depuis le catalogue }
+
+4. ÉTAPE B — Enregistrer le MCP dans M3
+   - Si mcp_package_id est défini dans la recette
+   - Créer/mettre à jour une entrée dans mcp_servers avec les paramètres de connexion
+   - Flag managed_by_product = true pour distinguer des MCP manuels
+
+5. ÉTAPE C — Contrat OpenAPI (si recette.openapi existe)
+   a. Résoudre l'URL du contrat :
+      - {{ service_url }} → valeur saisie
+      - {{ org }} → variable de la composition
+   b. Fetcher le contrat depuis l'URL résolue (ou utiliser le contenu static)
+   c. Stocker dans product_backends.openapi_spec + openapi_url
+   d. Parser les tags du contrat
+   e. Pour chaque agent du projet ayant ce service_role :
+      → Créer un agent_api_contract avec :
+        - slug = "{catalog_id}-api" (ex: outline-api, jira-api)
+        - display_name = "{product.display_name} API"
+        - description = "{product.description}" (titre dans le prompt)
+        - spec_content = contrat fetchée
+        - base_url = recette.openapi.base_url (résolu)
+        - auth_* = recette.openapi.auth_*
+        - managed_by_instance = instance.id
+        - parsed_tags = tags extraits
+   f. Les fichiers @docs/ctr/ seront générés à la prochaine génération agent
+
+6. ÉTAPE D — RAG (si rag_enabled dans la recette)
+   - Configurer rag_config dans le backend
+   - Le worker RAG de la recette est déjà déployé avec l'instance
+   - Il commencera à indexer automatiquement
+```
+
+### Quand l'utilisateur clique "Marquer stopped"
+
+```
+1. Statut → stopped
+2. product_backend.status → connection_failed
+3. Supprimer les agent_api_contracts auto-gérés (managed_by_instance = this)
+4. Les MCP auto-gérés restent mais sont marqués inactifs
+```
+
+### Quand l'utilisateur clique "Rafraîchir le contrat"
+
+```
+1. Re-fetch le contrat OpenAPI depuis l'URL
+2. Re-parser les tags
+3. Mettre à jour product_backends.openapi_spec
+4. Mettre à jour les agent_api_contracts auto-gérés (spec_content + parsed_tags)
+5. Les agents doivent être re-générés pour avoir les fichiers @docs/ctr/ à jour
+```
 
 ---
 
-## 5. Produits du catalogue V1
+## 6. Produits du catalogue V1
 
-### 5.1 Produits avec MCP éprouvé
+### 6.1 Produits avec MCP éprouvé
 
-| Produit | Category | config_only | MCP | RAG | Services |
-|---|---|---|---|---|---|
-| **Outline** | wiki | false | MCP Outline (communautaire) | Oui | app + db + redis + rag-worker |
-| **GitHub** | code | true | MCP GitHub (officiel) | Non | Aucun (SaaS) |
-| **GitLab** | code | true | MCP GitLab (officiel) | Non | Aucun (SaaS ou existant) |
-| **Jira** | tasks | true | MCP Atlassian (officiel) | Non | Aucun (SaaS) |
-| **Postgres inline** | infra | true | MCP Postgres (officiel) | Non | Déjà dans la stack |
+| Produit | Category | config_only | MCP | OpenAPI | RAG | Services |
+|---|---|---|---|---|---|---|
+| **Outline** | wiki | false | MCP Outline | Oui (runtime) | Oui | app + db + redis + rag-worker |
+| **GitHub** | code | true | MCP GitHub | Oui (statique) | Non | Aucun (SaaS) |
+| **GitLab** | code | true | MCP GitLab | Oui (statique) | Non | Aucun (SaaS) |
+| **Jira** | tasks | true | MCP Atlassian | Oui (statique) | Non | Aucun (SaaS) |
+| **Postgres inline** | infra | true | MCP Postgres | Non | Non | Déjà dans la stack |
 
-### 5.2 Produits prévus V2
+### 6.2 Produits prévus V2
 
 | Produit | Category | Bloquant |
 |---|---|---|
@@ -550,9 +701,9 @@ Les overrides sont optionnels et vivent dans `image_registries` ou dans les opti
 
 ---
 
-## 6. Flux utilisateur
+## 7. Flux utilisateur complet
 
-### 6.1 Composition d'une instance (Ressources → Instances)
+### 7.1 Composition d'une instance (Ressources → Instances)
 
 ```
 1. Admin ouvre "Instances (compositions)"
@@ -564,51 +715,58 @@ Les overrides sont optionnels et vivent dans `image_registries` ou dans les opti
    - domain = "docs.pickup.io"
    - embedding_endpoint = "http://192.168.10.80:11434"
 7. Configure les secrets :
-   - OUTLINE_SECRET_KEY → [Générer auto] (crée un secret M0)
+   - OUTLINE_SECRET_KEY → [Générer auto]
    - OUTLINE_DB_PASSWORD → [Générer auto]
-   - OUTLINE_API_TOKEN → [Saisir plus tard] (après premier démarrage)
+   - OUTLINE_API_TOKEN → [Saisir plus tard]
 8. Sauvegarde → statut = draft
 ```
 
-### 6.2 Génération des artefacts (Orchestration → Instances génération)
+### 7.2 Génération des artefacts (Orchestration → Instances génération)
 
 ```
 1. Utilisateur ouvre "Instances (génération)"
 2. Voit la liste des instances composées
 3. Sélectionne "outline-pickup"
 4. Choisit le profil de déploiement : "docker_compose"
-5. (Optionnel) remplit des options spécifiques
-6. Clique "Générer"
-7. Le système :
-   a. Résout les secrets via M0 resolve_env()
-   b. Résout les variables {{ }}
-   c. Appelle le generator docker_compose
-   d. Produit docker-compose.yml + .env + README.md
-   e. Crée un zip
-8. L'utilisateur télécharge le zip
-9. Déploie manuellement (scp + ssh + docker compose up)
-10. Retour dans l'UI, clique "Marquer actif"
-    → Saisit l'URL : https://docs.pickup.io
-    → Statut = active
-    → Auto-création du product_backend + enregistrement MCP
+5. Clique "Générer"
+6. Le système produit docker-compose.yml + .env + README.md
+7. L'utilisateur télécharge le zip
+8. Déploie manuellement (scp + ssh + docker compose up)
 ```
 
-### 6.3 Les agents consomment (Orchestration → Agents)
+### 7.3 Activation (Ressources → Instances)
 
 ```
-1. Utilisateur crée une session avec project_id = "pickup-prod"
-2. Instancie un agent "avocat" dans la session
-3. L'agent reçoit automatiquement :
-   - Son MCP wiki paramétré pour l'Outline de pickup-prod
-   - Son MCP tasks paramétré pour le Jira de pickup-prod
-4. L'agent peut "dépose les CGU sur le wiki" → MCP Outline est déjà configuré
+1. Retour dans l'UI, clique "Marquer actif"
+2. Saisit l'URL : https://docs.pickup.io
+3. Le système :
+   a. Crée le product_backend
+   b. Enregistre le MCP dans M3
+   c. Fetch le contrat OpenAPI depuis https://docs.pickup.io/api/openapi.json
+   d. Parse les tags (documents, collections, search, ...)
+   e. Crée les agent_api_contracts auto-gérés sur les agents du projet
+4. Statut = active
+```
+
+### 7.4 Les agents consomment (Orchestration → Agents)
+
+```
+1. Utilisateur re-génère l'agent "avocat" du projet pickup-prod
+2. Le prompt.md contient maintenant :
+   - Section "API disponibles" avec les @docs/ctr/outline-api/*.md
+3. Les fichiers @docs/ctr/outline-api/ contiennent les commandes curl par tag
+4. L'agent peut :
+   - Utiliser le MCP Outline (si son CLI le supporte)
+   - OU lire les fiches curl et exécuter les commandes bash
+   - OU les deux selon le contexte
+5. L'agent crée les CGU et les dépose sur le wiki
 ```
 
 ---
 
-## 7. API
+## 8. API
 
-### 7.1 Admin endpoints (Plateforme + Ressources)
+### 8.1 Admin endpoints (Plateforme + Ressources)
 
 | Endpoint | Method | Section | Description |
 |---|---|---|---|
@@ -627,12 +785,13 @@ Les overrides sont optionnels et vivent dans `image_registries` ou dans les opti
 | `/api/admin/product-instances/{id}` | GET | Ressources | Détail |
 | `/api/admin/product-instances/{id}` | PUT | Ressources | Modifier variables/secrets |
 | `/api/admin/product-instances/{id}` | DELETE | Ressources | Supprimer |
-| `/api/admin/product-instances/{id}/activate` | POST | Ressources | Marquer actif + créer backend |
-| `/api/admin/product-instances/{id}/stop` | POST | Ressources | Marquer stopped |
+| `/api/admin/product-instances/{id}/activate` | POST | Ressources | Activer + backend + MCP + OpenAPI |
+| `/api/admin/product-instances/{id}/stop` | POST | Ressources | Désactiver |
+| `/api/admin/product-instances/{id}/refresh-openapi` | POST | Ressources | Re-fetch contrat OpenAPI |
 | `/api/admin/product-backends` | GET | Admin | Backends actifs |
 | `/api/admin/product-backends/{id}/test` | POST | Admin | Test health check |
 
-### 7.2 Endpoints de génération (Orchestration)
+### 8.2 Endpoints de génération (Orchestration)
 
 | Endpoint | Method | Scope API key | Description |
 |---|---|---|---|
@@ -640,7 +799,7 @@ Les overrides sont optionnels et vivent dans `image_registries` ou dans les opti
 | `/api/v1/product-instances/{id}/generations` | GET | `instances:read` | Historique des générations |
 | `/api/v1/product-instances/{id}/generations/{run_id}/download` | GET | `instances:read` | Télécharger le zip |
 
-### 7.3 Endpoints pour agents/Workflow Engine (publics)
+### 8.3 Endpoints pour agents/Workflow Engine (publics)
 
 | Endpoint | Method | Scope | Description |
 |---|---|---|---|
@@ -650,21 +809,22 @@ Les overrides sont optionnels et vivent dans `image_registries` ou dans les opti
 
 ---
 
-## 8. File structure
+## 9. File structure
 
 ### Backend — new files
 
 ```
 backend/
 ├── migrations/
-│   ├── 040_image_registries.sql
-│   ├── 041_product_catalog.sql
-│   ├── 042_projects.sql
-│   ├── 043_product_instances.sql
-│   ├── 044_product_instance_secrets.sql
-│   ├── 045_generation_runs.sql
-│   ├── 046_product_backends.sql
-│   └── 047_sessions_add_project_id.sql
+│   ├── 0XX_image_registries.sql
+│   ├── 0XX_product_catalog.sql
+│   ├── 0XX_projects.sql
+│   ├── 0XX_product_instances.sql
+│   ├── 0XX_product_instance_secrets.sql
+│   ├── 0XX_generation_runs.sql
+│   ├── 0XX_product_backends.sql
+│   ├── 0XX_sessions_add_project_id.sql
+│   └── 0XX_agent_api_contracts_managed.sql
 ├── src/agflow/
 │   ├── schemas/
 │   │   └── products.py
@@ -673,13 +833,13 @@ backend/
 │   │   ├── product_catalog_service.py
 │   │   ├── projects_service.py
 │   │   ├── product_instances_service.py
-│   │   └── product_backends_service.py
+│   │   ├── product_backends_service.py
+│   │   └── activation_service.py
 │   ├── generators/
 │   │   ├── __init__.py
 │   │   ├── base.py
 │   │   ├── docker_compose.py
-│   │   ├── manual.py
-│   │   └── template_engine.py
+│   │   └── manual.py
 │   └── api/
 │       ├── admin/
 │       │   ├── image_registries.py
@@ -706,6 +866,7 @@ backend/
         ├── test_product_catalog_service.py
         ├── test_projects_service.py
         ├── test_product_instances_service.py
+        ├── test_activation_service.py
         ├── test_generators.py
         └── test_products_endpoint.py
 ```
@@ -728,9 +889,9 @@ frontend/src/
 │   └── useProductBackends.ts
 └── pages/
     ├── ImageRegistriesPage.tsx
-    ├── ProductInstancesPage.tsx       -- Ressources: compositions
-    ├── InstanceGenerationPage.tsx      -- Orchestration: génération
-    └── ProjectsPage.tsx               -- dans Orchestration (ou page de détail projet)
+    ├── ProductInstancesPage.tsx
+    ├── InstanceGenerationPage.tsx
+    └── ProjectsPage.tsx
 ```
 
 ### Frontend — modified files
@@ -738,28 +899,29 @@ frontend/src/
 ```
 frontend/src/App.tsx
 frontend/src/components/layout/Sidebar.tsx
+frontend/src/pages/AgentEditorPage.tsx          # badge "auto" sur contrats gérés
 frontend/src/i18n/fr.json
 frontend/src/i18n/en.json
 ```
 
 ---
 
-## 9. Découpage en phases d'implémentation
+## 10. Découpage en phases d'implémentation
 
 ### Phase 7a — Catalog + Registries + Projets (fondations)
 
-- Migrations 040-042
+- Migrations : image_registries, product_catalog, projects
 - Chargement des recettes YAML au startup
 - Services CRUD (registries, catalog, projets)
 - Schemas Pydantic
 - Admin endpoints
-- Frontend : ImageRegistriesPage, ProductCatalogPage (lecture seule), ProjectsPage
+- Frontend : ImageRegistriesPage, catalogue (lecture seule), ProjectsPage
 - Tests TDD
 - Sidebar mise à jour
 
 ### Phase 7b — Compositions (instances virtuelles)
 
-- Migrations 043-044
+- Migrations : product_instances, product_instance_secrets
 - Service product_instances (CRUD, auto-génération secrets M0)
 - Admin endpoints
 - Frontend : ProductInstancesPage (Ressources)
@@ -767,21 +929,22 @@ frontend/src/i18n/en.json
 
 ### Phase 7c — Generators + Download
 
-- Migration 045
+- Migration : generation_runs
 - Generator protocol + docker_compose + manual
-- Template engine (Jinja2 pour `{{ }}`, résolution `${}` via M0)
+- Résolution des templates Jinja2 (réutilise le module Templates existant)
 - Endpoints génération + téléchargement zip
 - Frontend : InstanceGenerationPage (Orchestration)
 - Tests TDD
 
-### Phase 7d — Backends + MCP + Activation
+### Phase 7d — Activation + Backends + MCP + OpenAPI
 
-- Migration 046-047
-- Flow activation : instance active → auto-create backend + register MCP
+- Migrations : product_backends, sessions_add_project_id, agent_api_contracts_managed
+- Service activation_service (le flow complet §5)
+- Auto-création backend + MCP + contrats OpenAPI
 - Injection MCP dans les sessions via project_id
 - Test connexion
 - Public API endpoints (project backends, search)
-- Frontend : vue backends dans ProjectsPage
+- Frontend : vue backends dans ProjectsPage, badge "auto" sur contrats agents
 - Tests TDD
 
 ### Phase 7e — RAG worker images (séparé)
@@ -793,7 +956,7 @@ frontend/src/i18n/en.json
 
 ---
 
-## 10. Hors scope V1
+## 11. Hors scope V1
 
 | Sujet | Pourquoi différé |
 |---|---|
@@ -803,30 +966,34 @@ frontend/src/i18n/en.json
 | Monitoring des produits déployés | Health check ponctuel suffit. |
 | RAG workers pour OpenProject, Gitea, etc. | Un seul (Outline) en V1. |
 | Multi-tenant / organisations | MVP mono-tenant. |
-| Registry d'images privée intégrée | Les overrides par registry couvrent le besoin. |
-| Gestion hardware des targets | Pas d'IP, pas de specs — c'est la génération qui cible. |
+| Sélection/exclusion de tags OpenAPI | Tous les tags sont générés. Filtrage ultérieur. |
+| Contrats OpenAPI partagés entre projets | Auto-gérés par instance en V1. |
+| Refresh automatique des contrats (cron) | Refresh manuel via bouton. |
 
 ---
 
-## 11. Vérification
+## 12. Vérification
 
 Après implémentation complète de M7 :
 
 ```bash
-cd backend && uv run pytest tests/products/ -v       # tous tests passent
-cd backend && uv run ruff check src/ tests/           # clean
-cd frontend && npm test && npx tsc --noEmit           # clean
+cd backend && uv run pytest tests/products/ -v
+cd backend && uv run ruff check src/ tests/
+cd frontend && npm test && npx tsc --noEmit
 ```
 
-- Migrations 040-047 appliquées sur LXC 201
+- Migrations appliquées sur LXC 201
 - Catalogue chargé au startup (5 produits V1)
-- Browser walkthrough :
+- Browser walkthrough complet :
   1. Registries : voir docker.io + ghcr.io, ajouter une custom
-  2. Catalogue : voir les 5 produits, cliquer sur Outline pour voir la recette
+  2. Catalogue : voir les 5 produits, cliquer sur Outline pour voir la recette + bloc openapi
   3. Projets : créer "pickup-prod" (env: prod)
   4. Instances : composer Outline sur pickup-prod, remplir variables, générer secrets
   5. Génération : générer docker-compose, télécharger le zip
   6. Vérifier : `docker compose config` passe sur le fichier généré
-  7. Marquer actif → backend créé → MCP enregistré
-  8. Session avec project_id → agent reçoit le MCP wiki
+  7. Marquer actif → saisir URL → backend créé → MCP enregistré → contrat OpenAPI fetchée
+  8. Vérifier : `agent_api_contracts` contient un contrat auto-géré avec `managed_by_instance` rempli
+  9. Re-générer un agent du projet → prompt.md contient la section "API disponibles" avec @docs/ctr/
+  10. Vérifier : `generated/docs/ctr/outline-api/` contient des .md par tag avec des commandes curl
+  11. Session avec project_id → agent reçoit le MCP wiki + les contrats API
 - Sidebar reflète la nouvelle structure (4 sections, permissions respectées)

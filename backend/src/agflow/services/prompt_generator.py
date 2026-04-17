@@ -26,7 +26,7 @@ class GeneratedPrompts:
 def assemble_source_markdown(
     role: RoleSummary,
     documents: list[DocumentSummary],
-    sections: list["SectionSummary"] | None = None,
+    sections: list[SectionSummary] | None = None,
 ) -> str:
     """Concatenate identity + all documents grouped by section into one markdown.
 

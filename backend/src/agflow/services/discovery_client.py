@@ -25,7 +25,9 @@ async def _maybe_client(
     if client is not None:
         yield client
     else:
-        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as c:
+        async with httpx.AsyncClient(
+            timeout=_DEFAULT_TIMEOUT, follow_redirects=True
+        ) as c:
             yield c
 
 

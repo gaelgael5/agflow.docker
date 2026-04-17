@@ -1139,11 +1139,39 @@ export function AgentEditorPage() {
                                 {p.document_ids.length} docs
                               </Badge>
                             </div>
-                            {p.description && (
-                              <div className="text-[12px] text-muted-foreground mt-0.5">
-                                {p.description}
-                              </div>
-                            )}
+                            <div
+                              className="text-[12px] text-muted-foreground mt-0.5 cursor-pointer hover:text-foreground transition-colors min-h-[1.2em]"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const el = e.currentTarget;
+                                const input = document.createElement("input");
+                                input.type = "text";
+                                input.value = p.description;
+                                input.placeholder = t("agent_editor.profile_description_prompt");
+                                input.className = "text-[12px] bg-transparent border-b border-primary outline-none w-full py-0.5";
+                                const save = () => {
+                                  const val = input.value.trim();
+                                  if (val !== p.description) {
+                                    profilesHook.updateMutation.mutate({
+                                      profileId: p.id,
+                                      payload: { description: val },
+                                    });
+                                  }
+                                  el.textContent = val || t("agent_editor.profile_description_prompt");
+                                  el.style.opacity = val ? "1" : "0.5";
+                                };
+                                input.addEventListener("blur", save);
+                                input.addEventListener("keydown", (ke) => {
+                                  if (ke.key === "Enter") { ke.preventDefault(); input.blur(); }
+                                  if (ke.key === "Escape") { el.textContent = p.description || t("agent_editor.profile_description_prompt"); el.style.opacity = p.description ? "1" : "0.5"; }
+                                });
+                                el.textContent = "";
+                                el.appendChild(input);
+                                input.focus();
+                              }}
+                            >
+                              {p.description || t("agent_editor.profile_description_prompt")}
+                            </div>
                           </div>
                           <Button
                             variant="outline"

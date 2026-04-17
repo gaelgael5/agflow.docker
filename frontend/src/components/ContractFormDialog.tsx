@@ -122,7 +122,7 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl sm:max-h-[85vh] flex flex-col overflow-y-auto">
+      <DialogContent className="sm:max-w-4xl sm:max-h-[85vh] flex flex-col overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("contracts.dialog_title_new")}</DialogTitle>
         </DialogHeader>

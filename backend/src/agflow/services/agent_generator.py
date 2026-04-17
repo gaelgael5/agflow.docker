@@ -124,9 +124,12 @@ def _apply_overrides(
     return json.dumps(parsed)
 
 
+def _data_dir() -> str:
+    return os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+
+
 def _agents_dir() -> str:
-    base = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
-    return os.path.join(base, "agents")
+    return os.path.join(_data_dir(), "agents")
 
 
 async def generate(
@@ -160,6 +163,9 @@ async def generate(
 
     # Clean missions directory before regeneration
     import shutil
+
+    from jinja2 import Environment
+
     missions_dir = os.path.join(out_dir, "missions")
     if os.path.isdir(missions_dir):
         shutil.rmtree(missions_dir)
@@ -167,29 +173,80 @@ async def generate(
     # Build per-profile mission directories from profile selections
     profiles = await agent_profiles_service.list_for_agent(agent_id)
     for profile in profiles:
+        # Skip profiles with no documents selected
+        if not profile.document_ids:
+            continue
+
         profile_slug = profile.name.lower().replace(" ", "_")
         profile_dir = os.path.join(missions_dir, profile_slug)
         os.makedirs(profile_dir, exist_ok=True)
 
         # Collect documents selected in this profile, grouped by section
         doc_ids = set(str(d) for d in profile.document_ids)
-        sections: dict[str, list[str]] = {"roles": [], "missions": [], "competences": []}
+        sections: dict[str, list[str]] = {}
         for doc in documents:
-            if str(doc.id) in doc_ids and doc.section in sections:
-                sections[doc.section].append(doc.content_md)
+            if str(doc.id) in doc_ids:
+                sections.setdefault(doc.section, []).append(doc.content_md)
 
-        # Write each section file (skip empty/whitespace-only content)
-        for section_name, contents in sections.items():
-            merged = "\n\n---\n\n".join(contents)
-            if merged.strip():
-                _write(profile_dir, f"{section_name}.md", merged)
+        # If profile has a template, render with Jinja2
+        tpl_slug = profile.template_slug
+        tpl_culture = profile.template_culture
+        if tpl_slug and tpl_culture:
+            tpl_path = os.path.join(
+                _data_dir(), "templates", tpl_slug, f"{tpl_culture}.md.j2"
+            )
+            if os.path.isfile(tpl_path):
+                with open(tpl_path, encoding="utf-8") as f:
+                    tpl_content = f.read()
+
+                # Helper: load_section('roles') returns list of markdown contents
+                def _make_load_section(sects: dict[str, list[str]]):
+                    def load_section(name: str) -> list[str]:
+                        return sects.get(name, [])
+                    return load_section
+
+                env = Environment(
+                    trim_blocks=True,
+                    lstrip_blocks=True,
+                    keep_trailing_newline=True,
+                    autoescape=False,
+                )
+                template = env.from_string(tpl_content)
+                rendered = template.render(
+                    role=role,
+                    profile=profile,
+                    agent=agent,
+                    load_section=_make_load_section(sections),
+                )
+                if rendered.strip():
+                    _write(profile_dir, f"{profile_slug}.md", rendered)
+                _log.info(
+                    "agent_generator.profile_rendered",
+                    profile=profile.name,
+                    template=f"{tpl_slug}/{tpl_culture}.md.j2",
+                )
+            else:
+                _log.warning(
+                    "agent_generator.template_not_found",
+                    template=tpl_path,
+                )
+                # Fallback: write raw section files
+                for section_name, contents in sections.items():
+                    merged = "\n\n---\n\n".join(contents)
+                    if merged.strip():
+                        _write(profile_dir, f"{section_name}.md", merged)
+        else:
+            # No template: write raw section files (backward compat)
+            for section_name, contents in sections.items():
+                merged = "\n\n---\n\n".join(contents)
+                if merged.strip():
+                    _write(profile_dir, f"{section_name}.md", merged)
 
         _log.info(
             "agent_generator.profile_written",
             profile=profile.name,
-            roles=len(sections["roles"]),
-            missions=len(sections["missions"]),
-            competences=len(sections["competences"]),
+            sections=list(sections.keys()),
+            doc_count=sum(len(v) for v in sections.values()),
         )
 
     # Build .env — merge Dockerfile.json Environments with agent overrides

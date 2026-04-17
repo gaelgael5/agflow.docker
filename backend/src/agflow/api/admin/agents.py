@@ -351,6 +351,8 @@ async def update_profile(
             name=payload.name,
             description=payload.description,
             document_ids=payload.document_ids,
+            template_slug=payload.template_slug,
+            template_culture=payload.template_culture,
         )
     except agent_profiles_service.DuplicateProfileError as exc:
         raise HTTPException(

@@ -46,6 +46,7 @@ import { PromptDialog } from "@/components/PromptDialog";
 import { PageShell } from "@/components/layout/PageHeader";
 import { toast } from "sonner";
 import { slugify } from "@/lib/slugify";
+import { useTemplates } from "@/hooks/useTemplates";
 import { cn, maskEnvSecrets } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -142,6 +143,7 @@ export function AgentEditorPage() {
   const { roles } = useRoles();
   const { mcps } = useMCPCatalog();
   const { skills } = useSkillsCatalog();
+  const { templates: templatesList } = useTemplates();
   const [previewProfileId, setPreviewProfileId] = useState<string | null>(null);
   const previewQuery = useConfigPreview(
     isNew ? undefined : id,
@@ -1138,6 +1140,44 @@ export function AgentEditorPage() {
                               <Badge variant="outline">
                                 {p.document_ids.length} docs
                               </Badge>
+                              <select
+                                className="text-[11px] border rounded px-1.5 py-0.5 bg-background"
+                                value={p.template_slug ?? ""}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  profilesHook.updateMutation.mutate({
+                                    profileId: p.id,
+                                    payload: { template_slug: e.target.value },
+                                  });
+                                }}
+                              >
+                                <option value="">— template —</option>
+                                {(templatesList ?? []).map((tpl) => (
+                                  <option key={tpl.slug} value={tpl.slug}>
+                                    {tpl.display_name}
+                                  </option>
+                                ))}
+                              </select>
+                              {p.template_slug && (
+                                <select
+                                  className="text-[11px] border rounded px-1.5 py-0.5 bg-background"
+                                  value={p.template_culture ?? ""}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => {
+                                    profilesHook.updateMutation.mutate({
+                                      profileId: p.id,
+                                      payload: { template_culture: e.target.value },
+                                    });
+                                  }}
+                                >
+                                  <option value="">— culture —</option>
+                                  {(templatesList ?? [])
+                                    .find((t) => t.slug === p.template_slug)
+                                    ?.cultures.map((c) => (
+                                      <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+                              )}
                             </div>
                             <div
                               className="text-[12px] text-muted-foreground mt-0.5 cursor-pointer hover:text-foreground transition-colors min-h-[1.2em]"

@@ -44,6 +44,8 @@ def _to_summary(slug: str, profile: dict[str, Any]) -> AgentProfileSummary:
         name=name,
         description=profile.get("description", ""),
         document_ids=doc_ids,
+        template_slug=profile.get("template_slug", ""),
+        template_culture=profile.get("template_culture", ""),
         created_at=now,
         updated_at=now,
     )
@@ -99,6 +101,8 @@ async def update(
     name: str | None = None,
     description: str | None = None,
     document_ids: list[UUID] | None = None,
+    template_slug: str | None = None,
+    template_culture: str | None = None,
 ) -> AgentProfileSummary:
     for slug in agent_files_service.list_agent_slugs():
         data = agent_files_service.read_agent(slug)
@@ -110,6 +114,10 @@ async def update(
                     p["description"] = description
                 if document_ids is not None:
                     p["documents"] = [str(d) for d in document_ids]
+                if template_slug is not None:
+                    p["template_slug"] = template_slug
+                if template_culture is not None:
+                    p["template_culture"] = template_culture
                 data["profiles"][i] = p
                 agent_files_service.write_agent(slug, data)
                 _log.info("agent_profiles.update", profile_id=str(profile_id))

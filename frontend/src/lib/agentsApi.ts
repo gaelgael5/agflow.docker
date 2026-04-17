@@ -39,6 +39,8 @@ export interface AgentProfileSummary {
   name: string;
   description: string;
   document_ids: string[];
+  template_slug: string;
+  template_culture: string;
   created_at: string;
   updated_at: string;
 }
@@ -47,12 +49,16 @@ export interface AgentProfileCreate {
   name: string;
   description?: string;
   document_ids?: string[];
+  template_slug?: string;
+  template_culture?: string;
 }
 
 export interface AgentProfileUpdate {
   name?: string;
   description?: string;
   document_ids?: string[];
+  template_slug?: string;
+  template_culture?: string;
 }
 
 export interface AgentDetail extends AgentSummary {

@@ -83,6 +83,8 @@ class AgentProfileSummary(BaseModel):
     name: str
     description: str
     document_ids: list[UUID]
+    template_slug: str = ""
+    template_culture: str = ""
     created_at: datetime
     updated_at: datetime
 
@@ -91,12 +93,16 @@ class AgentProfileCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     description: str = ""
     document_ids: list[UUID] = Field(default_factory=list)
+    template_slug: str = ""
+    template_culture: str = ""
 
 
 class AgentProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     description: str | None = None
     document_ids: list[UUID] | None = None
+    template_slug: str | None = None
+    template_culture: str | None = None
 
 
 class AgentDetail(AgentSummary):

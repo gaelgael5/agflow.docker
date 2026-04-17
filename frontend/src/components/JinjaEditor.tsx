@@ -1,13 +1,67 @@
 import { useEffect, useRef } from "react";
-import { EditorView, keymap, lineNumbers } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
-import { html } from "@codemirror/lang-html";
+import { EditorView, keymap, lineNumbers, Decoration, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import { EditorState, RangeSetBuilder } from "@codemirror/state";
+import { markdown } from "@codemirror/lang-markdown";
 import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import {
-  bracketMatching,
-  syntaxHighlighting,
-} from "@codemirror/language";
+import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
+
+// Custom Jinja2 delimiter highlighting
+const jinjaExprMark = Decoration.mark({ class: "cm-jinja-expr" });
+const jinjaStmtMark = Decoration.mark({ class: "cm-jinja-stmt" });
+const jinjaCommentMark = Decoration.mark({ class: "cm-jinja-comment" });
+
+function buildJinjaDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const doc = view.state.doc.toString();
+  const patterns: Array<{ re: RegExp; mark: Decoration }> = [
+    { re: /\{\{.*?\}\}/g, mark: jinjaExprMark },
+    { re: /\{%.*?%\}/g, mark: jinjaStmtMark },
+    { re: /\{#.*?#\}/g, mark: jinjaCommentMark },
+  ];
+  const all: Array<{ from: number; to: number; mark: Decoration }> = [];
+  for (const { re, mark } of patterns) {
+    let m;
+    while ((m = re.exec(doc)) !== null) {
+      all.push({ from: m.index, to: m.index + m[0].length, mark });
+    }
+  }
+  all.sort((a, b) => a.from - b.from);
+  for (const { from, to, mark } of all) {
+    builder.add(from, to, mark);
+  }
+  return builder.finish();
+}
+
+const jinjaHighlighter = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = buildJinjaDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = buildJinjaDecorations(update.view);
+      }
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
+
+const jinjaStyles = EditorView.baseTheme({
+  ".cm-jinja-expr": {
+    color: "#e5c07b",
+    fontWeight: "bold",
+  },
+  ".cm-jinja-stmt": {
+    color: "#c678dd",
+    fontWeight: "bold",
+  },
+  ".cm-jinja-comment": {
+    color: "#5c6370",
+    fontStyle: "italic",
+  },
+});
 
 const agflowTheme = EditorView.theme({
   "&": {
@@ -51,8 +105,10 @@ export function JinjaEditor({ value, onChange, readOnly = false }: Props) {
     const state = EditorState.create({
       doc: value,
       extensions: [
-        html(),
+        markdown(),
         syntaxHighlighting(oneDarkHighlightStyle),
+        jinjaHighlighter,
+        jinjaStyles,
         agflowTheme,
         lineNumbers(),
         history(),

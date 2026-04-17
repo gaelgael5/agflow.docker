@@ -759,5 +759,24 @@
     "preview_identity_only": "Aperçu (identité seule)",
     "preview_with_profile": "Aperçu avec profil…",
     "preview_profile_suffix": " — {{name}}"
+  },
+  "templates": {
+    "page_title": "Templates Jinja2",
+    "page_subtitle": "Modèles de génération multilingues pour les fichiers agent",
+    "add_button": "+ Nouveau template",
+    "select_template": "Sélectionne un template",
+    "no_templates": "Aucun template — crée ton premier template",
+    "add_file_button": "+ Ajouter un fichier .j2",
+    "add_file_dialog_title": "Nouveau fichier Jinja2",
+    "add_file_name": "Nom du fichier (ex: fr.md.j2)",
+    "new_template_dialog_title": "Nouveau template",
+    "new_template_slug": "Slug (identifiant)",
+    "new_template_name": "Nom d'affichage",
+    "new_template_description": "Description",
+    "delete_button": "Supprimer",
+    "confirm_delete_title": "Supprimer le template",
+    "confirm_delete_message": "Supprimer le template \"{{name}}\" et tous ses fichiers ? Cette action est irréversible.",
+    "save": "Enregistrer",
+    "select_file": "Sélectionne un fichier .j2"
   }
 }

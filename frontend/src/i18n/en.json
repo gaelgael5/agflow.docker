@@ -759,5 +759,24 @@
     "preview_identity_only": "Preview (identity only)",
     "preview_with_profile": "Preview with profile…",
     "preview_profile_suffix": " — {{name}}"
+  },
+  "templates": {
+    "page_title": "Jinja2 Templates",
+    "page_subtitle": "Multilingual generation templates for agent files",
+    "add_button": "+ New template",
+    "select_template": "Select a template",
+    "no_templates": "No templates — create your first template",
+    "add_file_button": "+ Add .j2 file",
+    "add_file_dialog_title": "New Jinja2 file",
+    "add_file_name": "Filename (e.g. fr.md.j2)",
+    "new_template_dialog_title": "New template",
+    "new_template_slug": "Slug (identifier)",
+    "new_template_name": "Display name",
+    "new_template_description": "Description",
+    "delete_button": "Delete",
+    "confirm_delete_title": "Delete template",
+    "confirm_delete_message": "Delete template \"{{name}}\" and all its files? This action is irreversible.",
+    "save": "Save",
+    "select_file": "Select a .j2 file"
   }
 }

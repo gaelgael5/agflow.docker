@@ -35,6 +35,7 @@ import { rolesApi, type RoleSummary, type Section } from "@/lib/rolesApi";
 import {
   isMarkdownFile,
   sanitizeDocName,
+  stripSectionPrefix,
   findFreeName,
   MAX_FILE_SIZE_BYTES,
 } from "@/lib/dropFiles";
@@ -294,8 +295,8 @@ export function RolesPage() {
         toast.error(t("roles.drop.error_size", { name: file.name }));
         continue;
       }
-      const name = sanitizeDocName(file.name);
-      if (!name) {
+      const rawName = sanitizeDocName(file.name);
+      if (!rawName) {
         toast.error(t("roles.drop.error_name", { name: file.name }));
         continue;
       }
@@ -307,6 +308,8 @@ export function RolesPage() {
         toast.error(t("roles.drop.error_encoding", { name: file.name }));
         continue;
       }
+
+      const name = stripSectionPrefix(rawName, section);
 
       if (name in existingByName) {
         pendingConflicts.push({

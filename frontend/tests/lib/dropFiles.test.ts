@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isMarkdownFile,
   sanitizeDocName,
+  stripSectionPrefix,
   findFreeName,
   MAX_FILE_SIZE_BYTES,
 } from "@/lib/dropFiles";
@@ -36,6 +37,37 @@ describe("sanitizeDocName", () => {
   it("keeps existing hyphens, underscores, and digits", () => {
     expect(sanitizeDocName("mission-v2.md")).toBe("mission-v2");
     expect(sanitizeDocName("step_1.md")).toBe("step_1");
+  });
+});
+
+describe("stripSectionPrefix", () => {
+  it("strips exact section prefix + underscore", () => {
+    expect(stripSectionPrefix("missions_audit", "missions")).toBe("audit");
+    expect(stripSectionPrefix("roles_architect", "roles")).toBe("architect");
+  });
+
+  it("strips singular form when section ends with s", () => {
+    expect(stripSectionPrefix("mission_benchmark_prestation", "missions")).toBe("benchmark_prestation");
+    expect(stripSectionPrefix("competence_audit", "competences")).toBe("audit");
+    expect(stripSectionPrefix("role_dev", "roles")).toBe("dev");
+  });
+
+  it("prefers exact match over singular", () => {
+    expect(stripSectionPrefix("missions_foo", "missions")).toBe("foo");
+  });
+
+  it("returns original name when no prefix match", () => {
+    expect(stripSectionPrefix("audit_report", "missions")).toBe("audit_report");
+    expect(stripSectionPrefix("benchmark", "missions")).toBe("benchmark");
+  });
+
+  it("returns original when stripping would leave empty", () => {
+    expect(stripSectionPrefix("missions_", "missions")).toBe("missions_");
+  });
+
+  it("works with custom section names", () => {
+    expect(stripSectionPrefix("outils_vim", "outils")).toBe("vim");
+    expect(stripSectionPrefix("outil_vim", "outils")).toBe("vim");
   });
 });
 

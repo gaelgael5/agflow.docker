@@ -11,6 +11,19 @@ export function sanitizeDocName(filename: string): string {
   return slugify(base, "-");
 }
 
+export function stripSectionPrefix(name: string, section: string): string {
+  const candidates = [section + "_"];
+  if (section.endsWith("s") && section.length > 1) {
+    candidates.push(section.slice(0, -1) + "_");
+  }
+  for (const prefix of candidates) {
+    if (name.startsWith(prefix) && name.length > prefix.length) {
+      return name.slice(prefix.length);
+    }
+  }
+  return name;
+}
+
 export function findFreeName(candidate: string, existing: readonly string[]): string {
   const taken = new Set(existing);
   if (!taken.has(candidate)) return candidate;

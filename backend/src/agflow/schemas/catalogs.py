@@ -85,6 +85,7 @@ class MCPInstallPayload(BaseModel):
     package_id: str | int
     recipes: dict = Field(default_factory=dict)
     parameters: list = Field(default_factory=list)
+    category: str = ""
 
 
 class MCPServerSummary(BaseModel):
@@ -101,6 +102,7 @@ class MCPServerSummary(BaseModel):
     parameters: list
     parameters_schema: list
     recipes: dict = Field(default_factory=dict)
+    category: str = ""
     created_at: datetime
     updated_at: datetime
 

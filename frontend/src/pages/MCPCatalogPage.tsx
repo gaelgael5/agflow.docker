@@ -58,6 +58,7 @@ export function MCPCatalogPage() {
       package_id: String(item.package_id),
       recipes: item.recipes ?? {},
       parameters: item.parameters ?? [],
+      category: item.category ?? "",
     });
   }
 
@@ -142,9 +143,23 @@ export function MCPCatalogPage() {
                           <Badge variant="secondary" className="font-mono text-[10px]">
                             {m.transport}
                           </Badge>
-                          <code className="text-[11px] text-muted-foreground font-mono hidden sm:inline">
-                            {m.package_id}
-                          </code>
+                          {m.category && (
+                            <Badge variant="outline" className="text-[10px]">
+                              {m.category}
+                            </Badge>
+                          )}
+                          {m.repo_url && (
+                            <a
+                              href={m.repo_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Repo
+                            </a>
+                          )}
                         </div>
                         {m.short_description && (
                           <div className="text-[12px] text-muted-foreground mt-0.5 truncate">

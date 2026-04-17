@@ -71,6 +71,7 @@ export interface MCPServerSummary {
   parameters: Array<{ name: string; description: string; is_required: boolean; is_secret: boolean }>;
   parameters_schema: Array<Record<string, unknown>>;
   recipes: Record<string, { action_type: string; data: string; config_path?: string }>;
+  category: string;
   created_at: string;
   updated_at: string;
 }
@@ -163,6 +164,7 @@ export const mcpCatalogApi = {
       package_id: string;
       recipes?: Record<string, unknown>;
       parameters?: unknown[];
+      category?: string;
     },
   ): Promise<MCPServerSummary> {
     const res = await api.post<MCPServerSummary>("/admin/mcp-catalog", payload);

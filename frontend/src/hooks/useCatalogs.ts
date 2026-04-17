@@ -55,6 +55,7 @@ export function useMCPCatalog() {
       package_id: string;
       recipes?: Record<string, unknown>;
       parameters?: unknown[];
+      category?: string;
     }) => mcpCatalogApi.install(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: MCP_KEY }),
   });

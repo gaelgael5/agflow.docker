@@ -829,7 +829,7 @@ export function AgentEditorPage() {
           label={`${t("agent_editor.section_mcps")} (${form.mcp_bindings.length} ${t("agent_editor.mcp_count_suffix")})`}
           defaultOpen={false}
         >
-        <Card className="md:col-span-2">
+        <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -1019,7 +1019,7 @@ export function AgentEditorPage() {
           label={`${t("agent_editor.section_skills")} (${form.skill_bindings.length} ${t("agent_editor.skill_count_suffix")})`}
           defaultOpen={false}
         >
-        <Card className="md:col-span-2">
+        <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">

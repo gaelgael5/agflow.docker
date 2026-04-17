@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,7 @@ class TaskRequest(BaseModel):
     timeout_seconds: int = Field(default=600, ge=1, le=3600)
     model: str = Field(default="", max_length=100)
     secrets: dict[str, str] = Field(default_factory=dict)
+    session_id: str = Field(default="", max_length=100)
 
 router = APIRouter(
     prefix="/api/admin",
@@ -259,7 +260,6 @@ async def run_task(
 async def run_agent_task(
     agent_slug: str,
     payload: TaskRequest,
-    request: Request,
     user_email: str = Depends(require_admin),
 ) -> StreamingResponse:
     """One-shot agent task using the agent's generated config.
@@ -269,10 +269,6 @@ async def run_agent_task(
     including MCP config). Injects session identity as env vars.
     """
     import os
-
-    # Extract the raw token so the agent can call back APIs
-    auth_header = request.headers.get("authorization", "")
-    raw_token = auth_header.removeprefix("Bearer ").strip() if auth_header else ""
 
     data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
     agent_data = agent_files_service.read_agent(agent_slug)
@@ -372,18 +368,17 @@ async def run_agent_task(
     params_json["docker"] = docker_block
     resolved_params_content = json.dumps(params_json, ensure_ascii=False, indent=2)
 
-    # Inject session identity via user_secrets (becomes container env vars)
-    session_id = str(uuid.uuid4())
-    merged_secrets["AGFLOW_SESSION_ID"] = session_id
-    merged_secrets["AGFLOW_USER_EMAIL"] = user_email
-    merged_secrets["AGFLOW_TOKEN"] = raw_token
-    merged_secrets["AGFLOW_API_URL"] = "http://agflow-backend:8000"
-
     task_payload = {
-        "task_id": session_id,
+        "task_id": str(uuid.uuid4()),
         "payload": {"instruction": full_instruction},
         "timeout_seconds": payload.timeout_seconds,
         "model": payload.model or None,
+        "session": {
+            "id": payload.session_id or str(uuid.uuid4()),
+            "user_email": user_email,
+            "agent_slug": agent_slug,
+            "api_url": "http://agflow-backend:8000",
+        },
     }
 
     async def _stream():

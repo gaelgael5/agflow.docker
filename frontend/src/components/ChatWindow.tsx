@@ -63,6 +63,7 @@ export function ChatWindow({
     dockerfileJsonContent,
     decryptedSecrets: secrets,
   });
+  const [sessionId] = useState(() => crypto.randomUUID());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -242,6 +243,7 @@ export function ChatWindow({
           },
           body: JSON.stringify({
             instruction: text,
+            session_id: sessionId,
             ...(secrets && Object.keys(secrets).length > 0
               ? { secrets }
               : {}),

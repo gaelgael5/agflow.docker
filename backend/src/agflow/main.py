@@ -8,6 +8,7 @@ import structlog
 from fastapi import FastAPI
 
 from agflow.api.admin.agents import router as admin_agents_router
+from agflow.api.admin.contracts import router as admin_contracts_router
 from agflow.api.admin.api_keys import router as admin_api_keys_router
 from agflow.api.admin.auth import router as admin_auth_router
 from agflow.api.admin.containers import router as admin_containers_router
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_mcp_catalog_router)
     app.include_router(admin_skills_catalog_router)
     app.include_router(admin_agents_router)
+    app.include_router(admin_contracts_router)
     app.include_router(admin_templates_router)
     app.include_router(admin_terminal_router)
     app.include_router(admin_users_router)

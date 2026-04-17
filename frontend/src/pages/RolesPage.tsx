@@ -76,6 +76,7 @@ export function RolesPage() {
     null,
   );
   const [draftDocContent, setDraftDocContent] = useState<string | null>(null);
+  const [editingDocName, setEditingDocName] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [conflicts, setConflicts] = useState<PendingConflict[]>([]);
   const pendingSummaryRef = useRef<{
@@ -527,6 +528,7 @@ export function RolesPage() {
                 if (hasDirtyDoc && !window.confirm(t("common.unsaved_changes")))
                   return;
                 setDraftDocContent(null);
+                setEditingDocName(null);
                 setSelectedDocId(id);
                 setTab("document");
               }}
@@ -653,9 +655,53 @@ export function RolesPage() {
                       className="flex-1 flex flex-col min-h-0"
                     >
                       <div className="flex items-center gap-2 mb-3 shrink-0">
-                        <h3 className="text-[15px] font-semibold">
-                          {docDisplayName(selectedDoc)}
-                        </h3>
+                        {editingDocName !== null ? (
+                          <input
+                            autoFocus
+                            className="text-[15px] font-semibold bg-transparent border-b border-primary outline-none px-0 py-0.5 min-w-[8rem]"
+                            value={editingDocName}
+                            onChange={(e) => setEditingDocName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                const trimmed = editingDocName.trim();
+                                if (trimmed && trimmed !== docDisplayName(selectedDoc)) {
+                                  const newName = isDocLocked(selectedDoc) ? trimmed + "_" : trimmed;
+                                  docMutations.updateDoc.mutate({
+                                    docId: selectedDoc.id,
+                                    payload: { name: newName },
+                                  });
+                                }
+                                setEditingDocName(null);
+                              } else if (e.key === "Escape") {
+                                setEditingDocName(null);
+                              }
+                            }}
+                            onBlur={() => {
+                              const trimmed = editingDocName.trim();
+                              if (trimmed && trimmed !== docDisplayName(selectedDoc)) {
+                                const newName = isDocLocked(selectedDoc) ? trimmed + "_" : trimmed;
+                                docMutations.updateDoc.mutate({
+                                  docId: selectedDoc.id,
+                                  payload: { name: newName },
+                                });
+                              }
+                              setEditingDocName(null);
+                            }}
+                          />
+                        ) : (
+                          <h3
+                            className="text-[15px] font-semibold cursor-pointer hover:text-primary transition-colors"
+                            onClick={() => {
+                              if (!isDocLocked(selectedDoc)) {
+                                setEditingDocName(docDisplayName(selectedDoc));
+                              }
+                            }}
+                            title={isDocLocked(selectedDoc) ? undefined : t("roles.drop.hint")}
+                          >
+                            {docDisplayName(selectedDoc)}
+                          </h3>
+                        )}
                         {isDocLocked(selectedDoc) && (
                           <Lock className="w-3.5 h-3.5 text-amber-500" />
                         )}

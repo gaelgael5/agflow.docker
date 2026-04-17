@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  Crosshair,
   Download,
   FilePlus,
   FolderPlus,
@@ -25,6 +26,9 @@ import {
   useDockerfileDetail,
   useDockerfiles,
 } from "@/hooks/useDockerfiles";
+import { useDiscoveryServices } from "@/hooks/useCatalogs";
+import { TargetSelectorDialog } from "@/components/TargetSelectorDialog";
+import type { TargetSummary } from "@/lib/catalogsApi";
 import { useContainers } from "@/hooks/useContainers";
 import { BuildStatusBadge } from "@/components/BuildStatusBadge";
 import { BuildModal } from "@/components/BuildModal";
@@ -126,6 +130,8 @@ export function DockerfilesPage() {
   const [pendingNavigation, setPendingNavigation] = useState<
     (() => void) | null
   >(null);
+  const { services: discoveryServices } = useDiscoveryServices();
+  const [showTargetDialog, setShowTargetDialog] = useState(false);
   const hasUnsavedChanges = draftContent !== null;
   const vaultIsOpen = vaultState === "unlocked";
 
@@ -158,6 +164,15 @@ export function DockerfilesPage() {
   const files = allFiles.filter((f) => !HIDDEN_FILES.includes(f.path));
   const dockerfileJsonFile =
     allFiles.find((f) => f.path === "Dockerfile.json") ?? null;
+  const currentTarget: TargetSummary | null = (() => {
+    if (!dockerfileJsonFile) return null;
+    try {
+      const parsed = JSON.parse(dockerfileJsonFile.content);
+      return parsed.Target ?? null;
+    } catch {
+      return null;
+    }
+  })();
   const { emptyKeys: launchEmptyKeys } = useEmptyLaunchKeys({
     dockerfileJsonContent: dockerfileJsonFile?.content ?? null,
     decryptedSecrets,
@@ -226,6 +241,26 @@ export function DockerfilesPage() {
       content: draftContent,
     });
     setDraftContent(null);
+  }
+
+  async function handleSelectTarget(target: TargetSummary) {
+    if (!dockerfileJsonFile || !selectedId) return;
+    try {
+      const parsed = JSON.parse(dockerfileJsonFile.content);
+      parsed.Target = {
+        id: target.id,
+        name: target.name,
+        description: target.description,
+        modes: target.modes,
+      };
+      await updateFileMutation.mutateAsync({
+        dockerfileId: selectedId,
+        fileId: dockerfileJsonFile.id,
+        content: JSON.stringify(parsed, null, 2),
+      });
+    } catch {
+      // JSON parse error — ignore
+    }
   }
 
   async function handleDeleteFile() {
@@ -520,6 +555,16 @@ export function DockerfilesPage() {
                 size="icon"
                 variant="ghost"
                 className="h-7 w-7"
+                onClick={() => setShowTargetDialog(true)}
+                disabled={!dockerfileJsonFile || !discoveryServices?.length}
+                title={t("target.select_button")}
+              >
+                <Crosshair className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
                 onClick={() => setShowParamsDialog(true)}
                 disabled={!dockerfileJsonFile}
                 title={t("dockerfiles.params_button")}
@@ -564,6 +609,12 @@ export function DockerfilesPage() {
                 />
               </Button>
             </div>
+
+            {currentTarget && (
+              <Badge variant="outline" className="text-[11px] font-mono">
+                {currentTarget.name}
+              </Badge>
+            )}
 
             <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
               <Button
@@ -942,6 +993,15 @@ export function DockerfilesPage() {
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
           }}
+        />
+      )}
+
+      {showTargetDialog && discoveryServices?.[0] && (
+        <TargetSelectorDialog
+          serviceId={discoveryServices[0].id}
+          currentTargetName={currentTarget?.name}
+          onSelect={handleSelectTarget}
+          onClose={() => setShowTargetDialog(false)}
         />
       )}
 

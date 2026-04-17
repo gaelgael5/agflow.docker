@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, Lock, Plus, Save, Search, Trash2, Upload } from "lucide-react";
+import { Download, Plus, Save, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRoles } from "@/hooks/useRoles";
@@ -690,7 +690,7 @@ export function RolesPage() {
                       className="flex-1 flex flex-col min-h-0"
                     >
                       <div className="flex items-center gap-2 mb-3 shrink-0">
-                        {editingDocName !== null ? (
+                        {editingDocName !== null && (
                           <input
                             autoFocus
                             className="text-[15px] font-semibold bg-transparent border-b border-primary outline-none px-0 py-0.5 min-w-[8rem]"
@@ -724,21 +724,6 @@ export function RolesPage() {
                               setEditingDocName(null);
                             }}
                           />
-                        ) : (
-                          <h3
-                            className="text-[15px] font-semibold cursor-pointer hover:text-primary transition-colors"
-                            onClick={() => {
-                              if (!isDocLocked(selectedDoc)) {
-                                setEditingDocName(docDisplayName(selectedDoc));
-                              }
-                            }}
-                            title={isDocLocked(selectedDoc) ? undefined : t("roles.drop.hint")}
-                          >
-                            {docDisplayName(selectedDoc)}
-                          </h3>
-                        )}
-                        {isDocLocked(selectedDoc) && (
-                          <Lock className="w-3.5 h-3.5 text-amber-500" />
                         )}
                         {draftDocContent !== null && (
                           <Button

@@ -402,21 +402,6 @@ export function AgentEditorPage() {
     updateField("param_overrides", next);
   }
 
-  function addMCP() {
-    const firstAvailable = availableMCPs.find(
-      (m) => !form.mcp_bindings.some((b) => b.mcp_server_id === m.id),
-    );
-    if (!firstAvailable) return;
-    updateField("mcp_bindings", [
-      ...form.mcp_bindings,
-      {
-        mcp_server_id: firstAvailable.id,
-        parameters_override: {},
-        position: form.mcp_bindings.length,
-      },
-    ]);
-  }
-
   function removeMCP(idx: number) {
     updateField(
       "mcp_bindings",
@@ -861,10 +846,30 @@ export function AgentEditorPage() {
                   </div>
                 </div>
               </div>
-              <Button variant="outline" size="sm" onClick={addMCP}>
-                <Plus className="w-3.5 h-3.5" />
-                {t("agent_editor.mcp_add_short")}
-              </Button>
+              <Select
+                value=""
+                onValueChange={(mcpId) => {
+                  if (!mcpId) return;
+                  updateField("mcp_bindings", [
+                    ...form.mcp_bindings,
+                    { mcp_server_id: mcpId, parameters_override: {}, position: form.mcp_bindings.length },
+                  ]);
+                }}
+              >
+                <SelectTrigger className="w-auto gap-1.5 h-8 text-[12px]">
+                  <Plus className="w-3.5 h-3.5" />
+                  {t("agent_editor.mcp_add_short")}
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMCPs
+                    .filter((m) => !form.mcp_bindings.some((b) => b.mcp_server_id === m.id))
+                    .map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name} ({m.transport})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
           </CardHeader>
           <CardContent className="pt-0">

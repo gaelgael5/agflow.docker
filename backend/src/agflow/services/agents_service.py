@@ -72,6 +72,8 @@ def _summary_from_disk(slug: str) -> AgentSummary:
         graceful_shutdown_secs=data.get("graceful_shutdown_secs", 30),
         force_kill_delay_secs=data.get("force_kill_delay_secs", 10),
         is_assistant=data.get("is_assistant", False),
+        prompt_template_slug=data.get("prompt_template_slug", ""),
+        prompt_template_culture=data.get("prompt_template_culture", ""),
         created_at=datetime.fromtimestamp(ctime, tz=UTC),
         updated_at=datetime.fromtimestamp(mtime, tz=UTC),
     )
@@ -132,6 +134,8 @@ def _payload_to_disk(slug: str, payload: AgentCreate | AgentUpdate, existing: di
         "graceful_shutdown_secs": payload.graceful_shutdown_secs,
         "force_kill_delay_secs": payload.force_kill_delay_secs,
         "is_assistant": existing.get("is_assistant", False) if existing else False,
+        "prompt_template_slug": payload.prompt_template_slug if hasattr(payload, "prompt_template_slug") and payload.prompt_template_slug is not None else (existing.get("prompt_template_slug", "") if existing else ""),
+        "prompt_template_culture": payload.prompt_template_culture if hasattr(payload, "prompt_template_culture") and payload.prompt_template_culture is not None else (existing.get("prompt_template_culture", "") if existing else ""),
         "mcp_bindings": [
             {
                 "catalog_mcp_id": b.mcp_server_id if hasattr(b, "mcp_server_id") else b.get("mcp_server_id", ""),

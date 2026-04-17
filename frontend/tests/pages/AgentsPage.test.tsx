@@ -56,6 +56,8 @@ describe("AgentsPage", () => {
         graceful_shutdown_secs: 30,
         force_kill_delay_secs: 10,
         is_assistant: false,
+        prompt_template_slug: "",
+        prompt_template_culture: "",
         created_at: "2026-04-11",
         updated_at: "2026-04-11",
         has_errors: false,

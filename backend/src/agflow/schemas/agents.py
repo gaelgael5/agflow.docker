@@ -37,6 +37,8 @@ class _AgentBase(BaseModel):
     force_kill_delay_secs: int = Field(default=10, ge=0)
     mcp_bindings: list[AgentMCPBinding] = Field(default_factory=list)
     skill_bindings: list[AgentSkillBinding] = Field(default_factory=list)
+    prompt_template_slug: str = ""
+    prompt_template_culture: str = ""
 
 
 class AgentCreate(_AgentBase):
@@ -72,6 +74,8 @@ class AgentSummary(BaseModel):
     graceful_shutdown_secs: int
     force_kill_delay_secs: int
     is_assistant: bool = False
+    prompt_template_slug: str = ""
+    prompt_template_culture: str = ""
     created_at: datetime
     updated_at: datetime
     has_errors: bool = False

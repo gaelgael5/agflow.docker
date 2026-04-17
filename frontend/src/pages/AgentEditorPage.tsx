@@ -107,6 +107,8 @@ interface FormState {
   force_kill_delay_secs: number;
   mcp_bindings: AgentMCPBinding[];
   skill_bindings: AgentSkillBinding[];
+  prompt_template_slug: string;
+  prompt_template_culture: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -125,6 +127,8 @@ const EMPTY_FORM: FormState = {
   force_kill_delay_secs: 10,
   mcp_bindings: [],
   skill_bindings: [],
+  prompt_template_slug: "",
+  prompt_template_culture: "",
 };
 
 export function AgentEditorPage() {
@@ -235,6 +239,8 @@ export function AgentEditorPage() {
         force_kill_delay_secs: agent.force_kill_delay_secs,
         mcp_bindings: agent.mcp_bindings,
         skill_bindings: agent.skill_bindings,
+        prompt_template_slug: agent.prompt_template_slug ?? "",
+        prompt_template_culture: agent.prompt_template_culture ?? "",
       });
     }
   }, [isNew, agent]);
@@ -1102,6 +1108,40 @@ export function AgentEditorPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex items-center gap-3 mt-4">
+            <div className="flex flex-col gap-1.5 flex-1">
+              <Label>Template prompt</Label>
+              <select
+                className="text-[12px] border rounded px-2 py-1.5 bg-background w-full"
+                value={form.prompt_template_slug}
+                onChange={(e) => updateField("prompt_template_slug", e.target.value)}
+              >
+                <option value="">— aucun (identity seule) —</option>
+                {(templatesList ?? []).map((tpl) => (
+                  <option key={tpl.slug} value={tpl.slug}>
+                    {tpl.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {form.prompt_template_slug && (
+              <div className="flex flex-col gap-1.5">
+                <Label>Culture</Label>
+                <select
+                  className="text-[12px] border rounded px-2 py-1.5 bg-background"
+                  value={form.prompt_template_culture}
+                  onChange={(e) => updateField("prompt_template_culture", e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(templatesList ?? [])
+                    .find((t) => t.slug === form.prompt_template_slug)
+                    ?.cultures.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                </select>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

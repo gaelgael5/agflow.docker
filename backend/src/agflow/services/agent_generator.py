@@ -156,8 +156,46 @@ async def generate(
     await role_sections_service.list_for_role(agent.role_id)
     documents = await role_documents_service.list_for_role(agent.role_id)
 
-    # Build prompt.md — identity only
-    prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
+    # Build prompt.md — via template if configured, else identity only
+    tpl_slug = agent.prompt_template_slug if hasattr(agent, "prompt_template_slug") else ""
+    tpl_culture = agent.prompt_template_culture if hasattr(agent, "prompt_template_culture") else ""
+    if tpl_slug and tpl_culture:
+        from jinja2 import Environment as _Env
+
+        tpl_path = os.path.join(
+            _data_dir(), "templates", tpl_slug, f"{tpl_culture}.md.j2"
+        )
+        if os.path.isfile(tpl_path):
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl_content = f.read()
+
+            # All docs grouped by section for load_section helper
+            all_sections: dict[str, list[str]] = {}
+            for doc in documents:
+                all_sections.setdefault(doc.section, []).append(doc.content_md)
+
+            def _make_loader(sects: dict[str, list[str]]):
+                def load_section(name: str) -> list[str]:
+                    return sects.get(name, [])
+                return load_section
+
+            env = _Env(
+                trim_blocks=True,
+                lstrip_blocks=True,
+                keep_trailing_newline=True,
+                autoescape=False,
+            )
+            template = env.from_string(tpl_content)
+            prompt_md = template.render(
+                role=role,
+                agent=agent,
+                load_section=_make_loader(all_sections),
+            )
+        else:
+            _log.warning("agent_generator.prompt_template_not_found", path=tpl_path)
+            prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
+    else:
+        prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
     prompt_md = await _expand_macros(prompt_md)
     _write(out_dir, "prompt.md", prompt_md)
 

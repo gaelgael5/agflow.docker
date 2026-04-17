@@ -28,6 +28,8 @@ export interface AgentSummary {
   graceful_shutdown_secs: number;
   force_kill_delay_secs: number;
   is_assistant: boolean;
+  prompt_template_slug: string;
+  prompt_template_culture: string;
   created_at: string;
   updated_at: string;
   has_errors: boolean;

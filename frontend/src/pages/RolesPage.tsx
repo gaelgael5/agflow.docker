@@ -458,14 +458,18 @@ export function RolesPage() {
             <SelectValue placeholder={t("roles.select_role")} />
           </SelectTrigger>
           <SelectContent>
-            <div className="flex items-center gap-1.5 px-2 pb-1.5 border-b mb-1">
+            <div
+              className="flex items-center gap-1.5 px-2 pb-1.5 border-b mb-1"
+              onKeyDown={(e) => e.stopPropagation()}
+              onKeyUp={(e) => e.stopPropagation()}
+            >
               <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
               <input
+                autoFocus
                 className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 placeholder={t("common.search")}
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
               />
             </div>
             {filteredRoles.length === 0 ? (

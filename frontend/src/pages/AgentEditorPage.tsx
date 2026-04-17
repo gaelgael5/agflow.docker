@@ -29,6 +29,9 @@ import {
   useAgents,
   useConfigPreview,
 } from "@/hooks/useAgents";
+import { useContracts } from "@/hooks/useContracts";
+import { ContractFormDialog } from "@/components/ContractFormDialog";
+import type { ContractCreatePayload } from "@/lib/contractsApi";
 import { useRoleDetail } from "@/hooks/useRoleDocuments";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
 import { useVault } from "@/hooks/useVault";
@@ -155,6 +158,8 @@ export function AgentEditorPage() {
   );
   const profilesHook = useAgentProfiles(isNew ? undefined : id);
   const roleDetailQuery = useRoleDetail(isNew ? null : agent?.role_id ?? null);
+  const contractsHook = useContracts(isNew ? undefined : id);
+  const [showContractDialog, setShowContractDialog] = useState(false);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formDirty, setFormDirty] = useState(false);
@@ -752,6 +757,9 @@ export function AgentEditorPage() {
           <TabsTrigger value="general">{t("agent_editor.tab_general")}</TabsTrigger>
           <TabsTrigger value="dockerfile">{t("agent_editor.tab_dockerfile")}</TabsTrigger>
           <TabsTrigger value="roles">{t("agent_editor.tab_roles")}</TabsTrigger>
+          <TabsTrigger value="contracts">
+            {t("contracts.tab_title")}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -1614,6 +1622,73 @@ export function AgentEditorPage() {
       </Card>
       </CollapsibleSection>
 
+        </TabsContent>
+
+        <TabsContent value="contracts">
+          <Card className="mb-6">
+            <CardContent className="pt-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[14px] font-semibold">{t("contracts.tab_title")}</h3>
+                <Button variant="outline" size="sm" onClick={() => setShowContractDialog(true)}>
+                  {t("contracts.add_button")}
+                </Button>
+              </div>
+
+              {(contractsHook.contracts ?? []).length === 0 ? (
+                <p className="text-muted-foreground text-[12px] italic">
+                  {t("contracts.no_contracts")}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {(contractsHook.contracts ?? []).map((c) => (
+                    <div key={c.id} className="border rounded-md p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <strong className="text-[13px]">{c.display_name}</strong>
+                            <code className="text-[11px] text-muted-foreground font-mono">{c.slug}</code>
+                          </div>
+                          {c.description && (
+                            <div className="text-[12px] text-muted-foreground mt-0.5">{c.description}</div>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => contractsHook.deleteMutation.mutate(c.id)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {c.parsed_tags.map((tag) => (
+                          <Badge key={tag.slug} variant="secondary" className="text-[10px]">
+                            {tag.name} ({tag.operation_count})
+                          </Badge>
+                        ))}
+                      </div>
+                      {c.source_url && (
+                        <div className="text-[11px] text-muted-foreground mt-1 font-mono truncate">
+                          {c.source_url}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {!isNew && id && (
+            <ContractFormDialog
+              agentId={id}
+              open={showContractDialog}
+              onOpenChange={setShowContractDialog}
+              onSave={async (payload: ContractCreatePayload) => {
+                await contractsHook.createMutation.mutateAsync(payload);
+              }}
+            />
+          )}
         </TabsContent>
       </Tabs>
 

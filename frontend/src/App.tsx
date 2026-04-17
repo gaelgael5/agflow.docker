@@ -5,6 +5,7 @@ import { SecretsPage } from "./pages/SecretsPage";
 import { MySecretsPage } from "./pages/MySecretsPage";
 import { RolesPage } from "./pages/RolesPage";
 import { DockerfilesPage } from "./pages/DockerfilesPage";
+import { TemplatesPage } from "./pages/TemplatesPage";
 import { DiscoveryServicesPage } from "./pages/DiscoveryServicesPage";
 import { MCPCatalogPage } from "./pages/MCPCatalogPage";
 import { SkillsCatalogPage } from "./pages/SkillsCatalogPage";
@@ -49,6 +50,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DockerfilesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/templates"
+        element={
+          <ProtectedRoute>
+            <TemplatesPage />
           </ProtectedRoute>
         }
       />

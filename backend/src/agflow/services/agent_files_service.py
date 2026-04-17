@@ -46,7 +46,7 @@ def write_agent(slug: str, data: dict[str, Any]) -> None:
         return
     d = _agent_dir(slug)
     os.makedirs(d, exist_ok=True)
-    content = json.dumps(data, ensure_ascii=False, indent=2)
+    content = json.dumps(data, ensure_ascii=False, indent=2, default=str)
     if len(content) < 10:
         _log.warning("agent_files.write.skip_too_small", slug=slug, size=len(content))
         return

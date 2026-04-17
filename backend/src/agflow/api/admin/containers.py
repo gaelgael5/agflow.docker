@@ -369,20 +369,18 @@ async def run_agent_task(
         ]
         docker_block["Mounts"] = mounts
 
-    # Inject session identity env vars so the agent knows who it is
-    session_id = str(uuid.uuid4())
-    envs = docker_block.get("Environments", {})
-    envs["AGFLOW_SESSION_ID"] = session_id
-    envs["AGFLOW_USER_EMAIL"] = user_email
-    envs["AGFLOW_TOKEN"] = raw_token
-    envs["AGFLOW_API_URL"] = "http://agflow-backend:8000"
-    docker_block["Environments"] = envs
-
     params_json["docker"] = docker_block
     resolved_params_content = json.dumps(params_json, ensure_ascii=False, indent=2)
 
+    # Inject session identity via user_secrets (becomes container env vars)
+    session_id = str(uuid.uuid4())
+    merged_secrets["AGFLOW_SESSION_ID"] = session_id
+    merged_secrets["AGFLOW_USER_EMAIL"] = user_email
+    merged_secrets["AGFLOW_TOKEN"] = raw_token
+    merged_secrets["AGFLOW_API_URL"] = "http://agflow-backend:8000"
+
     task_payload = {
-        "task_id": str(uuid.uuid4()),
+        "task_id": session_id,
         "payload": {"instruction": full_instruction},
         "timeout_seconds": payload.timeout_seconds,
         "model": payload.model or None,

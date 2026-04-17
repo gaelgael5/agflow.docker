@@ -445,6 +445,20 @@
     "hint": "Tape une requête puis clique Rechercher",
     "help": "Aide sur la syntaxe de recherche"
   },
+  "markdown": {
+    "bold": "Gras",
+    "italic": "Italique",
+    "h1": "Titre 1",
+    "h2": "Titre 2",
+    "h3": "Titre 3",
+    "ul": "Liste à puces",
+    "ol": "Liste numérotée",
+    "quote": "Citation",
+    "code": "Code inline",
+    "code_block": "Bloc de code",
+    "link": "Lien",
+    "help": "Aide Markdown"
+  },
   "agents": {
     "page_title": "Agents (compositions)",
     "page_subtitle": "Dockerfile + Rôle + MCPs + Skills assemblés en un agent déployable",

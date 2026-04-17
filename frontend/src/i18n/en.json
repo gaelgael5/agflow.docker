@@ -445,6 +445,20 @@
     "hint": "Type a query then click Search",
     "help": "Search syntax help"
   },
+  "markdown": {
+    "bold": "Bold",
+    "italic": "Italic",
+    "h1": "Heading 1",
+    "h2": "Heading 2",
+    "h3": "Heading 3",
+    "ul": "Bullet list",
+    "ol": "Numbered list",
+    "quote": "Quote",
+    "code": "Inline code",
+    "code_block": "Code block",
+    "link": "Link",
+    "help": "Markdown help"
+  },
   "agents": {
     "page_title": "Agents (compositions)",
     "page_subtitle": "Dockerfile + Role + MCPs + Skills assembled into a deployable agent",

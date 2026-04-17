@@ -14,6 +14,7 @@ from agflow.services import (
     agent_profiles_service,
     agents_service,
     dockerfile_files_service,
+    mcp_catalog_service,
     role_documents_service,
     role_sections_service,
     roles_service,
@@ -234,14 +235,82 @@ async def generate(
 
     _write(out_dir, ".env", "\n".join(env_lines) + "\n")
 
-    # Build mcp.json
-    mcp_config = []
+    # ── MCP installation files ──────────────────────────────────────────
+    target = dockerfile_files_service.read_target(agent.dockerfile_id)
+    cmd_lines: list[str] = []
+    config_blocks: dict[str, list[str]] = {}
+
     for binding in agent.mcp_bindings:
-        mcp_config.append({
-            "mcp_server_id": binding.mcp_server_id,
-            "config_overrides": binding.config_overrides,
+        mcp = await mcp_catalog_service.get_by_id(binding.mcp_server_id)
+        override = (
+            binding.parameters_override
+            if hasattr(binding, "parameters_override")
+            else getattr(binding, "config_overrides", {}) or {}
+        )
+        runtime = override.get("runtime")
+        params = override.get("params", {})
+
+        if not target or not runtime:
+            continue
+
+        mode = next(
+            (m for m in target.get("modes", []) if m.get("runtime") == runtime),
+            None,
+        )
+        if not mode:
+            continue
+
+        template = mode.get("template", "")
+        env_entries = {k: _resolve_secret(str(v)) for k, v in params.items() if v}
+
+        env_toml = ""
+        if env_entries:
+            env_toml = "\n[mcp_servers.env]\n" + "\n".join(
+                f'{k} = "{v}"' for k, v in env_entries.items()
+            )
+
+        env_json = ""
+        if env_entries:
+            pairs = ", ".join(f'"{k}": "{v}"' for k, v in env_entries.items())
+            env_json = f', "env": {{{pairs}}}'
+
+        resolved = (
+            template
+            .replace("{name}", mcp.name)
+            .replace("{package}", mcp.repo or mcp.name)
+            .replace("{env_toml}", env_toml)
+            .replace("{env_json}", env_json)
+        )
+
+        action_type = mode.get("action_type", "")
+        if action_type == "cmd":
+            cmd_lines.append(resolved)
+        elif action_type == "insert_in_file":
+            config_path = mode.get("config_path", "mcp_config")
+            config_blocks.setdefault(config_path, []).append(resolved)
+
+    if cmd_lines:
+        script = "#!/usr/bin/env bash\nset -euo pipefail\n\n" + "\n".join(cmd_lines) + "\n"
+        _write(out_dir, "install_mcp.sh", script)
+
+    for config_path, blocks in config_blocks.items():
+        filename = os.path.basename(config_path)
+        content = "\n\n".join(blocks) + "\n"
+        _write(out_dir, filename, content)
+
+    # Also keep mcp.json for backward compat / debug
+    mcp_config_legacy = []
+    for binding in agent.mcp_bindings:
+        override = (
+            binding.parameters_override
+            if hasattr(binding, "parameters_override")
+            else getattr(binding, "config_overrides", {}) or {}
+        )
+        mcp_config_legacy.append({
+            "mcp_server_id": str(binding.mcp_server_id),
+            "parameters_override": override,
         })
-    _write(out_dir, "mcp.json", json.dumps(mcp_config, indent=2, ensure_ascii=False))
+    _write(out_dir, "mcp.json", json.dumps(mcp_config_legacy, indent=2, ensure_ascii=False))
 
     # Skills
     skills_dir = os.path.join(out_dir, "skills")

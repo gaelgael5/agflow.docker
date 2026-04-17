@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from datetime import UTC, datetime
@@ -143,6 +144,16 @@ def _dir_summary(dockerfile_id: str, path: str, full_path: str) -> FileSummary:
         created_at=datetime.fromtimestamp(stat.st_ctime, tz=UTC),
         updated_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
     )
+
+
+def read_target(dockerfile_id: str) -> dict | None:
+    """Read the Target block from Dockerfile.json, or None if absent."""
+    json_path = os.path.join(_slug_dir(dockerfile_id), "Dockerfile.json")
+    if not os.path.isfile(json_path):
+        return None
+    with open(json_path, encoding="utf-8") as f:
+        data = json.loads(f.read())
+    return data.get("Target")
 
 
 # ---------------------------------------------------------------------------

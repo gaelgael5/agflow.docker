@@ -261,10 +261,9 @@ export function DockerfilesPage() {
       );
       if (insertMode?.config_path) {
         const configPath: string = insertMode.config_path;
-        // "~/.vibe/config.toml" → source = ".vibe", target = "~/.vibe/config.toml"
+        // "~/.vibe/config.toml" → source = "config.toml", target = "~/.vibe/config.toml"
         const lastSlash = configPath.lastIndexOf("/");
-        const dirPath = lastSlash > 0 ? configPath.slice(0, lastSlash) : configPath;
-        const source = dirPath.replace(/^~\//, "");
+        const source = lastSlash >= 0 ? configPath.slice(lastSlash + 1) : configPath;
         const mounts: Array<{ source: string; target: string; readonly: boolean }> =
           parsed.docker?.Mounts ?? [];
         // Only add if no mount with this target already exists

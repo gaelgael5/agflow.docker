@@ -882,7 +882,7 @@ export function AgentEditorPage() {
           <CardContent className="pt-0">
             {!currentTarget && form.mcp_bindings.length > 0 && (
               <p className="text-amber-600 text-[12px] mb-2">
-                {t("agent_editor.mcp_no_target_warning")}
+                ⚠ {t("agent_editor.mcp_no_target_warning")}
               </p>
             )}
             {form.mcp_bindings.length === 0 ? (
@@ -916,31 +916,29 @@ export function AgentEditorPage() {
                     </div>
 
                     {/* Runtime selector */}
-                    {currentTarget && (
-                      <div className="mt-2">
-                        <Label className="text-[11px]">
-                          {t("agent_editor.mcp_runtime_label")}
-                        </Label>
-                        <select
-                          className="text-[12px] border rounded px-2 py-1 bg-background w-full mt-1"
-                          value={(b.parameters_override as Record<string, unknown>)?.runtime as string ?? ""}
-                          onChange={(e) => {
-                            const next = [...form.mcp_bindings];
-                            const prev = (b.parameters_override ?? {}) as Record<string, unknown>;
-                            next[idx] = {
-                              ...b,
-                              parameters_override: { ...prev, runtime: e.target.value },
-                            };
-                            updateField("mcp_bindings", next);
-                          }}
-                        >
-                          <option value="">{t("target.none")}</option>
-                          {((currentTarget as Record<string, unknown>).modes as Array<{ runtime: string }> ?? []).map((m) => (
-                            <option key={m.runtime} value={m.runtime}>{m.runtime}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    <div className="mt-2">
+                      <Label className="text-[11px]">
+                        {t("agent_editor.mcp_runtime_label")}
+                      </Label>
+                      <select
+                        className="text-[12px] border rounded px-2 py-1 bg-background w-full mt-1"
+                        value={(b.parameters_override as Record<string, unknown>)?.runtime as string ?? ""}
+                        onChange={(e) => {
+                          const next = [...form.mcp_bindings];
+                          const prev = (b.parameters_override ?? {}) as Record<string, unknown>;
+                          next[idx] = {
+                            ...b,
+                            parameters_override: { ...prev, runtime: e.target.value },
+                          };
+                          updateField("mcp_bindings", next);
+                        }}
+                      >
+                        <option value="">{currentTarget ? t("target.none") : t("agent_editor.mcp_no_target_warning")}</option>
+                        {(((currentTarget as Record<string, unknown> | null)?.modes as Array<{ runtime: string }>) ?? []).map((m) => (
+                          <option key={m.runtime} value={m.runtime}>{m.runtime}</option>
+                        ))}
+                      </select>
+                    </div>
 
                     {/* Parameters form */}
                     {(mcpDetails(b.mcp_server_id)?.parameters ?? []).length > 0 && (

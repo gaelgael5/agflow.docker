@@ -15,6 +15,7 @@ import { useEmptyLaunchKeys } from "@/hooks/useEmptyLaunchKeys";
 
 export interface ChatWindowProps {
   dockerfileId: string;
+  agentSlug?: string;
   title?: string;
   onClose: () => void;
   secrets?: Record<string, string>;
@@ -50,6 +51,7 @@ function randomId(): string {
 
 export function ChatWindow({
   dockerfileId,
+  agentSlug,
   title,
   onClose,
   secrets,
@@ -226,8 +228,11 @@ export function ChatWindow({
 
     try {
       const token = localStorage.getItem("agflow_token");
+      const taskUrl = agentSlug
+        ? `/api/admin/agents/${agentSlug}/task`
+        : `/api/admin/dockerfiles/${dockerfileId}/task`;
       const res = await fetch(
-        `/api/admin/dockerfiles/${dockerfileId}/task`,
+        taskUrl,
         {
           method: "POST",
           signal: controller.signal,

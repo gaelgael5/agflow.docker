@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from agflow.auth.dependencies import require_admin
 from agflow.schemas.containers import ContainerInfo
 from agflow.services import (
+    agent_files_service,
     build_service,
     container_runner,
     dockerfile_files_service,
@@ -247,6 +248,144 @@ async def run_task(
                 json.dumps({"type": "error", "message": str(exc)}) + "\n"
             ).encode("utf-8")
         except Exception as exc:  # pragma: no cover — surface unexpected
+            yield (
+                json.dumps({"type": "error", "message": str(exc)}) + "\n"
+            ).encode("utf-8")
+
+    return StreamingResponse(_stream(), media_type="application/x-ndjson")
+
+
+@router.post("/agents/{agent_slug}/task")
+async def run_agent_task(
+    agent_slug: str, payload: TaskRequest
+) -> StreamingResponse:
+    """One-shot agent task using the agent's generated config.
+
+    Loads the agent's prompt.md, prepends it to the instruction, and runs
+    the container with the agent's Dockerfile.json overrides (env, mounts
+    including MCP config).
+    """
+    import os
+
+    data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+    agent_data = agent_files_service.read_agent(agent_slug)
+    if not agent_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent '{agent_slug}' not found",
+        )
+
+    dockerfile_id = agent_data.get("dockerfile_id", "")
+    if not dockerfile_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Agent has no dockerfile_id configured",
+        )
+
+    try:
+        dockerfile = await dockerfiles_service.get_by_id(dockerfile_id)
+    except dockerfiles_service.DockerfileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    if dockerfile.display_status != "up_to_date":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Le dockerfile n'est pas à jour — compilez-le d'abord.",
+        )
+
+    # Read generated prompt
+    prompt_path = os.path.join(
+        data_dir, "agents", agent_slug, "generated", "prompt.md"
+    )
+    prompt = ""
+    if os.path.isfile(prompt_path):
+        with open(prompt_path, encoding="utf-8") as f:
+            prompt = f.read()
+
+    # Read generated .env for agent secrets
+    env_path = os.path.join(
+        data_dir, "agents", agent_slug, "generated", ".env"
+    )
+    agent_secrets: dict[str, str] = {}
+    if os.path.isfile(env_path):
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, _, v = line.partition("=")
+                    agent_secrets[k.strip()] = v.strip()
+
+    # Merge: agent secrets + user-provided secrets (user overrides agent)
+    merged_secrets = {**agent_secrets, **payload.secrets}
+
+    # Build instruction with prompt prefix
+    full_instruction = payload.instruction
+    if prompt:
+        full_instruction = (
+            f"<system>\n{prompt}\n</system>\n\n{payload.instruction}"
+        )
+
+    # Load Dockerfile.json with agent overrides applied
+    files = await dockerfile_files_service.list_for_dockerfile(dockerfile_id)
+    params_file = next((f for f in files if f.path == "Dockerfile.json"), None)
+    if params_file is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dockerfile.json manquant.",
+        )
+
+    # Apply agent env/mount overrides to Dockerfile.json
+    params_json = json.loads(params_file.content)
+    docker_block = params_json.get("docker", {})
+
+    # Merge agent env overrides
+    env_overrides = agent_data.get("env_overrides", {})
+    if env_overrides:
+        envs = docker_block.get("Environments", {})
+        for key, override in env_overrides.items():
+            if isinstance(override, dict) and not override.get("excluded"):
+                envs[key] = override.get("value", envs.get(key, ""))
+            elif isinstance(override, dict) and override.get("excluded"):
+                envs.pop(key, None)
+        docker_block["Environments"] = envs
+
+    # Merge agent mount overrides
+    mount_overrides = agent_data.get("mount_overrides", {})
+    if mount_overrides:
+        mounts = docker_block.get("Mounts", [])
+        mounts = [
+            m for m in mounts
+            if not (isinstance(mount_overrides.get(m.get("target")), dict)
+                    and mount_overrides[m["target"]].get("excluded"))
+        ]
+        docker_block["Mounts"] = mounts
+
+    params_json["docker"] = docker_block
+    resolved_params_content = json.dumps(params_json, ensure_ascii=False, indent=2)
+
+    task_payload = {
+        "task_id": str(uuid.uuid4()),
+        "payload": {"instruction": full_instruction},
+        "timeout_seconds": payload.timeout_seconds,
+        "model": payload.model or None,
+    }
+
+    async def _stream():
+        try:
+            async for event in container_runner.run_task(
+                dockerfile_id,
+                params_json_content=resolved_params_content,
+                content_hash=dockerfile.current_hash,
+                task_payload=task_payload,
+                timeout_seconds=payload.timeout_seconds,
+                user_secrets=merged_secrets,
+                cleanup=True,
+                session_id=task_payload["task_id"],
+            ):
+                yield (json.dumps(event) + "\n").encode("utf-8")
+        except Exception as exc:
             yield (
                 json.dumps({"type": "error", "message": str(exc)}) + "\n"
             ).encode("utf-8")

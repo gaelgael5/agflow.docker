@@ -11,13 +11,18 @@ export function sanitizeDocName(filename: string): string {
   return slugify(base, "-");
 }
 
+function normalize(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 export function stripSectionPrefix(name: string, section: string): string {
-  const candidates = [section + "_"];
+  const norm = normalize(name);
+  const candidates = [normalize(section) + "_"];
   if (section.endsWith("s") && section.length > 1) {
-    candidates.push(section.slice(0, -1) + "_");
+    candidates.push(normalize(section.slice(0, -1)) + "_");
   }
   for (const prefix of candidates) {
-    if (name.startsWith(prefix) && name.length > prefix.length) {
+    if (norm.startsWith(prefix) && norm.length > prefix.length) {
       return name.slice(prefix.length);
     }
   }

@@ -69,6 +69,18 @@ describe("stripSectionPrefix", () => {
     expect(stripSectionPrefix("outils_vim", "outils")).toBe("vim");
     expect(stripSectionPrefix("outil_vim", "outils")).toBe("vim");
   });
+
+  it("ignores case when matching prefix", () => {
+    expect(stripSectionPrefix("Mission_benchmark", "missions")).toBe("benchmark");
+    expect(stripSectionPrefix("MISSIONS_audit", "missions")).toBe("audit");
+    expect(stripSectionPrefix("Roles_dev", "roles")).toBe("dev");
+  });
+
+  it("ignores accents when matching prefix", () => {
+    expect(stripSectionPrefix("compétences_audit", "competences")).toBe("audit");
+    expect(stripSectionPrefix("compétence_audit", "competences")).toBe("audit");
+    expect(stripSectionPrefix("évaluations_test", "evaluations")).toBe("test");
+  });
 });
 
 describe("findFreeName", () => {

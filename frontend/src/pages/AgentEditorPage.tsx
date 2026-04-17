@@ -268,6 +268,18 @@ export function AgentEditorPage() {
   const availableMCPs = useMemo(() => mcps ?? [], [mcps]);
   const availableSkills = useMemo(() => skills ?? [], [skills]);
 
+  const currentTarget = useMemo(() => {
+    const files = dockerfileDetailQuery.data?.files ?? [];
+    const paramsFile = files.find((f) => f.path === "Dockerfile.json");
+    if (!paramsFile) return null;
+    try {
+      const parsed = JSON.parse(paramsFile.content);
+      return parsed.Target ?? null;
+    } catch {
+      return null;
+    }
+  }, [dockerfileDetailQuery.data]);
+
   const dockerfileEnvKeys = useMemo(() => {
     const files = dockerfileDetailQuery.data?.files ?? [];
     const paramsFile = files.find((f) => f.path === "Dockerfile.json");
@@ -350,6 +362,8 @@ export function AgentEditorPage() {
     availableMCPs.find((m) => m.id === mcpId)?.name ?? mcpId;
   const mcpTransport = (mcpId: string): string =>
     availableMCPs.find((m) => m.id === mcpId)?.transport ?? "stdio";
+  const mcpDetails = (mcpId: string) =>
+    availableMCPs.find((m) => m.id === mcpId);
   const skillName = (sid: string): string =>
     availableSkills.find((s) => s.id === sid)?.name ?? sid;
 
@@ -410,6 +424,7 @@ export function AgentEditorPage() {
     );
   }
 
+  /* setMCPOverride — kept as reference for raw JSON fallback if needed
   function setMCPOverride(idx: number, raw: string) {
     const next = [...form.mcp_bindings];
     const entry = next[idx];
@@ -421,7 +436,7 @@ export function AgentEditorPage() {
     } catch {
       setError(`Invalid JSON in MCP #${idx + 1} override`);
     }
-  }
+  } */
 
   function addSkill() {
     const firstAvailable = availableSkills.find(
@@ -853,6 +868,11 @@ export function AgentEditorPage() {
             </div>
           </CardHeader>
           <CardContent className="pt-0">
+            {!currentTarget && form.mcp_bindings.length > 0 && (
+              <p className="text-amber-600 text-[12px] mb-2">
+                {t("agent_editor.mcp_no_target_warning")}
+              </p>
+            )}
             {form.mcp_bindings.length === 0 ? (
               <p className="text-muted-foreground text-[12px] italic">
                 {t("agent_editor.mcp_empty")}
@@ -882,21 +902,108 @@ export function AgentEditorPage() {
                         <X className="w-3.5 h-3.5 text-muted-foreground" />
                       </Button>
                     </div>
-                    <div className="mt-2">
-                      <Label className="text-[11px]">
-                        {t("agent_editor.mcp_override_label")}
-                      </Label>
-                      <Textarea
-                        defaultValue={JSON.stringify(
-                          b.parameters_override,
-                          null,
-                          2,
-                        )}
-                        onBlur={(e) => setMCPOverride(idx, e.target.value)}
-                        rows={3}
-                        className="font-mono text-[11px] mt-1"
-                      />
-                    </div>
+
+                    {/* Runtime selector */}
+                    {currentTarget && (
+                      <div className="mt-2">
+                        <Label className="text-[11px]">
+                          {t("agent_editor.mcp_runtime_label")}
+                        </Label>
+                        <select
+                          className="text-[12px] border rounded px-2 py-1 bg-background w-full mt-1"
+                          value={(b.parameters_override as Record<string, unknown>)?.runtime as string ?? ""}
+                          onChange={(e) => {
+                            const next = [...form.mcp_bindings];
+                            const prev = (b.parameters_override ?? {}) as Record<string, unknown>;
+                            next[idx] = {
+                              ...b,
+                              parameters_override: { ...prev, runtime: e.target.value },
+                            };
+                            updateField("mcp_bindings", next);
+                          }}
+                        >
+                          <option value="">{t("target.none")}</option>
+                          {((currentTarget as Record<string, unknown>).modes as Array<{ runtime: string }> ?? []).map((m) => (
+                            <option key={m.runtime} value={m.runtime}>{m.runtime}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Parameters form */}
+                    {(mcpDetails(b.mcp_server_id)?.parameters ?? []).length > 0 && (
+                      <div className="mt-2">
+                        <Label className="text-[11px]">
+                          {t("agent_editor.mcp_params_label")}
+                        </Label>
+                        {(mcpDetails(b.mcp_server_id)?.parameters ?? []).map((param) => (
+                          <div key={param.name} className="flex items-center gap-2 mt-1">
+                            <label
+                              className="text-[11px] text-muted-foreground w-32 shrink-0 truncate"
+                              title={param.description}
+                            >
+                              {param.name} {param.is_required && <span className="text-destructive">*</span>}
+                            </label>
+                            <input
+                              type={param.is_secret ? "password" : "text"}
+                              className="flex-1 text-[12px] border rounded px-2 py-1 bg-background font-mono"
+                              placeholder={param.is_secret ? "${" + param.name + "}" : param.description}
+                              value={
+                                ((b.parameters_override as Record<string, unknown>)?.params as Record<string, string> ?? {})[param.name]
+                                ?? (param.is_secret ? "${" + param.name + "}" : "")
+                              }
+                              onChange={(e) => {
+                                const next = [...form.mcp_bindings];
+                                const prev = (b.parameters_override ?? {}) as Record<string, unknown>;
+                                const params = { ...((prev.params as Record<string, string>) ?? {}) };
+                                params[param.name] = e.target.value;
+                                next[idx] = {
+                                  ...b,
+                                  parameters_override: { ...prev, params },
+                                };
+                                updateField("mcp_bindings", next);
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Preview — resolved template */}
+                    {(b.parameters_override as Record<string, unknown>)?.runtime && currentTarget && (() => {
+                      const overrideRuntime = (b.parameters_override as Record<string, unknown>).runtime as string;
+                      const modes = (currentTarget as Record<string, unknown>).modes as Array<{ runtime: string; template: string; action_type: string; config_path?: string }> ?? [];
+                      const mode = modes.find((m) => m.runtime === overrideRuntime);
+                      if (!mode) return null;
+                      const mcp = mcpDetails(b.mcp_server_id);
+                      const params = ((b.parameters_override as Record<string, unknown>)?.params as Record<string, string>) ?? {};
+                      let resolved = mode.template
+                        .replace(/\{name\}/g, mcp?.name ?? "")
+                        .replace(/\{package\}/g, mcp?.repo ?? mcp?.name ?? "");
+                      const envEntries = Object.entries(params).filter(([, v]) => v);
+                      if (mode.template.includes("{env_toml}")) {
+                        const envToml = envEntries.length > 0
+                          ? "\n[mcp_servers.env]\n" + envEntries.map(([k, v]) => `${k} = "${v}"`).join("\n")
+                          : "";
+                        resolved = resolved.replace(/\{env_toml\}/g, envToml);
+                      }
+                      if (mode.template.includes("{env_json}")) {
+                        const envJson = envEntries.length > 0
+                          ? ', "env": {' + envEntries.map(([k, v]) => `"${k}": "${v}"`).join(", ") + "}"
+                          : "";
+                        resolved = resolved.replace(/\{env_json\}/g, envJson);
+                      }
+                      return (
+                        <details className="mt-2">
+                          <summary className="text-[11px] text-muted-foreground cursor-pointer">
+                            {t("agent_editor.mcp_preview_summary", { action: mode.action_type, path: mode.config_path ?? "install_mcp.sh" })}
+                          </summary>
+                          <pre className="text-[11px] font-mono bg-muted p-2 rounded mt-1 overflow-x-auto whitespace-pre-wrap">
+                            {resolved}
+                          </pre>
+                        </details>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>

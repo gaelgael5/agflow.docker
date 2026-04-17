@@ -68,7 +68,7 @@ export interface MCPServerSummary {
   short_description: string;
   long_description: string;
   documentation_url: string;
-  parameters: Record<string, unknown>;
+  parameters: Array<{ name: string; description: string; is_required: boolean; is_secret: boolean }>;
   parameters_schema: Array<Record<string, unknown>>;
   recipes: Record<string, { action_type: string; data: string; config_path?: string }>;
   created_at: string;

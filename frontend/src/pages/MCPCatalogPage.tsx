@@ -184,6 +184,11 @@ export function MCPCatalogPage() {
           showSemantic
           onSearch={handleSearch}
           onAdd={handleInstall}
+          isInstalled={(item) =>
+            (mcps ?? []).some(
+              (m) => String(m.package_id) === String(item.package_id),
+            )
+          }
           groupBy={(item) => item.category}
           renderItem={(item) => (
             <MCPSearchResultItem

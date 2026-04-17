@@ -17,6 +17,7 @@ interface Props<T> {
   showSemantic?: boolean;
   onSearch: (query: string, semantic: boolean) => Promise<T[]>;
   onAdd: (item: T) => Promise<void>;
+  isInstalled?: (item: T) => boolean;
   renderItem: (item: T) => ReactNode;
   groupBy?: (item: T) => string;
   onClose: () => void;
@@ -27,6 +28,7 @@ export function SearchModal<T>({
   showSemantic = false,
   onSearch,
   onAdd,
+  isInstalled,
   renderItem,
   groupBy,
   onClose,
@@ -141,7 +143,7 @@ export function SearchModal<T>({
                       <ul className="divide-y">
                         {items.map((item) => {
                           const gi = results!.indexOf(item);
-                          const added = addedSet.has(gi);
+                          const added = addedSet.has(gi) || isInstalled?.(item);
                           return (
                           <li key={gi} className="flex items-center gap-3 py-2">
                             <div className="flex-1 min-w-0">{renderItem(item)}</div>
@@ -168,7 +170,7 @@ export function SearchModal<T>({
           ) : (
             <ul className="divide-y">
               {results.map((item, idx) => {
-                const added = addedSet.has(idx);
+                const added = addedSet.has(idx) || isInstalled?.(item);
                 return (
                 <li
                   key={idx}

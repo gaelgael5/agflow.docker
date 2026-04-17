@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -257,15 +257,22 @@ async def run_task(
 
 @router.post("/agents/{agent_slug}/task")
 async def run_agent_task(
-    agent_slug: str, payload: TaskRequest
+    agent_slug: str,
+    payload: TaskRequest,
+    request: Request,
+    user_email: str = Depends(require_admin),
 ) -> StreamingResponse:
     """One-shot agent task using the agent's generated config.
 
     Loads the agent's prompt.md, prepends it to the instruction, and runs
     the container with the agent's Dockerfile.json overrides (env, mounts
-    including MCP config).
+    including MCP config). Injects session identity as env vars.
     """
     import os
+
+    # Extract the raw token so the agent can call back APIs
+    auth_header = request.headers.get("authorization", "")
+    raw_token = auth_header.removeprefix("Bearer ").strip() if auth_header else ""
 
     data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
     agent_data = agent_files_service.read_agent(agent_slug)
@@ -361,6 +368,15 @@ async def run_agent_task(
                     and mount_overrides[m["target"]].get("excluded"))
         ]
         docker_block["Mounts"] = mounts
+
+    # Inject session identity env vars so the agent knows who it is
+    session_id = str(uuid.uuid4())
+    envs = docker_block.get("Environments", {})
+    envs["AGFLOW_SESSION_ID"] = session_id
+    envs["AGFLOW_USER_EMAIL"] = user_email
+    envs["AGFLOW_TOKEN"] = raw_token
+    envs["AGFLOW_API_URL"] = "http://agflow-backend:8000"
+    docker_block["Environments"] = envs
 
     params_json["docker"] = docker_block
     resolved_params_content = json.dumps(params_json, ensure_ascii=False, indent=2)

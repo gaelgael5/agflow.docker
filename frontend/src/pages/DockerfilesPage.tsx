@@ -264,11 +264,11 @@ export function DockerfilesPage() {
         // "~/.vibe/config.toml" → source = "config.toml", target = "~/.vibe/config.toml"
         const lastSlash = configPath.lastIndexOf("/");
         const source = lastSlash >= 0 ? configPath.slice(lastSlash + 1) : configPath;
-        const mounts: Array<{ source: string; target: string; readonly: boolean }> =
+        const mounts: Array<{ source: string; target: string; readonly: boolean; excluded?: boolean }> =
           parsed.docker?.Mounts ?? [];
         // Only add if no mount with this target already exists
         if (!mounts.some((m) => m.target === configPath)) {
-          mounts.push({ source, target: configPath, readonly: false });
+          mounts.push({ source, target: configPath, readonly: false, excluded: true });
           if (!parsed.docker) parsed.docker = {};
           parsed.docker.Mounts = mounts;
         }

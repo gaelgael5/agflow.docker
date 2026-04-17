@@ -315,7 +315,7 @@ async def generate(
     if os.path.isdir(ctr_base_dir):
         shutil.rmtree(ctr_base_dir)
 
-    contracts = await _ctr_svc.list_for_agent(slug)
+    contracts = await _ctr_svc.list_for_agent(str(agent_id))
     contract_context: list[dict[str, Any]] = []
 
     for contract in contracts:

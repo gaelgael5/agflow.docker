@@ -647,7 +647,14 @@ export function RolesPage() {
                       {t("roles.tab_prompt")}
                     </TabsTrigger>
                     {selectedDoc && (
-                      <TabsTrigger value="document">
+                      <TabsTrigger
+                        value="document"
+                        onClick={() => {
+                          if (tab === "document" && !isDocLocked(selectedDoc)) {
+                            setEditingDocName(docDisplayName(selectedDoc));
+                          }
+                        }}
+                      >
                         {docDisplayName(selectedDoc)}
                       </TabsTrigger>
                     )}

@@ -1698,7 +1698,7 @@ export function AgentEditorPage() {
           <CollapsibleSection label={t("agent_editor.section_generated")}>
           <Card className="mb-6">
             <CardContent className="pt-5">
-              <div className="flex min-h-[400px]" ref={(el) => {
+              <div className="flex h-[70vh]" ref={(el) => {
                 if (el && !el.dataset.splitInit) {
                   el.dataset.splitInit = "1";
                   const left = el.children[0] as HTMLElement;
@@ -1716,7 +1716,7 @@ export function AgentEditorPage() {
                   });
                 }
               }}>
-                <div className="shrink-0 overflow-y-auto max-h-[800px] pr-2" style={{ width: "200px" }}>
+                <div className="shrink-0 overflow-y-auto pr-2" style={{ width: "200px" }}>
                   <FileTree
                     files={generatedFiles.map((f) => ({
                       id: f.path,
@@ -1728,7 +1728,7 @@ export function AgentEditorPage() {
                   />
                 </div>
                 <div className="w-1 shrink-0 cursor-col-resize bg-border hover:bg-primary/40 transition-colors rounded" />
-                <div className="flex-1 min-w-0 overflow-auto pl-2">
+                <div className="flex-1 min-w-0 overflow-auto pl-2 flex flex-col">
                   {selectedGenFile ? (
                     <CodeEditor
                       value={(() => {

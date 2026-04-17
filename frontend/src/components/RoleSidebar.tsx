@@ -45,8 +45,8 @@ function SectionDropzone({
     <div
       data-testid={`section-dropzone-${sectionName}`}
       className={cn(
-        "rounded-md transition-colors",
-        isDragOver && "ring-2 ring-green-500 bg-green-500/10",
+        "rounded-md transition-all py-1 px-1",
+        isDragOver && "ring-2 ring-green-500 bg-green-500/10 py-3",
       )}
       {...dropzoneProps}
     >

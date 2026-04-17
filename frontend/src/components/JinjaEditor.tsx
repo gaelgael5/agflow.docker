@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { html } from "@codemirror/lang-html";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   bracketMatching,
@@ -54,7 +53,6 @@ export function JinjaEditor({ value, onChange, readOnly = false }: Props) {
       extensions: [
         html(),
         syntaxHighlighting(defaultHighlightStyle),
-        oneDark,
         agflowTheme,
         history(),
         bracketMatching(),

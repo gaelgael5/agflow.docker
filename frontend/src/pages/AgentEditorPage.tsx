@@ -829,23 +829,20 @@ export function AgentEditorPage() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {/* MCPs brick — spans 2 columns */}
+        <CollapsibleSection
+          label={`${t("agent_editor.section_mcps")} (${form.mcp_bindings.length} ${t("agent_editor.mcp_count_suffix")})`}
+          defaultOpen={false}
+        >
         <Card className="md:col-span-2">
-          <details open>
           <CardHeader className="pb-3">
-            <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-md bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-100 dark:border-cyan-900/50 flex items-center justify-center">
                   <PlugZap className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
                 </div>
-                <div>
-                  <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                    {t("agent_editor.section_mcps")}
-                  </div>
-                  <div className="text-[14px] font-semibold text-foreground -mt-0.5">
-                    {form.mcp_bindings.length}{" "}
-                    {t("agent_editor.mcp_count_suffix")}
-                  </div>
+                <div className="text-[14px] font-semibold text-foreground">
+                  {form.mcp_bindings.length}{" "}
+                  {t("agent_editor.mcp_count_suffix")}
                 </div>
               </div>
               <Select
@@ -877,7 +874,6 @@ export function AgentEditorPage() {
                 </SelectContent>
               </Select>
             </div>
-            </summary>
           </CardHeader>
           <CardContent className="pt-0">
             {!currentTarget && form.mcp_bindings.length > 0 && (
@@ -1019,27 +1015,24 @@ export function AgentEditorPage() {
               </div>
             )}
           </CardContent>
-          </details>
         </Card>
+        </CollapsibleSection>
 
         {/* Skills brick — spans 2 columns */}
+        <CollapsibleSection
+          label={`${t("agent_editor.section_skills")} (${form.skill_bindings.length} ${t("agent_editor.skill_count_suffix")})`}
+          defaultOpen={false}
+        >
         <Card className="md:col-span-2">
-          <details open>
           <CardHeader className="pb-3">
-            <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/50 flex items-center justify-center">
                   <BookMarked className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 </div>
-                <div>
-                  <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                    {t("agent_editor.section_skills")}
-                  </div>
-                  <div className="text-[14px] font-semibold text-foreground -mt-0.5">
-                    {form.skill_bindings.length}{" "}
-                    {t("agent_editor.skill_count_suffix")}
-                  </div>
+                <div className="text-[14px] font-semibold text-foreground">
+                  {form.skill_bindings.length}{" "}
+                  {t("agent_editor.skill_count_suffix")}
                 </div>
               </div>
               <Button variant="outline" size="sm" onClick={addSkill}>
@@ -1047,7 +1040,6 @@ export function AgentEditorPage() {
                 {t("agent_editor.skill_add_short")}
               </Button>
             </div>
-            </summary>
           </CardHeader>
           <CardContent className="pt-0">
             {form.skill_bindings.length === 0 ? (
@@ -1077,8 +1069,8 @@ export function AgentEditorPage() {
               </div>
             )}
           </CardContent>
-          </details>
         </Card>
+        </CollapsibleSection>
       </div>
 
         </TabsContent>

@@ -823,7 +823,7 @@ export function AgentEditorPage() {
           {t("agent_editor.bricks_assembled")}
         </span>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 gap-4 mb-6">
         {/* MCPs brick — spans 2 columns */}
         <CollapsibleSection
           label={`${t("agent_editor.section_mcps")} (${form.mcp_bindings.length} ${t("agent_editor.mcp_count_suffix")})`}

@@ -161,16 +161,20 @@ async def generate(
     prompt_md = await _expand_macros(prompt_md)
     _write(out_dir, "prompt.md", prompt_md)
 
-    # Clean missions directory before regeneration
+    # Clean old profile files before regeneration
+    import glob
     import shutil
 
     from jinja2 import Environment
 
+    # Remove old missions/ subdir (legacy) and profile .md files at root
     missions_dir = os.path.join(out_dir, "missions")
     if os.path.isdir(missions_dir):
         shutil.rmtree(missions_dir)
+    for old_profile_md in glob.glob(os.path.join(out_dir, "*.profile.md")):
+        os.unlink(old_profile_md)
 
-    # Build per-profile mission directories from profile selections
+    # Build per-profile files from profile selections
     profiles = await agent_profiles_service.list_for_agent(agent_id)
     for profile in profiles:
         # Skip profiles with no documents selected
@@ -178,8 +182,6 @@ async def generate(
             continue
 
         profile_slug = profile.name.lower().replace(" ", "_")
-        profile_dir = os.path.join(missions_dir, profile_slug)
-        os.makedirs(profile_dir, exist_ok=True)
 
         # Collect documents selected in this profile, grouped by section
         doc_ids = set(str(d) for d in profile.document_ids)
@@ -199,7 +201,6 @@ async def generate(
                 with open(tpl_path, encoding="utf-8") as f:
                     tpl_content = f.read()
 
-                # Helper: load_section('roles') returns list of markdown contents
                 def _make_load_section(sects: dict[str, list[str]]):
                     def load_section(name: str) -> list[str]:
                         return sects.get(name, [])
@@ -219,7 +220,7 @@ async def generate(
                     load_section=_make_load_section(sections),
                 )
                 if rendered.strip():
-                    _write(profile_dir, f"{profile_slug}.md", rendered)
+                    _write(out_dir, f"{profile_slug}.md", rendered)
                 _log.info(
                     "agent_generator.profile_rendered",
                     profile=profile.name,
@@ -230,17 +231,21 @@ async def generate(
                     "agent_generator.template_not_found",
                     template=tpl_path,
                 )
-                # Fallback: write raw section files
-                for section_name, contents in sections.items():
-                    merged = "\n\n---\n\n".join(contents)
-                    if merged.strip():
-                        _write(profile_dir, f"{section_name}.md", merged)
-        else:
-            # No template: write raw section files (backward compat)
-            for section_name, contents in sections.items():
-                merged = "\n\n---\n\n".join(contents)
+                # Fallback: concat all sections into {profile_slug}.md
+                parts = []
+                for contents in sections.values():
+                    parts.extend(contents)
+                merged = "\n\n---\n\n".join(parts)
                 if merged.strip():
-                    _write(profile_dir, f"{section_name}.md", merged)
+                    _write(out_dir, f"{profile_slug}.md", merged)
+        else:
+            # No template: concat all sections into {profile_slug}.md
+            parts = []
+            for contents in sections.values():
+                parts.extend(contents)
+            merged = "\n\n---\n\n".join(parts)
+            if merged.strip():
+                _write(out_dir, f"{profile_slug}.md", merged)
 
         _log.info(
             "agent_generator.profile_written",

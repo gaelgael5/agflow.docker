@@ -41,6 +41,12 @@ tar czf /tmp/agflow-deploy.tar.gz \
 echo "==> Uploading to pve..."
 scp /tmp/agflow-deploy.tar.gz pve:/tmp/
 
+echo "==> Stopping backend/frontend to avoid data corruption during file swap..."
+ssh pve "pct exec ${CTID} -- bash -c '
+  cd ${REPO_DIR_ON_CT} 2>/dev/null && \
+  docker compose -f docker-compose.prod.yml stop backend frontend 2>/dev/null || true
+'"
+
 echo "==> Pushing into CT ${CTID} and extracting..."
 ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz && \
          pct exec ${CTID} -- bash -c '

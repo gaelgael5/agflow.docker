@@ -30,7 +30,8 @@
     "import": "Importer",
     "unsaved_changes": "Des modifications ne sont pas enregistrées. Continuer sans sauvegarder ?",
     "search": "Rechercher…",
-    "no_results": "Aucun résultat"
+    "no_results": "Aucun résultat",
+    "refresh": "Rafraîchir"
   },
   "sidebar": {
     "section_platform": "Plateforme",

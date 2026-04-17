@@ -30,7 +30,8 @@
     "import": "Import",
     "unsaved_changes": "You have unsaved changes. Continue without saving?",
     "search": "Search…",
-    "no_results": "No results"
+    "no_results": "No results",
+    "refresh": "Refresh"
   },
   "sidebar": {
     "section_platform": "Platform",

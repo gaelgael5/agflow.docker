@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, Plus, Save, Search, Trash2, Upload } from "lucide-react";
+import { Download, Plus, RefreshCw, Save, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRoles } from "@/hooks/useRoles";
@@ -525,6 +525,20 @@ export function RolesPage() {
               {currentRole.id}
             </span>
             <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5 ml-auto">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ["roles"] });
+                  if (selectedRoleId) {
+                    queryClient.invalidateQueries({ queryKey: ["role", selectedRoleId] });
+                  }
+                }}
+                title={t("common.refresh")}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </Button>
               <Button
                 size="icon"
                 variant="ghost"

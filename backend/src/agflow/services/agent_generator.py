@@ -153,24 +153,67 @@ async def generate(
     await role_sections_service.list_for_role(agent.role_id)
     documents = await role_documents_service.list_for_role(agent.role_id)
 
-    # Build prompt.md
-    prompt_parts = [f"# {role.display_name}\n\n{role.identity_md}"]
-
-    if profile_id:
-        profiles = await agent_profiles_service.list_for_agent(agent_id)
-        profile = next((p for p in profiles if p.id == profile_id), None)
-        if profile:
-            doc_ids = set(str(d) for d in profile.document_ids)
-            for doc in documents:
-                if str(doc.id) in doc_ids:
-                    prompt_parts.append(f"\n---\n\n{doc.content_md}")
-    else:
-        for doc in documents:
-            prompt_parts.append(f"\n---\n\n{doc.content_md}")
-
-    prompt_md = "\n".join(prompt_parts)
+    # Build prompt.md — identity only
+    prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
     prompt_md = await _expand_macros(prompt_md)
     _write(out_dir, "prompt.md", prompt_md)
+
+    # Group documents by section
+    docs_by_section: dict[str, list[str]] = {}
+    for doc in documents:
+        docs_by_section.setdefault(doc.section, []).append(doc.content_md)
+
+    # All roles content (shared across profiles)
+    all_roles = "\n\n---\n\n".join(docs_by_section.get("roles", []))
+
+    # Build per-profile mission directories
+    profiles = await agent_profiles_service.list_for_agent(agent_id)
+    if profiles:
+        for profile in profiles:
+            profile_slug = profile.name.lower().replace(" ", "_")
+            profile_dir = os.path.join(out_dir, "missions", profile_slug)
+            os.makedirs(profile_dir, exist_ok=True)
+
+            # roles.md — always all roles
+            if all_roles:
+                _write(profile_dir, "roles.md", all_roles)
+
+            # Filter documents belonging to this profile
+            doc_ids = set(str(d) for d in profile.document_ids)
+            profile_missions = []
+            profile_competences = []
+            for doc in documents:
+                if str(doc.id) in doc_ids:
+                    if doc.section == "missions":
+                        profile_missions.append(doc.content_md)
+                    elif doc.section == "competences":
+                        profile_competences.append(doc.content_md)
+
+            if profile_missions:
+                _write(profile_dir, "missions.md",
+                       "\n\n---\n\n".join(profile_missions))
+            if profile_competences:
+                _write(profile_dir, "competences.md",
+                       "\n\n---\n\n".join(profile_competences))
+
+            _log.info(
+                "agent_generator.profile_written",
+                profile=profile.name,
+                missions=len(profile_missions),
+                competences=len(profile_competences),
+            )
+    else:
+        # No profiles: generate a single "default" mission set with all docs
+        default_dir = os.path.join(out_dir, "missions", "default")
+        os.makedirs(default_dir, exist_ok=True)
+        if all_roles:
+            _write(default_dir, "roles.md", all_roles)
+        all_missions = "\n\n---\n\n".join(docs_by_section.get("missions", []))
+        all_competences = "\n\n---\n\n".join(docs_by_section.get("competences", []))
+        if all_missions:
+            _write(default_dir, "missions.md", all_missions)
+        if all_competences:
+            _write(default_dir, "competences.md", all_competences)
 
     # Build .env — merge Dockerfile.json Environments with agent overrides
     # Secrets come exclusively from the user's vault — never from platform secrets

@@ -44,6 +44,7 @@ import { useEmptyLaunchKeys } from "@/hooks/useEmptyLaunchKeys";
 import { VaultUnlockDialog } from "@/components/VaultUnlockDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { PageShell } from "@/components/layout/PageHeader";
+import { toast } from "sonner";
 import { slugify } from "@/lib/slugify";
 import { cn, maskEnvSecrets } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -651,7 +652,10 @@ export function AgentEditorPage() {
                   className="h-7 w-7"
                   title={t("agent_editor.launch_button")}
                   onClick={async () => {
-                    if (!form.dockerfile_id) return;
+                    if (!form.dockerfile_id) {
+                      toast.error("Aucun Dockerfile sélectionné");
+                      return;
+                    }
                     try {
                       const secrets = decryptedSecrets ?? await decryptUserSecrets();
                       if (launchEmptyKeys.length > 0) {
@@ -660,8 +664,12 @@ export function AgentEditorPage() {
                       }
                       const c = await containersApi.run(form.dockerfile_id, secrets);
                       setRunningContainerId(c.id);
+                      setTerminalContainer({ id: c.id, name: form.slug || "agent" });
+                      toast.success(`Container lancé : ${c.id.slice(0, 12)}`);
                     } catch (e) {
-                      setError(String(e));
+                      const msg = String(e);
+                      setError(msg);
+                      toast.error(`Échec du lancement : ${msg.slice(0, 100)}`);
                     }
                   }}
                 >
@@ -1706,11 +1714,17 @@ export function AgentEditorPage() {
         cancelLabel={t("launch_warning.cancel")}
         onConfirm={async () => {
           if (!form.dockerfile_id || !launchPendingSecrets) return;
-          const c = await containersApi.run(
-            form.dockerfile_id,
-            launchPendingSecrets,
-          );
-          setRunningContainerId(c.id);
+          try {
+            const c = await containersApi.run(
+              form.dockerfile_id,
+              launchPendingSecrets,
+            );
+            setRunningContainerId(c.id);
+            setTerminalContainer({ id: c.id, name: form.slug || "agent" });
+            toast.success(`Container lancé : ${c.id.slice(0, 12)}`);
+          } catch (e) {
+            toast.error(`Échec : ${String(e).slice(0, 100)}`);
+          }
           setLaunchPendingSecrets(null);
         }}
       />

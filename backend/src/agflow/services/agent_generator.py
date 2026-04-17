@@ -162,17 +162,18 @@ async def generate(
     _write(out_dir, "prompt.md", prompt_md)
 
     # Clean old profile files before regeneration
-    import glob
     import shutil
 
     from jinja2 import Environment
 
-    # Remove old missions/ subdir (legacy) and profile .md files at root
+    # Remove old missions/ subdir (legacy) and docs/ subdir before regeneration
     missions_dir = os.path.join(out_dir, "missions")
     if os.path.isdir(missions_dir):
         shutil.rmtree(missions_dir)
-    for old_profile_md in glob.glob(os.path.join(out_dir, "*.profile.md")):
-        os.unlink(old_profile_md)
+    docs_dir = os.path.join(out_dir, "docs")
+    if os.path.isdir(docs_dir):
+        shutil.rmtree(docs_dir)
+    os.makedirs(docs_dir, exist_ok=True)
 
     # Build per-profile files from profile selections
     profiles = await agent_profiles_service.list_for_agent(agent_id)
@@ -220,7 +221,7 @@ async def generate(
                     load_section=_make_load_section(sections),
                 )
                 if rendered.strip():
-                    _write(out_dir, f"{profile_slug}.md", rendered)
+                    _write(docs_dir, f"{profile_slug}.md", rendered)
                 _log.info(
                     "agent_generator.profile_rendered",
                     profile=profile.name,
@@ -237,7 +238,7 @@ async def generate(
                     parts.extend(contents)
                 merged = "\n\n---\n\n".join(parts)
                 if merged.strip():
-                    _write(out_dir, f"{profile_slug}.md", merged)
+                    _write(docs_dir, f"{profile_slug}.md", merged)
         else:
             # No template: concat all sections into {profile_slug}.md
             parts = []

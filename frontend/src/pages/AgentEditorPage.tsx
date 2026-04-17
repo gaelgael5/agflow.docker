@@ -862,7 +862,11 @@ export function AgentEditorPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {availableMCPs
-                    .filter((m) => !form.mcp_bindings.some((b) => b.mcp_server_id === m.id))
+                    .filter((m) => {
+                      const hasParams = Array.isArray(m.parameters) && m.parameters.length > 0;
+                      if (hasParams) return true;
+                      return !form.mcp_bindings.some((b) => b.mcp_server_id === m.id);
+                    })
                     .map((m) => (
                       <SelectItem key={m.id} value={m.id}>
                         {m.name} ({m.transport})

@@ -653,6 +653,14 @@
     "vault_status_error": "Could not load vault status",
     "retry": "Retry"
   },
+  "target": {
+    "select_button": "Select target",
+    "current": "Target: {{name}}",
+    "none": "No target selected",
+    "modes": "Installation modes",
+    "dialog_title": "MCP target selection",
+    "dialog_subtitle": "Choose the target tool that defines how MCP servers are installed in the container"
+  },
   "agent_editor": {
     "title_new": "New agent",
     "title_edit": "Edit — {{name}}",

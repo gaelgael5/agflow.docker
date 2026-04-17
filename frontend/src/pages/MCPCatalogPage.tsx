@@ -54,8 +54,10 @@ export function MCPCatalogPage() {
   async function handleInstall(item: MCPSearchItem) {
     if (!selectedServiceId) return;
     await installMutation.mutateAsync({
-      discoveryServiceId: selectedServiceId,
-      packageId: String(item.package_id),
+      discovery_service_id: selectedServiceId,
+      package_id: String(item.package_id),
+      recipes: item.recipes ?? {},
+      parameters: item.parameters ?? [],
     });
   }
 

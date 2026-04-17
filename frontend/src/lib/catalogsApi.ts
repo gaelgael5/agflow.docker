@@ -27,6 +27,21 @@ export interface ProbeResult {
   detail: string;
 }
 
+export interface TargetMode {
+  runtime: string;
+  action_type: "cmd" | "insert_in_file";
+  template: string;
+  config_path?: string;
+}
+
+export interface TargetSummary {
+  id: string;
+  name: string;
+  description: string;
+  modes: TargetMode[];
+  skill_modes: unknown[];
+}
+
 export interface MCPSearchItem {
   package_id: string;
   name: string;
@@ -38,6 +53,8 @@ export interface MCPSearchItem {
   long_description: string;
   documentation_url: string;
   has_summaries: boolean;
+  recipes: Record<string, { action_type: string; data: string; config_path?: string }>;
+  parameters: Array<{ name: string; description: string; is_required: boolean; is_secret: boolean }>;
 }
 
 export interface MCPServerSummary {
@@ -53,6 +70,7 @@ export interface MCPServerSummary {
   documentation_url: string;
   parameters: Record<string, unknown>;
   parameters_schema: Array<Record<string, unknown>>;
+  recipes: Record<string, { action_type: string; data: string; config_path?: string }>;
   created_at: string;
   updated_at: string;
 }
@@ -126,6 +144,12 @@ export const discoveryApi = {
     );
     return res.data;
   },
+  async fetchTargets(serviceId: string): Promise<TargetSummary[]> {
+    const res = await api.get<TargetSummary[]>(
+      `/admin/discovery-services/${serviceId}/targets`,
+    );
+    return res.data;
+  },
 };
 
 export const mcpCatalogApi = {
@@ -134,13 +158,14 @@ export const mcpCatalogApi = {
     return res.data;
   },
   async install(
-    discoveryServiceId: string,
-    packageId: string,
+    payload: {
+      discovery_service_id: string;
+      package_id: string;
+      recipes?: Record<string, unknown>;
+      parameters?: unknown[];
+    },
   ): Promise<MCPServerSummary> {
-    const res = await api.post<MCPServerSummary>("/admin/mcp-catalog", {
-      discovery_service_id: discoveryServiceId,
-      package_id: packageId,
-    });
+    const res = await api.post<MCPServerSummary>("/admin/mcp-catalog", payload);
     return res.data;
   },
   async updateParameters(

@@ -653,6 +653,14 @@
     "vault_status_error": "Impossible de charger l'état du coffre-fort",
     "retry": "Réessayer"
   },
+  "target": {
+    "select_button": "Choisir un target",
+    "current": "Target : {{name}}",
+    "none": "Aucun target sélectionné",
+    "modes": "Modes d'installation",
+    "dialog_title": "Sélection du target MCP",
+    "dialog_subtitle": "Choisissez l'outil cible qui définit comment les MCP seront installés dans le container"
+  },
   "agent_editor": {
     "title_new": "Nouvel agent",
     "title_edit": "Éditer — {{name}}",

@@ -13,6 +13,8 @@ from agflow.schemas.catalogs import (
 )
 from agflow.services import (
     discovery_client,
+)
+from agflow.services import (
     discovery_services_service as svc,
 )
 
@@ -143,3 +145,16 @@ async def search_skills(
         service.base_url, api_key, q
     )
     return [SkillSearchItem(**item) for item in items]
+
+
+@router.get("/{service_id}/targets")
+async def list_targets(service_id: str) -> list[dict]:
+    """Proxy to registry GET /targets."""
+    try:
+        service = await svc.get_by_id(service_id)
+    except svc.DiscoveryServiceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    api_key = await svc._resolve_api_key(service.api_key_var)
+    return await discovery_client.fetch_targets(service.base_url, api_key)

@@ -16,7 +16,7 @@ _log = structlog.get_logger(__name__)
 _COLS = (
     "id, discovery_service_id, package_id, name, repo, repo_url, transport, "
     "short_description, long_description, documentation_url, parameters, "
-    "parameters_schema, created_at, updated_at"
+    "parameters_schema, recipes, created_at, updated_at"
 )
 
 
@@ -46,8 +46,9 @@ def _row(row: dict[str, Any]) -> MCPServerSummary:
         short_description=row["short_description"],
         long_description=row["long_description"],
         documentation_url=row["documentation_url"],
-        parameters=_parse_json(row["parameters"], {}),
+        parameters=_parse_json(row["parameters"], []),
         parameters_schema=_parse_json(row["parameters_schema"], []),
+        recipes=_parse_json(row["recipes"], {}),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -70,7 +71,10 @@ async def get_by_id(mcp_id: UUID) -> MCPServerSummary:
 
 
 async def install(
-    discovery_service_id: str, package_id: str
+    discovery_service_id: str,
+    package_id: str,
+    recipes: dict | None = None,
+    parameters: list | None = None,
 ) -> MCPServerSummary:
     """Fetch details from the registry and insert into the local catalog."""
     service = await discovery_services_service.get_by_id(discovery_service_id)
@@ -86,9 +90,9 @@ async def install(
             INSERT INTO mcp_servers (
                 discovery_service_id, package_id, name, repo, repo_url,
                 transport, short_description, long_description,
-                documentation_url, parameters_schema
+                documentation_url, parameters_schema, recipes, parameters
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb)
             RETURNING {_COLS}
             """,
             discovery_service_id,
@@ -101,6 +105,8 @@ async def install(
             detail.get("long_description", ""),
             detail.get("documentation_url", ""),
             json.dumps(detail.get("parameters_schema", [])),
+            json.dumps(recipes or {}),
+            json.dumps(parameters or []),
         )
     except asyncpg.UniqueViolationError as exc:
         raise DuplicateMCPServerError(

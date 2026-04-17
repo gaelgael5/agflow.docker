@@ -83,6 +83,8 @@ class MCPSearchItem(BaseModel):
 class MCPInstallPayload(BaseModel):
     discovery_service_id: str
     package_id: str | int
+    recipes: dict = Field(default_factory=dict)
+    parameters: list = Field(default_factory=list)
 
 
 class MCPServerSummary(BaseModel):
@@ -96,8 +98,9 @@ class MCPServerSummary(BaseModel):
     short_description: str
     long_description: str
     documentation_url: str
-    parameters: dict
+    parameters: list
     parameters_schema: list
+    recipes: dict = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 

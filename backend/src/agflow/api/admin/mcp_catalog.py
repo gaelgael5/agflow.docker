@@ -31,7 +31,9 @@ async def install_mcp(payload: MCPInstallPayload) -> MCPServerSummary:
     try:
         return await mcp_catalog_service.install(
             discovery_service_id=payload.discovery_service_id,
-            package_id=payload.package_id,
+            package_id=str(payload.package_id),
+            recipes=payload.recipes,
+            parameters=payload.parameters,
         )
     except mcp_catalog_service.DuplicateMCPServerError as exc:
         raise HTTPException(

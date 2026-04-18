@@ -16,7 +16,7 @@ _log = structlog.get_logger(__name__)
 _SUMMARY_COLS = (
     "id, agent_id, slug, display_name, description, source_type, source_url, "
     "base_url, auth_header, auth_prefix, auth_secret_ref, parsed_tags, "
-    "output_dir, position, created_at, updated_at"
+    "output_dir, tag_overrides, managed_by_instance, position, created_at, updated_at"
 )
 
 _DETAIL_COLS = f"{_SUMMARY_COLS}, spec_content"
@@ -50,6 +50,8 @@ def _row_to_summary(row: dict[str, Any]) -> ContractSummary:
         auth_secret_ref=row["auth_secret_ref"],
         parsed_tags=_parse_tags(row["parsed_tags"]),
         output_dir=row.get("output_dir", "workspace/docs/ctr"),
+        tag_overrides=json.loads(row["tag_overrides"]) if isinstance(row["tag_overrides"], str) else (row.get("tag_overrides") or {}),
+        managed_by_instance=row.get("managed_by_instance"),
         position=row["position"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -104,6 +106,7 @@ async def create(
     auth_prefix: str,
     auth_secret_ref: str | None,
     output_dir: str = "workspace/docs/ctr",
+    tag_overrides: dict | None = None,
 ) -> ContractSummary:
     tags = openapi_parser.parse_openapi_tags(spec_content)
     tag_summaries = [
@@ -124,9 +127,9 @@ async def create(
             INSERT INTO agent_api_contracts (
                 agent_id, slug, display_name, description, source_type,
                 source_url, spec_content, base_url, auth_header, auth_prefix,
-                auth_secret_ref, parsed_tags, output_dir
+                auth_secret_ref, parsed_tags, output_dir, tag_overrides
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14::jsonb)
             RETURNING {_SUMMARY_COLS}
             """,
             agent_id,
@@ -142,6 +145,7 @@ async def create(
             auth_secret_ref,
             json.dumps(tag_summaries),
             output_dir,
+            json.dumps(tag_overrides or {}),
         )
     except asyncpg.UniqueViolationError as exc:
         raise DuplicateContractError(
@@ -167,6 +171,7 @@ async def update(contract_id: UUID, **kwargs: Any) -> ContractSummary:
         "auth_prefix",
         "auth_secret_ref",
         "output_dir",
+        "tag_overrides",
     ):
         if field in kwargs and kwargs[field] is not None:
             updates[field] = kwargs[field]
@@ -196,11 +201,12 @@ async def update(contract_id: UUID, **kwargs: Any) -> ContractSummary:
     set_parts = []
     values: list[Any] = []
     for i, (k, v) in enumerate(updates.items(), start=1):
-        if k == "parsed_tags":
+        if k == "parsed_tags" or k == "tag_overrides":
             set_parts.append(f"{k} = ${i}::jsonb")
+            values.append(json.dumps(v) if isinstance(v, dict) else v)
         else:
             set_parts.append(f"{k} = ${i}")
-        values.append(v)
+            values.append(v)
     values.append(contract_id)
     set_clause = ", ".join(set_parts)
 

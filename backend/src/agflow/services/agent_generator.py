@@ -329,34 +329,76 @@ async def generate(
     from agflow.services import api_contracts_service as _ctr_svc
     from agflow.services import openapi_parser as _oapi
 
-    # Contract output dirs are cleaned per-contract below (via output_dir)
-
     contracts = await _ctr_svc.list_for_agent(str(agent_id))
     contract_context: list[dict[str, Any]] = []
 
     for contract in contracts:
         contract_output = getattr(contract, "output_dir", None) or gen_paths["contracts"]
         ctr_dir = os.path.join(generated_dir, contract_output, contract.slug)
+        # Clean and recreate
+        if os.path.isdir(ctr_dir):
+            shutil.rmtree(ctr_dir)
         os.makedirs(ctr_dir, exist_ok=True)
 
         full_detail = await _ctr_svc.get_by_id(contract.id)
         full_tags = _oapi.parse_openapi_tags(full_detail.spec_content)
+        overrides = getattr(contract, "tag_overrides", None) or {}
 
+        tag_context: list[dict[str, Any]] = []
         for tag in full_tags:
-            md = _oapi.generate_tag_markdown(
-                tag=tag,
+            resolved_desc = _oapi.resolve_tag_description(tag, overrides)
+
+            # Create tag subdirectory for .sh scripts
+            tag_dir = os.path.join(ctr_dir, tag["slug"])
+            os.makedirs(tag_dir, exist_ok=True)
+
+            # Generate one .sh per operation
+            operation_entries: list[dict[str, Any]] = []
+            for op in tag.get("operations", []):
+                sh_filename = _oapi.operation_to_filename(op)
+                sh_content = _oapi.generate_operation_script(
+                    op=op,
+                    base_url=contract.base_url,
+                    auth_header=contract.auth_header,
+                    auth_prefix=contract.auth_prefix,
+                    auth_secret_ref=contract.auth_secret_ref or "",
+                )
+                _write(tag_dir, sh_filename, sh_content)
+                os.chmod(os.path.join(tag_dir, sh_filename), 0o755)
+
+                op_name = sh_filename.replace(".sh", "")
+                op_desc = _oapi._truncate(
+                    op.get("description") or op.get("summary", ""), 200
+                )
+                operation_entries.append({
+                    "name": op_name,
+                    "description": op_desc,
+                    "path": f"{ref_prefix}/{contract_output}/{contract.slug}/{tag['slug']}/{sh_filename}",
+                })
+
+            # Generate .md index for this tag
+            md_content = _oapi.generate_tag_index_markdown(
+                tag_name=tag["name"],
+                tag_description=resolved_desc,
                 base_url=contract.base_url,
                 auth_header=contract.auth_header,
                 auth_prefix=contract.auth_prefix,
                 auth_secret_ref=contract.auth_secret_ref or "",
+                operations=operation_entries,
             )
-            _write(ctr_dir, f"{tag['slug']}.md", md)
+            _write(ctr_dir, f"{tag['slug']}.md", md_content)
+
+            tag_context.append({
+                "name": tag["name"],
+                "slug": tag["slug"],
+                "description": resolved_desc,
+            })
 
         contract_context.append({
             "slug": contract.slug,
             "description": contract.description,
             "output_dir": contract_output,
-            "tags": [{"name": t["name"], "slug": t["slug"]} for t in full_tags],
+            "tags": tag_context,
         })
 
     _log.info("agent_generator.contracts_written", count=len(contracts))

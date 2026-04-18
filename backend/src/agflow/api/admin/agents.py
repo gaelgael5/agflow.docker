@@ -182,6 +182,23 @@ async def list_generated_files(agent_id: UUID) -> list[dict]:
     return await agent_generator.list_generated_files(agent.slug)
 
 
+@router.delete("/{agent_id}/generated", status_code=status.HTTP_204_NO_CONTENT)
+async def clean_generated(agent_id: UUID) -> None:
+    import os
+    import shutil
+
+    try:
+        agent = await agents_service.get_by_id(agent_id)
+    except agents_service.AgentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    gen_dir = os.path.join(
+        os.environ.get("AGFLOW_DATA_DIR", "/app/data"),
+        "agents", agent.slug, "generated",
+    )
+    if os.path.isdir(gen_dir):
+        shutil.rmtree(gen_dir)
+
+
 @router.post("/import", response_model=AgentDetail, status_code=status.HTTP_201_CREATED)
 async def import_agent(file: UploadFile = File(...)) -> AgentDetail:
     data = await file.read()

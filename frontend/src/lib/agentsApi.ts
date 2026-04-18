@@ -205,6 +205,10 @@ export const agentsApi = {
     await api.delete("/admin/agents/assistant");
   },
 
+  cleanGenerated: async (agentId: string): Promise<void> => {
+    await api.delete(`/admin/agents/${agentId}/generated`);
+  },
+
   listGenerated: async (
     agentId: string,
   ): Promise<{ path: string; content: string; type?: "file" | "dir" }[]> => {

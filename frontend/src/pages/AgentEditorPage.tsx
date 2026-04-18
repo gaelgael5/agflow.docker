@@ -1698,6 +1698,21 @@ export function AgentEditorPage() {
           <CollapsibleSection label={t("agent_editor.section_generated")}>
           <Card className="mb-6">
             <CardContent className="pt-5">
+              <div className="flex justify-end mb-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    if (!id) return;
+                    await agentsApi.cleanGenerated(id);
+                    setGeneratedFiles([]);
+                    setSelectedGenFile(null);
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Clean
+                </Button>
+              </div>
               <div className="flex h-[70vh]" ref={(el) => {
                 if (el && !el.dataset.splitInit) {
                   el.dataset.splitInit = "1";

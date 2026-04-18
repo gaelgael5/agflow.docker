@@ -18,6 +18,7 @@ class ContractCreate(BaseModel):
     auth_header: str = "Authorization"
     auth_prefix: str = "Bearer"
     auth_secret_ref: str | None = None
+    output_dir: str = "workspace/docs/ctr"
 
 
 class ContractUpdate(BaseModel):
@@ -29,6 +30,7 @@ class ContractUpdate(BaseModel):
     auth_header: str | None = None
     auth_prefix: str | None = None
     auth_secret_ref: str | None = None
+    output_dir: str | None = None
 
 
 class TagSummary(BaseModel):
@@ -51,6 +53,7 @@ class ContractSummary(BaseModel):
     auth_prefix: str
     auth_secret_ref: str | None
     parsed_tags: list[TagSummary]
+    output_dir: str = "workspace/docs/ctr"
     position: int
     created_at: datetime
     updated_at: datetime

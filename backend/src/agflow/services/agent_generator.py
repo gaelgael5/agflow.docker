@@ -156,10 +156,9 @@ async def generate(
     gen_config = dockerfile_files_service.read_generation_config(agent.dockerfile_id)
     gen_paths = gen_config["paths"]
     ref_prefix = gen_config["prompt_ref_prefix"]
-    base_dir = gen_config["base_dir"]
 
-    # out_dir = generated/{base_dir} (e.g. generated/workspace)
-    out_dir = os.path.join(generated_dir, base_dir) if base_dir else generated_dir
+    # out_dir = generated/ (root for .env, prompt.md, run.sh, mcp.json)
+    out_dir = generated_dir
     os.makedirs(out_dir, exist_ok=True)
 
     role = await roles_service.get_by_id(agent.role_id)
@@ -327,15 +326,17 @@ async def generate(
     from agflow.services import api_contracts_service as _ctr_svc
     from agflow.services import openapi_parser as _oapi
 
-    ctr_base_dir = os.path.join(out_dir, gen_paths["contracts"])
-    if os.path.isdir(ctr_base_dir):
-        shutil.rmtree(ctr_base_dir)
+    # Default contracts dir (may be overridden per contract via output_dir)
+    ctr_default_dir = os.path.join(out_dir, gen_paths["contracts"])
+    if os.path.isdir(ctr_default_dir):
+        shutil.rmtree(ctr_default_dir)
 
     contracts = await _ctr_svc.list_for_agent(str(agent_id))
     contract_context: list[dict[str, Any]] = []
 
     for contract in contracts:
-        ctr_dir = os.path.join(ctr_base_dir, contract.slug)
+        contract_output = getattr(contract, "output_dir", None) or gen_paths["contracts"]
+        ctr_dir = os.path.join(generated_dir, contract_output, contract.slug)
         os.makedirs(ctr_dir, exist_ok=True)
 
         full_detail = await _ctr_svc.get_by_id(contract.id)
@@ -354,6 +355,7 @@ async def generate(
         contract_context.append({
             "slug": contract.slug,
             "description": contract.description,
+            "output_dir": contract_output,
             "tags": [{"name": t["name"], "slug": t["slug"]} for t in full_tags],
         })
 
@@ -382,7 +384,7 @@ async def generate(
             for ctr in contract_context:
                 prompt_md += f"\n### {ctr['description']}\n"
                 for tag in ctr["tags"]:
-                    prompt_md += f"\n- {tag['name']} : `{ref_prefix}/{gen_paths['contracts']}/{ctr['slug']}/{tag['slug']}.md`"
+                    prompt_md += f"\n- {tag['name']} : `{ref_prefix}/{ctr['output_dir']}/{ctr['slug']}/{tag['slug']}.md`"
             prompt_md += "\n"
 
     prompt_md = await _expand_macros(prompt_md)

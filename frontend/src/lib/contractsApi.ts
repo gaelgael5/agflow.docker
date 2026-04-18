@@ -20,6 +20,7 @@ export interface ContractSummary {
   auth_prefix: string;
   auth_secret_ref: string | null;
   parsed_tags: TagSummary[];
+  output_dir: string;
   position: number;
   created_at: string;
   updated_at: string;
@@ -40,6 +41,7 @@ export interface ContractCreatePayload {
   auth_header?: string;
   auth_prefix?: string;
   auth_secret_ref?: string;
+  output_dir?: string;
 }
 
 export interface ContractUpdatePayload {
@@ -51,6 +53,7 @@ export interface ContractUpdatePayload {
   auth_header?: string;
   auth_prefix?: string;
   auth_secret_ref?: string;
+  output_dir?: string;
 }
 
 export const contractsApi = {

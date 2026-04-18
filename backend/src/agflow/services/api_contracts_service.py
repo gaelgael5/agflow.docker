@@ -16,7 +16,7 @@ _log = structlog.get_logger(__name__)
 _SUMMARY_COLS = (
     "id, agent_id, slug, display_name, description, source_type, source_url, "
     "base_url, auth_header, auth_prefix, auth_secret_ref, parsed_tags, "
-    "position, created_at, updated_at"
+    "output_dir, position, created_at, updated_at"
 )
 
 _DETAIL_COLS = f"{_SUMMARY_COLS}, spec_content"
@@ -49,6 +49,7 @@ def _row_to_summary(row: dict[str, Any]) -> ContractSummary:
         auth_prefix=row["auth_prefix"],
         auth_secret_ref=row["auth_secret_ref"],
         parsed_tags=_parse_tags(row["parsed_tags"]),
+        output_dir=row.get("output_dir", "workspace/docs/ctr"),
         position=row["position"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -102,6 +103,7 @@ async def create(
     auth_header: str,
     auth_prefix: str,
     auth_secret_ref: str | None,
+    output_dir: str = "workspace/docs/ctr",
 ) -> ContractSummary:
     tags = openapi_parser.parse_openapi_tags(spec_content)
     tag_summaries = [
@@ -122,9 +124,9 @@ async def create(
             INSERT INTO agent_api_contracts (
                 agent_id, slug, display_name, description, source_type,
                 source_url, spec_content, base_url, auth_header, auth_prefix,
-                auth_secret_ref, parsed_tags
+                auth_secret_ref, parsed_tags, output_dir
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)
             RETURNING {_SUMMARY_COLS}
             """,
             agent_id,
@@ -139,6 +141,7 @@ async def create(
             auth_prefix,
             auth_secret_ref,
             json.dumps(tag_summaries),
+            output_dir,
         )
     except asyncpg.UniqueViolationError as exc:
         raise DuplicateContractError(
@@ -163,6 +166,7 @@ async def update(contract_id: UUID, **kwargs: Any) -> ContractSummary:
         "auth_header",
         "auth_prefix",
         "auth_secret_ref",
+        "output_dir",
     ):
         if field in kwargs and kwargs[field] is not None:
             updates[field] = kwargs[field]

@@ -53,6 +53,7 @@ async def create_contract(agent_id: str, payload: ContractCreate):
             auth_header=payload.auth_header,
             auth_prefix=payload.auth_prefix,
             auth_secret_ref=payload.auth_secret_ref,
+            output_dir=payload.output_dir,
         )
     except api_contracts_service.DuplicateContractError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

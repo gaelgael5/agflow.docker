@@ -37,6 +37,7 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
   const [authHeader, setAuthHeader] = useState("Authorization");
   const [authPrefix, setAuthPrefix] = useState("Bearer");
   const [authSecretRef, setAuthSecretRef] = useState("");
+  const [outputDir, setOutputDir] = useState("workspace/docs/ctr");
   const [detectedTags, setDetectedTags] = useState<DetectedTag[]>([]);
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -102,6 +103,7 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
         auth_header: authHeader,
         auth_prefix: authPrefix,
         auth_secret_ref: authSecretRef || undefined,
+        output_dir: outputDir,
       });
       // Reset form
       setSlug("");
@@ -198,6 +200,11 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
               <Label className="text-[11px]">{t("contracts.auth_prefix")}</Label>
               <Input value={authPrefix} onChange={(e) => setAuthPrefix(e.target.value)} className="mt-1 text-[12px]" />
             </div>
+          </div>
+
+          <div>
+            <Label className="text-[11px]">Répertoire de sortie</Label>
+            <Input value={outputDir} onChange={(e) => setOutputDir(e.target.value)} className="mt-1 font-mono text-[12px]" placeholder="workspace/docs/ctr" />
           </div>
 
           {error && <p className="text-destructive text-[12px]">{error}</p>}

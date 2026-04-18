@@ -89,6 +89,7 @@ class AgentProfileSummary(BaseModel):
     document_ids: list[UUID]
     template_slug: str = ""
     template_culture: str = ""
+    output_dir: str = "workspace/docs/missions"
     created_at: datetime
     updated_at: datetime
 
@@ -99,6 +100,7 @@ class AgentProfileCreate(BaseModel):
     document_ids: list[UUID] = Field(default_factory=list)
     template_slug: str = ""
     template_culture: str = ""
+    output_dir: str = "workspace/docs/missions"
 
 
 class AgentProfileUpdate(BaseModel):
@@ -107,6 +109,7 @@ class AgentProfileUpdate(BaseModel):
     document_ids: list[UUID] | None = None
     template_slug: str | None = None
     template_culture: str | None = None
+    output_dir: str | None = None
 
 
 class AgentDetail(AgentSummary):

@@ -1228,6 +1228,20 @@ export function AgentEditorPage() {
                                     ))}
                                 </select>
                               )}
+                              <input
+                                type="text"
+                                className="text-[11px] border rounded px-1.5 py-0.5 bg-background font-mono w-44"
+                                placeholder="workspace/docs/missions"
+                                value={p.output_dir ?? "workspace/docs/missions"}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  profilesHook.updateMutation.mutate({
+                                    profileId: p.id,
+                                    payload: { output_dir: e.target.value },
+                                  });
+                                }}
+                                title="Répertoire de sortie"
+                              />
                             </div>
                             <div
                               className="text-[12px] text-muted-foreground mt-0.5 cursor-pointer hover:text-foreground transition-colors min-h-[1.2em]"

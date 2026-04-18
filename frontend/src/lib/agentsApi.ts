@@ -43,6 +43,7 @@ export interface AgentProfileSummary {
   document_ids: string[];
   template_slug: string;
   template_culture: string;
+  output_dir: string;
   created_at: string;
   updated_at: string;
 }
@@ -53,6 +54,7 @@ export interface AgentProfileCreate {
   document_ids?: string[];
   template_slug?: string;
   template_culture?: string;
+  output_dir?: string;
 }
 
 export interface AgentProfileUpdate {
@@ -61,6 +63,7 @@ export interface AgentProfileUpdate {
   document_ids?: string[];
   template_slug?: string;
   template_culture?: string;
+  output_dir?: string;
 }
 
 export interface AgentDetail extends AgentSummary {

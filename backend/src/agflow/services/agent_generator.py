@@ -217,8 +217,9 @@ async def generate(
         legacy_dir = os.path.join(out_dir, legacy)
         if os.path.isdir(legacy_dir):
             shutil.rmtree(legacy_dir)
-    docs_missions_dir = os.path.join(out_dir, gen_paths["missions"])
-    os.makedirs(docs_missions_dir, exist_ok=True)
+    # Default missions dir (may be overridden per profile via output_dir)
+    default_missions_dir = os.path.join(out_dir, gen_paths["missions"])
+    os.makedirs(default_missions_dir, exist_ok=True)
 
     # Build per-profile files from profile selections
     profiles = await agent_profiles_service.list_for_agent(agent_id)
@@ -228,6 +229,13 @@ async def generate(
             continue
 
         profile_slug = profile.name.lower().replace(" ", "_")
+
+        # Determine output directory for this profile
+        profile_output_dir = os.path.join(
+            generated_dir,
+            getattr(profile, "output_dir", None) or gen_paths["missions"],
+        )
+        os.makedirs(profile_output_dir, exist_ok=True)
 
         # Collect documents selected in this profile, grouped by section
         doc_ids = set(str(d) for d in profile.document_ids)
@@ -266,7 +274,7 @@ async def generate(
                     load_section=_make_load_section(sections),
                 )
                 if rendered.strip():
-                    _write(docs_missions_dir, f"{profile_slug}.md", rendered)
+                    _write(profile_output_dir, f"{profile_slug}.md", rendered)
                 _log.info(
                     "agent_generator.profile_rendered",
                     profile=profile.name,
@@ -283,7 +291,7 @@ async def generate(
                     parts.extend(contents)
                 merged = "\n\n---\n\n".join(parts)
                 if merged.strip():
-                    _write(docs_missions_dir, f"{profile_slug}.md", merged)
+                    _write(profile_output_dir, f"{profile_slug}.md", merged)
         else:
             # No template: concat all sections into {profile_slug}.md
             parts = []
@@ -291,7 +299,7 @@ async def generate(
                 parts.extend(contents)
             merged = "\n\n---\n\n".join(parts)
             if merged.strip():
-                _write(docs_missions_dir, f"{profile_slug}.md", merged)
+                _write(profile_output_dir, f"{profile_slug}.md", merged)
 
         _log.info(
             "agent_generator.profile_written",
@@ -306,13 +314,13 @@ async def generate(
         if not profile.document_ids:
             continue
         profile_slug = profile.name.lower().replace(" ", "_")
-        profile_file = os.path.join(docs_missions_dir, f"{profile_slug}.md")
+        profile_file = os.path.join(profile_output_dir, f"{profile_slug}.md")
         if os.path.isfile(profile_file):
             generated_profiles.append({
                 "name": profile.name,
                 "description": profile.description,
                 "slug": profile_slug,
-                "path": f"{ref_prefix}/{gen_paths['missions']}/{profile_slug}.md",
+                "path": f"{ref_prefix}/{getattr(profile, 'output_dir', None) or gen_paths['missions']}/{profile_slug}.md",
             })
 
     # ── Contrats API ────────────────────────────────────────

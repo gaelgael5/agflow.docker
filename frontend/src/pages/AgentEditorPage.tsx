@@ -1232,13 +1232,19 @@ export function AgentEditorPage() {
                                 type="text"
                                 className="text-[11px] border rounded px-1.5 py-0.5 bg-background font-mono w-44"
                                 placeholder="workspace/docs/missions"
-                                value={p.output_dir ?? "workspace/docs/missions"}
+                                defaultValue={p.output_dir ?? "workspace/docs/missions"}
                                 onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => {
-                                  profilesHook.updateMutation.mutate({
-                                    profileId: p.id,
-                                    payload: { output_dir: e.target.value },
-                                  });
+                                onBlur={(e) => {
+                                  const val = e.target.value.trim();
+                                  if (val !== (p.output_dir ?? "workspace/docs/missions")) {
+                                    profilesHook.updateMutation.mutate({
+                                      profileId: p.id,
+                                      payload: { output_dir: val },
+                                    });
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                                 }}
                                 title="Répertoire de sortie"
                               />

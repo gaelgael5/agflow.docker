@@ -8,10 +8,10 @@ import structlog
 from fastapi import FastAPI
 
 from agflow.api.admin.agents import router as admin_agents_router
-from agflow.api.admin.contracts import router as admin_contracts_router
 from agflow.api.admin.api_keys import router as admin_api_keys_router
 from agflow.api.admin.auth import router as admin_auth_router
 from agflow.api.admin.containers import router as admin_containers_router
+from agflow.api.admin.contracts import router as admin_contracts_router
 from agflow.api.admin.discovery_services import router as admin_discovery_router
 from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
 from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
@@ -87,6 +87,28 @@ def create_app() -> FastAPI:
         title="agflow.docker",
         version="0.1.0",
         lifespan=lifespan,
+        openapi_tags=[
+            {"name": "health", "description": "Health check and readiness probes."},
+            {"name": "admin-auth", "description": "Admin authentication — login with email/password or Google OAuth, retrieve current user info."},
+            {"name": "admin-users", "description": "User management — list, create, approve, disable, and delete platform users."},
+            {"name": "admin-api-keys", "description": "API key management — create, list, revoke keys with scoped permissions and rate limits."},
+            {"name": "admin-secrets", "description": "Secrets & environment variables — encrypted storage for API keys, tokens, and credentials used by agents."},
+            {"name": "admin-service-types", "description": "Service type categories — classify agent roles (Documentation, Code, Design, etc.)."},
+            {"name": "admin-dockerfiles", "description": "Dockerfile management — CRUD for Docker images, file editing, builds, and container configuration."},
+            {"name": "admin-templates", "description": "Jinja2 templates — multilingual generation templates for agent prompt and mission files."},
+            {"name": "admin-roles", "description": "Role management — composable agent personalities with identity, sections (roles/missions/competences), and documents."},
+            {"name": "admin-agents", "description": "Agent composition — assemble Dockerfile + Role + MCP + Skills into a deployable agent with mission profiles."},
+            {"name": "admin-contracts", "description": "OpenAPI contracts — attach REST API specs to agents, parsed by tag to generate curl documentation."},
+            {"name": "admin-containers", "description": "Container runtime — launch, stop, inspect, and stream tasks to Docker containers."},
+            {"name": "admin-discovery", "description": "Discovery services — configure external MCP/Skills registries, test connectivity, fetch targets."},
+            {"name": "admin-mcp-catalog", "description": "MCP catalog — install, configure, and manage MCP servers from discovery registries."},
+            {"name": "admin-skills-catalog", "description": "Skills catalog — install and manage skill packs from discovery registries."},
+            {"name": "admin-vault", "description": "User vault — client-side encrypted secret storage with passphrase-based key derivation."},
+            {"name": "admin-user-secrets", "description": "User secrets — per-user encrypted credentials stored in the vault."},
+            {"name": "public-sessions", "description": "Public API — session lifecycle (create, extend, close, expire)."},
+            {"name": "public-agents", "description": "Public API — agent instance management within sessions."},
+            {"name": "public-messages", "description": "Public API — message exchange and WebSocket streaming."},
+        ],
     )
     app.include_router(health_router)
     app.include_router(admin_auth_router)

@@ -39,6 +39,7 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
   const [authSecretRef, setAuthSecretRef] = useState("");
   const [outputDir, setOutputDir] = useState("workspace/docs/ctr");
   const [detectedTags, setDetectedTags] = useState<DetectedTag[]>([]);
+  const [tagOverrides, setTagOverrides] = useState<Record<string, string>>({});
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +78,12 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([name, count]) => ({ name, operation_count: count }))
       );
+      // Pre-fill tag overrides with spec descriptions
+      const specDescs: Record<string, string> = {};
+      for (const t of spec.tags || []) {
+        if (t.description) specDescs[t.name] = t.description;
+      }
+      setTagOverrides(specDescs);
       // Auto-detect base_url from servers
       const servers = spec.servers || [];
       if (servers[0]?.url && !baseUrl) {
@@ -103,6 +110,7 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
         auth_header: authHeader,
         auth_prefix: authPrefix,
         auth_secret_ref: authSecretRef || undefined,
+        tag_overrides: tagOverrides,
         output_dir: outputDir,
       });
       // Reset form
@@ -114,6 +122,7 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
       setBaseUrl("");
       setAuthSecretRef("");
       setDetectedTags([]);
+      setTagOverrides({});
       onOpenChange(false);
     } catch {
       setError(t("contracts.parse_error"));
@@ -177,6 +186,34 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
                   </Badge>
                 ))}
               </div>
+            </div>
+          )}
+
+          {detectedTags.length > 0 && (
+            <div>
+              <Label className="text-[11px]">Descriptions des tags</Label>
+              <div className="space-y-2 mt-1">
+                {detectedTags.map((tag) => (
+                  <div key={tag.name} className="flex items-start gap-2">
+                    <code className="text-[10px] text-muted-foreground font-mono w-36 shrink-0 pt-1.5 truncate" title={tag.name}>
+                      {tag.name}
+                    </code>
+                    <input
+                      type="text"
+                      className="flex-1 text-[11px] border rounded px-2 py-1 bg-background"
+                      placeholder={tag.name}
+                      defaultValue={tagOverrides[tag.name] ?? ""}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        setTagOverrides((prev) => ({ ...prev, [tag.name]: val }));
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Champs vides = description du spec OpenAPI utilisée
+              </p>
             </div>
           )}
 

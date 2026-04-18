@@ -149,7 +149,17 @@ async def generate(
     agent = await agents_service.get_by_id(agent_id)
     slug = agent.slug
 
-    out_dir = os.path.join(_agents_dir(), slug, "generated")
+    generated_dir = os.path.join(_agents_dir(), slug, "generated")
+    os.makedirs(generated_dir, exist_ok=True)
+
+    # Load generation config (paths, ref_prefix) from Dockerfile.json
+    gen_config = dockerfile_files_service.read_generation_config(agent.dockerfile_id)
+    gen_paths = gen_config["paths"]
+    ref_prefix = gen_config["prompt_ref_prefix"]
+    base_dir = gen_config["base_dir"]
+
+    # out_dir = generated/{base_dir} (e.g. generated/workspace)
+    out_dir = os.path.join(generated_dir, base_dir) if base_dir else generated_dir
     os.makedirs(out_dir, exist_ok=True)
 
     role = await roles_service.get_by_id(agent.role_id)
@@ -202,16 +212,12 @@ async def generate(
 
     from jinja2 import Environment
 
-    # Remove old missions/ subdir (legacy) and docs/ subdir before regeneration
-    missions_dir = os.path.join(out_dir, "missions")
-    if os.path.isdir(missions_dir):
-        shutil.rmtree(missions_dir)
-    workspace_dir = os.path.join(out_dir, "workspace")
-    os.makedirs(workspace_dir, exist_ok=True)
-    docs_dir = os.path.join(workspace_dir, "docs")
-    if os.path.isdir(docs_dir):
-        shutil.rmtree(docs_dir)
-    docs_missions_dir = os.path.join(docs_dir, "missions")
+    # Remove old legacy dirs + rebuild from gen_paths
+    for legacy in ("missions", "workspace", "docs"):
+        legacy_dir = os.path.join(out_dir, legacy)
+        if os.path.isdir(legacy_dir):
+            shutil.rmtree(legacy_dir)
+    docs_missions_dir = os.path.join(out_dir, gen_paths["missions"])
     os.makedirs(docs_missions_dir, exist_ok=True)
 
     # Build per-profile files from profile selections
@@ -306,14 +312,14 @@ async def generate(
                 "name": profile.name,
                 "description": profile.description,
                 "slug": profile_slug,
-                "path": f"@docs/missions/{profile_slug}.md",
+                "path": f"{ref_prefix}/{gen_paths['missions']}/{profile_slug}.md",
             })
 
     # ── Contrats API ────────────────────────────────────────
     from agflow.services import api_contracts_service as _ctr_svc
     from agflow.services import openapi_parser as _oapi
 
-    ctr_base_dir = os.path.join(workspace_dir, "docs", "ctr")
+    ctr_base_dir = os.path.join(out_dir, gen_paths["contracts"])
     if os.path.isdir(ctr_base_dir):
         shutil.rmtree(ctr_base_dir)
 
@@ -353,6 +359,8 @@ async def generate(
             load_section=_prompt_loader,
             missions=generated_profiles,
             api_contracts=contract_context,
+            ref_prefix=ref_prefix,
+            paths=gen_paths,
         )
     else:
         prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
@@ -366,11 +374,13 @@ async def generate(
             for ctr in contract_context:
                 prompt_md += f"\n### {ctr['description']}\n"
                 for tag in ctr["tags"]:
-                    prompt_md += f"\n- {tag['name']} : `@docs/ctr/{ctr['slug']}/{tag['slug']}.md`"
+                    prompt_md += f"\n- {tag['name']} : `{ref_prefix}/{gen_paths['contracts']}/{ctr['slug']}/{tag['slug']}.md`"
             prompt_md += "\n"
 
     prompt_md = await _expand_macros(prompt_md)
-    _write(out_dir, "prompt.md", prompt_md)
+    prompt_dir = os.path.dirname(os.path.join(out_dir, gen_paths["prompt"]))
+    os.makedirs(prompt_dir, exist_ok=True)
+    _write(out_dir, gen_paths["prompt"], prompt_md)
 
     # Build .env — merge Dockerfile.json Environments with agent overrides
     # Secrets come exclusively from the user's vault — never from platform secrets
@@ -433,7 +443,7 @@ async def generate(
         templated = resolve_templates(str(v), resolved_params)
         env_lines.append(f"{k}={_resolve_secret(templated)}")
 
-    _write(out_dir, ".env", "\n".join(env_lines) + "\n")
+    _write(out_dir, gen_paths["env"], "\n".join(env_lines) + "\n")
 
     # ── MCP installation files ──────────────────────────────────────────
     target = dockerfile_files_service.read_target(agent.dockerfile_id)
@@ -517,10 +527,10 @@ async def generate(
             "mcp_server_id": str(binding.mcp_server_id),
             "parameters_override": override,
         })
-    _write(out_dir, "mcp.json", json.dumps(mcp_config_legacy, indent=2, ensure_ascii=False))
+    _write(out_dir, gen_paths["mcp_json"], json.dumps(mcp_config_legacy, indent=2, ensure_ascii=False))
 
     # Skills
-    skills_dir = os.path.join(workspace_dir, "skills")
+    skills_dir = os.path.join(out_dir, gen_paths["skills"])
     os.makedirs(skills_dir, exist_ok=True)
     for binding in agent.skill_bindings:
         _write(skills_dir, f"{binding.catalog_skill_id}.md", "")
@@ -600,8 +610,8 @@ async def generate(
         run_sh_lines.append("# No Dockerfile.json found")
         run_sh_lines.append(f"docker run agflow-{agent.dockerfile_id}:latest")
 
-    _write(out_dir, "run.sh", "\n".join(run_sh_lines) + "\n")
-    os.chmod(os.path.join(out_dir, "run.sh"), 0o755)
+    _write(out_dir, gen_paths["run"], "\n".join(run_sh_lines) + "\n")
+    os.chmod(os.path.join(out_dir, gen_paths["run"]), 0o755)
 
     _log.info("agent.generate", slug=slug, dir=out_dir)
 

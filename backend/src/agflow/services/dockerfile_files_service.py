@@ -4,6 +4,7 @@ import json
 import os
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -154,6 +155,42 @@ def read_target(dockerfile_id: str) -> dict | None:
     with open(json_path, encoding="utf-8") as f:
         data = json.loads(f.read())
     return data.get("Target")
+
+
+DEFAULT_GENERATION_CONFIG: dict[str, Any] = {
+    "base_dir": "workspace",
+    "prompt_ref_prefix": "@workspace",
+    "paths": {
+        "prompt": "prompt.md",
+        "roles": "roles.md",
+        "env": ".env",
+        "run": "run.sh",
+        "mcp_config": "config.toml",
+        "mcp_json": "mcp.json",
+        "docs": "docs",
+        "missions": "docs/missions",
+        "contracts": "docs/ctr",
+        "skills": "docs/skills",
+    },
+}
+
+
+def read_generation_config(dockerfile_id: str) -> dict[str, Any]:
+    """Read the Generation block from Dockerfile.json, with defaults."""
+    json_path = os.path.join(_slug_dir(dockerfile_id), "Dockerfile.json")
+    if not os.path.isfile(json_path):
+        return {**DEFAULT_GENERATION_CONFIG, "paths": {**DEFAULT_GENERATION_CONFIG["paths"]}}
+
+    with open(json_path, encoding="utf-8") as f:
+        data = json.loads(f.read())
+
+    gen = data.get("Generation")
+    if not gen:
+        return {**DEFAULT_GENERATION_CONFIG, "paths": {**DEFAULT_GENERATION_CONFIG["paths"]}}
+
+    result = {**DEFAULT_GENERATION_CONFIG, **gen}
+    result["paths"] = {**DEFAULT_GENERATION_CONFIG["paths"], **gen.get("paths", {})}
+    return result
 
 
 # ---------------------------------------------------------------------------

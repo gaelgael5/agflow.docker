@@ -540,7 +540,7 @@ async def generate(
     _write(out_dir, gen_paths["mcp_json"], json.dumps(mcp_config_legacy, indent=2, ensure_ascii=False))
 
     # Skills
-    skills_dir = os.path.join(out_dir, gen_paths["skills"])
+    skills_dir = os.path.join(out_dir, "skills")
     os.makedirs(skills_dir, exist_ok=True)
     for binding in agent.skill_bindings:
         _write(skills_dir, f"{binding.catalog_skill_id}.md", "")

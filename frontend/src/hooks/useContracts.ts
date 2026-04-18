@@ -3,6 +3,7 @@ import {
   contractsApi,
   type ContractCreatePayload,
   type ContractSummary,
+  type ContractUpdatePayload,
 } from "@/lib/contractsApi";
 
 const CONTRACTS_KEY = (agentId: string) => ["contracts", agentId] as const;
@@ -24,6 +25,14 @@ export function useContracts(agentId: string | undefined) {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ contractId, payload }: { contractId: string; payload: ContractUpdatePayload }) =>
+      contractsApi.update(agentId!, contractId, payload),
+    onSuccess: () => {
+      if (agentId) qc.invalidateQueries({ queryKey: CONTRACTS_KEY(agentId) });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (contractId: string) =>
       contractsApi.remove(agentId!, contractId),
@@ -36,6 +45,7 @@ export function useContracts(agentId: string | undefined) {
     contracts: listQuery.data,
     isLoading: listQuery.isLoading,
     createMutation,
+    updateMutation,
     deleteMutation,
   };
 }

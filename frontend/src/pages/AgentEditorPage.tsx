@@ -112,6 +112,7 @@ interface FormState {
   skill_bindings: AgentSkillBinding[];
   prompt_template_slug: string;
   prompt_template_culture: string;
+  prompt_filename: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -132,6 +133,7 @@ const EMPTY_FORM: FormState = {
   skill_bindings: [],
   prompt_template_slug: "",
   prompt_template_culture: "",
+  prompt_filename: "prompt.md",
 };
 
 export function AgentEditorPage() {
@@ -177,10 +179,12 @@ export function AgentEditorPage() {
   const [deleteProfileTarget, setDeleteProfileTarget] = useState<{ id: string; name: string } | null>(null);
   const [showDeleteAgentDialog, setShowDeleteAgentDialog] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [regenSpin, setRegenSpin] = useState(false);
   const [generatedFiles, setGeneratedFiles] = useState<
     { path: string; content: string; type?: "file" | "dir" }[]
   >([]);
   const [selectedGenFile, setSelectedGenFile] = useState<string | null>(null);
+  const [genAlerts, setGenAlerts] = useState<{ level: string; variable: string; message: string }[]>([]);
   const [chatOpenFor, setChatOpenFor] = useState<string | null>(null);
   const [decryptedSecrets, setDecryptedSecrets] = useState<Record<string, string> | null>(null);
   const [showVaultUnlock, setShowVaultUnlock] = useState(false);
@@ -247,6 +251,7 @@ export function AgentEditorPage() {
         skill_bindings: agent.skill_bindings,
         prompt_template_slug: agent.prompt_template_slug ?? "",
         prompt_template_culture: agent.prompt_template_culture ?? "",
+        prompt_filename: agent.prompt_filename ?? "prompt.md",
       });
     }
   }, [isNew, agent]);
@@ -476,6 +481,7 @@ export function AgentEditorPage() {
       skill_bindings: form.skill_bindings,
       prompt_template_slug: form.prompt_template_slug,
       prompt_template_culture: form.prompt_template_culture,
+      prompt_filename: form.prompt_filename,
     };
   }
 
@@ -646,9 +652,12 @@ export function AgentEditorPage() {
                   onClick={async () => {
                     if (!id) return;
                     setGenerating(true);
+                    setRegenSpin(true);
+                    window.setTimeout(() => setRegenSpin(false), 1400);
                     try {
                       const secrets = decryptedSecrets ?? await decryptUserSecrets();
-                      await agentsApi.generate(id, { secrets });
+                      const genResult = await agentsApi.generate(id, { secrets });
+                      setGenAlerts(genResult?.alerts ?? []);
                       const files = await agentsApi.listGenerated(id);
                       setGeneratedFiles(files);
                     } catch (e) {
@@ -659,7 +668,8 @@ export function AgentEditorPage() {
                   }}
                 >
                   <RefreshCw
-                    className={`w-3.5 h-3.5 ${generating ? "animate-spin" : ""}`}
+                    className="w-3.5 h-3.5"
+                    style={regenSpin ? { animation: "spin 0.7s linear 2" } : undefined}
                   />
                 </Button>
                 <Button
@@ -761,6 +771,9 @@ export function AgentEditorPage() {
           <TabsTrigger value="contracts">
             {t("contracts.tab_title")}
           </TabsTrigger>
+          {!isNew && generatedFiles.length > 0 && (
+            <TabsTrigger value="generated">{t("agent_editor.tab_generated")}</TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="general">
@@ -1153,6 +1166,15 @@ export function AgentEditorPage() {
                 </select>
               </div>
             )}
+            <div className="flex flex-col gap-1.5">
+              <Label>{t("agent_editor.prompt_filename")}</Label>
+              <Input
+                className="text-[12px] font-mono"
+                value={form.prompt_filename}
+                onChange={(e) => updateField("prompt_filename", e.target.value)}
+                placeholder="prompt.md"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1366,7 +1388,20 @@ export function AgentEditorPage() {
               <SelectContent>
                 {(dockerfiles ?? []).map((d) => (
                   <SelectItem key={d.id} value={d.id}>
-                    {d.display_name}
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                          d.display_status === "up_to_date"
+                            ? "bg-green-500"
+                            : d.display_status === "building"
+                              ? "bg-blue-500"
+                              : d.display_status === "outdated"
+                                ? "bg-orange-500"
+                                : "bg-red-500"
+                        }`}
+                      />
+                      {d.display_name}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1668,29 +1703,49 @@ export function AgentEditorPage() {
                           <div className="flex items-center gap-2">
                             <strong className="text-[13px]">{c.display_name}</strong>
                             <code className="text-[11px] text-muted-foreground font-mono">{c.slug}</code>
+                            {c.managed_by_instance && (
+                              <Badge variant="outline" className="text-[9px] text-blue-500 border-blue-300">auto</Badge>
+                            )}
                           </div>
                           {c.description && (
                             <div className="text-[12px] text-muted-foreground mt-0.5">{c.description}</div>
                           )}
                         </div>
                         <div className="flex items-center gap-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setEditingContract(c);
-                              setShowContractDialog(true);
-                            }}
-                          >
-                            {t("contracts.edit")}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => contractsHook.deleteMutation.mutate(c.id)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                          </Button>
+                          {c.source_url && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title={t("contracts.refresh")}
+                              onClick={async () => {
+                                await contractsApi.refresh(id!, c.id);
+                                qc.invalidateQueries({ queryKey: ["contracts", id] });
+                              }}
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {!c.managed_by_instance && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingContract(c);
+                                  setShowContractDialog(true);
+                                }}
+                              >
+                                {t("contracts.edit")}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => contractsHook.deleteMutation.mutate(c.id)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-1 mt-2">
@@ -1714,6 +1769,7 @@ export function AgentEditorPage() {
 
           {!isNew && id && (
             <ContractFormDialog
+              key={editingContract?.id ?? "new"}
               agentId={id}
               open={showContractDialog}
               onOpenChange={(o) => {
@@ -1729,6 +1785,7 @@ export function AgentEditorPage() {
                     source_url: payload.source_url,
                     spec_content: payload.spec_content,
                     base_url: payload.base_url,
+                    runtime_base_url: payload.runtime_base_url,
                     auth_header: payload.auth_header,
                     auth_prefix: payload.auth_prefix,
                     auth_secret_ref: payload.auth_secret_ref,
@@ -1744,12 +1801,8 @@ export function AgentEditorPage() {
             />
           )}
         </TabsContent>
-      </Tabs>
 
-      {/* Generated files explorer */}
-      {!isNew && generatedFiles.length > 0 && (
-        <>
-          <CollapsibleSection label={t("agent_editor.section_generated")}>
+        <TabsContent value="generated">
           <Card className="mb-6">
             <CardContent className="pt-5">
               <div className="flex justify-end mb-2">
@@ -1767,6 +1820,27 @@ export function AgentEditorPage() {
                   Clean
                 </Button>
               </div>
+              {genAlerts.length > 0 && (
+                <div className="mb-3 space-y-1">
+                  {genAlerts.map((a, i) => (
+                    <div
+                      key={i}
+                      className={`text-[12px] px-3 py-1.5 rounded flex items-start gap-2 ${
+                        a.level === "error"
+                          ? "bg-destructive/10 text-destructive"
+                          : a.level === "warning"
+                            ? "bg-orange-500/10 text-orange-700 dark:text-orange-400"
+                            : "bg-green-500/10 text-green-700 dark:text-green-400"
+                      }`}
+                    >
+                      <span className="shrink-0 font-mono font-bold">
+                        {a.level === "error" ? "ERR" : a.level === "warning" ? "WARN" : "OK"}
+                      </span>
+                      <span>{a.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex h-[70vh]" ref={(el) => {
                 if (el && !el.dataset.splitInit) {
                   el.dataset.splitInit = "1";
@@ -1794,6 +1868,7 @@ export function AgentEditorPage() {
                     }))}
                     selectedId={selectedGenFile}
                     onSelect={(id) => setSelectedGenFile(id)}
+                    defaultExpanded={false}
                   />
                 </div>
                 <div className="w-1 shrink-0 cursor-col-resize bg-border hover:bg-primary/40 transition-colors rounded" />
@@ -1819,9 +1894,8 @@ export function AgentEditorPage() {
               </div>
             </CardContent>
           </Card>
-          </CollapsibleSection>
-        </>
-      )}
+        </TabsContent>
+      </Tabs>
 
 
       {/* Danger zone */}
@@ -1967,6 +2041,7 @@ export function AgentEditorPage() {
       {chatOpenFor && (
         <ChatWindow
           dockerfileId={chatOpenFor}
+          agentSlug={form.slug || undefined}
           onClose={() => setChatOpenFor(null)}
           secrets={decryptedSecrets ?? undefined}
           dockerfileJsonContent={dockerfileJsonContentForLaunch}

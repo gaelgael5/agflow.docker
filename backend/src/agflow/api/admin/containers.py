@@ -321,9 +321,10 @@ async def run_agent_task(
             detail="Le dockerfile n'est pas à jour — compilez-le d'abord.",
         )
 
-    # Read generated prompt
+    # Read generated prompt (filename varies per agent CLI: CLAUDE.md, AGENTS.md, etc.)
+    prompt_filename = agent_data.get("prompt_filename", "prompt.md")
     prompt_path = os.path.join(
-        data_dir, "agents", agent_slug, "generated", "prompt.md"
+        data_dir, "agents", agent_slug, "generated", prompt_filename
     )
     prompt = ""
     if os.path.isfile(prompt_path):
@@ -415,6 +416,7 @@ async def run_agent_task(
                 user_secrets=merged_secrets,
                 cleanup=True,
                 session_id=task_payload["task_id"],
+                mount_base_id=f"agents/{agent_slug}/generated",
             ):
                 yield (json.dumps(event) + "\n").encode("utf-8")
         except Exception as exc:

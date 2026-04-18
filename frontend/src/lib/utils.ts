@@ -14,14 +14,15 @@ export function bringToFront(): number {
   return _floatingZIndex;
 }
 
-const _SECRET_KEY_RE = /_(API_KEY|SECRET|TOKEN|PASSWORD|PASS|KEY)$/i;
+const _SECRET_KEY_RE = /(_API_KEY|_SECRET|_TOKEN|_PASSWORD|_PASS|_KEY|^APIKEY$|^API_KEY$)/i;
+const _SECRET_VAL_RE = /^[a-z0-9_-]{20,}$/i;
 
 /** Mask secret values in .env content for display only. */
 export function maskEnvSecrets(content: string): string {
   return content.replace(
     /^([A-Za-z_]\w*)=(.+)$/gm,
     (_match, key: string, val: string) =>
-      _SECRET_KEY_RE.test(key)
+      _SECRET_KEY_RE.test(key) || _SECRET_VAL_RE.test(val.trim())
         ? `${key}=${"*".repeat(Math.min(val.length, 20))}`
         : `${key}=${val}`,
   );

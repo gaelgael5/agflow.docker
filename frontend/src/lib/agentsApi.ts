@@ -30,6 +30,7 @@ export interface AgentSummary {
   is_assistant: boolean;
   prompt_template_slug: string;
   prompt_template_culture: string;
+  prompt_filename: string;
   created_at: string;
   updated_at: string;
   has_errors: boolean;
@@ -88,6 +89,7 @@ export interface AgentCreatePayload {
   skill_bindings?: AgentSkillBinding[];
   prompt_template_slug?: string;
   prompt_template_culture?: string;
+  prompt_filename?: string;
 }
 
 export type AgentUpdatePayload = Omit<AgentCreatePayload, "slug">;
@@ -224,7 +226,7 @@ export const agentsApi = {
   generate: async (
     agentId: string,
     payload?: { profile_id?: string; secrets?: Record<string, string> },
-  ): Promise<{ slug: string; path: string; files: string[] }> => {
+  ): Promise<{ slug: string; path: string; files: string[]; alerts?: { level: string; variable: string; message: string }[] }> => {
     const res = await api.post(`/admin/agents/${agentId}/generate`, payload ?? {});
     return res.data;
   },

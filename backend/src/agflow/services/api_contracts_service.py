@@ -15,20 +15,22 @@ _log = structlog.get_logger(__name__)
 
 _SUMMARY_COLS = (
     "id, agent_id, slug, display_name, description, source_type, source_url, "
-    "base_url, auth_header, auth_prefix, auth_secret_ref, parsed_tags, "
+    "base_url, runtime_base_url, auth_header, auth_prefix, auth_secret_ref, parsed_tags, "
     "output_dir, tag_overrides, managed_by_instance, position, created_at, updated_at"
 )
 
 _DETAIL_COLS = f"{_SUMMARY_COLS}, spec_content"
 
 
-def _parse_tags(raw: Any) -> list[TagSummary]:
+def _parse_tags(raw: Any, overrides: dict[str, str] | None = None) -> list[TagSummary]:
     tags = raw if isinstance(raw, list) else json.loads(raw or "[]")
+    ovr = overrides or {}
     return [
         TagSummary(
             slug=t.get("slug", ""),
             name=t.get("name", ""),
             description=t.get("description", ""),
+            resolved_description=openapi_parser.resolve_tag_description(t, ovr),
             operation_count=t.get("operation_count", 0),
         )
         for t in tags
@@ -36,6 +38,7 @@ def _parse_tags(raw: Any) -> list[TagSummary]:
 
 
 def _row_to_summary(row: dict[str, Any]) -> ContractSummary:
+    ovr = json.loads(row["tag_overrides"]) if isinstance(row["tag_overrides"], str) else (row.get("tag_overrides") or {})
     return ContractSummary(
         id=row["id"],
         agent_id=row["agent_id"],
@@ -45,12 +48,13 @@ def _row_to_summary(row: dict[str, Any]) -> ContractSummary:
         source_type=row["source_type"],
         source_url=row["source_url"],
         base_url=row["base_url"],
+        runtime_base_url=row.get("runtime_base_url", ""),
         auth_header=row["auth_header"],
         auth_prefix=row["auth_prefix"],
         auth_secret_ref=row["auth_secret_ref"],
-        parsed_tags=_parse_tags(row["parsed_tags"]),
+        parsed_tags=_parse_tags(row["parsed_tags"], ovr),
         output_dir=row.get("output_dir", "workspace/docs/ctr"),
-        tag_overrides=json.loads(row["tag_overrides"]) if isinstance(row["tag_overrides"], str) else (row.get("tag_overrides") or {}),
+        tag_overrides=ovr,
         managed_by_instance=row.get("managed_by_instance"),
         position=row["position"],
         created_at=row["created_at"],
@@ -102,9 +106,10 @@ async def create(
     source_url: str | None,
     spec_content: str,
     base_url: str,
-    auth_header: str,
-    auth_prefix: str,
-    auth_secret_ref: str | None,
+    runtime_base_url: str = "",
+    auth_header: str = "Authorization",
+    auth_prefix: str = "Bearer",
+    auth_secret_ref: str | None = None,
     output_dir: str = "workspace/docs/ctr",
     tag_overrides: dict | None = None,
 ) -> ContractSummary:
@@ -126,10 +131,10 @@ async def create(
             f"""
             INSERT INTO agent_api_contracts (
                 agent_id, slug, display_name, description, source_type,
-                source_url, spec_content, base_url, auth_header, auth_prefix,
+                source_url, spec_content, base_url, runtime_base_url, auth_header, auth_prefix,
                 auth_secret_ref, parsed_tags, output_dir, tag_overrides
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15::jsonb)
             RETURNING {_SUMMARY_COLS}
             """,
             agent_id,
@@ -140,6 +145,7 @@ async def create(
             source_url,
             spec_content,
             base_url,
+            runtime_base_url,
             auth_header,
             auth_prefix,
             auth_secret_ref,
@@ -167,6 +173,7 @@ async def update(contract_id: UUID, **kwargs: Any) -> ContractSummary:
         "source_url",
         "spec_content",
         "base_url",
+        "runtime_base_url",
         "auth_header",
         "auth_prefix",
         "auth_secret_ref",
@@ -228,3 +235,48 @@ async def delete(contract_id: UUID) -> None:
     if row is None:
         raise ContractNotFoundError(f"Contract {contract_id} not found")
     _log.info("api_contracts.delete", contract_id=str(contract_id))
+
+
+async def refresh_from_url(contract_id: UUID) -> ContractSummary:
+    """Re-fetch spec from source_url, re-parse tags, preserve tag_overrides."""
+    import httpx
+
+    detail = await get_by_id(contract_id)
+    if not detail.source_url:
+        raise ContractNotFoundError(f"Contract {contract_id} has no source_url")
+
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(15.0, connect=5.0), follow_redirects=True,
+    ) as client:
+        response = await client.get(detail.source_url)
+        response.raise_for_status()
+
+    new_spec = response.text
+    tags = openapi_parser.parse_openapi_tags(new_spec)
+    tag_summaries = json.dumps([
+        {"slug": t["slug"], "name": t["name"], "description": t["description"], "operation_count": t["operation_count"]}
+        for t in tags
+    ])
+
+    row = await fetch_one(
+        f"UPDATE agent_api_contracts SET spec_content = $1, parsed_tags = $2::jsonb, updated_at = NOW() "
+        f"WHERE id = $3 RETURNING {_SUMMARY_COLS}",
+        new_spec, tag_summaries, contract_id,
+    )
+    assert row is not None
+    _log.info("api_contracts.refresh", contract_id=str(contract_id), tags=len(tags))
+    return _row_to_summary(row)
+
+
+async def reorder(agent_id: str, ordered_ids: list[UUID]) -> list[ContractSummary]:
+    """Reorder contracts for an agent by updating positions."""
+    from agflow.db.pool import execute
+
+    for position, cid in enumerate(ordered_ids):
+        await execute(
+            "UPDATE agent_api_contracts SET position = $1, updated_at = NOW() "
+            "WHERE id = $2 AND agent_id = $3",
+            position, cid, agent_id,
+        )
+    _log.info("api_contracts.reorder", agent_id=agent_id, count=len(ordered_ids))
+    return await list_for_agent(agent_id)

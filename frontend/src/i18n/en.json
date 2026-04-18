@@ -216,7 +216,8 @@
       "up_to_date": "🟢 Image up to date",
       "outdated": "🟠 Image outdated",
       "failed": "🔴 Last build failed",
-      "building": "🔵 Building…"
+      "building": "🔵 Building…",
+      "image_missing": "🔴 Image deleted — rebuild required"
     },
     "build_modal": {
       "title": "Build — {{dockerfile}}",
@@ -701,6 +702,8 @@
     "tab_general": "General",
     "tab_dockerfile": "Dockerfile",
     "tab_roles": "Roles",
+    "tab_generated": "Generated files",
+    "prompt_filename": "Prompt file",
     "generate_button": "Generate",
     "launch_button": "Launch",
     "chat_button": "Chat",
@@ -789,7 +792,8 @@
     "source_type": "Source",
     "source_url": "OpenAPI contract URL",
     "spec_content": "OpenAPI content (JSON or YAML)",
-    "base_url": "API base URL",
+    "base_url": "Public API URL",
+    "runtime_base_url": "Runtime URL (shell scripts)",
     "auth_header": "Authentication header",
     "auth_prefix": "Token prefix",
     "auth_secret_ref": "Secret reference (e.g. ${AGFLOW_TOKEN})",

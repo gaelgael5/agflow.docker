@@ -8,13 +8,14 @@ from pydantic import BaseModel, Field
 
 
 class ContractCreate(BaseModel):
-    slug: str = Field(min_length=1, max_length=128)
+    slug: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9-]*$")
     display_name: str = Field(min_length=1, max_length=200)
     description: str = ""
     source_type: Literal["upload", "url", "manual"] = "manual"
     source_url: str | None = None
     spec_content: str = Field(min_length=1)
     base_url: str = ""
+    runtime_base_url: str = ""
     auth_header: str = "Authorization"
     auth_prefix: str = "Bearer"
     auth_secret_ref: str | None = None
@@ -28,6 +29,7 @@ class ContractUpdate(BaseModel):
     source_url: str | None = None
     spec_content: str | None = None
     base_url: str | None = None
+    runtime_base_url: str | None = None
     auth_header: str | None = None
     auth_prefix: str | None = None
     auth_secret_ref: str | None = None
@@ -52,6 +54,7 @@ class ContractSummary(BaseModel):
     source_type: str
     source_url: str | None
     base_url: str
+    runtime_base_url: str = ""
     auth_header: str
     auth_prefix: str
     auth_secret_ref: str | None

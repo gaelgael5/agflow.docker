@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -466,6 +467,7 @@ def build_run_config(
     content_hash: str,
     instance_id: str,
     extra_env: dict[str, str] | None = None,
+    mount_base_id: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Parse Dockerfile.json and produce (container_name, aiodocker config).
 
@@ -545,7 +547,7 @@ def build_run_config(
         if not raw_source or not target:
             continue
         host_source, _container_path, _auto = resolve_mount_source(
-            raw_source, dockerfile_id, vars_map, extra_env
+            raw_source, mount_base_id or dockerfile_id, vars_map, extra_env
         )
         ro_flag = ":ro" if bool(m.get("readonly")) else ""
         binds.append(f"{host_source}:{target}{ro_flag}")
@@ -606,7 +608,7 @@ def build_run_config(
         "StopSignal": stop_signal,
         "Tty": tty_enabled,
         "OpenStdin": open_stdin,
-        "StdinOnce": False if open_stdin else True,
+        "StdinOnce": not open_stdin,
         "HostConfig": host_config,
     }
     if working_dir:
@@ -778,6 +780,7 @@ async def run_task(
     cleanup: bool = False,
     session_id: str | None = None,
     agent_instance_id: str | None = None,
+    mount_base_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """One-shot: regenerate .tmp/{.env, run.sh, task.json} then exec run.sh.
 
@@ -820,6 +823,7 @@ async def run_task(
         content_hash=content_hash,
         instance_id=instance_id,
         extra_env=all_secrets,
+        mount_base_id=mount_base_id,
     )
     if agent_instance_id is not None:
         try:
@@ -1041,11 +1045,8 @@ async def stop(container_id: str) -> None:
                 f"Container '{container_id}' is not managed by agflow"
             )
 
-        try:
+        with contextlib.suppress(aiodocker.exceptions.DockerError):
             await container.stop(timeout=10)
-        except aiodocker.exceptions.DockerError:
-            # Already stopped or in a weird state — still try to remove.
-            pass
         try:
             await container.delete(force=True)
         except aiodocker.exceptions.DockerError as exc:

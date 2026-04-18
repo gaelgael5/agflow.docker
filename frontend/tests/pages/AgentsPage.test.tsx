@@ -58,6 +58,7 @@ describe("AgentsPage", () => {
         is_assistant: false,
         prompt_template_slug: "",
         prompt_template_culture: "",
+        prompt_filename: "prompt.md",
         created_at: "2026-04-11",
         updated_at: "2026-04-11",
         has_errors: false,

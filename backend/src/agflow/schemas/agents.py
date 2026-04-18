@@ -24,11 +24,30 @@ class AgentSkillBinding(BaseModel):
     position: int = 0
 
 
+class AgentGenerationProfile(BaseModel):
+    """A mission profile inside a generation block."""
+    name: str = Field(min_length=1, max_length=128)
+    description: str = ""
+    documents: list[str] = Field(default_factory=list)
+    template_slug: str = ""
+    template_culture: str = ""
+    output_dir: str = "workspace/missions"
+
+
+class AgentGeneration(BaseModel):
+    """A generation block: one role → one prompt file + mission profiles."""
+    role_id: str = Field(min_length=1)
+    template_slug: str = ""
+    template_culture: str = ""
+    prompt_filename: str = "prompt.md"
+    profiles: list[AgentGenerationProfile] = Field(default_factory=list)
+
+
 class _AgentBase(BaseModel):
     display_name: str = Field(min_length=1, max_length=200)
     description: str = ""
     dockerfile_id: str = Field(min_length=1)
-    role_id: str = Field(min_length=1)
+    role_id: str = ""
     env_vars: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = Field(default=3600, gt=0)
     workspace_path: str = "/workspace"
@@ -39,6 +58,8 @@ class _AgentBase(BaseModel):
     skill_bindings: list[AgentSkillBinding] = Field(default_factory=list)
     prompt_template_slug: str = ""
     prompt_template_culture: str = ""
+    prompt_filename: str = "prompt.md"
+    generations: list[AgentGeneration] = Field(default_factory=list)
 
 
 class AgentCreate(_AgentBase):
@@ -76,6 +97,8 @@ class AgentSummary(BaseModel):
     is_assistant: bool = False
     prompt_template_slug: str = ""
     prompt_template_culture: str = ""
+    prompt_filename: str = "prompt.md"
+    generations: list[AgentGeneration] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     has_errors: bool = False

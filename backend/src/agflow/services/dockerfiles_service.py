@@ -27,6 +27,23 @@ def _parse_params(raw: Any) -> dict:
     return raw or {}
 
 
+async def _image_exists(tag: str) -> bool:
+    """Check whether a Docker image tag is present locally."""
+    import aiodocker
+
+    try:
+        docker = aiodocker.Docker()
+        try:
+            await docker.images.inspect(tag)
+            return True
+        except aiodocker.exceptions.DockerError:
+            return False
+        finally:
+            await docker.close()
+    except Exception:
+        return False
+
+
 async def _compute_display_status(
     dockerfile_id: str,
 ) -> tuple[str, DisplayStatus, str | None]:
@@ -45,6 +62,10 @@ async def _compute_display_status(
     if latest["status"] in ("pending", "running"):
         return current_hash, "building", latest_id
     if latest["content_hash"] == current_hash and latest["status"] == "success":
+        # Verify the image actually exists in Docker (may have been pruned)
+        tag = build_service.image_tag_for(dockerfile_id, current_hash)
+        if not await _image_exists(tag):
+            return current_hash, "image_missing", latest_id
         return current_hash, "up_to_date", latest_id
     return current_hash, "outdated", latest_id
 

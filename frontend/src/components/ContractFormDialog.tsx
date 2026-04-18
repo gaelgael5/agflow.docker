@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -36,6 +36,7 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave, editCo
   const [sourceUrl, setSourceUrl] = useState(editContract?.source_url ?? "");
   const [specContent, setSpecContent] = useState("");
   const [baseUrl, setBaseUrl] = useState(editContract?.base_url ?? "");
+  const [runtimeBaseUrl, setRuntimeBaseUrl] = useState(editContract?.runtime_base_url ?? "");
   const [authHeader, setAuthHeader] = useState(editContract?.auth_header ?? "Authorization");
   const [authPrefix, setAuthPrefix] = useState(editContract?.auth_prefix ?? "Bearer");
   const [authSecretRef, setAuthSecretRef] = useState(editContract?.auth_secret_ref ?? "");
@@ -44,9 +45,25 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave, editCo
     editContract?.parsed_tags?.map((t) => ({ name: t.name, operation_count: t.operation_count })) ?? [],
   );
   const [tagOverrides, setTagOverrides] = useState<Record<string, string>>(editContract?.tag_overrides ?? {});
+  const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // In edit mode, fetch the full contract detail (includes spec_content)
+  useEffect(() => {
+    if (!editContract) return;
+    let cancelled = false;
+    setLoading(true);
+    contractsApi.get(agentId, editContract.id).then((detail) => {
+      if (cancelled) return;
+      setSpecContent(detail.spec_content);
+      setLoading(false);
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [agentId, editContract]);
 
   async function handleFetch() {
     if (!sourceUrl) return;
@@ -111,6 +128,7 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave, editCo
         source_url: sourceUrl || undefined,
         spec_content: specContent,
         base_url: baseUrl,
+        runtime_base_url: runtimeBaseUrl,
         auth_header: authHeader,
         auth_prefix: authPrefix,
         auth_secret_ref: authSecretRef || undefined,
@@ -224,12 +242,20 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave, editCo
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-[11px]">{t("contracts.base_url")}</Label>
-              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="mt-1 font-mono text-[12px]" placeholder="${AGFLOW_API_URL}" />
+              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="mt-1 font-mono text-[12px]" placeholder="https://..." />
             </div>
             <div>
-              <Label className="text-[11px]">{t("contracts.auth_secret_ref")}</Label>
-              <Input value={authSecretRef} onChange={(e) => setAuthSecretRef(e.target.value)} className="mt-1 font-mono text-[12px]" placeholder="${AGFLOW_TOKEN}" />
+              <Label className="text-[11px]">{t("contracts.runtime_base_url")}</Label>
+              <Input value={runtimeBaseUrl} onChange={(e) => setRuntimeBaseUrl(e.target.value)} className="mt-1 font-mono text-[12px]" placeholder={baseUrl || "${INTERNAL_URL}"} />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-[11px]">{t("contracts.auth_secret_ref")}</Label>
+              <Input value={authSecretRef} onChange={(e) => setAuthSecretRef(e.target.value)} className="mt-1 font-mono text-[12px]" placeholder="${APIKEY}" />
+            </div>
+            <div />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -255,7 +281,7 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave, editCo
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("common.cancel")}
           </Button>
-          <Button onClick={handleSave} disabled={saving || !slug || !specContent}>
+          <Button onClick={handleSave} disabled={saving || loading || !slug || !specContent}>
             {saving ? "..." : t("contracts.save")}
           </Button>
         </DialogFooter>

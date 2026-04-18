@@ -50,6 +50,7 @@ async def create_contract(agent_id: str, payload: ContractCreate):
             source_url=payload.source_url,
             spec_content=payload.spec_content,
             base_url=payload.base_url,
+            runtime_base_url=payload.runtime_base_url,
             auth_header=payload.auth_header,
             auth_prefix=payload.auth_prefix,
             auth_secret_ref=payload.auth_secret_ref,
@@ -99,6 +100,35 @@ async def delete_contract(contract_id: UUID):
         await api_contracts_service.delete(contract_id)
     except api_contracts_service.ContractNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{contract_id}/refresh",
+    response_model=ContractSummary,
+    summary="Refresh an API contract from its source URL",
+    description="Re-fetches the OpenAPI spec from the contract's source_url, re-parses tags, and preserves existing tag_overrides. Returns 404 if the contract has no source_url. Returns 502 if the upstream URL is unreachable.",
+)
+async def refresh_contract(contract_id: UUID):
+    try:
+        return await api_contracts_service.refresh_from_url(contract_id)
+    except api_contracts_service.ContractNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+class ReorderRequest(BaseModel):
+    ordered_ids: list[UUID]
+
+
+@router.put(
+    "/reorder",
+    response_model=list[ContractSummary],
+    summary="Reorder API contracts for an agent",
+    description="Updates the position of each contract based on the order of the provided list of contract IDs.",
+)
+async def reorder_contracts(agent_id: str, payload: ReorderRequest):
+    return await api_contracts_service.reorder(agent_id, payload.ordered_ids)
 
 
 class FetchSpecRequest(BaseModel):

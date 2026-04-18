@@ -74,118 +74,6 @@ def detect_base_url(spec_content: str) -> str:
     return ""
 
 
-def _extract_body_schema(request_body: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Extrait le schema JSON du body (simplifié)."""
-    if not request_body:
-        return None
-    content = request_body.get("content", {})
-    json_content = content.get("application/json", {})
-    schema = json_content.get("schema", {})
-    if not schema:
-        return None
-    properties = schema.get("properties", {})
-    if not properties:
-        return schema
-    example: dict[str, Any] = {}
-    for prop_name, prop_schema in properties.items():
-        prop_type = prop_schema.get("type", "string")
-        if prop_type == "string":
-            example[prop_name] = prop_schema.get("example", f"<{prop_name}>")
-        elif prop_type == "integer":
-            example[prop_name] = prop_schema.get("example", 0)
-        elif prop_type == "boolean":
-            example[prop_name] = prop_schema.get("example", False)
-        elif prop_type == "array":
-            example[prop_name] = []
-        elif prop_type == "object":
-            example[prop_name] = {}
-        else:
-            example[prop_name] = f"<{prop_name}>"
-    return example
-
-
-def _build_curl(
-    op: dict[str, Any],
-    base_url: str,
-    auth_header: str,
-    auth_prefix: str,
-    auth_secret_ref: str,
-) -> str:
-    method = op["method"]
-    path = op["path"]
-    parts = ["curl -s"]
-    if method != "GET":
-        parts.append(f"-X {method}")
-    if auth_secret_ref:
-        parts.append(f'-H "{auth_header}: {auth_prefix} {auth_secret_ref}"')
-    if op.get("request_body"):
-        parts.append('-H "Content-Type: application/json"')
-        body = _extract_body_schema(op["request_body"])
-        if body:
-            parts.append(f"-d '{json.dumps(body, ensure_ascii=False)}'")
-    parts.append(f"{base_url}{path}")
-    return " \\\n  ".join(parts)
-
-
-def generate_tag_markdown(
-    tag: dict[str, Any],
-    base_url: str,
-    auth_header: str = "Authorization",
-    auth_prefix: str = "Bearer",
-    auth_secret_ref: str = "",
-) -> str:
-    """Génère le markdown documentant un tag avec les commandes curl."""
-    lines = [f"# {tag['name']}", ""]
-
-    if tag["description"]:
-        lines.append(tag["description"])
-        lines.append("")
-
-    lines.append(f"Base URL : `{base_url}`")
-    if auth_secret_ref:
-        lines.append(f"Auth : `{auth_header}: {auth_prefix} {auth_secret_ref}`")
-    lines.append("")
-
-    for op in tag.get("operations", []):
-        lines.append(f"## {op['method']} {op['path']}")
-        if op["summary"]:
-            lines.append(op["summary"])
-        lines.append("")
-
-        path_params = [p for p in op.get("parameters", []) if p.get("in") == "path"]
-        query_params = [p for p in op.get("parameters", []) if p.get("in") == "query"]
-
-        if path_params:
-            lines.append("Paramètres URL :")
-            for p in path_params:
-                req = " (requis)" if p.get("required") else ""
-                lines.append(f"- `{p['name']}`{req} — {p.get('description', '')}")
-            lines.append("")
-
-        if query_params:
-            lines.append("Paramètres query :")
-            for p in query_params:
-                req = " (requis)" if p.get("required") else ""
-                lines.append(f"- `{p['name']}`{req} — {p.get('description', '')}")
-            lines.append("")
-
-        if op.get("request_body"):
-            body = _extract_body_schema(op["request_body"])
-            if body:
-                lines.append("Body JSON :")
-                lines.append("```json")
-                lines.append(json.dumps(body, indent=2, ensure_ascii=False))
-                lines.append("```")
-                lines.append("")
-
-        lines.append("```bash")
-        lines.append(_build_curl(op, base_url, auth_header, auth_prefix, auth_secret_ref))
-        lines.append("```")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
 def operation_to_filename(operation: dict[str, Any]) -> str:
     """Derive a clean PascalCase .sh filename from the operation."""
     op_id = operation.get("operation_id", "") or operation.get("operationId", "")
@@ -244,12 +132,114 @@ def _truncate(text: str, max_len: int = 200) -> str:
     return text[:max_len].rsplit(" ", 1)[0] + "…"
 
 
+def _resolve_ref(ref: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """Resolve a JSON $ref like '#/components/schemas/AgentCreate'."""
+    parts = ref.lstrip("#/").split("/")
+    node: Any = spec
+    for part in parts:
+        node = node.get(part, {})
+    return node
+
+
+def _example_value(name: str, schema: dict[str, Any]) -> Any:
+    """Generate a plausible example value for a schema property."""
+    if "example" in schema:
+        return schema["example"]
+    if schema.get("examples"):
+        return schema["examples"][0]
+    if "default" in schema:
+        return schema["default"]
+
+    prop_type = schema.get("type", "string")
+    if "email" in name:
+        return "user@example.com"
+    if "url" in name or "uri" in name:
+        return "https://example.com"
+    if "password" in name or "secret" in name or "token" in name:
+        return "changeme"
+    if "name" in name or "display" in name:
+        return f"my-{name.replace('_', '-')}"
+    if name in ("slug", "id"):
+        return "my-item"
+    if "description" in name:
+        return ""
+
+    if prop_type == "string":
+        if "enum" in schema:
+            return schema["enum"][0]
+        return f"<{name}>"
+    if prop_type == "integer":
+        return 0
+    if prop_type == "number":
+        return 0.0
+    if prop_type == "boolean":
+        return False
+    if prop_type == "array":
+        return []
+    if prop_type == "object":
+        return {}
+    return f"<{name}>"
+
+
+def _extract_body_doc(
+    request_body: dict[str, Any],
+    full_spec: dict[str, Any],
+) -> dict[str, Any]:
+    """Extract body schema fields and build an example from OpenAPI requestBody."""
+    content = request_body.get("content", {})
+    json_content = content.get("application/json", {})
+    schema = json_content.get("schema", {})
+
+    schema_name = ""
+    if "$ref" in schema:
+        ref_path = schema["$ref"]
+        schema_name = ref_path.split("/")[-1]
+        schema = _resolve_ref(ref_path, full_spec)
+
+    if not schema or schema.get("type") != "object":
+        return {"schema_name": schema_name, "fields": [], "example": None}
+
+    properties = schema.get("properties", {})
+    required_fields = set(schema.get("required", []))
+
+    fields: list[dict[str, Any]] = []
+    example: dict[str, Any] = {}
+    for prop_name, prop_schema in properties.items():
+        if "$ref" in prop_schema:
+            prop_schema = _resolve_ref(prop_schema["$ref"], full_spec)
+
+        prop_type = prop_schema.get("type", "any")
+        if prop_type == "array":
+            item_type = prop_schema.get("items", {}).get("type", "any")
+            prop_type = f"[{item_type}]"
+
+        prop_desc = prop_schema.get("description", prop_schema.get("title", ""))
+        prop_default = prop_schema.get("default")
+        is_required = prop_name in required_fields
+
+        fields.append({
+            "name": prop_name,
+            "type": prop_type,
+            "required": is_required,
+            "description": prop_desc,
+            "default": prop_default,
+        })
+
+        if is_required:
+            example[prop_name] = _example_value(prop_name, prop_schema)
+
+    fields.sort(key=lambda f: (not f["required"], f["name"]))
+
+    return {"schema_name": schema_name, "fields": fields, "example": example}
+
+
 def generate_operation_script(
     op: dict[str, Any],
     base_url: str,
     auth_header: str = "Authorization",
     auth_prefix: str = "Bearer",
     auth_secret_ref: str = "",
+    full_spec: dict[str, Any] | None = None,
 ) -> str:
     """Generate an executable bash script for a single OpenAPI operation."""
     method = op["method"]
@@ -265,11 +255,38 @@ def generate_operation_script(
 
     lines = ["#!/usr/bin/env bash"]
 
-    # Header comment
+    # Header comment — summary + description
     lines.append(f"# {op_name} — {summary}")
     if description:
+        lines.append("#")
         for desc_line in _wrap_comment(description, 74):
             lines.append(f"# {desc_line}")
+
+    # Body schema documentation
+    has_body = method in ("POST", "PUT", "PATCH") and op.get("request_body")
+    if has_body and full_spec:
+        body_doc = _extract_body_doc(op["request_body"], full_spec)
+        if body_doc["fields"]:
+            lines.append("#")
+            lines.append(f"# Body schema ({body_doc['schema_name']}):")
+            for field in body_doc["fields"]:
+                req_marker = " (required)" if field["required"] else ""
+                desc_part = f" — {field['description']}" if field["description"] else ""
+                default_part = f", default: {field['default']}" if field.get("default") is not None else ""
+                lines.append(f"#   {field['name']:<20s} {field['type']:<10s}{req_marker}{desc_part}{default_part}")
+            if body_doc["example"]:
+                lines.append("#")
+                lines.append("# Example:")
+                example_json = json.dumps(body_doc["example"], indent=4, ensure_ascii=False)
+                example_lines = example_json.split("\n")
+                for i, example_line in enumerate(example_lines):
+                    if i == 0:
+                        lines.append(f"#   ./{op_name}.sh \\")
+                    if i == len(example_lines) - 1:
+                        lines.append(f"#     '{example_line}'")
+                    else:
+                        lines.append(f"#     {example_line}")
+
     lines.append("#")
 
     # Usage

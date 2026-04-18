@@ -16,6 +16,7 @@ export interface ContractSummary {
   source_type: "upload" | "url" | "manual";
   source_url: string | null;
   base_url: string;
+  runtime_base_url: string;
   auth_header: string;
   auth_prefix: string;
   auth_secret_ref: string | null;
@@ -40,6 +41,7 @@ export interface ContractCreatePayload {
   source_url?: string;
   spec_content: string;
   base_url?: string;
+  runtime_base_url?: string;
   auth_header?: string;
   auth_prefix?: string;
   auth_secret_ref?: string;
@@ -53,6 +55,7 @@ export interface ContractUpdatePayload {
   source_url?: string;
   spec_content?: string;
   base_url?: string;
+  runtime_base_url?: string;
   auth_header?: string;
   auth_prefix?: string;
   auth_secret_ref?: string;
@@ -96,6 +99,15 @@ export const contractsApi = {
   },
   async remove(agentId: string, contractId: string): Promise<void> {
     await api.delete(`/admin/agents/${agentId}/contracts/${contractId}`);
+  },
+  async refresh(
+    agentId: string,
+    contractId: string,
+  ): Promise<ContractSummary> {
+    const res = await api.post<ContractSummary>(
+      `/admin/agents/${agentId}/contracts/${contractId}/refresh`,
+    );
+    return res.data;
   },
   async fetchSpec(
     agentId: string,

@@ -216,7 +216,8 @@
       "up_to_date": "🟢 Image à jour",
       "outdated": "🟠 Image obsolète",
       "failed": "🔴 Dernier build échoué",
-      "building": "🔵 Build en cours…"
+      "building": "🔵 Build en cours…",
+      "image_missing": "🔴 Image supprimée — rebuild nécessaire"
     },
     "build_modal": {
       "title": "Build — {{dockerfile}}",
@@ -701,6 +702,8 @@
     "tab_general": "Général",
     "tab_dockerfile": "Dockerfile",
     "tab_roles": "Rôles",
+    "tab_generated": "Fichiers générés",
+    "prompt_filename": "Fichier prompt",
     "generate_button": "Générer",
     "launch_button": "Lancer",
     "chat_button": "Chat",
@@ -789,7 +792,8 @@
     "source_type": "Source",
     "source_url": "URL du contrat OpenAPI",
     "spec_content": "Contenu OpenAPI (JSON ou YAML)",
-    "base_url": "URL de base de l'API",
+    "base_url": "URL publique de l'API",
+    "runtime_base_url": "URL runtime (scripts .sh)",
     "auth_header": "Header d'authentification",
     "auth_prefix": "Préfixe du token",
     "auth_secret_ref": "Référence secret (ex: ${AGFLOW_TOKEN})",

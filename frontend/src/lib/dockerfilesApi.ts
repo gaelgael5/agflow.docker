@@ -6,7 +6,8 @@ export type DisplayStatus =
   | "up_to_date"
   | "outdated"
   | "failed"
-  | "building";
+  | "building"
+  | "image_missing";
 
 export interface DockerfileSummary {
   id: string;

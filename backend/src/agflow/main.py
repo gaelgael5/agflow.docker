@@ -87,6 +87,9 @@ def create_app() -> FastAPI:
         title="agflow.docker",
         version="0.1.0",
         lifespan=lifespan,
+        servers=[
+            {"url": "https://docker-agflow.yoops.org", "description": "Production"},
+        ],
         openapi_tags=[
             {"name": "health", "description": "Health check and readiness probes."},
             {"name": "admin-auth", "description": "Admin authentication — login with email/password or Google OAuth, retrieve current user info."},

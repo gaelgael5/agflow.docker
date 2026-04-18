@@ -322,7 +322,7 @@ async def generate(
                 "name": profile.name,
                 "description": profile.description,
                 "slug": profile_slug,
-                "path": f"{ref_prefix}/{getattr(profile, 'output_dir', None) or gen_paths['missions']}/{profile_slug}.md",
+                "path": f"{ref_prefix}/{_strip_base_dir(getattr(profile, 'output_dir', None) or gen_paths['missions'], gen_config)}/{profile_slug}.md",
             })
 
     # ── Contrats API ────────────────────────────────────────
@@ -341,6 +341,7 @@ async def generate(
         os.makedirs(ctr_dir, exist_ok=True)
 
         full_detail = await _ctr_svc.get_by_id(contract.id)
+        full_spec = _oapi._load_spec(full_detail.spec_content)
         full_tags = _oapi.parse_openapi_tags(full_detail.spec_content)
         overrides = getattr(contract, "tag_overrides", None) or {}
 
@@ -356,12 +357,14 @@ async def generate(
             operation_entries: list[dict[str, Any]] = []
             for op in tag.get("operations", []):
                 sh_filename = _oapi.operation_to_filename(op)
+                effective_base_url = getattr(contract, "runtime_base_url", "") or contract.base_url
                 sh_content = _oapi.generate_operation_script(
                     op=op,
-                    base_url=contract.base_url,
+                    base_url=effective_base_url,
                     auth_header=contract.auth_header,
                     auth_prefix=contract.auth_prefix,
                     auth_secret_ref=contract.auth_secret_ref or "",
+                    full_spec=full_spec,
                 )
                 _write(tag_dir, sh_filename, sh_content)
                 os.chmod(os.path.join(tag_dir, sh_filename), 0o755)
@@ -380,7 +383,7 @@ async def generate(
             md_content = _oapi.generate_tag_index_markdown(
                 tag_name=tag["name"],
                 tag_description=resolved_desc,
-                base_url=contract.base_url,
+                base_url=effective_base_url,
                 auth_header=contract.auth_header,
                 auth_prefix=contract.auth_prefix,
                 auth_secret_ref=contract.auth_secret_ref or "",
@@ -398,6 +401,7 @@ async def generate(
             "slug": contract.slug,
             "description": contract.description,
             "output_dir": contract_output,
+            "ref_dir": _strip_base_dir(contract_output, gen_config),
             "tags": tag_context,
         })
 
@@ -426,13 +430,14 @@ async def generate(
             for ctr in contract_context:
                 prompt_md += f"\n### {ctr['description']}\n"
                 for tag in ctr["tags"]:
-                    prompt_md += f"\n- {tag['name']} : `{ref_prefix}/{ctr['output_dir']}/{ctr['slug']}/{tag['slug']}.md`"
+                    prompt_md += f"\n- {tag['description']} : `{ref_prefix}/{ctr['ref_dir']}/{ctr['slug']}/{tag['slug']}.md`"
             prompt_md += "\n"
 
     prompt_md = await _expand_macros(prompt_md)
-    prompt_dir = os.path.dirname(os.path.join(out_dir, gen_paths["prompt"]))
+    prompt_filename = getattr(agent, "prompt_filename", None) or gen_paths["prompt"]
+    prompt_dir = os.path.dirname(os.path.join(out_dir, prompt_filename))
     os.makedirs(prompt_dir, exist_ok=True)
-    _write(out_dir, gen_paths["prompt"], prompt_md)
+    _write(out_dir, prompt_filename, prompt_md)
 
     # Build .env — merge Dockerfile.json Environments with agent overrides
     # Secrets come exclusively from the user's vault — never from platform secrets
@@ -667,10 +672,16 @@ async def generate(
 
     _log.info("agent.generate", slug=slug, dir=out_dir)
 
+    # ── Validation : variables référencées vs .env + auto-injection ──
+    alerts = await _validate_and_inject_env(
+        out_dir, gen_paths.get("env", ".env"), user_secrets,
+    )
+
     return {
         "slug": slug,
         "path": out_dir,
         "files": os.listdir(out_dir),
+        "alerts": alerts,
     }
 
 
@@ -695,6 +706,139 @@ async def list_generated_files(slug: str) -> list[dict[str, Any]]:
             content = "<binary>"
         results.append({"path": entry.path, "content": content, "type": "file"})
     return results
+
+
+async def _validate_and_inject_env(
+    out_dir: str,
+    env_filename: str,
+    user_secrets: dict[str, str] | None,
+) -> list[dict[str, str]]:
+    """Scan generated files for ${VAR} refs, auto-inject from secrets, report missing."""
+    import re as _re
+
+    from agflow.services import secrets_service
+
+    # Parse current .env
+    env_path = os.path.join(out_dir, env_filename)
+    env_vars: dict[str, str] = {}
+    if os.path.isfile(env_path):
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, _, v = line.partition("=")
+                    env_vars[k.strip()] = v.strip()
+
+    # Scan .sh / .toml / .json for ${UPPERCASE_VAR} patterns
+    _scannable_ext = {".sh", ".toml", ".json"}
+    var_pattern = _re.compile(r"\$\{([A-Z_][A-Z0-9_]*)(?::[-+]?[^}]*)?\}")
+    referenced: dict[str, set[str]] = {}
+
+    for root, _dirs, files in os.walk(out_dir):
+        for fname in files:
+            if fname == env_filename:
+                continue
+            ext = os.path.splitext(fname)[1]
+            if ext not in _scannable_ext:
+                continue
+            fpath = os.path.join(root, fname)
+            rel = os.path.relpath(fpath, out_dir).replace("\\", "/")
+            try:
+                with open(fpath, encoding="utf-8") as f:
+                    content = f.read()
+            except (UnicodeDecodeError, PermissionError):
+                continue
+            for match in var_pattern.finditer(content):
+                var_name = match.group(1)
+                referenced.setdefault(var_name, set()).add(rel)
+
+    # Identify missing variables
+    missing = [v for v in referenced if v not in env_vars]
+    if not missing:
+        # All variables present — check for empty ones
+        alerts: list[dict[str, str]] = []
+        for var_name in sorted(referenced):
+            if not env_vars.get(var_name):
+                files_list = ", ".join(sorted(referenced[var_name]))
+                alerts.append({
+                    "level": "warning",
+                    "variable": var_name,
+                    "message": f"${{{var_name}}} présente dans .env mais vide — utilisée dans [{files_list}]",
+                })
+        return alerts
+
+    # Try to resolve missing vars from user secrets first, then platform secrets
+    vault = user_secrets or {}
+    injected: dict[str, str] = {}
+    still_missing: list[str] = []
+
+    for var_name in missing:
+        if vault.get(var_name):
+            injected[var_name] = vault[var_name]
+        else:
+            still_missing.append(var_name)
+
+    # Try platform secrets for remaining
+    if still_missing:
+        try:
+            platform = await secrets_service.resolve_env(still_missing)
+            for var_name, value in platform.items():
+                if value:
+                    injected[var_name] = value
+                    still_missing.remove(var_name)
+        except secrets_service.SecretNotFoundError:
+            # Some or all not found — handled below
+            try:
+                # Try individually to get partial results
+                for var_name in list(still_missing):
+                    try:
+                        result = await secrets_service.resolve_env([var_name])
+                        if result.get(var_name):
+                            injected[var_name] = result[var_name]
+                            still_missing.remove(var_name)
+                    except secrets_service.SecretNotFoundError:
+                        pass
+            except Exception:
+                pass
+
+    # Inject resolved variables into .env
+    if injected:
+        with open(env_path, "a", encoding="utf-8") as f:
+            f.write("\n# Auto-injected from secrets\n")
+            for k, v in sorted(injected.items()):
+                f.write(f"{k}={v}\n")
+        _log.info("env.auto_inject", count=len(injected), vars=list(injected.keys()))
+
+    # Build alerts — only errors and warnings, no info
+    alerts = []
+    for var_name in sorted(still_missing):
+        files_list = ", ".join(sorted(referenced[var_name]))
+        alerts.append({
+            "level": "error",
+            "variable": var_name,
+            "message": f"${{{var_name}}} référencée dans [{files_list}] mais introuvable (ni coffre utilisateur, ni secrets plateforme)",
+        })
+    # Check empty values in the final .env
+    for var_name in sorted(referenced):
+        if var_name in still_missing or var_name in injected:
+            continue
+        if not env_vars.get(var_name):
+            files_list = ", ".join(sorted(referenced[var_name]))
+            alerts.append({
+                "level": "warning",
+                "variable": var_name,
+                "message": f"${{{var_name}}} présente dans .env mais vide — utilisée dans [{files_list}]",
+            })
+
+    return alerts
+
+
+def _strip_base_dir(path: str, gen_config: dict[str, Any]) -> str:
+    """Remove the base_dir prefix from a path for prompt refs."""
+    base = gen_config.get("base_dir", "workspace")
+    if path.startswith(base + "/"):
+        return path[len(base) + 1:]
+    return path
 
 
 def _write(directory: str, filename: str, content: str) -> None:

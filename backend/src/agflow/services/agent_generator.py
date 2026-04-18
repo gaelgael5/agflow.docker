@@ -206,7 +206,9 @@ async def generate(
     missions_dir = os.path.join(out_dir, "missions")
     if os.path.isdir(missions_dir):
         shutil.rmtree(missions_dir)
-    docs_dir = os.path.join(out_dir, "docs")
+    workspace_dir = os.path.join(out_dir, "workspace")
+    os.makedirs(workspace_dir, exist_ok=True)
+    docs_dir = os.path.join(workspace_dir, "docs")
     if os.path.isdir(docs_dir):
         shutil.rmtree(docs_dir)
     docs_missions_dir = os.path.join(docs_dir, "missions")
@@ -311,7 +313,7 @@ async def generate(
     from agflow.services import api_contracts_service as _ctr_svc
     from agflow.services import openapi_parser as _oapi
 
-    ctr_base_dir = os.path.join(out_dir, "docs", "ctr")
+    ctr_base_dir = os.path.join(workspace_dir, "docs", "ctr")
     if os.path.isdir(ctr_base_dir):
         shutil.rmtree(ctr_base_dir)
 

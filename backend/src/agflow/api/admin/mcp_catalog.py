@@ -19,13 +19,22 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[MCPServerSummary])
+@router.get(
+    "",
+    response_model=list[MCPServerSummary],
+    summary="List installed MCP servers",
+    description="Returns all MCP servers installed in the local catalog with their metadata, transport type, and recipes.",
+)
 async def list_mcps() -> list[MCPServerSummary]:
     return await mcp_catalog_service.list_all()
 
 
 @router.post(
-    "", response_model=MCPServerSummary, status_code=status.HTTP_201_CREATED
+    "",
+    response_model=MCPServerSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Install an MCP server into the catalog",
+    description="Installs an MCP server from a discovery service into the local catalog using the provided package ID, recipes, parameters, and category. Returns 409 if the server is already installed.",
 )
 async def install_mcp(payload: MCPInstallPayload) -> MCPServerSummary:
     try:
@@ -42,7 +51,12 @@ async def install_mcp(payload: MCPInstallPayload) -> MCPServerSummary:
         ) from exc
 
 
-@router.put("/{mcp_id}", response_model=MCPServerSummary)
+@router.put(
+    "/{mcp_id}",
+    response_model=MCPServerSummary,
+    summary="Update MCP server parameters",
+    description="Updates the runtime parameters of an installed MCP server by its UUID. Returns 404 if the server is not found.",
+)
 async def update_mcp_parameters(
     mcp_id: UUID, payload: MCPParametersUpdate
 ) -> MCPServerSummary:
@@ -56,7 +70,12 @@ async def update_mcp_parameters(
         ) from exc
 
 
-@router.delete("/{mcp_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{mcp_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Uninstall an MCP server from the catalog",
+    description="Removes an MCP server from the local catalog by its UUID. Returns 404 if the server is not found.",
+)
 async def delete_mcp(mcp_id: UUID) -> None:
     try:
         await mcp_catalog_service.delete(mcp_id)

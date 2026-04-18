@@ -35,12 +35,23 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[RoleSummary])
+@router.get(
+    "",
+    response_model=list[RoleSummary],
+    summary="List all roles",
+    description="Returns all agent roles as a list of RoleSummary objects, including their id, display name, description, and supported service types.",
+)
 async def list_roles() -> list[RoleSummary]:
     return await roles_service.list_all()
 
 
-@router.post("", response_model=RoleSummary, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=RoleSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a role",
+    description="Creates a new agent role. Returns 201 with the RoleSummary on success, 409 if the role id already exists, or 400 if an invalid service type is provided.",
+)
 async def create_role(payload: RoleCreate) -> RoleSummary:
     try:
         return await roles_service.create(
@@ -60,7 +71,12 @@ async def create_role(payload: RoleCreate) -> RoleSummary:
         ) from exc
 
 
-@router.get("/{role_id}", response_model=RoleDetail)
+@router.get(
+    "/{role_id}",
+    response_model=RoleDetail,
+    summary="Get role detail with sections and documents",
+    description="Returns the full RoleDetail for the given role, including its sections and associated documents grouped by section. Returns 404 if the role does not exist.",
+)
 async def get_role(role_id: str) -> RoleDetail:
     try:
         role = await roles_service.get_by_id(role_id)
@@ -80,7 +96,12 @@ async def get_role(role_id: str) -> RoleDetail:
     return RoleDetail(role=role, sections=sections_with_docs)
 
 
-@router.put("/{role_id}", response_model=RoleSummary)
+@router.put(
+    "/{role_id}",
+    response_model=RoleSummary,
+    summary="Update a role",
+    description="Partially updates the given role (display name, description, identity markdown, service types). Returns the updated RoleSummary, 404 if not found, or 400 if an invalid service type is provided.",
+)
 async def update_role(role_id: str, payload: RoleUpdate) -> RoleSummary:
     try:
         return await roles_service.update(
@@ -96,7 +117,12 @@ async def update_role(role_id: str, payload: RoleUpdate) -> RoleSummary:
         ) from exc
 
 
-@router.delete("/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{role_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a role",
+    description="Permanently deletes the role and all its associated sections and documents. Returns 204 on success, or 404 if the role does not exist.",
+)
 async def delete_role(role_id: str) -> None:
     try:
         await roles_service.delete(role_id)
@@ -106,7 +132,11 @@ async def delete_role(role_id: str) -> None:
         ) from exc
 
 
-@router.get("/{role_id}/export")
+@router.get(
+    "/{role_id}/export",
+    summary="Export a role as a ZIP archive",
+    description="Builds an in-memory ZIP containing role.json (metadata + sections) and one Markdown file per document, then streams it as a download. Returns 404 if the role does not exist.",
+)
 async def export_role(role_id: str) -> StreamingResponse:
     try:
         role = await roles_service.get_by_id(role_id)
@@ -141,7 +171,11 @@ async def export_role(role_id: str) -> StreamingResponse:
     )
 
 
-@router.post("/{role_id}/import")
+@router.post(
+    "/{role_id}/import",
+    summary="Import role content from a ZIP archive",
+    description="Reads a ZIP produced by the export endpoint and upserts all documents into the existing role. Role metadata (display name, description, identity) is updated when present in role.json. Returns the updated RoleDetail, or 404 if the role does not exist.",
+)
 async def import_role(role_id: str, file: UploadFile = File(...)) -> RoleDetail:
     try:
         await roles_service.get_by_id(role_id)
@@ -196,7 +230,12 @@ async def import_role(role_id: str, file: UploadFile = File(...)) -> RoleDetail:
     return await get_role(role_id)
 
 
-@router.post("/{role_id}/generate-prompts", response_model=RoleSummary)
+@router.post(
+    "/{role_id}/generate-prompts",
+    response_model=RoleSummary,
+    summary="Generate orchestrator prompt from role documents",
+    description="Calls Anthropic Claude to synthesize all role documents and sections into a prompt_orchestrator_md field, then persists it on the role. Returns 404 if not found, or 412 if the ANTHROPIC_API_KEY secret is missing.",
+)
 async def generate_prompts_endpoint(role_id: str) -> RoleSummary:
     try:
         role = await roles_service.get_by_id(role_id)
@@ -222,7 +261,12 @@ async def generate_prompts_endpoint(role_id: str) -> RoleSummary:
     )
 
 
-@router.get("/{role_id}/documents", response_model=list[DocumentSummary])
+@router.get(
+    "/{role_id}/documents",
+    response_model=list[DocumentSummary],
+    summary="List documents for a role",
+    description="Returns all documents belonging to the specified role as a list of DocumentSummary objects, ordered by section and position.",
+)
 async def list_documents(role_id: str) -> list[DocumentSummary]:
     return await role_documents_service.list_for_role(role_id)
 
@@ -231,6 +275,8 @@ async def list_documents(role_id: str) -> list[DocumentSummary]:
     "/{role_id}/documents",
     response_model=DocumentSummary,
     status_code=status.HTTP_201_CREATED,
+    summary="Create a document in a role",
+    description="Adds a new Markdown document to the specified role under the given section. Returns 201 with the DocumentSummary, or 409 if a document with the same name already exists in that section.",
 )
 async def create_document(role_id: str, payload: DocumentCreate) -> DocumentSummary:
     try:
@@ -247,7 +293,12 @@ async def create_document(role_id: str, payload: DocumentCreate) -> DocumentSumm
         ) from exc
 
 
-@router.put("/{role_id}/documents/{doc_id}", response_model=DocumentSummary)
+@router.put(
+    "/{role_id}/documents/{doc_id}",
+    response_model=DocumentSummary,
+    summary="Update a document",
+    description="Updates the name, Markdown content, and/or protected flag of a document. Returns the updated DocumentSummary, 404 if not found, or 403 if the document is protected.",
+)
 async def update_document(
     role_id: str, doc_id: UUID, payload: DocumentUpdate
 ) -> DocumentSummary:
@@ -266,7 +317,10 @@ async def update_document(
 
 
 @router.delete(
-    "/{role_id}/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/{role_id}/documents/{doc_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a document",
+    description="Permanently deletes the specified document. Returns 204 on success, 404 if not found, or 403 if the document is protected and cannot be deleted.",
 )
 async def delete_document(role_id: str, doc_id: UUID) -> None:
     try:
@@ -281,7 +335,12 @@ async def delete_document(role_id: str, doc_id: UUID) -> None:
         ) from exc
 
 
-@router.get("/{role_id}/sections", response_model=list[SectionSummary])
+@router.get(
+    "/{role_id}/sections",
+    response_model=list[SectionSummary],
+    summary="List sections for a role",
+    description="Returns all sections belonging to the specified role as a list of SectionSummary objects. Returns 404 if the role does not exist.",
+)
 async def list_sections(role_id: str) -> list[SectionSummary]:
     try:
         await roles_service.get_by_id(role_id)
@@ -296,6 +355,8 @@ async def list_sections(role_id: str) -> list[SectionSummary]:
     "/{role_id}/sections",
     response_model=SectionSummary,
     status_code=status.HTTP_201_CREATED,
+    summary="Create a section in a role",
+    description="Adds a new section to the specified role. Returns 201 with the SectionSummary, 404 if the role does not exist, or 409 if a section with the same name already exists.",
 )
 async def create_section(
     role_id: str, payload: SectionCreate
@@ -317,7 +378,10 @@ async def create_section(
 
 
 @router.delete(
-    "/{role_id}/sections/{name}", status_code=status.HTTP_204_NO_CONTENT
+    "/{role_id}/sections/{name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a section from a role",
+    description="Permanently deletes the named section. Returns 204 on success, 404 if not found, 403 if the section is native/protected, or 409 if the section still contains documents.",
 )
 async def delete_section(role_id: str, name: str) -> None:
     try:

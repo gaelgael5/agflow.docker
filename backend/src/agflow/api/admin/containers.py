@@ -40,6 +40,8 @@ class RunPayload(BaseModel):
     "/dockerfiles/{dockerfile_id}/run",
     response_model=ContainerInfo,
     status_code=status.HTTP_201_CREATED,
+    summary="Start a container from a dockerfile",
+    description="Launches a new Docker container from the latest built image of the specified dockerfile. Reads Dockerfile.json for runtime config, resolves {KEY} secret templates, and creates the container via aiodocker. Returns 409 if the image is not up to date.",
 )
 async def run_dockerfile(
     dockerfile_id: str, payload: RunPayload | None = None
@@ -103,6 +105,8 @@ async def run_dockerfile(
 @router.post(
     "/dockerfiles/{dockerfile_id}/regenerate-tmp",
     status_code=status.HTTP_200_OK,
+    summary="Regenerate tmp run files without launching",
+    description="Regenerates .tmp/run.sh and .tmp/.env from Dockerfile.json and resolved secrets without actually starting a container. Useful for previewing the resolved configuration before launch.",
 )
 async def regenerate_tmp_files(
     dockerfile_id: str, payload: RunPayload | None = None
@@ -145,13 +149,22 @@ async def regenerate_tmp_files(
     return {"status": "ok"}
 
 
-@router.get("/containers", response_model=list[ContainerInfo])
+@router.get(
+    "/containers",
+    response_model=list[ContainerInfo],
+    summary="List all managed containers",
+    description="Returns all Docker containers managed by agflow, regardless of their current state (running, stopped, exited).",
+)
 async def list_containers() -> list[ContainerInfo]:
     """List all agflow-managed containers (running, stopped, etc.)."""
     return await container_runner.list_running()
 
 
-@router.get("/containers/{container_id}/logs")
+@router.get(
+    "/containers/{container_id}/logs",
+    summary="Get container logs",
+    description="Fetches the stdout and stderr logs of a container, returning the last N lines (default 200). Returns 404 if the container is not found.",
+)
 async def container_logs(container_id: str, tail: int = 200) -> str:
     import aiodocker
 
@@ -171,6 +184,8 @@ async def container_logs(container_id: str, tail: int = 200) -> str:
 @router.delete(
     "/containers/{container_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Stop and remove a container",
+    description="Stops and removes the specified agflow-managed container by its ID. Returns 404 if the container is not found.",
 )
 async def stop_container(container_id: str) -> None:
     try:
@@ -181,7 +196,11 @@ async def stop_container(container_id: str) -> None:
         ) from exc
 
 
-@router.post("/dockerfiles/{dockerfile_id}/task")
+@router.post(
+    "/dockerfiles/{dockerfile_id}/task",
+    summary="Run a one-shot task via a dockerfile",
+    description="Starts a container from the specified dockerfile, sends an instruction as a JSON task on stdin, and streams newline-delimited JSON events back as the agent runs. The container is automatically removed on exit.",
+)
 async def run_task(
     dockerfile_id: str, payload: TaskRequest
 ) -> StreamingResponse:
@@ -256,7 +275,11 @@ async def run_task(
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
 
-@router.post("/agents/{agent_slug}/task")
+@router.post(
+    "/agents/{agent_slug}/task",
+    summary="Run a one-shot task via a named agent",
+    description="Loads the agent's generated prompt and env overrides, prepends the system prompt to the instruction, and streams newline-delimited JSON events from the running container. The container is automatically removed on exit.",
+)
 async def run_agent_task(
     agent_slug: str,
     payload: TaskRequest,

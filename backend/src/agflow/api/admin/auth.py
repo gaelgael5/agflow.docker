@@ -34,7 +34,12 @@ def _build_redirect_uri(request: Request) -> str:
     return f"{proto}://{host}/api/admin/auth/google/callback"
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    summary="Authenticate admin user",
+    description="Validates email/password credentials against the configured admin account and returns a signed JWT access token.",
+)
 async def login(payload: LoginRequest) -> LoginResponse:
     settings = get_settings()
     if payload.email.lower() != settings.admin_email.lower():
@@ -45,7 +50,11 @@ async def login(payload: LoginRequest) -> LoginResponse:
     return LoginResponse(access_token=token)
 
 
-@router.get("/google")
+@router.get(
+    "/google",
+    summary="Initiate Google OAuth2 login",
+    description="Redirects the browser to Google's OAuth2 consent page. Generates and stores a CSRF state token before redirecting.",
+)
 async def google_login(request: Request) -> RedirectResponse:
     settings = get_settings()
     if not settings.google_client_id:
@@ -68,7 +77,11 @@ async def google_login(request: Request) -> RedirectResponse:
     return RedirectResponse(f"{_GOOGLE_AUTH_URL}?{urlencode(params)}")
 
 
-@router.get("/google/callback")
+@router.get(
+    "/google/callback",
+    summary="Handle Google OAuth2 callback",
+    description="Exchanges the authorization code for tokens, fetches user info from Google, creates or links the user account, and redirects to the frontend with a JWT token.",
+)
 async def google_callback(request: Request, code: str = "", state: str = "") -> RedirectResponse:
     if not state or state not in _oauth_states:
         raise HTTPException(400, "Invalid OAuth state")
@@ -153,6 +166,11 @@ async def google_callback(request: Request, code: str = "", state: str = "") -> 
     return RedirectResponse(f"/login?token={jwt_token}")
 
 
-@router.get("/me", response_model=Me)
+@router.get(
+    "/me",
+    response_model=Me,
+    summary="Get current authenticated user",
+    description="Returns the email address of the currently authenticated admin user based on the JWT token.",
+)
 async def me(admin_email: str = Depends(require_admin)) -> Me:
     return Me(email=admin_email)

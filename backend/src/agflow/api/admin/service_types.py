@@ -13,7 +13,12 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[ServiceTypeSummary])
+@router.get(
+    "",
+    response_model=list[ServiceTypeSummary],
+    summary="List all service types",
+    description="Returns all registered agent service types (e.g. claude-code, aider, codex) available for use in compositions.",
+)
 async def list_service_types() -> list[ServiceTypeSummary]:
     return await service_types_service.list_all()
 
@@ -22,6 +27,8 @@ async def list_service_types() -> list[ServiceTypeSummary]:
     "",
     response_model=ServiceTypeSummary,
     status_code=status.HTTP_201_CREATED,
+    summary="Register a new service type",
+    description="Creates a new agent service type with a unique slug name and a human-readable display name. Returns 409 if the name is already taken.",
 )
 async def create_service_type(
     payload: ServiceTypeCreate,
@@ -36,7 +43,12 @@ async def create_service_type(
         ) from exc
 
 
-@router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a service type",
+    description="Removes a service type by slug name. Returns 403 if the type is protected, 404 if not found, or 409 if it is still referenced by existing compositions.",
+)
 async def delete_service_type(name: str) -> None:
     try:
         await service_types_service.delete(name)

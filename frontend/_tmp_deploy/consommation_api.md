@@ -25,9 +25,7 @@ Guider l'intégration de l'API v1 : authentification, sessions, instanciation d'
 ## Étape 2 : Lister les agents disponibles
 
 ```bash
-curl -s \
-  -H "Authorization: Bearer ${API_KEY}" \
-  "${BASE_URL}/api/v1/agents"
+bash(./docs/ctr/docker-api/public-agents/ListAgents.sh)
 ```
 
 Retourne la liste des agents avec leur slug, nom, dockerfile, rôle.
@@ -35,11 +33,7 @@ Retourne la liste des agents avec leur slug, nom, dockerfile, rôle.
 ## Étape 3 : Créer une session
 
 ```bash
-curl -s -X POST \
-  -H "Authorization: Bearer ${API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "ma-session", "duration_seconds": 3600}' \
-  "${BASE_URL}/api/v1/sessions"
+bash(./docs/ctr/docker-api/untagged/CreateSession.sh '{"name": "ma-session", "duration_seconds": 3600}')
 ```
 
 Retourne un `session_id` (UUID) à utiliser pour la suite.
@@ -47,11 +41,7 @@ Retourne un `session_id` (UUID) à utiliser pour la suite.
 ## Étape 4 : Instancier un agent dans la session
 
 ```bash
-curl -s -X POST \
-  -H "Authorization: Bearer ${API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id": "agent-helper", "mission": "Aide-moi à configurer un agent"}' \
-  "${BASE_URL}/api/v1/sessions/${SESSION_ID}/agents"
+bash(./docs/ctr/docker-api/untagged/CreateAgents.sh <session_id> '{"agent_id": "agent-helper"}')
 ```
 
 Retourne un `instance_id` qui identifie cette instance d'agent dans la session.
@@ -59,23 +49,19 @@ Retourne un `instance_id` qui identifie cette instance d'agent dans la session.
 ## Étape 5 : Envoyer un message
 
 ```bash
-curl -s -X POST \
-  -H "Authorization: Bearer ${API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"kind": "instruction", "payload": {"text": "Liste les dockerfiles disponibles"}}' \
-  "${BASE_URL}/api/v1/sessions/${SESSION_ID}/agents/${INSTANCE_ID}/message"
+bash(./docs/ctr/docker-api/untagged/PostMessage.sh <session_id> <instance_id> '{"kind": "instruction", "payload": {"text": "Liste les dockerfiles"}}')
 ```
 
 ## Étape 6 : Récupérer les réponses
 
 ### Par polling
+
 ```bash
-curl -s \
-  -H "Authorization: Bearer ${API_KEY}" \
-  "${BASE_URL}/api/v1/sessions/${SESSION_ID}/messages"
+bash(./docs/ctr/docker-api/untagged/GetSessionMessages.sh <session_id>)
 ```
 
 ### Par WebSocket (streaming temps réel)
+
 ```javascript
 const ws = new WebSocket(`wss://${HOST}/api/v1/sessions/${sessionId}/stream`);
 ws.onmessage = (event) => {
@@ -84,14 +70,10 @@ ws.onmessage = (event) => {
 };
 ```
 
-Les événements poussés : messages OUT de tous les agents de la session.
-
 ## Étape 7 : Fermer la session
 
 ```bash
-curl -s -X DELETE \
-  -H "Authorization: Bearer ${API_KEY}" \
-  "${BASE_URL}/api/v1/sessions/${SESSION_ID}"
+bash(./docs/ctr/docker-api/untagged/CloseSession.sh <session_id>)
 ```
 
 ## Points de vigilance
@@ -100,36 +82,6 @@ curl -s -X DELETE \
 - Chaque message transite par le bus interne pour traçabilité
 - Les secrets de l'agent sont résolus côté serveur — jamais exposés dans l'API publique
 - Le scope de l'API key doit couvrir les actions demandées (sinon 403)
-
-## Intégration Python (exemple)
-```python
-import requests
-
-BASE = "https://docker-agflow.yoops.org"
-HEADERS = {"Authorization": f"Bearer {API_KEY}"}
-
-# Créer session
-session = requests.post(f"{BASE}/api/v1/sessions",
-    json={"name": "test", "duration_seconds": 600},
-    headers=HEADERS).json()
-
-# Instancier agent
-instance = requests.post(
-    f"{BASE}/api/v1/sessions/{session['id']}/agents",
-    json={"agent_id": "agent-helper"},
-    headers=HEADERS).json()
-
-# Envoyer message
-requests.post(
-    f"{BASE}/api/v1/sessions/{session['id']}/agents/{instance['id']}/message",
-    json={"kind": "instruction", "payload": {"text": "Liste les agents"}},
-    headers=HEADERS)
-
-# Lire réponses
-messages = requests.get(
-    f"{BASE}/api/v1/sessions/{session['id']}/messages",
-    headers=HEADERS).json()
-```
 
 ## Critère de succès
 Le développeur envoie une instruction via l'API et reçoit la réponse de l'agent, soit par polling soit par WebSocket.

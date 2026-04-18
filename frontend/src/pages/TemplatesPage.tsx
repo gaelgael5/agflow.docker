@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useTemplates } from "@/hooks/useTemplates";
 import {
@@ -28,6 +29,7 @@ function extractCulture(filename: string): string {
 
 export function TemplatesPage() {
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const { templates, isLoading, createMutation, deleteMutation } =
     useTemplates();
 
@@ -204,10 +206,36 @@ export function TemplatesPage() {
           <>
             {/* Left sidebar: file list */}
             <aside className="w-56 shrink-0 border-r bg-background overflow-y-auto flex flex-col">
-              <div className="p-3 border-b flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  {t("templates.page_title")}
-                </span>
+              <div key={`${detail.slug}-${detail.display_name}`} className="p-3 border-b space-y-2">
+                <input
+                  type="text"
+                  className="w-full text-[13px] font-semibold bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none py-0.5 transition-colors"
+                  defaultValue={detail.display_name}
+                  onBlur={async (e) => {
+                    const val = e.target.value.trim();
+                    if (val && val !== detail.display_name) {
+                      await templatesApi.update(selectedSlug!, { display_name: val });
+                      qc.invalidateQueries({ queryKey: ["templates"] });
+                      qc.invalidateQueries({ queryKey: ["template", selectedSlug] });
+                    }
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                />
+                <input
+                  type="text"
+                  className="w-full text-[11px] text-muted-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none py-0.5 transition-colors"
+                  defaultValue={detail.description ?? ""}
+                  placeholder={t("templates.description_placeholder")}
+                  onBlur={async (e) => {
+                    const val = e.target.value.trim();
+                    if (val !== (detail.description ?? "")) {
+                      await templatesApi.update(selectedSlug!, { description: val });
+                      qc.invalidateQueries({ queryKey: ["templates"] });
+                      qc.invalidateQueries({ queryKey: ["template", selectedSlug] });
+                    }
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                />
               </div>
 
               <div className="flex-1 overflow-y-auto p-2 space-y-0.5">

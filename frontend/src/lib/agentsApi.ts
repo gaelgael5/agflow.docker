@@ -14,6 +14,23 @@ export interface AgentSkillBinding {
   position: number;
 }
 
+export interface AgentGenerationProfile {
+  name: string;
+  description: string;
+  documents: string[];
+  template_slug: string;
+  template_culture: string;
+  output_dir: string;
+}
+
+export interface AgentGeneration {
+  role_id: string;
+  template_slug: string;
+  template_culture: string;
+  prompt_filename: string;
+  profiles: AgentGenerationProfile[];
+}
+
 export interface AgentSummary {
   id: string;
   slug: string;
@@ -28,9 +45,16 @@ export interface AgentSummary {
   graceful_shutdown_secs: number;
   force_kill_delay_secs: number;
   is_assistant: boolean;
+  mcp_template_slug: string;
+  mcp_template_culture: string;
+  mcp_config_filename: string;
+  skills_template_slug: string;
+  skills_template_culture: string;
+  skills_config_filename: string;
   prompt_template_slug: string;
   prompt_template_culture: string;
   prompt_filename: string;
+  generations: AgentGeneration[];
   created_at: string;
   updated_at: string;
   has_errors: boolean;
@@ -87,9 +111,16 @@ export interface AgentCreatePayload {
   force_kill_delay_secs?: number;
   mcp_bindings?: AgentMCPBinding[];
   skill_bindings?: AgentSkillBinding[];
+  mcp_template_slug?: string;
+  mcp_template_culture?: string;
+  mcp_config_filename?: string;
+  skills_template_slug?: string;
+  skills_template_culture?: string;
+  skills_config_filename?: string;
   prompt_template_slug?: string;
   prompt_template_culture?: string;
   prompt_filename?: string;
+  generations?: AgentGeneration[];
 }
 
 export type AgentUpdatePayload = Omit<AgentCreatePayload, "slug">;

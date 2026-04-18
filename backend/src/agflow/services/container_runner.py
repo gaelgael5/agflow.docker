@@ -544,6 +544,8 @@ def build_run_config(
             continue
         raw_source = str(m.get("source", "")).strip()
         target = full_resolve(str(m.get("target", "")).strip(), vars_map, extra_env)
+        if target.startswith("~/"):
+            target = "/root/" + target[2:]
         if not raw_source or not target:
             continue
         host_source, _container_path, _auto = resolve_mount_source(

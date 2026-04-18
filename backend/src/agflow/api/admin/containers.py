@@ -321,8 +321,12 @@ async def run_agent_task(
             detail="Le dockerfile n'est pas à jour — compilez-le d'abord.",
         )
 
-    # Read generated prompt (filename varies per agent CLI: CLAUDE.md, AGENTS.md, etc.)
-    prompt_filename = agent_data.get("prompt_filename", "prompt.md")
+    # Read generated prompt — use first generation's filename, fallback to legacy
+    generations = agent_data.get("generations", [])
+    if generations:
+        prompt_filename = generations[0].get("prompt_filename", "prompt.md")
+    else:
+        prompt_filename = agent_data.get("prompt_filename", "prompt.md")
     prompt_path = os.path.join(
         data_dir, "agents", agent_slug, "generated", prompt_filename
     )

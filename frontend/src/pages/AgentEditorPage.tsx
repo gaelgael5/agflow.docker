@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
+import Markdown from "react-markdown";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   BookMarked,
   ChevronRight,
+  HelpCircle,
   Lock,
   Unlock,
   Copy,
@@ -41,9 +43,9 @@ import { ChatWindow } from "@/components/ChatWindow";
 import { CodeEditor } from "@/components/CodeEditor";
 import { FileTree } from "@/components/FileTree";
 import { TerminalWindow } from "@/components/TerminalWindow";
-import { ProfileInlineEditor } from "@/components/ProfileInlineEditor";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useEmptyLaunchKeys } from "@/hooks/useEmptyLaunchKeys";
+import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { VaultUnlockDialog } from "@/components/VaultUnlockDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { PageShell } from "@/components/layout/PageHeader";
@@ -76,8 +78,8 @@ import {
 import {
   agentsApi,
   type AgentCreatePayload,
+  type AgentGeneration,
   type AgentMCPBinding,
-  type AgentProfileSummary,
   type AgentSkillBinding,
   type ConfigPreview,
   type NetworkMode,
@@ -110,9 +112,16 @@ interface FormState {
   force_kill_delay_secs: number;
   mcp_bindings: AgentMCPBinding[];
   skill_bindings: AgentSkillBinding[];
+  mcp_template_slug: string;
+  mcp_template_culture: string;
+  mcp_config_filename: string;
+  skills_template_slug: string;
+  skills_template_culture: string;
+  skills_config_filename: string;
   prompt_template_slug: string;
   prompt_template_culture: string;
   prompt_filename: string;
+  generations: AgentGeneration[];
 }
 
 const EMPTY_FORM: FormState = {
@@ -131,13 +140,20 @@ const EMPTY_FORM: FormState = {
   force_kill_delay_secs: 10,
   mcp_bindings: [],
   skill_bindings: [],
+  mcp_template_slug: "",
+  mcp_template_culture: "",
+  mcp_config_filename: "config.toml",
+  skills_template_slug: "",
+  skills_template_culture: "",
+  skills_config_filename: "skills.md",
   prompt_template_slug: "",
   prompt_template_culture: "",
   prompt_filename: "prompt.md",
+  generations: [],
 };
 
 export function AgentEditorPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { id } = useParams<{ id: string }>();
@@ -159,7 +175,6 @@ export function AgentEditorPage() {
     previewProfileId ?? undefined,
   );
   const profilesHook = useAgentProfiles(isNew ? undefined : id);
-  const roleDetailQuery = useRoleDetail(isNew ? null : agent?.role_id ?? null);
   const contractsHook = useContracts(isNew ? undefined : id);
   const [showContractDialog, setShowContractDialog] = useState(false);
   const [editingContract, setEditingContract] = useState<ContractSummary | null>(null);
@@ -169,10 +184,16 @@ export function AgentEditorPage() {
   const dockerfileDetailQuery = useDockerfileDetail(form.dockerfile_id || null);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+
+  const helpContent = useMemo(() => {
+    const files = dockerfileDetailQuery.data?.files ?? [];
+    const lang = i18n.language.split("-")[0] ?? "fr";
+    const helpFile = files.find((f) => f.path === `help.${lang}.md`) ?? files.find((f) => f.path === "help.fr.md");
+    return helpFile?.content ?? null;
+  }, [dockerfileDetailQuery.data, i18n.language]);
   const [preview, setPreview] = useState<ConfigPreview | null>(null);
   const [slugTouched, setSlugTouched] = useState(false);
-  const [editingProfile, setEditingProfile] =
-    useState<AgentProfileSummary | null>(null);
   const [showAddProfileDialog, setShowAddProfileDialog] = useState(false);
   const [addProfileError, setAddProfileError] = useState<string | null>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
@@ -249,9 +270,16 @@ export function AgentEditorPage() {
         force_kill_delay_secs: agent.force_kill_delay_secs,
         mcp_bindings: agent.mcp_bindings,
         skill_bindings: agent.skill_bindings,
+        mcp_template_slug: agent.mcp_template_slug ?? "",
+        mcp_template_culture: agent.mcp_template_culture ?? "",
+        mcp_config_filename: agent.mcp_config_filename ?? "config.toml",
+        skills_template_slug: agent.skills_template_slug ?? "",
+        skills_template_culture: agent.skills_template_culture ?? "",
+        skills_config_filename: agent.skills_config_filename ?? "skills.md",
         prompt_template_slug: agent.prompt_template_slug ?? "",
         prompt_template_culture: agent.prompt_template_culture ?? "",
         prompt_filename: agent.prompt_filename ?? "prompt.md",
+        generations: agent.generations ?? [],
       });
     }
   }, [isNew, agent]);
@@ -359,23 +387,38 @@ export function AgentEditorPage() {
   }
 
   // Resolve secret status from user vault (not platform secrets)
-  const vaultSecretStatus = useMemo(() => {
-    if (!decryptedSecrets) return {} as Record<string, "ok" | "empty" | "missing">;
-    const status: Record<string, "ok" | "empty" | "missing"> = {};
+  // Collect secret refs for platform status check
+  const secretRefNames = useMemo(() => {
+    const names: string[] = [];
     for (const key of dockerfileEnvKeys) {
       const override = form.env_overrides[key];
       if (override?.excluded) continue;
       const val = override?.value ?? getBaseEnvValue(key);
       const name = extractSecretName(val);
-      if (!name) continue;
-      if (name in decryptedSecrets) {
+      if (name) names.push(name);
+    }
+    return names;
+  }, [dockerfileEnvKeys, form.env_overrides, dockerfileDetailQuery.data]);
+
+  const platformSecretStatus = useEnvVarStatuses(secretRefNames);
+
+  const vaultSecretStatus = useMemo(() => {
+    const status: Record<string, "ok" | "empty" | "missing"> = {};
+    for (const name of secretRefNames) {
+      // Check vault first (user secrets)
+      if (decryptedSecrets && name in decryptedSecrets) {
         status[name] = decryptedSecrets[name] ? "ok" : "empty";
+      // Then platform secrets
+      } else if (platformSecretStatus.data?.[name]) {
+        status[name] = platformSecretStatus.data[name];
+      } else if (platformSecretStatus.isLoading) {
+        // Don't show red while loading
       } else {
         status[name] = "missing";
       }
     }
     return status;
-  }, [dockerfileEnvKeys, form.env_overrides, decryptedSecrets, dockerfileDetailQuery.data]);
+  }, [secretRefNames, decryptedSecrets, platformSecretStatus.data, platformSecretStatus.isLoading]);
 
   const mcpName = (mcpId: string): string =>
     availableMCPs.find((m) => m.id === mcpId)?.name ?? mcpId;
@@ -479,9 +522,16 @@ export function AgentEditorPage() {
       force_kill_delay_secs: form.force_kill_delay_secs,
       mcp_bindings: form.mcp_bindings,
       skill_bindings: form.skill_bindings,
+      mcp_template_slug: form.mcp_template_slug,
+      mcp_template_culture: form.mcp_template_culture,
+      mcp_config_filename: form.mcp_config_filename,
+      skills_template_slug: form.skills_template_slug,
+      skills_template_culture: form.skills_template_culture,
+      skills_config_filename: form.skills_config_filename,
       prompt_template_slug: form.prompt_template_slug,
       prompt_template_culture: form.prompt_template_culture,
       prompt_filename: form.prompt_filename,
+      generations: form.generations,
     };
   }
 
@@ -527,32 +577,18 @@ export function AgentEditorPage() {
     if (isNew || !id) return;
     setAddProfileError(null);
     try {
-      const created = await profilesHook.createMutation.mutateAsync({
+      await profilesHook.createMutation.mutateAsync({
         name: values.name ?? "",
         description: values.description ?? "",
         document_ids: [],
       });
-      setEditingProfile(created);
+      // Profile created via legacy API
     } catch (e) {
       const detail = (e as { response?: { data?: { detail?: string } } })
         .response?.data?.detail;
       setAddProfileError(detail ?? t("agent_editor.error_generic"));
       throw e;
     }
-  }
-
-  function handleDeleteProfile(profile: AgentProfileSummary) {
-    setDeleteProfileTarget({ id: profile.id, name: profile.name });
-  }
-
-  async function handleSaveProfileDocs(
-    profile: AgentProfileSummary,
-    document_ids: string[],
-  ) {
-    await profilesHook.updateMutation.mutateAsync({
-      profileId: profile.id,
-      payload: { document_ids },
-    });
   }
 
   async function handleDuplicateSubmit(values: Record<string, string>) {
@@ -711,6 +747,17 @@ export function AgentEditorPage() {
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                 </Button>
+                {helpContent && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className={cn("h-7 w-7", showHelp && "bg-primary/10 text-primary")}
+                    title={t("agent_editor.help_button")}
+                    onClick={() => setShowHelp((v) => !v)}
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" />
+                  </Button>
+                )}
                 <Button
                   size="icon"
                   variant="ghost"
@@ -870,6 +917,49 @@ export function AgentEditorPage() {
           defaultOpen={false}
         >
         <Card>
+          <CardContent className="pt-4 pb-2">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <Label className="text-[11px]">{t("agent_editor.mcp_template")}</Label>
+                <select
+                  className="text-[12px] border rounded px-2 py-1.5 bg-background w-full"
+                  value={form.mcp_template_slug}
+                  onChange={(e) => updateField("mcp_template_slug", e.target.value)}
+                >
+                  <option value="">— {t("agent_editor.mcp_no_template")} —</option>
+                  {(templatesList ?? []).map((tpl) => (
+                    <option key={tpl.slug} value={tpl.slug}>{tpl.display_name}</option>
+                  ))}
+                </select>
+              </div>
+              {form.mcp_template_slug && (
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-[11px]">Culture</Label>
+                  <select
+                    className="text-[12px] border rounded px-2 py-1.5 bg-background"
+                    value={form.mcp_template_culture}
+                    onChange={(e) => updateField("mcp_template_culture", e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {(templatesList ?? [])
+                      .find((t) => t.slug === form.mcp_template_slug)
+                      ?.cultures.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-[11px]">{t("agent_editor.mcp_config_filename")}</Label>
+                <Input
+                  className="text-[12px] font-mono w-40"
+                  value={form.mcp_config_filename}
+                  onChange={(e) => updateField("mcp_config_filename", e.target.value)}
+                  placeholder="config.toml"
+                />
+              </div>
+            </div>
+          </CardContent>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -1060,6 +1150,49 @@ export function AgentEditorPage() {
           defaultOpen={false}
         >
         <Card>
+          <CardContent className="pt-4 pb-2">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <Label className="text-[11px]">{t("agent_editor.skills_template")}</Label>
+                <select
+                  className="text-[12px] border rounded px-2 py-1.5 bg-background w-full"
+                  value={form.skills_template_slug}
+                  onChange={(e) => updateField("skills_template_slug", e.target.value)}
+                >
+                  <option value="">— {t("agent_editor.skills_no_template")} —</option>
+                  {(templatesList ?? []).map((tpl) => (
+                    <option key={tpl.slug} value={tpl.slug}>{tpl.display_name}</option>
+                  ))}
+                </select>
+              </div>
+              {form.skills_template_slug && (
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-[11px]">Culture</Label>
+                  <select
+                    className="text-[12px] border rounded px-2 py-1.5 bg-background"
+                    value={form.skills_template_culture}
+                    onChange={(e) => updateField("skills_template_culture", e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {(templatesList ?? [])
+                      .find((t) => t.slug === form.skills_template_slug)
+                      ?.cultures.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-[11px]">{t("agent_editor.skills_config_filename")}</Label>
+                <Input
+                  className="text-[12px] font-mono w-40"
+                  value={form.skills_config_filename}
+                  onChange={(e) => updateField("skills_config_filename", e.target.value)}
+                  placeholder="skills.md"
+                />
+              </div>
+            </div>
+          </CardContent>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -1112,263 +1245,273 @@ export function AgentEditorPage() {
         </TabsContent>
 
         <TabsContent value="roles">
-      {/* Role selection */}
-      <Card className="mb-6">
-        <CardContent className="pt-5">
-          <div className="flex flex-col gap-1.5">
-            <Label>{t("agent_editor.section_role")}</Label>
-            <Select
-              value={form.role_id}
-              onValueChange={(v) => updateField("role_id", v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="—" />
-              </SelectTrigger>
-              <SelectContent>
-                {(roles ?? []).map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.display_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-3 mt-4">
-            <div className="flex flex-col gap-1.5 flex-1">
-              <Label>Template prompt</Label>
-              <select
-                className="text-[12px] border rounded px-2 py-1.5 bg-background w-full"
-                value={form.prompt_template_slug}
-                onChange={(e) => updateField("prompt_template_slug", e.target.value)}
-              >
-                <option value="">— aucun (identity seule) —</option>
-                {(templatesList ?? []).map((tpl) => (
-                  <option key={tpl.slug} value={tpl.slug}>
-                    {tpl.display_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {form.prompt_template_slug && (
-              <div className="flex flex-col gap-1.5">
-                <Label>Culture</Label>
-                <select
-                  className="text-[12px] border rounded px-2 py-1.5 bg-background"
-                  value={form.prompt_template_culture}
-                  onChange={(e) => updateField("prompt_template_culture", e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(templatesList ?? [])
-                    .find((t) => t.slug === form.prompt_template_slug)
-                    ?.cultures.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                </select>
-              </div>
-            )}
-            <div className="flex flex-col gap-1.5">
-              <Label>{t("agent_editor.prompt_filename")}</Label>
-              <Input
-                className="text-[12px] font-mono"
-                value={form.prompt_filename}
-                onChange={(e) => updateField("prompt_filename", e.target.value)}
-                placeholder="prompt.md"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          {/* Generations */}
+          {form.generations.map((gen, gi) => {
+            const roleName = (roles ?? []).find((r) => r.id === gen.role_id)?.display_name;
+            const genLabel = `${t("agent_editor.generation_title", { n: gi + 1 })}${roleName ? ` — ${roleName}` : ""}${gen.prompt_filename ? ` → ${gen.prompt_filename}` : ""}`;
+            return (
+            <CollapsibleSection key={gi} label={genLabel} defaultOpen={gi === 0}>
+            <Card className="mb-4">
+              <CardContent className="pt-5">
+                <div className="flex justify-end mb-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const next = form.generations.filter((_, i) => i !== gi);
+                      updateField("generations", next);
+                    }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                  </Button>
+                </div>
 
-      {/* Profiles */}
-      {!isNew && (
-        <>
-          <CollapsibleSection label={t("agent_editor.section_profiles")} defaultOpen={false}>
-          <Card className="mb-6">
-            <CardContent className="pt-5">
-              <p className="text-muted-foreground text-[12px] mb-3">
-                {t("agent_editor.profiles_subtitle")}
-              </p>
-              {(profilesHook.profiles ?? []).length === 0 ? (
-                <p className="text-muted-foreground italic text-[13px] mb-3">
-                  {t("agent_editor.profiles_empty")}
-                </p>
-              ) : (
-                <ul className="space-y-2 mb-3">
-                  {(profilesHook.profiles ?? []).map((p) => {
-                    const isEditing = editingProfile?.id === p.id;
-                    return (
-                      <li
-                        key={p.id}
-                        className={cn(
-                          "border rounded-md p-3",
-                          isEditing && "bg-secondary/40",
-                        )}
+                {/* Role + Template + Culture + Filename */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-[11px]">{t("agent_editor.section_role")}</Label>
+                    <select
+                      className="text-[12px] border rounded px-2 py-1.5 bg-background w-full"
+                      value={gen.role_id}
+                      onChange={(e) => {
+                        const next = [...form.generations];
+                        next[gi] = { ...gen, role_id: e.target.value };
+                        updateField("generations", next);
+                      }}
+                    >
+                      <option value="">—</option>
+                      {(roles ?? []).map((r) => (
+                        <option key={r.id} value={r.id}>{r.display_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-[11px]">Template</Label>
+                    <select
+                      className="text-[12px] border rounded px-2 py-1.5 bg-background w-full"
+                      value={gen.template_slug}
+                      onChange={(e) => {
+                        const next = [...form.generations];
+                        next[gi] = { ...gen, template_slug: e.target.value };
+                        updateField("generations", next);
+                      }}
+                    >
+                      <option value="">— aucun —</option>
+                      {(templatesList ?? []).map((tpl) => (
+                        <option key={tpl.slug} value={tpl.slug}>{tpl.display_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {gen.template_slug && (
+                    <div className="flex flex-col gap-1.5">
+                      <Label className="text-[11px]">Culture</Label>
+                      <select
+                        className="text-[12px] border rounded px-2 py-1.5 bg-background w-full"
+                        value={gen.template_culture}
+                        onChange={(e) => {
+                          const next = [...form.generations];
+                          next[gi] = { ...gen, template_culture: e.target.value };
+                          updateField("generations", next);
+                        }}
                       >
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-foreground text-[13px] truncate">
-                                {p.name}
-                              </span>
-                              <Badge variant="outline">
-                                {p.document_ids.length} docs
-                              </Badge>
-                              <select
-                                className="text-[11px] border rounded px-1.5 py-0.5 bg-background"
-                                value={p.template_slug ?? ""}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => {
-                                  profilesHook.updateMutation.mutate({
-                                    profileId: p.id,
-                                    payload: { template_slug: e.target.value },
-                                  });
-                                }}
-                              >
-                                <option value="">— template —</option>
-                                {(templatesList ?? []).map((tpl) => (
-                                  <option key={tpl.slug} value={tpl.slug}>
-                                    {tpl.display_name}
-                                  </option>
-                                ))}
-                              </select>
-                              {p.template_slug && (
-                                <select
-                                  className="text-[11px] border rounded px-1.5 py-0.5 bg-background"
-                                  value={p.template_culture ?? ""}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => {
-                                    profilesHook.updateMutation.mutate({
-                                      profileId: p.id,
-                                      payload: { template_culture: e.target.value },
-                                    });
-                                  }}
-                                >
-                                  <option value="">— culture —</option>
-                                  {(templatesList ?? [])
-                                    .find((t) => t.slug === p.template_slug)
-                                    ?.cultures.map((c) => (
-                                      <option key={c} value={c}>{c}</option>
-                                    ))}
-                                </select>
-                              )}
-                              <input
-                                type="text"
-                                className="text-[11px] border rounded px-1.5 py-0.5 bg-background font-mono w-44"
-                                placeholder="workspace/docs/missions"
-                                defaultValue={p.output_dir ?? "workspace/docs/missions"}
-                                onClick={(e) => e.stopPropagation()}
-                                onBlur={(e) => {
-                                  const val = e.target.value.trim();
-                                  if (val !== (p.output_dir ?? "workspace/docs/missions")) {
-                                    profilesHook.updateMutation.mutate({
-                                      profileId: p.id,
-                                      payload: { output_dir: val },
-                                    });
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                }}
-                                title="Répertoire de sortie"
-                              />
-                            </div>
-                            <div
-                              className="text-[12px] text-muted-foreground mt-0.5 cursor-pointer hover:text-foreground transition-colors min-h-[1.2em]"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const el = e.currentTarget;
-                                const input = document.createElement("input");
-                                input.type = "text";
-                                input.value = p.description;
-                                input.placeholder = t("agent_editor.profile_description_prompt");
-                                input.className = "text-[12px] bg-transparent border-b border-primary outline-none w-full py-0.5";
-                                const save = () => {
-                                  const val = input.value.trim();
-                                  if (val !== p.description) {
-                                    profilesHook.updateMutation.mutate({
-                                      profileId: p.id,
-                                      payload: { description: val },
-                                    });
-                                  }
-                                  el.textContent = val || t("agent_editor.profile_description_prompt");
-                                  el.style.opacity = val ? "1" : "0.5";
-                                };
-                                input.addEventListener("blur", save);
-                                input.addEventListener("keydown", (ke) => {
-                                  if (ke.key === "Enter") { ke.preventDefault(); input.blur(); }
-                                  if (ke.key === "Escape") { el.textContent = p.description || t("agent_editor.profile_description_prompt"); el.style.opacity = p.description ? "1" : "0.5"; }
-                                });
-                                el.textContent = "";
-                                el.appendChild(input);
-                                input.focus();
+                        <option value="">—</option>
+                        {(templatesList ?? [])
+                          .find((t) => t.slug === gen.template_slug)
+                          ?.cultures.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-[11px]">{t("agent_editor.prompt_filename")}</Label>
+                    <Input
+                      className="text-[12px] font-mono"
+                      value={gen.prompt_filename}
+                      onChange={(e) => {
+                        const next = [...form.generations];
+                        next[gi] = { ...gen, prompt_filename: e.target.value };
+                        updateField("generations", next);
+                      }}
+                      placeholder="prompt.md"
+                    />
+                  </div>
+                </div>
+
+                {/* Profiles for this generation */}
+                <div className="border-t pt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-[11px]">{t("agent_editor.section_profiles")}</Label>
+                  </div>
+                  {gen.profiles.length === 0 ? (
+                    <p className="text-muted-foreground italic text-[12px] mb-2">
+                      {t("agent_editor.profiles_empty")}
+                    </p>
+                  ) : (
+                    <ul className="space-y-2 mb-2">
+                      {gen.profiles.map((prof, pi) => (
+                        <li key={pi}>
+                          <CollapsibleSection
+                            label={prof.name || t("agent_editor.profile_name")}
+                            defaultOpen={false}
+                          >
+                          <div className="border rounded-md p-2">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Input
+                              className="text-[12px] font-semibold flex-1"
+                              value={prof.name}
+                              onChange={(e) => {
+                                const nextGens = [...form.generations];
+                                const nextProfs = [...gen.profiles];
+                                nextProfs[pi] = { ...prof, name: e.target.value };
+                                nextGens[gi] = { ...gen, profiles: nextProfs };
+                                updateField("generations", nextGens);
+                              }}
+                              placeholder={t("agent_editor.profile_name")}
+                            />
+                            <Badge variant="outline" className="text-[10px] shrink-0">
+                              {prof.documents.length} docs
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="shrink-0"
+                              onClick={() => {
+                                const nextGens = [...form.generations];
+                                const nextProfs = gen.profiles.filter((_, i) => i !== pi);
+                                nextGens[gi] = { ...gen, profiles: nextProfs };
+                                updateField("generations", nextGens);
                               }}
                             >
-                              {p.description || t("agent_editor.profile_description_prompt")}
-                            </div>
+                              <Trash2 className="w-3 h-3 text-destructive" />
+                            </Button>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setEditingProfile(isEditing ? null : p)
-                            }
-                          >
-                            {isEditing
-                              ? t("agent_editor.profile_close")
-                              : t("agent_editor.profile_edit")}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handlePreview(p.id)}
-                            aria-label={t("agent_editor.preview_with_profile")}
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteProfile(p)}
-                            aria-label={t("agent_editor.profile_delete")}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                        {isEditing && (
-                          <ProfileInlineEditor
-                            profile={p}
-                            roleDetail={roleDetailQuery.data}
-                            onSave={(doc_ids) =>
-                              handleSaveProfileDocs(p, doc_ids)
-                            }
-                            onClose={() => setEditingProfile(null)}
-                            onDelete={async () => {
-                              await handleDeleteProfile(p);
-                              setEditingProfile(null);
+                          <Input
+                            className="text-[11px] mb-1"
+                            value={prof.description}
+                            onChange={(e) => {
+                              const nextGens = [...form.generations];
+                              const nextProfs = [...gen.profiles];
+                              nextProfs[pi] = { ...prof, description: e.target.value };
+                              nextGens[gi] = { ...gen, profiles: nextProfs };
+                              updateField("generations", nextGens);
                             }}
+                            placeholder="Description"
                           />
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setAddProfileError(null);
-                  setShowAddProfileDialog(true);
-                }}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                {t("agent_editor.profile_add")}
-              </Button>
-            </CardContent>
-          </Card>
-          </CollapsibleSection>
-        </>
-      )}
+                          <div className="flex items-center gap-2">
+                            <select
+                              className="text-[11px] border rounded px-1.5 py-0.5 bg-background"
+                              value={prof.template_slug}
+                              onChange={(e) => {
+                                const nextGens = [...form.generations];
+                                const nextProfs = [...gen.profiles];
+                                nextProfs[pi] = { ...prof, template_slug: e.target.value };
+                                nextGens[gi] = { ...gen, profiles: nextProfs };
+                                updateField("generations", nextGens);
+                              }}
+                            >
+                              <option value="">— template —</option>
+                              {(templatesList ?? []).map((tpl) => (
+                                <option key={tpl.slug} value={tpl.slug}>{tpl.display_name}</option>
+                              ))}
+                            </select>
+                            {prof.template_slug && (
+                              <select
+                                className="text-[11px] border rounded px-1.5 py-0.5 bg-background"
+                                value={prof.template_culture}
+                                onChange={(e) => {
+                                  const nextGens = [...form.generations];
+                                  const nextProfs = [...gen.profiles];
+                                  nextProfs[pi] = { ...prof, template_culture: e.target.value };
+                                  nextGens[gi] = { ...gen, profiles: nextProfs };
+                                  updateField("generations", nextGens);
+                                }}
+                              >
+                                <option value="">—</option>
+                                {(templatesList ?? [])
+                                  .find((t) => t.slug === prof.template_slug)
+                                  ?.cultures.map((c) => (
+                                    <option key={c} value={c}>{c}</option>
+                                  ))}
+                              </select>
+                            )}
+                            <input
+                              type="text"
+                              className="text-[11px] border rounded px-1.5 py-0.5 bg-background font-mono flex-1"
+                              placeholder="workspace/missions"
+                              value={prof.output_dir}
+                              onChange={(e) => {
+                                const nextGens = [...form.generations];
+                                const nextProfs = [...gen.profiles];
+                                nextProfs[pi] = { ...prof, output_dir: e.target.value };
+                                nextGens[gi] = { ...gen, profiles: nextProfs };
+                                updateField("generations", nextGens);
+                              }}
+                            />
+                          </div>
+                          {/* Document selection */}
+                          {gen.role_id && (
+                            <div className="mt-2 border-t pt-2">
+                              <RoleDocumentSelector
+                                roleId={gen.role_id}
+                                selectedIds={prof.documents}
+                                onChange={(docs) => {
+                                  const nextGens = [...form.generations];
+                                  const nextProfs = [...gen.profiles];
+                                  nextProfs[pi] = { ...prof, documents: docs };
+                                  nextGens[gi] = { ...gen, profiles: nextProfs };
+                                  updateField("generations", nextGens);
+                                }}
+                              />
+                            </div>
+                          )}
+                          </div>
+                          </CollapsibleSection>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const nextGens = [...form.generations];
+                      nextGens[gi] = {
+                        ...gen,
+                        profiles: [
+                          ...gen.profiles,
+                          { name: "", description: "", documents: [], template_slug: "", template_culture: "", output_dir: "workspace/missions" },
+                        ],
+                      };
+                      updateField("generations", nextGens);
+                    }}
+                  >
+                    <Plus className="w-3 h-3" />
+                    {t("agent_editor.profile_add")}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+            </CollapsibleSection>
+            );
+          })}
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="mb-4"
+            onClick={() => {
+              updateField("generations", [
+                ...form.generations,
+                { role_id: "", template_slug: "", template_culture: "", prompt_filename: "prompt.md", profiles: [] },
+              ]);
+            }}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            {t("agent_editor.generation_add")}
+          </Button>
 
         </TabsContent>
 
@@ -1449,9 +1592,14 @@ export function AgentEditorPage() {
                     title={t("agent_editor.env_exclude")}
                     className="h-3.5 w-3.5 accent-primary shrink-0"
                   />
-                  <span className="font-mono text-[12px] text-muted-foreground w-44 shrink-0 truncate" title={key}>
+                  <button
+                    type="button"
+                    className="font-mono text-[12px] text-muted-foreground w-44 shrink-0 truncate text-left hover:text-foreground transition-colors"
+                    title={t("agent_editor.env_copy_key")}
+                    onClick={() => { void navigator.clipboard.writeText(key); toast.success(`${key} copié`); }}
+                  >
                     {key}
-                  </span>
+                  </button>
                   <Input
                     value={displayValue}
                     onChange={(e) => {
@@ -1463,6 +1611,17 @@ export function AgentEditorPage() {
                     disabled={isExcluded}
                     className={`flex-1 min-w-[180px] font-mono text-[12px] ${isOverridden ? "border-amber-500/50" : ""}`}
                   />
+                  {!isExcluded && displayValue && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      title={t("agent_editor.env_copy_value")}
+                      onClick={() => { void navigator.clipboard.writeText(displayValue); toast.success(`Valeur copiée`); }}
+                    >
+                      <Copy className="w-3 h-3 text-muted-foreground" />
+                    </Button>
+                  )}
                   {secretRef && !isExcluded && (
                     <EnvVarStatus
                       name={secretRef}
@@ -1493,6 +1652,58 @@ export function AgentEditorPage() {
               );
             })
           )}
+          {/* Custom env vars (not from Dockerfile.json) */}
+          {Object.entries(form.env_overrides)
+            .filter(([key]) => !dockerfileEnvKeys.includes(key) && !form.env_overrides[key]?.excluded)
+            .map(([key, override]) => (
+              <div key={key} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  className="font-mono text-[12px] text-muted-foreground w-44 shrink-0 border rounded px-2 py-1 bg-background"
+                  defaultValue={key}
+                  onBlur={(e) => {
+                    const newKey = e.target.value.trim();
+                    if (newKey && newKey !== key) {
+                      const next = { ...form.env_overrides };
+                      next[newKey] = next[key]!;
+                      delete next[key];
+                      updateField("env_overrides", next);
+                    }
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                />
+                <Input
+                  value={override?.value ?? ""}
+                  onChange={(e) => setEnvOverride(key, { ...override, value: e.target.value })}
+                  className="flex-1 min-w-[180px] font-mono text-[12px] border-green-500/50"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => {
+                    const next = { ...form.env_overrides };
+                    delete next[key];
+                    updateField("env_overrides", next);
+                  }}
+                  title={t("secrets.delete")}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => {
+              const newKey = `NEW_VAR_${Object.keys(form.env_overrides).length + 1}`;
+              setEnvOverride(newKey, { value: "" });
+            }}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            {t("agent_editor.env_add")}
+          </Button>
           {!decryptedSecrets && (
             <p className="text-[11px] text-muted-foreground italic mt-2">
               {t("agent_editor.vault_hint")}
@@ -2093,6 +2304,15 @@ export function AgentEditorPage() {
         }}
         onClose={() => setShowVaultUnlock(false)}
       />
+
+      {/* Floating help window — draggable + resizable */}
+      {showHelp && helpContent && (
+        <FloatingHelpWindow
+          title={t("agent_editor.help_title")}
+          content={helpContent}
+          onClose={() => setShowHelp(false)}
+        />
+      )}
     </PageShell>
   );
 }
@@ -2100,6 +2320,216 @@ export function AgentEditorPage() {
 // ────────────────────────────────────────────────────────────────
 // Internal helpers
 // ────────────────────────────────────────────────────────────────
+
+function FloatingHelpWindow({
+  title,
+  content,
+  onClose,
+}: {
+  title: string;
+  content: string;
+  onClose: () => void;
+}) {
+  const [pos, setPos] = useState({ x: window.innerWidth - 520, y: window.innerHeight - 500 });
+  const [size, setSize] = useState({ w: 480, h: 420 });
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (dragRef.current) {
+        const d = dragRef.current;
+        setPos({ x: d.origX + e.clientX - d.startX, y: d.origY + e.clientY - d.startY });
+      }
+      if (resizeRef.current) {
+        const r = resizeRef.current;
+        setSize({
+          w: Math.max(300, r.origW + e.clientX - r.startX),
+          h: Math.max(200, r.origH + e.clientY - r.startY),
+        });
+      }
+    };
+    const onUp = () => { dragRef.current = null; resizeRef.current = null; };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+  }, []);
+
+  return (
+    <div
+      className="fixed bg-background border rounded-lg shadow-xl flex flex-col overflow-hidden"
+      style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, zIndex: 60 }}
+    >
+      {/* Draggable title bar */}
+      <div
+        className="flex items-center justify-between px-4 py-2 border-b bg-muted/30 cursor-move select-none shrink-0"
+        onMouseDown={(e) => { dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y }; }}
+      >
+        <span className="text-[13px] font-semibold">{title}</span>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+          <X className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 prose prose-sm dark:prose-invert max-w-none text-[13px] prose-headings:text-[14px] prose-headings:font-semibold prose-p:my-1.5 prose-ul:my-1 prose-li:my-0 prose-table:text-[12px]">
+        <Markdown>{content}</Markdown>
+      </div>
+      {/* Resize handle */}
+      <div
+        className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
+        onMouseDown={(e) => { e.stopPropagation(); resizeRef.current = { startX: e.clientX, startY: e.clientY, origW: size.w, origH: size.h }; }}
+      >
+        <svg viewBox="0 0 16 16" className="w-4 h-4 text-muted-foreground/50">
+          <path d="M14 14L8 14L14 8Z" fill="currentColor" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function RoleDocumentSelector({
+  roleId,
+  selectedIds,
+  onChange,
+}: {
+  roleId: string;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const { t } = useTranslation();
+  const { data } = useRoleDetail(roleId);
+  const sectionsList = data?.sections ?? [];
+  const [addingSection, setAddingSection] = useState<string | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ id: string; name: string; content: string } | null>(null);
+
+  if (sectionsList.length === 0) return <p className="text-[11px] text-muted-foreground italic">Aucun document</p>;
+
+  const selected = new Set(selectedIds);
+
+  // Build a map of all docs by id for quick lookup
+  const allDocs = new Map<string, { name: string; content: string; section: string }>();
+  for (const sec of sectionsList) {
+    for (const d of sec.documents) {
+      allDocs.set(String(d.id), { name: d.name, content: d.content_md, section: sec.name });
+    }
+  }
+
+  return (
+    <>
+      <div className="space-y-2">
+        {sectionsList.map((section) => {
+          const sectionSelected = section.documents.filter((d) => selected.has(String(d.id)));
+          const sectionAvailable = section.documents.filter((d) => !selected.has(String(d.id)));
+          if (sectionSelected.length === 0 && sectionAvailable.length === 0) return null;
+          return (
+            <div key={section.name}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase">{section.display_name}</span>
+                {sectionAvailable.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setAddingSection(section.name); setPreviewDoc(null); }}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    title={t("agent_editor.profile_add_doc")}
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              {sectionSelected.length > 0 ? (
+                <div className="flex flex-wrap gap-1 mt-0.5">
+                  {sectionSelected.map((d) => (
+                    <span
+                      key={String(d.id)}
+                      className="inline-flex items-center gap-1 text-[11px] bg-secondary rounded px-1.5 py-0.5"
+                    >
+                      {d.name}
+                      <button
+                        type="button"
+                        onClick={() => onChange(selectedIds.filter((id) => id !== String(d.id)))}
+                        className="text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[10px] text-muted-foreground italic mt-0.5">—</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Add document dialog */}
+      {addingSection && (
+        <Dialog open onOpenChange={() => setAddingSection(null)}>
+          <DialogContent className="sm:max-w-3xl sm:max-h-[80vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="text-[14px]">
+                {t("agent_editor.profile_add_doc_title", { section: addingSection })}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex gap-3 flex-1 min-h-0 overflow-hidden">
+              {/* Left: file list */}
+              <div className="w-48 shrink-0 overflow-y-auto border-r pr-2 space-y-0.5">
+                {sectionsList
+                  .find((s) => s.name === addingSection)
+                  ?.documents.filter((d) => !selected.has(String(d.id)))
+                  .map((d) => (
+                    <button
+                      key={String(d.id)}
+                      type="button"
+                      onClick={() => setPreviewDoc({ id: String(d.id), name: d.name, content: d.content_md })}
+                      className={cn(
+                        "w-full text-left text-[12px] px-2 py-1 rounded truncate transition-colors",
+                        previewDoc?.id === String(d.id)
+                          ? "bg-primary/10 text-primary"
+                          : "hover:bg-secondary text-foreground",
+                      )}
+                    >
+                      {d.name}
+                    </button>
+                  ))}
+              </div>
+              {/* Right: markdown preview */}
+              <div className="flex-1 overflow-y-auto">
+                {previewDoc ? (
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-[12px] prose-headings:text-[13px] prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0">
+                    <Markdown>{previewDoc.content}</Markdown>
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-muted-foreground italic p-3">
+                    {t("agent_editor.profile_select_doc_preview")}
+                  </p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setAddingSection(null)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                size="sm"
+                disabled={!previewDoc}
+                onClick={() => {
+                  if (previewDoc) {
+                    onChange([...selectedIds, previewDoc.id]);
+                    // Stay open to add more from same section
+                    setPreviewDoc(null);
+                  }
+                }}
+              >
+                {t("common.add")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  );
+}
 
 function SectionLabel({
   children,

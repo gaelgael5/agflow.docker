@@ -22,6 +22,7 @@ def walk_tree(
     root: str,
     *,
     keep_dot_dirs: tuple[str, ...] = (".tmp",),
+    skip_dot_dirs: bool = True,
 ) -> list[FsEntry]:
     """Walk root recursively, returning entries for files and directories.
 
@@ -30,15 +31,17 @@ def walk_tree(
 
     Dot-prefixed directories are skipped unless their name is in
     ``keep_dot_dirs`` (default keeps .tmp, used by container_runner).
+    Set ``skip_dot_dirs=False`` to include all dot directories.
     The root itself is never emitted.
     """
     if not os.path.isdir(root):
         return []
     entries: list[FsEntry] = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [
-            d for d in dirnames if not d.startswith(".") or d in keep_dot_dirs
-        ]
+        if skip_dot_dirs:
+            dirnames[:] = [
+                d for d in dirnames if not d.startswith(".") or d in keep_dot_dirs
+            ]
         # Emit each subdirectory (skip the root itself).
         for dname in dirnames:
             full = os.path.join(dirpath, dname)

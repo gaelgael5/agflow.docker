@@ -58,6 +58,70 @@ _DESCRIPTION_MD_DEFAULT = """# Description
 Décris ici le rôle et le comportement attendu de cet agent.
 """
 
+_HELP_FR_DEFAULT = """# Aide — {slug}
+
+## Prérequis
+
+- Abonnement au fournisseur LLM correspondant
+- Clé API configurée dans les secrets plateforme
+
+## Variables d'environnement
+
+| Variable | Description | Obligatoire |
+|----------|-------------|-------------|
+| `API_KEY` | Clé API du fournisseur LLM | Oui |
+
+## Paramètres
+
+| Paramètre | Défaut | Description |
+|-----------|--------|-------------|
+| `WORKSPACE_PATH` | `./workspace` | Chemin du workspace monté dans le container |
+
+## Utilisation
+
+1. Compiler l'image (bouton Build)
+2. Créer un agent qui utilise ce Dockerfile
+3. Configurer les secrets requis
+4. Lancer depuis le chat ou l'API
+
+## Notes
+
+- Le container utilise `entrypoint.sh` comme point d'entrée
+- Le workspace est monté dans `/app/workspace`
+"""
+
+_HELP_EN_DEFAULT = """# Help — {slug}
+
+## Prerequisites
+
+- Subscription to the corresponding LLM provider
+- API key configured in platform secrets
+
+## Environment variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `API_KEY` | LLM provider API key | Yes |
+
+## Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `WORKSPACE_PATH` | `./workspace` | Workspace path mounted in the container |
+
+## Usage
+
+1. Build the image (Build button)
+2. Create an agent using this Dockerfile
+3. Configure required secrets
+4. Launch from chat or API
+
+## Notes
+
+- The container uses `entrypoint.sh` as entry point
+- Workspace is mounted at `/app/workspace`
+"""
+
 _ENTRYPOINT_SH_DEFAULT = """#!/usr/bin/env bash
 set -euo pipefail
 
@@ -71,6 +135,8 @@ STANDARD_FILE_CONTENTS: dict[str, str] = {
     "entrypoint.sh": _ENTRYPOINT_SH_DEFAULT,
     "Dockerfile.json": _DOCKERFILE_JSON_DEFAULT,
     "description.md": _DESCRIPTION_MD_DEFAULT,
+    "help.fr.md": _HELP_FR_DEFAULT,
+    "help.en.md": _HELP_EN_DEFAULT,
 }
 
 # All files auto-seeded on dockerfile creation.
@@ -176,7 +242,13 @@ DEFAULT_GENERATION_CONFIG: dict[str, Any] = {
 
 
 def read_generation_config(dockerfile_id: str) -> dict[str, Any]:
-    """Read the Generation block from Dockerfile.json, with defaults."""
+    """Read the Generation block from Dockerfile.json, with defaults.
+
+    If base_dir / prompt_ref_prefix are not explicitly set in the Generation
+    block, they are derived from docker.Runtime.WorkingDir:
+        -w /app/workspace  → base_dir="workspace", ref_prefix="@workspace"
+        -w /.vibes          → base_dir=".vibes",     ref_prefix="@"
+    """
     json_path = os.path.join(_slug_dir(dockerfile_id), "Dockerfile.json")
     if not os.path.isfile(json_path):
         return {**DEFAULT_GENERATION_CONFIG, "paths": {**DEFAULT_GENERATION_CONFIG["paths"]}}
@@ -184,12 +256,23 @@ def read_generation_config(dockerfile_id: str) -> dict[str, Any]:
     with open(json_path, encoding="utf-8") as f:
         data = json.loads(f.read())
 
-    gen = data.get("Generation")
-    if not gen:
-        return {**DEFAULT_GENERATION_CONFIG, "paths": {**DEFAULT_GENERATION_CONFIG["paths"]}}
+    gen = data.get("Generation") or {}
 
     result = {**DEFAULT_GENERATION_CONFIG, **gen}
     result["paths"] = {**DEFAULT_GENERATION_CONFIG["paths"], **gen.get("paths", {})}
+
+    # Auto-derive base_dir from WorkingDir if not explicitly set
+    # -w /vibes → base_dir="vibes", ref_prefix="@"
+    # -w /app/workspace → base_dir="workspace", ref_prefix="@workspace" (default)
+    if "base_dir" not in gen:
+        workdir = (data.get("docker", {}).get("Runtime", {}).get("WorkingDir", "") or "").strip().rstrip("/")
+        if workdir:
+            # /vibes → vibes, /app/workspace → workspace
+            base = workdir.split("/")[-1]
+            if base and base != DEFAULT_GENERATION_CONFIG["base_dir"]:
+                result["base_dir"] = base
+                result["prompt_ref_prefix"] = "@"
+
     return result
 
 
@@ -210,8 +293,9 @@ async def seed_standard_files(dockerfile_id: str) -> list[FileSummary]:
         full_path = os.path.join(slug_dir, path)
         if os.path.exists(full_path):
             continue
+        content = default_content.replace("{slug}", dockerfile_id)
         with open(full_path, "w", encoding="utf-8") as fh:
-            fh.write(default_content)
+            fh.write(content)
         created.append(_file_summary(dockerfile_id, path, full_path))
         _log.info("dockerfile_files.seed", dockerfile_id=dockerfile_id, path=path)
     return created

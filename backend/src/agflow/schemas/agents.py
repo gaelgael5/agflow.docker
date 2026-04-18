@@ -56,6 +56,12 @@ class _AgentBase(BaseModel):
     force_kill_delay_secs: int = Field(default=10, ge=0)
     mcp_bindings: list[AgentMCPBinding] = Field(default_factory=list)
     skill_bindings: list[AgentSkillBinding] = Field(default_factory=list)
+    mcp_template_slug: str = ""
+    mcp_template_culture: str = ""
+    mcp_config_filename: str = "config.toml"
+    skills_template_slug: str = ""
+    skills_template_culture: str = ""
+    skills_config_filename: str = "skills.md"
     prompt_template_slug: str = ""
     prompt_template_culture: str = ""
     prompt_filename: str = "prompt.md"
@@ -95,6 +101,12 @@ class AgentSummary(BaseModel):
     graceful_shutdown_secs: int
     force_kill_delay_secs: int
     is_assistant: bool = False
+    mcp_template_slug: str = ""
+    mcp_template_culture: str = ""
+    mcp_config_filename: str = "config.toml"
+    skills_template_slug: str = ""
+    skills_template_culture: str = ""
+    skills_config_filename: str = "skills.md"
     prompt_template_slug: str = ""
     prompt_template_culture: str = ""
     prompt_filename: str = "prompt.md"

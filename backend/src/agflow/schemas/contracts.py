@@ -18,6 +18,7 @@ class ContractCreate(BaseModel):
     auth_header: str = "Authorization"
     auth_prefix: str = "Bearer"
     auth_secret_ref: str | None = None
+    tag_overrides: dict[str, str] = Field(default_factory=dict)
     output_dir: str = "workspace/docs/ctr"
 
 
@@ -30,6 +31,7 @@ class ContractUpdate(BaseModel):
     auth_header: str | None = None
     auth_prefix: str | None = None
     auth_secret_ref: str | None = None
+    tag_overrides: dict[str, str] | None = None
     output_dir: str | None = None
 
 
@@ -37,6 +39,7 @@ class TagSummary(BaseModel):
     slug: str
     name: str
     description: str
+    resolved_description: str = ""
     operation_count: int
 
 
@@ -53,6 +56,8 @@ class ContractSummary(BaseModel):
     auth_prefix: str
     auth_secret_ref: str | None
     parsed_tags: list[TagSummary]
+    tag_overrides: dict[str, str] = Field(default_factory=dict)
+    managed_by_instance: UUID | None = None
     output_dir: str = "workspace/docs/ctr"
     position: int
     created_at: datetime

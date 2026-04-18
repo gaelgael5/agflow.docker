@@ -12,13 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { contractsApi, type ContractCreatePayload } from "@/lib/contractsApi";
+import { contractsApi, type ContractCreatePayload, type ContractSummary } from "@/lib/contractsApi";
 
 interface Props {
   agentId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (payload: ContractCreatePayload) => Promise<void>;
+  editContract?: ContractSummary | null;
 }
 
 interface DetectedTag {
@@ -26,20 +27,23 @@ interface DetectedTag {
   operation_count: number;
 }
 
-export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Props) {
+export function ContractFormDialog({ agentId, open, onOpenChange, onSave, editContract }: Props) {
   const { t } = useTranslation();
-  const [slug, setSlug] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [description, setDescription] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
+  const isEdit = Boolean(editContract);
+  const [slug, setSlug] = useState(editContract?.slug ?? "");
+  const [displayName, setDisplayName] = useState(editContract?.display_name ?? "");
+  const [description, setDescription] = useState(editContract?.description ?? "");
+  const [sourceUrl, setSourceUrl] = useState(editContract?.source_url ?? "");
   const [specContent, setSpecContent] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [authHeader, setAuthHeader] = useState("Authorization");
-  const [authPrefix, setAuthPrefix] = useState("Bearer");
-  const [authSecretRef, setAuthSecretRef] = useState("");
-  const [outputDir, setOutputDir] = useState("workspace/docs/ctr");
-  const [detectedTags, setDetectedTags] = useState<DetectedTag[]>([]);
-  const [tagOverrides, setTagOverrides] = useState<Record<string, string>>({});
+  const [baseUrl, setBaseUrl] = useState(editContract?.base_url ?? "");
+  const [authHeader, setAuthHeader] = useState(editContract?.auth_header ?? "Authorization");
+  const [authPrefix, setAuthPrefix] = useState(editContract?.auth_prefix ?? "Bearer");
+  const [authSecretRef, setAuthSecretRef] = useState(editContract?.auth_secret_ref ?? "");
+  const [outputDir, setOutputDir] = useState(editContract?.output_dir ?? "workspace/docs/ctr");
+  const [detectedTags, setDetectedTags] = useState<DetectedTag[]>(
+    editContract?.parsed_tags?.map((t) => ({ name: t.name, operation_count: t.operation_count })) ?? [],
+  );
+  const [tagOverrides, setTagOverrides] = useState<Record<string, string>>(editContract?.tag_overrides ?? {});
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,14 +139,14 @@ export function ContractFormDialog({ agentId, open, onOpenChange, onSave }: Prop
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl sm:max-h-[85vh] flex flex-col overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("contracts.dialog_title_new")}</DialogTitle>
+          <DialogTitle>{isEdit ? t("contracts.dialog_title_edit") : t("contracts.dialog_title_new")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-[11px]">{t("contracts.slug")}</Label>
-              <Input value={slug} onChange={(e) => setSlug(e.target.value)} className="mt-1 font-mono text-[12px]" />
+              <Input value={slug} onChange={(e) => setSlug(e.target.value)} className="mt-1 font-mono text-[12px]" disabled={isEdit} />
             </div>
             <div>
               <Label className="text-[11px]">{t("contracts.display_name")}</Label>

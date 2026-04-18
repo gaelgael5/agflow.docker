@@ -31,7 +31,7 @@ import {
 } from "@/hooks/useAgents";
 import { useContracts } from "@/hooks/useContracts";
 import { ContractFormDialog } from "@/components/ContractFormDialog";
-import type { ContractCreatePayload } from "@/lib/contractsApi";
+import { contractsApi, type ContractCreatePayload, type ContractSummary } from "@/lib/contractsApi";
 import { useRoleDetail } from "@/hooks/useRoleDocuments";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
 import { useVault } from "@/hooks/useVault";
@@ -160,6 +160,7 @@ export function AgentEditorPage() {
   const roleDetailQuery = useRoleDetail(isNew ? null : agent?.role_id ?? null);
   const contractsHook = useContracts(isNew ? undefined : id);
   const [showContractDialog, setShowContractDialog] = useState(false);
+  const [editingContract, setEditingContract] = useState<ContractSummary | null>(null);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formDirty, setFormDirty] = useState(false);
@@ -1672,13 +1673,25 @@ export function AgentEditorPage() {
                             <div className="text-[12px] text-muted-foreground mt-0.5">{c.description}</div>
                           )}
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => contractsHook.deleteMutation.mutate(c.id)}
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditingContract(c);
+                              setShowContractDialog(true);
+                            }}
+                          >
+                            {t("contracts.edit")}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => contractsHook.deleteMutation.mutate(c.id)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-1 mt-2">
                         {c.parsed_tags.map((tag) => (
@@ -1703,9 +1716,30 @@ export function AgentEditorPage() {
             <ContractFormDialog
               agentId={id}
               open={showContractDialog}
-              onOpenChange={setShowContractDialog}
+              onOpenChange={(o) => {
+                setShowContractDialog(o);
+                if (!o) setEditingContract(null);
+              }}
+              editContract={editingContract}
               onSave={async (payload: ContractCreatePayload) => {
-                await contractsHook.createMutation.mutateAsync(payload);
+                if (editingContract) {
+                  await contractsApi.update(id, editingContract.id, {
+                    display_name: payload.display_name,
+                    description: payload.description,
+                    source_url: payload.source_url,
+                    spec_content: payload.spec_content,
+                    base_url: payload.base_url,
+                    auth_header: payload.auth_header,
+                    auth_prefix: payload.auth_prefix,
+                    auth_secret_ref: payload.auth_secret_ref,
+                    tag_overrides: payload.tag_overrides,
+                    output_dir: payload.output_dir,
+                  });
+                  qc.invalidateQueries({ queryKey: ["contracts", id] });
+                  setEditingContract(null);
+                } else {
+                  await contractsHook.createMutation.mutateAsync(payload);
+                }
               }}
             />
           )}

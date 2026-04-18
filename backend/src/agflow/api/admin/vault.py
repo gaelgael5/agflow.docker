@@ -45,7 +45,12 @@ async def vault_setup(payload: VaultSetup, user_id: object = Depends(_get_user_i
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-@router.post("/change-passphrase", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/change-passphrase",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Change vault passphrase",
+    description="Updates the vault salt and re-saves all secrets re-encrypted with the new passphrase in a single atomic operation. Returns 409 if the vault has not been initialized yet.",
+)
 async def vault_change_passphrase(
     payload: VaultChangePassphrase, user_id: object = Depends(_get_user_id)
 ) -> None:

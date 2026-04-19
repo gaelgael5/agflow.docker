@@ -364,6 +364,7 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
   onClose: () => void;
   t: (key: string) => string;
 }) {
+  const qc = useQueryClient();
   const [manifest, setManifest] = useState<ScriptManifest | null>(null);
   const [loading, setLoading] = useState(true);
   const [argValues, setArgValues] = useState<Record<string, string>>({});
@@ -424,7 +425,7 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
     wsRef.current = ws;
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ script_url: scriptUrl, args: argValues }));
+      ws.send(JSON.stringify({ script_url: scriptUrl, args: argValues, action }));
     };
 
     ws.onmessage = (ev) => {
@@ -432,6 +433,11 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
       if (msg.type === "exit") {
         setExitCode(parseInt(msg.data));
         setRunning(false);
+      } else if (msg.type === "provisioned") {
+        // Auto-provisioning completed — refresh server + certificate lists
+        qc.invalidateQueries({ queryKey: ["infra-servers"] });
+        qc.invalidateQueries({ queryKey: ["infra-certificates"] });
+        setLines((prev) => [...prev, { type: "stdout", data: msg.data + "\n" }]);
       } else if (msg.type === "error") {
         setLines((prev) => [...prev, { type: "stderr", data: msg.data }]);
         setRunning(false);

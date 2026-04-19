@@ -5,11 +5,13 @@ import { Edit2, Loader2, Play, Plus, Server, Terminal, Trash2 } from "lucide-rea
 import { toast } from "sonner";
 import {
   infraPlatformsApi,
+  infraServicesApi,
   infraServersApi,
   infraCertificatesApi,
   type ServerCreatePayload,
   type ServerSummary,
   type PlatformDef,
+  type ServiceDef,
   type CertificateSummary,
   type ScriptManifest,
 } from "@/lib/infraApi";
@@ -39,6 +41,7 @@ export function InfraServersPage() {
 
   const platformsQuery = useQuery({ queryKey: ["infra-platforms"], queryFn: () => infraPlatformsApi.list() });
   const certsQuery = useQuery({ queryKey: ["infra-certificates"], queryFn: () => infraCertificatesApi.list() });
+  const servicesQuery = useQuery({ queryKey: ["infra-services"], queryFn: () => infraServicesApi.list() });
 
   const listQuery = useQuery({
     queryKey: ["infra-servers"],
@@ -60,10 +63,15 @@ export function InfraServersPage() {
 
   const servers = listQuery.data ?? [];
   const platforms = platformsQuery.data ?? [];
+  const serviceDefs = servicesQuery.data ?? [];
   const certificates = certsQuery.data ?? [];
 
   function getPlatformForType(serverType: string): PlatformDef | undefined {
     return platforms.find((p) => p.name === serverType || p.type === serverType);
+  }
+
+  function getServiceForType(serverType: string): ServiceDef | undefined {
+    return serviceDefs.find((s) => s.name === serverType || s.type === serverType);
   }
 
   return (
@@ -93,6 +101,8 @@ export function InfraServersPage() {
                 <TableHead>{t("infra.server_type")}</TableHead>
                 <TableHead>{t("infra.server_service")}</TableHead>
                 <TableHead>{t("infra.server_host")}</TableHead>
+                <TableHead>{t("infra.server_info")}</TableHead>
+                <TableHead>{t("infra.server_status")}</TableHead>
                 <TableHead>{t("infra.server_auth")}</TableHead>
                 <TableHead className="text-right">{t("infra.cert_actions")}</TableHead>
               </TableRow>
@@ -100,8 +110,10 @@ export function InfraServersPage() {
             <TableBody>
               {servers.map((s) => {
                 const platform = getPlatformForType(s.type);
+                const service = getServiceForType(s.type);
                 const createScripts = platform?.scripts.create ?? [];
                 const destroyScripts = platform?.scripts.destroy ?? [];
+                const installScripts = service?.scripts ?? [];
                 const serviceName = platform?.service ?? "";
 
                 return (
@@ -122,6 +134,29 @@ export function InfraServersPage() {
                     </TableCell>
                     <TableCell>
                       <code className="text-[12px] font-mono">{s.host}:{s.port}</code>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5 text-[11px]">
+                        {s.metadata?.distro && <span className="text-muted-foreground">{s.metadata.distro}</span>}
+                        {s.metadata?.ip_type && (
+                          <Badge variant="outline" className="text-[9px]">{s.metadata.ip_type}</Badge>
+                        )}
+                        {s.metadata?.docker && s.metadata.docker !== "non installe" && (
+                          <Badge variant="secondary" className="text-[9px]">Docker</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={s.status === "initialized" ? "default" : "outline"}
+                        className={`text-[9px] ${
+                          s.status === "initialized"
+                            ? "bg-green-600 text-white"
+                            : "border-orange-400 text-orange-500"
+                        }`}
+                      >
+                        {s.status === "initialized" ? t("infra.status_initialized") : t("infra.status_not_initialized")}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 text-[11px]">
@@ -154,6 +189,19 @@ export function InfraServersPage() {
                           >
                             <Terminal className="w-3 h-3 mr-1" />
                             {t("infra.action_destroy")}
+                          </Button>
+                        ))}
+                        {/* Install action (from service scripts) */}
+                        {s.status !== "initialized" && installScripts.map((url, i) => (
+                          <Button
+                            key={`i-${i}`}
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-[10px] text-green-600"
+                            onClick={() => setScriptRun({ serverId: s.id, serverName: s.name || s.host, scriptUrl: url, action: "install" })}
+                          >
+                            <Terminal className="w-3 h-3 mr-1" />
+                            {t("infra.action_install")}
                           </Button>
                         ))}
                         <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.test_connection")}
@@ -433,8 +481,8 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
       if (msg.type === "exit") {
         setExitCode(parseInt(msg.data));
         setRunning(false);
-      } else if (msg.type === "provisioned") {
-        // Auto-provisioning completed — refresh server + certificate lists
+      } else if (msg.type === "provisioned" || msg.type === "status_changed") {
+        // Auto-provisioning or status update — refresh lists
         qc.invalidateQueries({ queryKey: ["infra-servers"] });
         qc.invalidateQueries({ queryKey: ["infra-certificates"] });
         setLines((prev) => [...prev, { type: "stdout", data: msg.data + "\n" }]);

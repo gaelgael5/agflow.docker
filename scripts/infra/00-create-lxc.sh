@@ -364,6 +364,54 @@ else
     echo "  [!] ${DOCKER_SCRIPT} introuvable -- installation Docker ignoree."
 fi
 
+# ── Creer un utilisateur agflow avec SSH ed25519 ────────────────────────────
+echo ""
+echo "  Creation de l'utilisateur agflow..."
+
+AGFLOW_PASS=$(tr -dc 'A-Za-z0-9_!@#$%^&*' </dev/urandom 2>/dev/null | head -c 24 || echo "agflow$(date +%s)")
+
+# Generer une clef ed25519 dediee pour l'utilisateur agflow
+AGFLOW_KEY_FILE="${SSH_KEY_DIR}/id_ed25519_agflow_lxc${CTID}"
+if [ ! -f "${AGFLOW_KEY_FILE}" ]; then
+    ssh-keygen -t ed25519 -f "${AGFLOW_KEY_FILE}" -N "" -C "agflow@lxc-${CTID}" -q
+    echo "  -> Clef agflow generee : ${AGFLOW_KEY_FILE}"
+else
+    echo "  -> Clef agflow existante : ${AGFLOW_KEY_FILE}"
+fi
+AGFLOW_PUB_KEY=$(cat "${AGFLOW_KEY_FILE}.pub")
+
+pct exec "${CTID}" -- bash -c "
+# Creer l'utilisateur s'il n'existe pas
+if ! id agflow &>/dev/null; then
+    useradd -m -s /bin/bash -G sudo,docker agflow 2>/dev/null || useradd -m -s /bin/bash agflow
+    echo '  -> Utilisateur agflow cree'
+else
+    echo '  -> Utilisateur agflow existe deja'
+fi
+
+# Mot de passe
+echo 'agflow:${AGFLOW_PASS}' | chpasswd
+echo '  -> Mot de passe agflow configure'
+
+# SSH pour agflow
+mkdir -p /home/agflow/.ssh
+chmod 700 /home/agflow/.ssh
+
+if ! grep -qF '${AGFLOW_PUB_KEY}' /home/agflow/.ssh/authorized_keys 2>/dev/null; then
+    echo '${AGFLOW_PUB_KEY}' >> /home/agflow/.ssh/authorized_keys
+    echo '  -> Clef publique agflow injectee'
+else
+    echo '  -> Clef publique agflow deja presente'
+fi
+chmod 600 /home/agflow/.ssh/authorized_keys
+chown -R agflow:agflow /home/agflow/.ssh
+
+# Sudo sans mot de passe pour agflow
+echo 'agflow ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/agflow
+chmod 440 /etc/sudoers.d/agflow
+echo '  -> sudo NOPASSWD configure'
+"
+
 # ── Recuperer l'IP finale ────────────────────────────────────────────────────
 CT_IP=$(pct exec "${CTID}" -- bash -c "ip -4 addr show eth0 2>/dev/null | grep inet | awk '{print \$2}' | cut -d/ -f1 | head -1" 2>/dev/null || echo "")
 
@@ -395,6 +443,15 @@ echo ""
 echo "  IP : ${CT_IP}"
 fi
 echo ""
+echo "  Utilisateur agflow :"
+echo "  - User     : agflow"
+echo "  - Password : ${AGFLOW_PASS}"
+echo "  - Clef SSH : ${AGFLOW_KEY_FILE}"
+echo "  - sudo     : NOPASSWD"
+if [ -n "${CT_IP}" ]; then
+echo "    ssh -i ${AGFLOW_KEY_FILE} agflow@${CT_IP}"
+fi
+echo ""
 echo "  Docker :"
 docker_version=$(pct exec "${CTID}" -- docker --version 2>/dev/null || echo "non installe")
 compose_version=$(pct exec "${CTID}" -- docker compose version 2>/dev/null || echo "non installe")
@@ -402,3 +459,6 @@ echo "    ${docker_version}"
 echo "    ${compose_version}"
 echo ""
 echo "==========================================="
+echo ""
+# ── Sortie JSON (convention pipeline agflow) ─────────────────────────────────
+echo "{\"status\":\"ok\",\"ctid\":\"${CTID}\",\"ip\":\"${CT_IP}\",\"user\":\"agflow\",\"password\":\"${AGFLOW_PASS}\",\"ssh_key\":\"${AGFLOW_KEY_FILE}\",\"docker\":\"${docker_version}\"}"

@@ -8,5 +8,5 @@
       "required": true
     }
   ],
-  "command": "bash -c '$(wget -qLO - https://raw.githubusercontent.com/Configurations/ag.flow/refs/heads/main/scripts/Infra/00-create-lxc.sh)' _ {LXC_ID} {LXC_NAME}"
+  "command": "bash -c '$(wget -qLO - https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/main/scripts/proxmox/create-lxc.sh' _ {LXC_ID}"
 }

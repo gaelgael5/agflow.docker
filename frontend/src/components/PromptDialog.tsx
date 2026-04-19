@@ -61,15 +61,18 @@ export function PromptDialog({
   const [submitting, setSubmitting] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
+  const fieldsRef = useRef(fields);
+  fieldsRef.current = fields;
+
   useEffect(() => {
     if (open) {
       const initial: Record<string, string> = {};
-      for (const f of fields) initial[f.name] = f.defaultValue ?? "";
+      for (const f of fieldsRef.current) initial[f.name] = f.defaultValue ?? "";
       setValues(initial);
       setTouched({});
       setSubmitting(false);
     }
-  }, [open, fields]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

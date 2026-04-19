@@ -1,0 +1,12 @@
+{
+  "args": [
+    {
+      "arg": "LXC_ID",
+      "label_fr": "Identifiant LXC (CT ID)",
+      "description_fr": "Numéro du container à détruire",
+      "type": "string",
+      "required": true
+    }
+  ],
+  "command": "pct stop {LXC_ID} 2>/dev/null; pct destroy {LXC_ID} --purge && echo '{\"status\":\"destroyed\",\"ctid\":\"{LXC_ID}\"}'"
+}

@@ -1,13 +1,14 @@
 {
   "name": "Proxmox",
+  "type": "Proxmox",
   "service": "LXC",
   "connection": "SSH",
   "scripts": {
     "create": [
-      "https://raw.githubusercontent.com/Configurations/ag.flow/main/scripts/Infra/00-create-lxc.json"
+      "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/main/scripts/infra/00-create-lxc.json"
     ],
     "destroy": [
-      "https://raw.githubusercontent.com/Configurations/ag.flow/main/scripts/Infra/99-destroy-lxc.json"
+      "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/main/scripts/infra/99-destroy-lxc.json"
     ]
   }
 }

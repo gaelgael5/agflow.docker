@@ -8,5 +8,5 @@
       "required": true
     }
   ],
-  "command": "bash -c '$(wget -qLO - https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/main/scripts/proxmox/create-lxc.sh' _ {LXC_ID}"
+  "command": "bash -c '$(wget -qLO - https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/main/scripts/proxmox/create-lxc.sh') _ {LXC_ID}"
 }

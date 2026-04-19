@@ -20,11 +20,12 @@ _log = structlog.get_logger(__name__)
 router = APIRouter(
     prefix="/api/infra/servers",
     tags=["infra-servers"],
-    dependencies=[Depends(require_admin)],
 )
 
+_admin = [Depends(require_admin)]
 
-@router.get("/manifest")
+
+@router.get("/manifest", dependencies=_admin)
 async def get_script_manifest(url: str):
     """Proxy-fetch a script manifest JSON from a remote URL."""
     import httpx
@@ -39,12 +40,12 @@ async def get_script_manifest(url: str):
         return resp.json()
 
 
-@router.get("", response_model=list[ServerSummary])
+@router.get("", response_model=list[ServerSummary], dependencies=_admin)
 async def list_servers():
     return await infra_servers_service.list_all()
 
 
-@router.post("", response_model=ServerSummary, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ServerSummary, status_code=status.HTTP_201_CREATED, dependencies=_admin)
 async def create_server(payload: ServerCreate):
     return await infra_servers_service.create(
         name=payload.name,
@@ -57,7 +58,7 @@ async def create_server(payload: ServerCreate):
     )
 
 
-@router.get("/{server_id}", response_model=ServerSummary)
+@router.get("/{server_id}", response_model=ServerSummary, dependencies=_admin)
 async def get_server(server_id: UUID):
     try:
         return await infra_servers_service.get_by_id(server_id)
@@ -65,7 +66,7 @@ async def get_server(server_id: UUID):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.put("/{server_id}", response_model=ServerSummary)
+@router.put("/{server_id}", response_model=ServerSummary, dependencies=_admin)
 async def update_server(server_id: UUID, payload: ServerUpdate):
     try:
         return await infra_servers_service.update(server_id, **payload.model_dump(exclude_unset=True))
@@ -73,7 +74,7 @@ async def update_server(server_id: UUID, payload: ServerUpdate):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_admin)
 async def delete_server(server_id: UUID):
     try:
         await infra_servers_service.delete(server_id)
@@ -81,7 +82,7 @@ async def delete_server(server_id: UUID):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.post("/{server_id}/test-connection")
+@router.post("/{server_id}/test-connection", dependencies=_admin)
 async def test_connection(server_id: UUID):
     try:
         creds = await infra_servers_service.get_credentials(server_id)
@@ -105,7 +106,7 @@ async def test_connection(server_id: UUID):
     )
 
 
-@router.post("/{server_id}/run-script")
+@router.post("/{server_id}/run-script", dependencies=_admin)
 async def run_script(server_id: UUID, payload: ScriptRunRequest):
     """Fetch a script manifest from URL, substitute args, execute via SSH."""
     import httpx

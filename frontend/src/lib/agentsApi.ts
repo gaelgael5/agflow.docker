@@ -14,6 +14,23 @@ export interface AgentSkillBinding {
   position: number;
 }
 
+export interface AgentGenerationProfile {
+  name: string;
+  description: string;
+  documents: string[];
+  template_slug: string;
+  template_culture: string;
+  output_dir: string;
+}
+
+export interface AgentGeneration {
+  role_id: string;
+  template_slug: string;
+  template_culture: string;
+  prompt_filename: string;
+  profiles: AgentGenerationProfile[];
+}
+
 export interface AgentSummary {
   id: string;
   slug: string;
@@ -28,6 +45,16 @@ export interface AgentSummary {
   graceful_shutdown_secs: number;
   force_kill_delay_secs: number;
   is_assistant: boolean;
+  mcp_template_slug: string;
+  mcp_template_culture: string;
+  mcp_config_filename: string;
+  skills_template_slug: string;
+  skills_template_culture: string;
+  skills_config_filename: string;
+  prompt_template_slug: string;
+  prompt_template_culture: string;
+  prompt_filename: string;
+  generations: AgentGeneration[];
   created_at: string;
   updated_at: string;
   has_errors: boolean;
@@ -39,6 +66,9 @@ export interface AgentProfileSummary {
   name: string;
   description: string;
   document_ids: string[];
+  template_slug: string;
+  template_culture: string;
+  output_dir: string;
   created_at: string;
   updated_at: string;
 }
@@ -47,12 +77,18 @@ export interface AgentProfileCreate {
   name: string;
   description?: string;
   document_ids?: string[];
+  template_slug?: string;
+  template_culture?: string;
+  output_dir?: string;
 }
 
 export interface AgentProfileUpdate {
   name?: string;
   description?: string;
   document_ids?: string[];
+  template_slug?: string;
+  template_culture?: string;
+  output_dir?: string;
 }
 
 export interface AgentDetail extends AgentSummary {
@@ -75,6 +111,16 @@ export interface AgentCreatePayload {
   force_kill_delay_secs?: number;
   mcp_bindings?: AgentMCPBinding[];
   skill_bindings?: AgentSkillBinding[];
+  mcp_template_slug?: string;
+  mcp_template_culture?: string;
+  mcp_config_filename?: string;
+  skills_template_slug?: string;
+  skills_template_culture?: string;
+  skills_config_filename?: string;
+  prompt_template_slug?: string;
+  prompt_template_culture?: string;
+  prompt_filename?: string;
+  generations?: AgentGeneration[];
 }
 
 export type AgentUpdatePayload = Omit<AgentCreatePayload, "slug">;
@@ -195,6 +241,10 @@ export const agentsApi = {
     await api.delete("/admin/agents/assistant");
   },
 
+  cleanGenerated: async (agentId: string): Promise<void> => {
+    await api.delete(`/admin/agents/${agentId}/generated`);
+  },
+
   listGenerated: async (
     agentId: string,
   ): Promise<{ path: string; content: string; type?: "file" | "dir" }[]> => {
@@ -207,7 +257,7 @@ export const agentsApi = {
   generate: async (
     agentId: string,
     payload?: { profile_id?: string; secrets?: Record<string, string> },
-  ): Promise<{ slug: string; path: string; files: string[] }> => {
+  ): Promise<{ slug: string; path: string; files: string[]; alerts?: { level: string; variable: string; message: string }[] }> => {
     const res = await api.post(`/admin/agents/${agentId}/generate`, payload ?? {});
     return res.data;
   },

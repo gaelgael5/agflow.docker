@@ -69,13 +69,22 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[DockerfileSummary])
+@router.get(
+    "",
+    response_model=list[DockerfileSummary],
+    summary="List all dockerfiles",
+    description="Returns all registered agent dockerfiles as a list of DockerfileSummary objects, including their id, display name, description, and current content hash.",
+)
 async def list_dockerfiles() -> list[DockerfileSummary]:
     return await dockerfiles_service.list_all()
 
 
 @router.post(
-    "", response_model=DockerfileSummary, status_code=status.HTTP_201_CREATED
+    "",
+    response_model=DockerfileSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a dockerfile",
+    description="Registers a new dockerfile entry with its display name, description, and parameter definitions. Returns 201 with the DockerfileSummary, or 409 if the id already exists.",
 )
 async def create_dockerfile(payload: DockerfileCreate) -> DockerfileSummary:
     try:
@@ -128,7 +137,12 @@ def _validate_dockerfile_json(raw: str) -> list[str]:
     return errors
 
 
-@router.post("/{dockerfile_id}/import", response_model=DockerfileDetail)
+@router.post(
+    "/{dockerfile_id}/import",
+    response_model=DockerfileDetail,
+    summary="Import dockerfile files from a ZIP archive",
+    description="Replace the entire directory of a dockerfile with the contents of a zip. Validates the zip before applying: is a valid zip archive, contains Dockerfile, entrypoint.sh and Dockerfile.json, all entries are flat files (no subdirectories), all entries decode as UTF-8 text, and Dockerfile.json parses as JSON with the expected shape. On any validation failure, returns 400 with a structured list of errors. On success, transactionally wipes all existing files and inserts the new set; returns the updated detail.",
+)
 async def import_dockerfile(
     dockerfile_id: str, file: UploadFile = File(...)
 ) -> DockerfileDetail:
@@ -224,7 +238,11 @@ async def import_dockerfile(
     return DockerfileDetail(dockerfile=dockerfile, files=files)
 
 
-@router.get("/{dockerfile_id}/export")
+@router.get(
+    "/{dockerfile_id}/export",
+    summary="Export dockerfile files as a ZIP archive",
+    description="Return a zip archive containing every file of the dockerfile directory. The archive is built in-memory and streamed back with a Content-Disposition header so the browser triggers a download. Returns 404 if the dockerfile does not exist.",
+)
 async def export_dockerfile(dockerfile_id: str) -> StreamingResponse:
     """Return a zip archive containing every file of the dockerfile directory.
 
@@ -256,7 +274,12 @@ async def export_dockerfile(dockerfile_id: str) -> StreamingResponse:
     )
 
 
-@router.get("/{dockerfile_id}", response_model=DockerfileDetail)
+@router.get(
+    "/{dockerfile_id}",
+    response_model=DockerfileDetail,
+    summary="Get dockerfile detail with files",
+    description="Returns the full DockerfileDetail for the given dockerfile, including its metadata and the list of all associated files and directories. Returns 404 if not found.",
+)
 async def get_dockerfile(dockerfile_id: str) -> DockerfileDetail:
     try:
         dockerfile = await dockerfiles_service.get_by_id(dockerfile_id)
@@ -270,7 +293,12 @@ async def get_dockerfile(dockerfile_id: str) -> DockerfileDetail:
     return DockerfileDetail(dockerfile=dockerfile, files=files)
 
 
-@router.put("/{dockerfile_id}", response_model=DockerfileSummary)
+@router.put(
+    "/{dockerfile_id}",
+    response_model=DockerfileSummary,
+    summary="Update a dockerfile",
+    description="Partially updates a dockerfile's metadata (display name, description, parameters). Returns the updated DockerfileSummary, or 404 if not found.",
+)
 async def update_dockerfile(
     dockerfile_id: str, payload: DockerfileUpdate
 ) -> DockerfileSummary:
@@ -285,7 +313,12 @@ async def update_dockerfile(
         ) from exc
 
 
-@router.delete("/{dockerfile_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{dockerfile_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a dockerfile",
+    description="Permanently deletes the dockerfile and all its associated files. Returns 204 on success, or 404 if the dockerfile does not exist.",
+)
 async def delete_dockerfile(dockerfile_id: str) -> None:
     try:
         await dockerfiles_service.delete(dockerfile_id)
@@ -299,6 +332,8 @@ async def delete_dockerfile(dockerfile_id: str) -> None:
     "/{dockerfile_id}/files",
     response_model=FileSummary,
     status_code=status.HTTP_201_CREATED,
+    summary="Create a file inside a dockerfile",
+    description="Adds a new text file at the given path inside the dockerfile's data directory. Returns 201 with the FileSummary, or 409 if a file at that path already exists.",
 )
 async def create_file(dockerfile_id: str, payload: FileCreate) -> FileSummary:
     try:
@@ -313,7 +348,12 @@ async def create_file(dockerfile_id: str, payload: FileCreate) -> FileSummary:
         ) from exc
 
 
-@router.put("/{dockerfile_id}/files/{file_id}", response_model=FileSummary)
+@router.put(
+    "/{dockerfile_id}/files/{file_id}",
+    response_model=FileSummary,
+    summary="Update a file inside a dockerfile",
+    description="Replaces the text content of the specified file. Returns the updated FileSummary, or 404 if the file does not exist.",
+)
 async def update_file(
     dockerfile_id: str, file_id: UUID, payload: FileUpdate
 ) -> FileSummary:
@@ -330,6 +370,8 @@ async def update_file(
 @router.delete(
     "/{dockerfile_id}/files/{file_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a file inside a dockerfile",
+    description="Permanently deletes the specified file. Returns 204 on success, 404 if not found, or 403 if the file is protected and cannot be deleted.",
 )
 async def delete_file(dockerfile_id: str, file_id: UUID) -> None:
     try:
@@ -347,6 +389,8 @@ async def delete_file(dockerfile_id: str, file_id: UUID) -> None:
 @router.delete(
     "/{dockerfile_id}/dirs",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a directory inside a dockerfile",
+    description="Recursively deletes a directory and all its contents inside the dockerfile's data directory. Returns 204 on success, or 404 if the directory does not exist.",
 )
 async def delete_dir(dockerfile_id: str, path: str) -> None:
     """Recursively delete a directory inside the dockerfile's data dir."""
@@ -362,6 +406,8 @@ async def delete_dir(dockerfile_id: str, path: str) -> None:
     "/{dockerfile_id}/build",
     response_model=BuildSummary,
     status_code=status.HTTP_202_ACCEPTED,
+    summary="Trigger a Docker image build",
+    description="Enqueues an asynchronous Docker image build for the given dockerfile. Returns 202 with an initial BuildSummary (status=pending); poll GET /{dockerfile_id}/builds/{build_id} to track progress. Returns 404 if the dockerfile does not exist.",
 )
 async def trigger_build(
     dockerfile_id: str, background: BackgroundTasks
@@ -401,14 +447,22 @@ async def _run_build_in_background(
         )
 
 
-@router.get("/{dockerfile_id}/builds", response_model=list[BuildSummary])
+@router.get(
+    "/{dockerfile_id}/builds",
+    response_model=list[BuildSummary],
+    summary="List builds for a dockerfile",
+    description="Returns all build records for the specified dockerfile as a list of BuildSummary objects, ordered by creation date descending.",
+)
 async def list_builds(dockerfile_id: str) -> list[BuildSummary]:
     rows = await build_service.list_builds(dockerfile_id)
     return [BuildSummary(**r) for r in rows]
 
 
 @router.get(
-    "/{dockerfile_id}/builds/{build_id}", response_model=BuildSummary
+    "/{dockerfile_id}/builds/{build_id}",
+    response_model=BuildSummary,
+    summary="Get a specific build record",
+    description="Returns the BuildSummary for the specified build, including its current status, logs, and image tag. Returns 404 if the build does not exist or does not belong to the given dockerfile.",
 )
 async def get_build(dockerfile_id: str, build_id: UUID) -> BuildSummary:
     row = await build_service.get_build(build_id)
@@ -425,7 +479,10 @@ async def get_build(dockerfile_id: str, build_id: UUID) -> BuildSummary:
 
 
 @router.post(
-    "/{dockerfile_id}/check-mounts", response_model=MountCheckResponse
+    "/{dockerfile_id}/check-mounts",
+    response_model=MountCheckResponse,
+    summary="Check mount source paths for a dockerfile",
+    description="Resolve each mount source and report whether it exists on disk. Used by the Paramètres dialog to surface a red/green indicator next to each mount entry. Takes the raw (possibly unsaved) mounts and params so the UI can live-preview even before the user clicks Save.",
 )
 async def check_mounts(
     dockerfile_id: str, payload: MountCheckRequest
@@ -467,7 +524,11 @@ async def check_mounts(
     return MountCheckResponse(results=results)
 
 
-@router.post("/chat-generate")
+@router.post(
+    "/chat-generate",
+    summary="Generate a Dockerfile from a natural language description",
+    description="Calls Anthropic Claude to generate a Dockerfile and entrypoint.sh from a plain-text description. Stateless — the client shows the result, lets the user approve, then creates the dockerfile via the regular POST endpoint. Returns 412 if the ANTHROPIC_API_KEY secret is missing, or 502 if generation fails.",
+)
 async def chat_generate_dockerfile(
     payload: ChatGenerateRequest,
 ) -> dockerfile_chat_service.GeneratedDockerfile:

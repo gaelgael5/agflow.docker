@@ -24,11 +24,30 @@ class AgentSkillBinding(BaseModel):
     position: int = 0
 
 
+class AgentGenerationProfile(BaseModel):
+    """A mission profile inside a generation block."""
+    name: str = Field(min_length=1, max_length=128)
+    description: str = ""
+    documents: list[str] = Field(default_factory=list)
+    template_slug: str = ""
+    template_culture: str = ""
+    output_dir: str = "workspace/missions"
+
+
+class AgentGeneration(BaseModel):
+    """A generation block: one role → one prompt file + mission profiles."""
+    role_id: str = Field(min_length=1)
+    template_slug: str = ""
+    template_culture: str = ""
+    prompt_filename: str = "prompt.md"
+    profiles: list[AgentGenerationProfile] = Field(default_factory=list)
+
+
 class _AgentBase(BaseModel):
     display_name: str = Field(min_length=1, max_length=200)
     description: str = ""
     dockerfile_id: str = Field(min_length=1)
-    role_id: str = Field(min_length=1)
+    role_id: str = ""
     env_vars: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = Field(default=3600, gt=0)
     workspace_path: str = "/workspace"
@@ -37,6 +56,16 @@ class _AgentBase(BaseModel):
     force_kill_delay_secs: int = Field(default=10, ge=0)
     mcp_bindings: list[AgentMCPBinding] = Field(default_factory=list)
     skill_bindings: list[AgentSkillBinding] = Field(default_factory=list)
+    mcp_template_slug: str = ""
+    mcp_template_culture: str = ""
+    mcp_config_filename: str = "config.toml"
+    skills_template_slug: str = ""
+    skills_template_culture: str = ""
+    skills_config_filename: str = "skills.md"
+    prompt_template_slug: str = ""
+    prompt_template_culture: str = ""
+    prompt_filename: str = "prompt.md"
+    generations: list[AgentGeneration] = Field(default_factory=list)
 
 
 class AgentCreate(_AgentBase):
@@ -72,6 +101,16 @@ class AgentSummary(BaseModel):
     graceful_shutdown_secs: int
     force_kill_delay_secs: int
     is_assistant: bool = False
+    mcp_template_slug: str = ""
+    mcp_template_culture: str = ""
+    mcp_config_filename: str = "config.toml"
+    skills_template_slug: str = ""
+    skills_template_culture: str = ""
+    skills_config_filename: str = "skills.md"
+    prompt_template_slug: str = ""
+    prompt_template_culture: str = ""
+    prompt_filename: str = "prompt.md"
+    generations: list[AgentGeneration] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     has_errors: bool = False
@@ -83,6 +122,9 @@ class AgentProfileSummary(BaseModel):
     name: str
     description: str
     document_ids: list[UUID]
+    template_slug: str = ""
+    template_culture: str = ""
+    output_dir: str = "workspace/docs/missions"
     created_at: datetime
     updated_at: datetime
 
@@ -91,12 +133,18 @@ class AgentProfileCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     description: str = ""
     document_ids: list[UUID] = Field(default_factory=list)
+    template_slug: str = ""
+    template_culture: str = ""
+    output_dir: str = "workspace/docs/missions"
 
 
 class AgentProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     description: str | None = None
     document_ids: list[UUID] | None = None
+    template_slug: str | None = None
+    template_culture: str | None = None
+    output_dir: str | None = None
 
 
 class AgentDetail(AgentSummary):

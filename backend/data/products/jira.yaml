@@ -1,0 +1,27 @@
+id: jira
+display_name: Jira
+description: "Gestion de tâches Atlassian (SaaS)"
+category: tasks
+tags: [tasks, agile, saas]
+config_only: true
+mcp_package_id: atlassian/mcp-jira
+
+openapi:
+  source: url
+  url: "https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json"
+  base_url: "https://{{ org }}.atlassian.net/rest/api/3"
+  auth_header: Authorization
+  auth_prefix: "Basic"
+  auth_secret_ref: "${JIRA_API_TOKEN}"
+
+secrets_required:
+  - name: JIRA_API_TOKEN
+    description: "Token API Jira (base64 email:token)"
+    generate: null
+
+variables:
+  - name: org
+    description: "Sous-domaine Atlassian"
+    type: string
+    required: true
+    example: pickup

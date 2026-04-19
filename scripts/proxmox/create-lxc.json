@@ -1,0 +1,12 @@
+{
+  "args": [
+    {
+      "arg": "LXC_ID",
+      "label_fr": "Identifiant pct",
+      "description_fr": "Spécifiez l'id de l'instance LXC (ex: 200)",
+      "type": "string",
+      "required": true
+    }
+  ],
+  "command": "bash -c '$(wget -qLO - https://raw.githubusercontent.com/Configurations/ag.flow/refs/heads/main/scripts/Infra/00-create-lxc.sh)' _ {LXC_ID} {LXC_NAME}"
+}

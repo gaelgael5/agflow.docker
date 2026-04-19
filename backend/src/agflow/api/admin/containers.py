@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from agflow.auth.dependencies import require_admin
 from agflow.schemas.containers import ContainerInfo
 from agflow.services import (
+    agent_files_service,
     build_service,
     container_runner,
     dockerfile_files_service,
@@ -22,6 +23,7 @@ class TaskRequest(BaseModel):
     timeout_seconds: int = Field(default=600, ge=1, le=3600)
     model: str = Field(default="", max_length=100)
     secrets: dict[str, str] = Field(default_factory=dict)
+    session_id: str = Field(default="", max_length=100)
 
 router = APIRouter(
     prefix="/api/admin",
@@ -38,6 +40,8 @@ class RunPayload(BaseModel):
     "/dockerfiles/{dockerfile_id}/run",
     response_model=ContainerInfo,
     status_code=status.HTTP_201_CREATED,
+    summary="Start a container from a dockerfile",
+    description="Launches a new Docker container from the latest built image of the specified dockerfile. Reads Dockerfile.json for runtime config, resolves {KEY} secret templates, and creates the container via aiodocker. Returns 409 if the image is not up to date.",
 )
 async def run_dockerfile(
     dockerfile_id: str, payload: RunPayload | None = None
@@ -101,6 +105,8 @@ async def run_dockerfile(
 @router.post(
     "/dockerfiles/{dockerfile_id}/regenerate-tmp",
     status_code=status.HTTP_200_OK,
+    summary="Regenerate tmp run files without launching",
+    description="Regenerates .tmp/run.sh and .tmp/.env from Dockerfile.json and resolved secrets without actually starting a container. Useful for previewing the resolved configuration before launch.",
 )
 async def regenerate_tmp_files(
     dockerfile_id: str, payload: RunPayload | None = None
@@ -143,13 +149,22 @@ async def regenerate_tmp_files(
     return {"status": "ok"}
 
 
-@router.get("/containers", response_model=list[ContainerInfo])
+@router.get(
+    "/containers",
+    response_model=list[ContainerInfo],
+    summary="List all managed containers",
+    description="Returns all Docker containers managed by agflow, regardless of their current state (running, stopped, exited).",
+)
 async def list_containers() -> list[ContainerInfo]:
     """List all agflow-managed containers (running, stopped, etc.)."""
     return await container_runner.list_running()
 
 
-@router.get("/containers/{container_id}/logs")
+@router.get(
+    "/containers/{container_id}/logs",
+    summary="Get container logs",
+    description="Fetches the stdout and stderr logs of a container, returning the last N lines (default 200). Returns 404 if the container is not found.",
+)
 async def container_logs(container_id: str, tail: int = 200) -> str:
     import aiodocker
 
@@ -169,6 +184,8 @@ async def container_logs(container_id: str, tail: int = 200) -> str:
 @router.delete(
     "/containers/{container_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Stop and remove a container",
+    description="Stops and removes the specified agflow-managed container by its ID. Returns 404 if the container is not found.",
 )
 async def stop_container(container_id: str) -> None:
     try:
@@ -179,7 +196,11 @@ async def stop_container(container_id: str) -> None:
         ) from exc
 
 
-@router.post("/dockerfiles/{dockerfile_id}/task")
+@router.post(
+    "/dockerfiles/{dockerfile_id}/task",
+    summary="Run a one-shot task via a dockerfile",
+    description="Starts a container from the specified dockerfile, sends an instruction as a JSON task on stdin, and streams newline-delimited JSON events back as the agent runs. The container is automatically removed on exit.",
+)
 async def run_task(
     dockerfile_id: str, payload: TaskRequest
 ) -> StreamingResponse:
@@ -231,6 +252,7 @@ async def run_task(
                 timeout_seconds=payload.timeout_seconds,
                 user_secrets=payload.secrets,
                 cleanup=True,
+                session_id=task_payload["task_id"],
             ):
                 yield (json.dumps(event) + "\n").encode("utf-8")
         except container_runner.ImageNotBuiltError as exc:
@@ -246,6 +268,162 @@ async def run_task(
                 json.dumps({"type": "error", "message": str(exc)}) + "\n"
             ).encode("utf-8")
         except Exception as exc:  # pragma: no cover — surface unexpected
+            yield (
+                json.dumps({"type": "error", "message": str(exc)}) + "\n"
+            ).encode("utf-8")
+
+    return StreamingResponse(_stream(), media_type="application/x-ndjson")
+
+
+@router.post(
+    "/agents/{agent_slug}/task",
+    summary="Run a one-shot task via a named agent",
+    description="Loads the agent's generated prompt and env overrides, prepends the system prompt to the instruction, and streams newline-delimited JSON events from the running container. The container is automatically removed on exit.",
+)
+async def run_agent_task(
+    agent_slug: str,
+    payload: TaskRequest,
+    user_email: str = Depends(require_admin),
+) -> StreamingResponse:
+    """One-shot agent task using the agent's generated config.
+
+    Loads the agent's prompt.md, prepends it to the instruction, and runs
+    the container with the agent's Dockerfile.json overrides (env, mounts
+    including MCP config). Injects session identity as env vars.
+    """
+    import os
+
+    data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+    agent_data = agent_files_service.read_agent(agent_slug)
+    if not agent_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent '{agent_slug}' not found",
+        )
+
+    dockerfile_id = agent_data.get("dockerfile_id", "")
+    if not dockerfile_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Agent has no dockerfile_id configured",
+        )
+
+    try:
+        dockerfile = await dockerfiles_service.get_by_id(dockerfile_id)
+    except dockerfiles_service.DockerfileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    if dockerfile.display_status != "up_to_date":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Le dockerfile n'est pas à jour — compilez-le d'abord.",
+        )
+
+    # Read generated prompt — use first generation's filename, fallback to legacy
+    generations = agent_data.get("generations", [])
+    if generations:
+        prompt_filename = generations[0].get("prompt_filename", "prompt.md")
+    else:
+        prompt_filename = agent_data.get("prompt_filename", "prompt.md")
+    prompt_path = os.path.join(
+        data_dir, "agents", agent_slug, "generated", prompt_filename
+    )
+    prompt = ""
+    if os.path.isfile(prompt_path):
+        with open(prompt_path, encoding="utf-8") as f:
+            prompt = f.read()
+
+    # Read generated .env for agent secrets
+    env_path = os.path.join(
+        data_dir, "agents", agent_slug, "generated", ".env"
+    )
+    agent_secrets: dict[str, str] = {}
+    if os.path.isfile(env_path):
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, _, v = line.partition("=")
+                    agent_secrets[k.strip()] = v.strip()
+
+    # Merge: agent secrets + user-provided secrets (user overrides agent)
+    merged_secrets = {**agent_secrets, **payload.secrets}
+
+    # Build instruction with prompt prefix
+    full_instruction = payload.instruction
+    if prompt:
+        full_instruction = (
+            f"<system>\n{prompt}\n</system>\n\n{payload.instruction}"
+        )
+
+    # Load Dockerfile.json with agent overrides applied
+    files = await dockerfile_files_service.list_for_dockerfile(dockerfile_id)
+    params_file = next((f for f in files if f.path == "Dockerfile.json"), None)
+    if params_file is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dockerfile.json manquant.",
+        )
+
+    # Apply agent env/mount overrides to Dockerfile.json
+    params_json = json.loads(params_file.content)
+    docker_block = params_json.get("docker", {})
+
+    # Merge agent env overrides
+    env_overrides = agent_data.get("env_overrides", {})
+    if env_overrides:
+        envs = docker_block.get("Environments", {})
+        for key, override in env_overrides.items():
+            if isinstance(override, dict) and not override.get("excluded"):
+                envs[key] = override.get("value", envs.get(key, ""))
+            elif isinstance(override, dict) and override.get("excluded"):
+                envs.pop(key, None)
+        docker_block["Environments"] = envs
+
+    # Merge agent mount overrides
+    mount_overrides = agent_data.get("mount_overrides", {})
+    if mount_overrides:
+        mounts = docker_block.get("Mounts", [])
+        mounts = [
+            m for m in mounts
+            if not (isinstance(mount_overrides.get(m.get("target")), dict)
+                    and mount_overrides[m["target"]].get("excluded"))
+        ]
+        docker_block["Mounts"] = mounts
+
+    params_json["docker"] = docker_block
+    resolved_params_content = json.dumps(params_json, ensure_ascii=False, indent=2)
+
+    task_payload = {
+        "task_id": str(uuid.uuid4()),
+        "payload": {"instruction": full_instruction},
+        "timeout_seconds": payload.timeout_seconds,
+        "model": payload.model or None,
+        "session": {
+            "id": payload.session_id or str(uuid.uuid4()),
+            "user_email": user_email,
+            "agent_slug": agent_slug,
+            "api_url": "http://agflow-backend:8000",
+        },
+    }
+
+    async def _stream():
+        try:
+            async for event in container_runner.run_task(
+                dockerfile_id,
+                params_json_content=resolved_params_content,
+                content_hash=dockerfile.current_hash,
+                task_payload=task_payload,
+                timeout_seconds=payload.timeout_seconds,
+                user_secrets=merged_secrets,
+                cleanup=True,
+                session_id=task_payload["task_id"],
+                mount_base_id=f"agents/{agent_slug}/generated",
+            ):
+                yield (json.dumps(event) + "\n").encode("utf-8")
+        except Exception as exc:
             yield (
                 json.dumps({"type": "error", "message": str(exc)}) + "\n"
             ).encode("utf-8")

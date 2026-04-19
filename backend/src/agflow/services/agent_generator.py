@@ -11,11 +11,10 @@ import structlog
 
 from agflow.services import (
     agent_files_service,
-    agent_profiles_service,
     agents_service,
     dockerfile_files_service,
+    mcp_catalog_service,
     role_documents_service,
-    role_sections_service,
     roles_service,
 )
 from agflow.services.container_runner import resolve_templates
@@ -123,9 +122,12 @@ def _apply_overrides(
     return json.dumps(parsed)
 
 
+def _data_dir() -> str:
+    return os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+
+
 def _agents_dir() -> str:
-    base = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
-    return os.path.join(base, "agents")
+    return os.path.join(_data_dir(), "agents")
 
 
 async def generate(
@@ -145,31 +147,236 @@ async def generate(
     agent = await agents_service.get_by_id(agent_id)
     slug = agent.slug
 
-    out_dir = os.path.join(_agents_dir(), slug, "generated")
+    generated_dir = os.path.join(_agents_dir(), slug, "generated")
+    os.makedirs(generated_dir, exist_ok=True)
+
+    # Load generation config (paths, ref_prefix) from Dockerfile.json
+    gen_config = dockerfile_files_service.read_generation_config(agent.dockerfile_id)
+    gen_paths = gen_config["paths"]
+    ref_prefix = gen_config["prompt_ref_prefix"]
+
+    # out_dir = generated/ (root for .env, prompt.md, run.sh, mcp.json)
+    out_dir = generated_dir
     os.makedirs(out_dir, exist_ok=True)
 
-    role = await roles_service.get_by_id(agent.role_id)
-    await role_sections_service.list_for_role(agent.role_id)
-    documents = await role_documents_service.list_for_role(agent.role_id)
+    import shutil
 
-    # Build prompt.md
-    prompt_parts = [f"# {role.display_name}\n\n{role.identity_md}"]
+    from jinja2 import Environment
 
-    if profile_id:
-        profiles = await agent_profiles_service.list_for_agent(agent_id)
-        profile = next((p for p in profiles if p.id == profile_id), None)
-        if profile:
-            doc_ids = set(str(d) for d in profile.document_ids)
+    # ── Contrats API (shared across all generations) ──────────
+    from agflow.services import api_contracts_service as _ctr_svc
+    from agflow.services import openapi_parser as _oapi
+
+    contracts = await _ctr_svc.list_for_agent(str(agent_id))
+    contract_context: list[dict[str, Any]] = []
+
+    # Clean workspace dir before regeneration
+    workspace_dir = os.path.join(out_dir, gen_config.get("base_dir", "workspace"))
+    if os.path.isdir(workspace_dir):
+        shutil.rmtree(workspace_dir)
+
+    for contract in contracts:
+        contract_output = getattr(contract, "output_dir", None) or gen_paths["contracts"]
+        ctr_dir = os.path.join(generated_dir, contract_output, contract.slug)
+        os.makedirs(ctr_dir, exist_ok=True)
+
+        full_detail = await _ctr_svc.get_by_id(contract.id)
+        full_spec = _oapi._load_spec(full_detail.spec_content)
+        full_tags = _oapi.parse_openapi_tags(full_detail.spec_content)
+        overrides = getattr(contract, "tag_overrides", None) or {}
+
+        tag_context: list[dict[str, Any]] = []
+        for tag in full_tags:
+            resolved_desc = _oapi.resolve_tag_description(tag, overrides)
+            tag_dir = os.path.join(ctr_dir, tag["slug"])
+            os.makedirs(tag_dir, exist_ok=True)
+
+            operation_entries: list[dict[str, Any]] = []
+            for op in tag.get("operations", []):
+                sh_filename = _oapi.operation_to_filename(op)
+                effective_base_url = getattr(contract, "runtime_base_url", "") or contract.base_url
+                sh_content = _oapi.generate_operation_script(
+                    op=op,
+                    base_url=effective_base_url,
+                    auth_header=contract.auth_header,
+                    auth_prefix=contract.auth_prefix,
+                    auth_secret_ref=contract.auth_secret_ref or "",
+                    full_spec=full_spec,
+                )
+                _write(tag_dir, sh_filename, sh_content)
+                os.chmod(os.path.join(tag_dir, sh_filename), 0o755)
+
+                op_name = sh_filename.replace(".sh", "")
+                op_desc = _oapi._truncate(
+                    op.get("description") or op.get("summary", ""), 200
+                )
+                operation_entries.append({
+                    "name": op_name,
+                    "description": op_desc,
+                    "path": f"bash(./{_strip_base_dir(contract_output, gen_config)}/{contract.slug}/{tag['slug']}/{sh_filename})",
+                })
+
+            md_content = _oapi.generate_tag_index_markdown(
+                tag_name=tag["name"],
+                tag_description=resolved_desc,
+                base_url=effective_base_url,
+                auth_header=contract.auth_header,
+                auth_prefix=contract.auth_prefix,
+                auth_secret_ref=contract.auth_secret_ref or "",
+                operations=operation_entries,
+            )
+            _write(ctr_dir, f"{tag['slug']}.md", md_content)
+
+            tag_context.append({
+                "name": tag["name"],
+                "slug": tag["slug"],
+                "description": resolved_desc,
+            })
+
+        contract_context.append({
+            "slug": contract.slug,
+            "description": contract.description,
+            "output_dir": contract_output,
+            "ref_dir": _strip_base_dir(contract_output, gen_config),
+            "ref_base": _make_ref(contract_output, gen_config),
+            "tags": tag_context,
+        })
+
+    _log.info("agent_generator.contracts_written", count=len(contracts))
+
+    # ── Generations loop ──────────────────────────────────────
+    generations = agent.generations if hasattr(agent, "generations") and agent.generations else []
+
+    # Backward compat: if no generations, build one from legacy fields
+    if not generations:
+        from agflow.schemas.agents import AgentGeneration
+        if agent.role_id:
+            generations = [AgentGeneration(
+                role_id=agent.role_id,
+                template_slug=getattr(agent, "prompt_template_slug", ""),
+                template_culture=getattr(agent, "prompt_template_culture", ""),
+                prompt_filename=getattr(agent, "prompt_filename", "prompt.md"),
+                profiles=[],
+            )]
+
+    for gen_block in generations:
+        role = await roles_service.get_by_id(gen_block.role_id)
+        documents = await role_documents_service.list_for_role(gen_block.role_id)
+
+        # Group all docs by section for load_section helper
+        all_sections: dict[str, list[str]] = {}
+        for doc in documents:
+            all_sections.setdefault(doc.section, []).append(doc.content_md)
+
+        def _make_loader(sects: dict[str, list[str]]):
+            def load_section(name: str) -> list[str]:
+                return sects.get(name, [])
+            return load_section
+
+        # Build profile files
+        generated_profiles: list[dict[str, Any]] = []
+        for profile in gen_block.profiles:
+            if not profile.documents:
+                continue
+            profile_slug = profile.name.lower().replace(" ", "_")
+            profile_output = profile.output_dir or gen_paths["missions"]
+            profile_output_dir = os.path.join(generated_dir, profile_output)
+            os.makedirs(profile_output_dir, exist_ok=True)
+
+            doc_ids = set(profile.documents)
+            sections: dict[str, list[str]] = {}
             for doc in documents:
                 if str(doc.id) in doc_ids:
-                    prompt_parts.append(f"\n---\n\n{doc.content_md}")
-    else:
-        for doc in documents:
-            prompt_parts.append(f"\n---\n\n{doc.content_md}")
+                    sections.setdefault(doc.section, []).append(doc.content_md)
 
-    prompt_md = "\n".join(prompt_parts)
-    prompt_md = await _expand_macros(prompt_md)
-    _write(out_dir, "prompt.md", prompt_md)
+            # Render profile with template or fallback
+            rendered = ""
+            if profile.template_slug and profile.template_culture:
+                tpl_path = os.path.join(
+                    _data_dir(), "templates", profile.template_slug,
+                    f"{profile.template_culture}.md.j2",
+                )
+                if os.path.isfile(tpl_path):
+                    with open(tpl_path, encoding="utf-8") as f:
+                        tpl_content = f.read()
+                    env = Environment(
+                        trim_blocks=True, lstrip_blocks=True,
+                        keep_trailing_newline=True, autoescape=False,
+                    )
+                    template = env.from_string(tpl_content)
+                    rendered = template.render(
+                        role=role, profile=profile, agent=agent,
+                        load_section=_make_loader(sections),
+                    )
+                    _log.info("agent_generator.profile_rendered",
+                              profile=profile.name,
+                              template=f"{profile.template_slug}/{profile.template_culture}.md.j2")
+
+            if not rendered:
+                parts = []
+                for contents in sections.values():
+                    parts.extend(contents)
+                rendered = "\n\n---\n\n".join(parts)
+
+            if rendered.strip():
+                _write(profile_output_dir, f"{profile_slug}.md", rendered)
+
+            profile_file = os.path.join(profile_output_dir, f"{profile_slug}.md")
+            if os.path.isfile(profile_file):
+                generated_profiles.append({
+                    "name": profile.name,
+                    "description": profile.description,
+                    "slug": profile_slug,
+                    "path": f"{_make_ref(profile_output, gen_config)}/{profile_slug}.md",
+                })
+
+        # Render prompt file
+        _prompt_template = None
+        _prompt_loader = None
+        if gen_block.template_slug and gen_block.template_culture:
+            tpl_path = os.path.join(
+                _data_dir(), "templates", gen_block.template_slug,
+                f"{gen_block.template_culture}.md.j2",
+            )
+            if os.path.isfile(tpl_path):
+                with open(tpl_path, encoding="utf-8") as f:
+                    tpl_content = f.read()
+                env = Environment(
+                    trim_blocks=True, lstrip_blocks=True,
+                    keep_trailing_newline=True, autoescape=False,
+                )
+                _prompt_template = env.from_string(tpl_content)
+                _prompt_loader = _make_loader(all_sections)
+
+        if _prompt_template is not None:
+            prompt_md = _prompt_template.render(
+                role=role, agent=agent, load_section=_prompt_loader,
+                missions=generated_profiles, api_contracts=contract_context,
+                ref_prefix=ref_prefix, paths=gen_paths,
+            )
+        else:
+            prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
+            if generated_profiles:
+                prompt_md += "\n\n### Missions\n"
+                for m in generated_profiles:
+                    prompt_md += f"\n- {m['description']} : `{m['path']}`"
+                prompt_md += "\n"
+            if contract_context:
+                prompt_md += "\n\n## API disponibles\n"
+                for ctr in contract_context:
+                    prompt_md += f"\n### {ctr['description']}\n"
+                    for tag in ctr["tags"]:
+                        prompt_md += f"\n- {tag['description']} : `{ctr['ref_base']}/{ctr['slug']}/{tag['slug']}.md`"
+                prompt_md += "\n"
+
+        prompt_md = await _expand_macros(prompt_md)
+        prompt_fn = gen_block.prompt_filename or gen_paths["prompt"]
+        prompt_dir = os.path.dirname(os.path.join(out_dir, prompt_fn))
+        os.makedirs(prompt_dir, exist_ok=True)
+        _write(out_dir, prompt_fn, prompt_md)
+        _log.info("agent_generator.generation_written",
+                  role=gen_block.role_id, prompt=prompt_fn,
+                  profiles=len(generated_profiles))
 
     # Build .env — merge Dockerfile.json Environments with agent overrides
     # Secrets come exclusively from the user's vault — never from platform secrets
@@ -227,27 +434,205 @@ async def generate(
         templated = resolve_templates(raw, resolved_params)
         # Step 2: resolve $SECRET / ${SECRET} against vault secrets
         env_lines.append(f"{k}={_resolve_secret(templated)}")
+    # Custom env vars (in env_overrides but not in base_env)
+    for k, override in env_overrides.items():
+        if k in base_env:
+            continue  # already handled above
+        if override.get("excluded"):
+            continue
+        raw = str(override.get("value", ""))
+        templated = resolve_templates(raw, resolved_params)
+        env_lines.append(f"{k}={_resolve_secret(templated)}")
     # Params (exposed as env vars too)
     for k, v in resolved_params.items():
         templated = resolve_templates(str(v), resolved_params)
         env_lines.append(f"{k}={_resolve_secret(templated)}")
 
-    _write(out_dir, ".env", "\n".join(env_lines) + "\n")
+    _write(out_dir, gen_paths["env"], "\n".join(env_lines) + "\n")
 
-    # Build mcp.json
-    mcp_config = []
+    # ── MCP installation files ──────────────────────────────────────────
+    target = dockerfile_files_service.read_target(agent.dockerfile_id)
+    cmd_lines: list[str] = []
+    config_blocks: dict[str, list[str]] = {}
+    resolved_mcps: list[dict[str, Any]] = []
+
     for binding in agent.mcp_bindings:
-        mcp_config.append({
-            "mcp_server_id": binding.mcp_server_id,
-            "config_overrides": binding.config_overrides,
+        mcp = await mcp_catalog_service.get_by_id(binding.mcp_server_id)
+        override = (
+            binding.parameters_override
+            if hasattr(binding, "parameters_override")
+            else getattr(binding, "config_overrides", {}) or {}
+        )
+        runtime = override.get("runtime")
+        params = override.get("params", {})
+
+        if not target or not runtime:
+            continue
+
+        mode = next(
+            (m for m in target.get("modes", []) if m.get("runtime") == runtime),
+            None,
+        )
+        if not mode:
+            continue
+
+        template = mode.get("template", "")
+        env_entries = {k: _resolve_secret(str(v)) for k, v in params.items() if v}
+
+        resolved_mcps.append({
+            "name": mcp.name,
+            "package": mcp.repo or mcp.name,
+            "runtime": runtime,
+            "params": params,
+            "env": env_entries,
         })
-    _write(out_dir, "mcp.json", json.dumps(mcp_config, indent=2, ensure_ascii=False))
+
+        env_toml = ""
+        if env_entries:
+            env_toml = "\n[mcp_servers.env]\n" + "\n".join(
+                f'{k} = "{v}"' for k, v in env_entries.items()
+            )
+
+        env_json = ""
+        if env_entries:
+            pairs = ", ".join(f'"{k}": "{v}"' for k, v in env_entries.items())
+            env_json = f', "env": {{{pairs}}}'
+
+        resolved = (
+            template
+            .replace("{name}", mcp.name)
+            .replace("{package}", mcp.repo or mcp.name)
+            .replace("{env_toml}", env_toml)
+            .replace("{env_json}", env_json)
+        )
+
+        action_type = mode.get("action_type", "")
+        if action_type == "cmd":
+            cmd_lines.append(resolved)
+        elif action_type == "insert_in_file":
+            config_path = mode.get("config_path", "mcp_config")
+            config_blocks.setdefault(config_path, []).append(resolved)
+
+    if cmd_lines:
+        script = "#!/usr/bin/env bash\nset -euo pipefail\n\n" + "\n".join(cmd_lines) + "\n"
+        _write(out_dir, "install_mcp.sh", script)
+
+    # MCP config: use Jinja2 template if configured, else concatenate blocks
+    mcp_tpl_slug = getattr(agent, "mcp_template_slug", "")
+    mcp_tpl_culture = getattr(agent, "mcp_template_culture", "")
+    mcp_config_fn = getattr(agent, "mcp_config_filename", "config.toml")
+    generation_alerts: list[dict[str, str]] = []
+
+    if mcp_tpl_slug and mcp_tpl_culture:
+        tpl_path = os.path.join(
+            _data_dir(), "templates", mcp_tpl_slug, f"{mcp_tpl_culture}.md.j2",
+        )
+        if os.path.isfile(tpl_path):
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl_content = f.read()
+            env = Environment(
+                trim_blocks=True, lstrip_blocks=True,
+                keep_trailing_newline=True, autoescape=False,
+            )
+            mcp_template = env.from_string(tpl_content)
+            mcp_content = mcp_template.render(
+                agent=agent,
+                mcp_servers=resolved_mcps,
+                config_blocks=config_blocks,
+            )
+            mcp_out_path = os.path.join(out_dir, mcp_config_fn)
+            os.makedirs(os.path.dirname(mcp_out_path), exist_ok=True)
+            with open(mcp_out_path, "w", encoding="utf-8") as fh:
+                fh.write(mcp_content)
+            data_base = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+            mount_path = os.path.join(data_base, agent.dockerfile_id, mcp_config_fn)
+            os.makedirs(os.path.dirname(mount_path), exist_ok=True)
+            with open(mount_path, "w", encoding="utf-8") as fh:
+                fh.write(mcp_content)
+            _log.info("agent_generator.mcp_config_template", path=mount_path)
+        else:
+            generation_alerts.append({
+                "level": "error",
+                "variable": "mcp_template",
+                "message": f"Template MCP '{mcp_tpl_slug}/{mcp_tpl_culture}.md.j2' introuvable",
+            })
+    elif mcp_tpl_slug and not mcp_tpl_culture:
+        generation_alerts.append({
+            "level": "error",
+            "variable": "mcp_template",
+            "message": f"Template MCP '{mcp_tpl_slug}' sélectionné mais culture non renseignée",
+        })
+    else:
+        for config_path, blocks in config_blocks.items():
+            filename = os.path.basename(config_path)
+            content = "\n\n".join(blocks) + "\n"
+            _write(out_dir, filename, content)
+            data_base = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+            mount_path = os.path.join(data_base, agent.dockerfile_id, filename)
+            with open(mount_path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            _log.info("agent_generator.mcp_config_written", path=mount_path)
+
+    # Also keep mcp.json for backward compat / debug
+    mcp_config_legacy = []
+    for binding in agent.mcp_bindings:
+        override = (
+            binding.parameters_override
+            if hasattr(binding, "parameters_override")
+            else getattr(binding, "config_overrides", {}) or {}
+        )
+        mcp_config_legacy.append({
+            "mcp_server_id": str(binding.mcp_server_id),
+            "parameters_override": override,
+        })
+    _write(out_dir, gen_paths["mcp_json"], json.dumps(mcp_config_legacy, indent=2, ensure_ascii=False))
 
     # Skills
     skills_dir = os.path.join(out_dir, "skills")
     os.makedirs(skills_dir, exist_ok=True)
+    resolved_skills: list[dict[str, Any]] = []
     for binding in agent.skill_bindings:
         _write(skills_dir, f"{binding.catalog_skill_id}.md", "")
+        resolved_skills.append({"skill_id": str(binding.catalog_skill_id)})
+
+    # Skills config: use Jinja2 template if configured
+    skills_tpl_slug = getattr(agent, "skills_template_slug", "")
+    skills_tpl_culture = getattr(agent, "skills_template_culture", "")
+    skills_config_fn = getattr(agent, "skills_config_filename", "skills.md")
+
+    if skills_tpl_slug and skills_tpl_culture:
+        tpl_path = os.path.join(
+            _data_dir(), "templates", skills_tpl_slug, f"{skills_tpl_culture}.md.j2",
+        )
+        if os.path.isfile(tpl_path):
+            with open(tpl_path, encoding="utf-8") as f:
+                tpl_content = f.read()
+            env = Environment(
+                trim_blocks=True, lstrip_blocks=True,
+                keep_trailing_newline=True, autoescape=False,
+            )
+            skills_template = env.from_string(tpl_content)
+            skills_content = skills_template.render(
+                agent=agent,
+                skills=resolved_skills,
+            )
+            skills_out_path = os.path.join(out_dir, skills_config_fn)
+            os.makedirs(os.path.dirname(skills_out_path), exist_ok=True)
+            with open(skills_out_path, "w", encoding="utf-8") as fh:
+                fh.write(skills_content)
+            _log.info("agent_generator.skills_config_template", path=skills_out_path)
+        else:
+            generation_alerts.append({
+                "level": "error",
+                "variable": "skills_template",
+                "message": f"Template Skills '{skills_tpl_slug}/{skills_tpl_culture}.md.j2' introuvable",
+            })
+    elif skills_tpl_slug and not skills_tpl_culture:
+        generation_alerts.append({
+            "level": "error",
+            "variable": "skills_template",
+            "message": f"Template Skills '{skills_tpl_slug}' sélectionné mais culture non renseignée",
+        })
 
     # Build run.sh from Dockerfile.json with agent overrides applied
     files = await dockerfile_files_service.list_for_dockerfile(agent.dockerfile_id)
@@ -315,6 +700,8 @@ async def generate(
         for m in mounts:
             src = m.get("source", "")
             tgt = m.get("target", "")
+            if tgt.startswith("~/"):
+                tgt = "/root/" + tgt[2:]
             ro = ":ro" if m.get("readonly") else ""
             cmd_parts.append(f'-v "{src}:{tgt}{ro}"')
         cmd_parts.append(image)
@@ -324,15 +711,42 @@ async def generate(
         run_sh_lines.append("# No Dockerfile.json found")
         run_sh_lines.append(f"docker run agflow-{agent.dockerfile_id}:latest")
 
-    _write(out_dir, "run.sh", "\n".join(run_sh_lines) + "\n")
-    os.chmod(os.path.join(out_dir, "run.sh"), 0o755)
+    _write(out_dir, gen_paths["run"], "\n".join(run_sh_lines) + "\n")
+    os.chmod(os.path.join(out_dir, gen_paths["run"]), 0o755)
 
     _log.info("agent.generate", slug=slug, dir=out_dir)
+
+    # ── Validation : variables référencées vs .env + auto-injection ──
+    env_alerts = await _validate_and_inject_env(
+        out_dir, gen_paths.get("env", ".env"), user_secrets,
+    )
+
+    # Validate generations
+    for gi, gen_block in enumerate(generations):
+        if not gen_block.role_id:
+            generation_alerts.append({
+                "level": "error",
+                "variable": "generation",
+                "message": f"Génération #{gi + 1} : aucun rôle sélectionné",
+            })
+        if gen_block.template_slug and not gen_block.template_culture:
+            generation_alerts.append({
+                "level": "error",
+                "variable": "generation",
+                "message": f"Génération #{gi + 1} : template '{gen_block.template_slug}' sélectionné mais culture non renseignée",
+            })
+        if not gen_block.prompt_filename:
+            generation_alerts.append({
+                "level": "warning",
+                "variable": "generation",
+                "message": f"Génération #{gi + 1} : fichier prompt non renseigné (défaut: prompt.md)",
+            })
 
     return {
         "slug": slug,
         "path": out_dir,
         "files": os.listdir(out_dir),
+        "alerts": generation_alerts + env_alerts,
     }
 
 
@@ -346,7 +760,7 @@ async def list_generated_files(slug: str) -> list[dict[str, Any]]:
 
     out_dir = os.path.join(_agents_dir(), slug, "generated")
     results: list[dict[str, Any]] = []
-    for entry in walk_tree(out_dir):
+    for entry in walk_tree(out_dir, skip_dot_dirs=False):
         if entry.type == "dir":
             results.append({"path": entry.path, "content": "", "type": "dir"})
             continue
@@ -357,6 +771,164 @@ async def list_generated_files(slug: str) -> list[dict[str, Any]]:
             content = "<binary>"
         results.append({"path": entry.path, "content": content, "type": "file"})
     return results
+
+
+async def _validate_and_inject_env(
+    out_dir: str,
+    env_filename: str,
+    user_secrets: dict[str, str] | None,
+) -> list[dict[str, str]]:
+    """Scan generated files for ${VAR} refs, auto-inject from secrets, report missing."""
+    import re as _re
+
+    from agflow.services import secrets_service
+
+    # Parse current .env
+    env_path = os.path.join(out_dir, env_filename)
+    env_vars: dict[str, str] = {}
+    if os.path.isfile(env_path):
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, _, v = line.partition("=")
+                    env_vars[k.strip()] = v.strip()
+
+    # Scan .sh / .toml / .json for ${UPPERCASE_VAR} patterns
+    _scannable_ext = {".sh", ".toml", ".json"}
+    var_pattern = _re.compile(r"\$\{([A-Z_][A-Z0-9_]*)(?::[-+]?[^}]*)?\}")
+    referenced: dict[str, set[str]] = {}
+
+    for root, _dirs, files in os.walk(out_dir):
+        for fname in files:
+            if fname == env_filename:
+                continue
+            ext = os.path.splitext(fname)[1]
+            if ext not in _scannable_ext:
+                continue
+            fpath = os.path.join(root, fname)
+            rel = os.path.relpath(fpath, out_dir).replace("\\", "/")
+            try:
+                with open(fpath, encoding="utf-8") as f:
+                    content = f.read()
+            except (UnicodeDecodeError, PermissionError):
+                continue
+            for match in var_pattern.finditer(content):
+                var_name = match.group(1)
+                referenced.setdefault(var_name, set()).add(rel)
+
+    # Identify variables that need resolution (missing or empty)
+    needs_resolve = [v for v in referenced if not env_vars.get(v)]
+
+    if not needs_resolve:
+        return []
+
+    # Try to resolve from user secrets first, then platform secrets
+    vault = user_secrets or {}
+    injected: dict[str, str] = {}
+    still_missing: list[str] = []
+
+    for var_name in needs_resolve:
+        if vault.get(var_name):
+            injected[var_name] = vault[var_name]
+        else:
+            still_missing.append(var_name)
+
+    # Try platform secrets for remaining
+    if still_missing:
+        try:
+            platform = await secrets_service.resolve_env(still_missing)
+            for var_name, value in platform.items():
+                if value:
+                    injected[var_name] = value
+                    still_missing.remove(var_name)
+        except secrets_service.SecretNotFoundError:
+            # Some or all not found — handled below
+            try:
+                # Try individually to get partial results
+                for var_name in list(still_missing):
+                    try:
+                        result = await secrets_service.resolve_env([var_name])
+                        if result.get(var_name):
+                            injected[var_name] = result[var_name]
+                            still_missing.remove(var_name)
+                    except secrets_service.SecretNotFoundError:
+                        pass
+            except Exception:
+                pass
+
+    # Inject resolved variables into .env (update existing empty + append new)
+    if injected:
+        # Re-read and rewrite the .env, updating empty values in place
+        lines: list[str] = []
+        updated_keys: set[str] = set()
+        if os.path.isfile(env_path):
+            with open(env_path, encoding="utf-8") as f:
+                for line in f:
+                    stripped = line.strip()
+                    if "=" in stripped and not stripped.startswith("#"):
+                        k, _, v = stripped.partition("=")
+                        k = k.strip()
+                        if k in injected and not v.strip():
+                            lines.append(f"{k}={injected[k]}\n")
+                            updated_keys.add(k)
+                            continue
+                    lines.append(line if line.endswith("\n") else line + "\n")
+        # Append truly new variables
+        new_keys = set(injected.keys()) - updated_keys
+        if new_keys:
+            lines.append("# Auto-injected from secrets\n")
+            for k in sorted(new_keys):
+                lines.append(f"{k}={injected[k]}\n")
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+        _log.info("env.auto_inject", count=len(injected), vars=list(injected.keys()))
+
+    # Build alerts — only errors and warnings, no info
+    alerts = []
+    for var_name in sorted(still_missing):
+        files_list = ", ".join(sorted(referenced[var_name]))
+        alerts.append({
+            "level": "error",
+            "variable": var_name,
+            "message": f"${{{var_name}}} référencée dans [{files_list}] mais introuvable (ni coffre utilisateur, ni secrets plateforme)",
+        })
+    # Check empty values in the final .env
+    for var_name in sorted(referenced):
+        if var_name in still_missing or var_name in injected:
+            continue
+        if not env_vars.get(var_name):
+            files_list = ", ".join(sorted(referenced[var_name]))
+            alerts.append({
+                "level": "warning",
+                "variable": var_name,
+                "message": f"${{{var_name}}} présente dans .env mais vide — utilisée dans [{files_list}]",
+            })
+
+    return alerts
+
+
+def _strip_base_dir(path: str, gen_config: dict[str, Any]) -> str:
+    """Remove the base_dir prefix from a path for prompt refs."""
+    base = gen_config.get("base_dir", "workspace")
+    if path.startswith(base + "/"):
+        return path[len(base) + 1:]
+    return path
+
+
+def _make_ref(path: str, gen_config: dict[str, Any]) -> str:
+    """Build a prompt reference from an output_dir path.
+
+    If the path starts with base_dir (e.g. 'workspace/...'), use ref_prefix:
+        workspace/docs/ctr → @workspace/docs/ctr
+    Otherwise, use @ directly:
+        .vibes/docs/ctr → @.vibes/docs/ctr
+    """
+    base = gen_config.get("base_dir", "workspace")
+    ref_prefix = gen_config.get("prompt_ref_prefix", "@workspace")
+    if path.startswith(base + "/"):
+        return f"{ref_prefix}/{path[len(base) + 1:]}"
+    return f"@{path}"
 
 
 def _write(directory: str, filename: str, content: str) -> None:

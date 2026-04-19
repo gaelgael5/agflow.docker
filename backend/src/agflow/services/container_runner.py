@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -11,9 +12,28 @@ from typing import Any
 import aiodocker
 import structlog
 
+from agflow.mom.adapters.generic import GenericAdapter
+from agflow.mom.adapters.mistral import MistralAdapter
+from agflow.mom.adapters.wrapped import WrappedEntrypointAdapter
 from agflow.schemas.containers import ContainerInfo
 
 _log = structlog.get_logger(__name__)
+
+_ADAPTER_REGISTRY: dict[str, type[GenericAdapter]] = {
+    "mistral": MistralAdapter,
+    "aider": WrappedEntrypointAdapter,
+    "codex": WrappedEntrypointAdapter,
+    "generic": GenericAdapter,
+}
+
+
+def get_adapter(dockerfile_id: str) -> GenericAdapter:
+    """Return the adapter instance for a given dockerfile type.
+
+    Falls back to GenericAdapter if the dockerfile_id is unknown.
+    """
+    adapter_cls = _ADAPTER_REGISTRY.get(dockerfile_id, GenericAdapter)
+    return adapter_cls()
 
 # How many agflow-managed containers can run at once. Hard limit to avoid
 # accidental resource exhaustion on the test LXC.
@@ -188,7 +208,7 @@ def expand_shell_vars(s: str, extra_env: dict[str, str] | None = None) -> str:
         return s
     merged = {**os.environ, **(extra_env or {})}
 
-    def replacer(m: "re.Match[str]") -> str:
+    def replacer(m: re.Match[str]) -> str:
         var_name = m.group(1)
         default = m.group(2) or ""
         value = merged.get(var_name)
@@ -447,6 +467,7 @@ def build_run_config(
     content_hash: str,
     instance_id: str,
     extra_env: dict[str, str] | None = None,
+    mount_base_id: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Parse Dockerfile.json and produce (container_name, aiodocker config).
 
@@ -523,10 +544,12 @@ def build_run_config(
             continue
         raw_source = str(m.get("source", "")).strip()
         target = full_resolve(str(m.get("target", "")).strip(), vars_map, extra_env)
+        if target.startswith("~/"):
+            target = "/root/" + target[2:]
         if not raw_source or not target:
             continue
         host_source, _container_path, _auto = resolve_mount_source(
-            raw_source, dockerfile_id, vars_map, extra_env
+            raw_source, mount_base_id or dockerfile_id, vars_map, extra_env
         )
         ro_flag = ":ro" if bool(m.get("readonly")) else ""
         binds.append(f"{host_source}:{target}{ro_flag}")
@@ -587,7 +610,7 @@ def build_run_config(
         "StopSignal": stop_signal,
         "Tty": tty_enabled,
         "OpenStdin": open_stdin,
-        "StdinOnce": False if open_stdin else True,
+        "StdinOnce": not open_stdin,
         "HostConfig": host_config,
     }
     if working_dir:
@@ -757,6 +780,9 @@ async def run_task(
     user_secrets: dict[str, str] | None = None,
     on_container_started: Any | None = None,
     cleanup: bool = False,
+    session_id: str | None = None,
+    agent_instance_id: str | None = None,
+    mount_base_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """One-shot: regenerate .tmp/{.env, run.sh, task.json} then exec run.sh.
 
@@ -774,6 +800,7 @@ async def run_task(
     """
     import asyncio as _asyncio
     import json as _json
+    import secrets as _secrets
     import shutil as _shutil
 
     import aiodocker as _aiodocker
@@ -788,6 +815,7 @@ async def run_task(
             f"Maximum of {MAX_RUNNING_CONTAINERS} running containers reached."
         )
 
+    session_id = session_id or _secrets.token_hex(6)
     instance_id = secrets.token_hex(3)
     platform_secrets = await _load_platform_secrets()
     all_secrets = {**platform_secrets, **(user_secrets or {})}
@@ -797,7 +825,18 @@ async def run_task(
         content_hash=content_hash,
         instance_id=instance_id,
         extra_env=all_secrets,
+        mount_base_id=mount_base_id,
     )
+    if agent_instance_id is not None:
+        try:
+            from uuid import UUID as _UUID
+
+            from agflow.services.agents_instances_service import (
+                set_last_container as _set_lc,
+            )
+            await _set_lc(instance_id=_UUID(str(agent_instance_id)), container_name=name)
+        except Exception as _exc:
+            _log.warning("run_task.set_container.failed", error=str(_exc))
     _ensure_mount_paths_from_config(
         dockerfile_id, params_json_content, instance_id, content_hash
     )
@@ -816,6 +855,28 @@ async def run_task(
             raise
     finally:
         await _aio.close()
+
+    from agflow.db.pool import get_pool
+    from agflow.mom.envelope import Direction, Kind
+    from agflow.mom.publisher import MomPublisher
+
+    _mom_pool = await get_pool()
+    _mom_publisher = MomPublisher(
+        pool=_mom_pool,
+        groups_config={
+            Direction.IN: ["dispatcher"],
+            Direction.OUT: ["ws_push", "router"],
+        },
+    )
+    _in_msg_id = await _mom_publisher.publish(
+        session_id=session_id,
+        instance_id=instance_id,
+        direction=Direction.IN,
+        source="system",
+        kind=Kind.INSTRUCTION,
+        payload=task_payload,
+    )
+    _adapter = get_adapter(dockerfile_id)
 
     # Regenerate .tmp/{.env, run.sh, task.json} — run.sh is the source of
     # truth for the launch.
@@ -861,6 +922,24 @@ async def run_task(
                 text = line.decode("utf-8", errors="replace").rstrip("\r\n")
                 if not text:
                     continue
+
+                try:
+                    _parsed = _adapter.parse_stdout_line(text)
+                    if _parsed is not None:
+                        _kind, _payload, _route = _parsed
+                        await _mom_publisher.publish(
+                            session_id=session_id,
+                            instance_id=instance_id,
+                            direction=Direction.OUT,
+                            source=f"agent:{instance_id}",
+                            kind=_kind,
+                            payload=_payload,
+                            route=_route,
+                            parent_msg_id=_in_msg_id,
+                        )
+                except Exception as _exc:
+                    _log.warning("mom.publish_out_failed", error=str(_exc), text=text[:100])
+
                 try:
                     yield _json.loads(text)
                 except _json.JSONDecodeError:
@@ -876,6 +955,44 @@ async def run_task(
         await proc.wait()
 
         exit_code = proc.returncode or 0
+
+        try:
+            if timed_out:
+                await _mom_publisher.publish(
+                    session_id=session_id,
+                    instance_id=instance_id,
+                    direction=Direction.OUT,
+                    source="system",
+                    kind=Kind.ERROR,
+                    payload={"message": "timeout", "timeout_seconds": timeout_seconds},
+                    parent_msg_id=_in_msg_id,
+                )
+            elif exit_code != 0:
+                await _mom_publisher.publish(
+                    session_id=session_id,
+                    instance_id=instance_id,
+                    direction=Direction.OUT,
+                    source="system",
+                    kind=Kind.ERROR,
+                    payload={
+                        "message": f"container exited with code {exit_code}",
+                        "exit_code": exit_code,
+                    },
+                    parent_msg_id=_in_msg_id,
+                )
+            else:
+                await _mom_publisher.publish(
+                    session_id=session_id,
+                    instance_id=instance_id,
+                    direction=Direction.OUT,
+                    source="system",
+                    kind=Kind.RESULT,
+                    payload={"status": "success", "exit_code": 0},
+                    parent_msg_id=_in_msg_id,
+                )
+        except Exception as _exc:
+            _log.warning("mom.publish_result_failed", error=str(_exc))
+
         yield {
             "type": "done",
             "status": "success" if exit_code == 0 else "failure",
@@ -897,6 +1014,16 @@ async def run_task(
             except Exception:
                 pass
             _shutil.rmtree(tmp_dir, ignore_errors=True)
+        if agent_instance_id is not None:
+            try:
+                from uuid import UUID as _UUID
+
+                from agflow.services.agents_instances_service import (
+                    set_last_container as _set_lc,
+                )
+                await _set_lc(instance_id=_UUID(str(agent_instance_id)), container_name=None)
+            except Exception as _exc:
+                _log.warning("run_task.clear_container.failed", error=str(_exc))
 
 
 async def stop(container_id: str) -> None:
@@ -920,11 +1047,8 @@ async def stop(container_id: str) -> None:
                 f"Container '{container_id}' is not managed by agflow"
             )
 
-        try:
+        with contextlib.suppress(aiodocker.exceptions.DockerError):
             await container.stop(timeout=10)
-        except aiodocker.exceptions.DockerError:
-            # Already stopped or in a weird state — still try to remove.
-            pass
         try:
             await container.delete(force=True)
         except aiodocker.exceptions.DockerError as exc:
@@ -936,3 +1060,39 @@ async def stop(container_id: str) -> None:
         _log.info("container.stop", container_id=container_id)
     finally:
         await docker.close()
+
+
+async def publish_instruction_via_mom(
+    *,
+    session_id: str,
+    instance_id: str,
+    instruction: str,
+) -> str:
+    """Publish an IN instruction to the MOM bus.
+
+    Returns the msg_id. This is a building block for the future
+    MOM-driven task runner that will replace the subprocess-based flow.
+    Full integration (dispatcher + aiodocker container wrapper) is
+    tracked as a follow-up.
+    """
+    from agflow.db.pool import get_pool
+    from agflow.mom.envelope import Direction, Kind
+    from agflow.mom.publisher import MomPublisher
+
+    pool = await get_pool()
+    publisher = MomPublisher(
+        pool=pool,
+        groups_config={
+            Direction.IN: ["dispatcher"],
+            Direction.OUT: ["ws_push", "router"],
+        },
+    )
+    msg_id = await publisher.publish(
+        session_id=session_id,
+        instance_id=instance_id,
+        direction=Direction.IN,
+        source="system",
+        kind=Kind.INSTRUCTION,
+        payload={"text": instruction},
+    )
+    return str(msg_id)

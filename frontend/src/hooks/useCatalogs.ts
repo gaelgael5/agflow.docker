@@ -50,13 +50,13 @@ export function useMCPCatalog() {
   });
 
   const installMutation = useMutation({
-    mutationFn: ({
-      discoveryServiceId,
-      packageId,
-    }: {
-      discoveryServiceId: string;
-      packageId: string;
-    }) => mcpCatalogApi.install(discoveryServiceId, packageId),
+    mutationFn: (payload: {
+      discovery_service_id: string;
+      package_id: string;
+      recipes?: Record<string, unknown>;
+      parameters?: unknown[];
+      category?: string;
+    }) => mcpCatalogApi.install(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: MCP_KEY }),
   });
 

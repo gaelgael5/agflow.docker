@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 BuildStatus = Literal["pending", "running", "success", "failed"]
-DisplayStatus = Literal["never_built", "up_to_date", "outdated", "failed", "building"]
+DisplayStatus = Literal["never_built", "up_to_date", "outdated", "failed", "building", "image_missing"]
 
 
 class DockerfileCreate(BaseModel):

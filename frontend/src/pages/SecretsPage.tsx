@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2 } from "lucide-react";
+import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { useSecrets } from "@/hooks/useSecrets";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
 import { SecretForm } from "@/components/SecretForm";
-import { RevealButton } from "@/components/RevealButton";
-import { TestKeyButton } from "@/components/TestKeyButton";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
+import type { EnvVarStatus as EnvVarStatusT } from "@/lib/secretsApi";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,11 +21,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { SecretCreate, SecretSummary } from "@/lib/secretsApi";
+import { secretsApi, type SecretCreate, type SecretSummary } from "@/lib/secretsApi";
 
 export function SecretsPage() {
   const { t } = useTranslation();
-  const { secrets, isLoading, createMutation, deleteMutation } = useSecrets();
+  const { secrets, isLoading, createMutation, updateMutation, deleteMutation } = useSecrets();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
@@ -109,42 +109,16 @@ export function SecretsPage() {
             </TableHeader>
             <TableBody>
               {secrets?.map((secret) => (
-                <TableRow key={secret.id}>
-                  <TableCell>
-                    <EnvVarStatus
-                      name={secret.var_name}
-                      status={envStatus.data?.[secret.var_name]}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <RevealButton secretId={secret.id} />
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <Badge variant="secondary">
-                      {secret.scope === "global"
-                        ? t("secrets.scope_global")
-                        : t("secrets.scope_agent")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-muted-foreground text-[12px]">
-                    {secret.used_by.length === 0
-                      ? t("secrets.none_used_by")
-                      : secret.used_by.join(", ")}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      <TestKeyButton secretId={secret.id} />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(secret)}
-                        aria-label={t("secrets.delete")}
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <SecretRow
+                  key={secret.id}
+                  secret={secret}
+                  status={envStatus.data?.[secret.var_name]}
+                  onDelete={() => handleDelete(secret)}
+                  onUpdate={async (value) => {
+                    await updateMutation.mutateAsync({ id: secret.id, payload: { value } });
+                  }}
+                  t={t}
+                />
               ))}
             </TableBody>
           </Table>
@@ -162,5 +136,138 @@ export function SecretsPage() {
         }}
       />
     </PageShell>
+  );
+}
+
+// ── Secret row with reveal, edit, copy ────────────────────────
+
+function SecretRow({
+  secret,
+  status,
+  onDelete,
+  onUpdate,
+  t,
+}: {
+  secret: SecretSummary;
+  status: EnvVarStatusT | undefined;
+  onDelete: () => void;
+  onUpdate: (value: string) => Promise<void>;
+  t: (key: string) => string;
+}) {
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleReveal() {
+    setLoading(true);
+    try {
+      const res = await secretsApi.reveal(secret.id);
+      setRevealed(res.value);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveEdit() {
+    setLoading(true);
+    try {
+      await onUpdate(editValue);
+      setRevealed(editValue);
+      setEditing(false);
+      toast.success(t("secrets.updated"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          <EnvVarStatus name={secret.var_name} status={status} />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0"
+            title={t("secrets.copy_key")}
+            onClick={() => { void navigator.clipboard.writeText(secret.var_name); toast.success(`${secret.var_name} copié`); }}
+          >
+            <Copy className="w-3 h-3 text-muted-foreground" />
+          </Button>
+        </div>
+      </TableCell>
+      <TableCell>
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              className="flex-1 text-[12px] font-mono border rounded px-2 py-1 bg-background"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleSaveEdit();
+                if (e.key === "Escape") setEditing(false);
+              }}
+            />
+            <Button size="sm" onClick={() => void handleSaveEdit()} disabled={loading}>
+              {t("secrets.save_edit")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+              {t("secrets.cancel_edit")}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <code className="text-[12px]">{revealed ?? t("secrets.value_masked")}</code>
+            {revealed === null ? (
+              <Button variant="ghost" size="sm" onClick={() => void handleReveal()} disabled={loading}>
+                {t("secrets.reveal")}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title={t("secrets.copy_value")}
+                  onClick={() => { void navigator.clipboard.writeText(revealed); toast.success(t("secrets.value_copied")); }}
+                >
+                  <Copy className="w-3 h-3 text-muted-foreground" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title={t("secrets.edit_value")}
+                  onClick={() => { setEditValue(revealed); setEditing(true); }}
+                >
+                  <Pencil className="w-3 h-3 text-muted-foreground" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setRevealed(null)}>
+                  {t("secrets.hide")}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+      </TableCell>
+      <TableCell className="hidden md:table-cell">
+        <Badge variant="secondary">
+          {secret.scope === "global" ? t("secrets.scope_global") : t("secrets.scope_agent")}
+        </Badge>
+      </TableCell>
+      <TableCell className="hidden md:table-cell text-muted-foreground text-[12px]">
+        {secret.used_by.length === 0 ? t("secrets.none_used_by") : secret.used_by.join(", ")}
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="icon" onClick={onDelete} aria-label={t("secrets.delete")}>
+            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }

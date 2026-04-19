@@ -93,24 +93,27 @@ def _err(code: str, message: str) -> dict:
 
 
 async def _check_rate_limit(prefix: str, limit: int) -> None:
-    from agflow.redis.client import get_redis
+    from agflow.db.pool import fetch_one
 
-    redis = await get_redis()
     key = f"ratelimit:agfd_{prefix}"
-    current = await redis.incr(key)
-    if current == 1:
-        await redis.expire(key, 60)
-    if current > limit:
-        ttl = await redis.ttl(key)
+    row = await fetch_one(
+        """
+        INSERT INTO rate_limit_counters (key, window_start, count)
+        VALUES ($1, date_trunc('minute', now()), 1)
+        ON CONFLICT (key, window_start)
+        DO UPDATE SET count = rate_limit_counters.count + 1
+        RETURNING count,
+                  EXTRACT(EPOCH FROM (
+                      date_trunc('minute', now()) + interval '1 minute' - now()
+                  ))::int AS ttl
+        """,
+        key,
+    )
+    if row and row["count"] > limit:
         raise HTTPException(
             status_code=429,
             detail=_err("rate_limited", f"Rate limit exceeded ({limit}/min)"),
-            headers={
-                "Retry-After": str(ttl),
-                "X-RateLimit-Limit": str(limit),
-                "X-RateLimit-Remaining": "0",
-                "X-RateLimit-Reset": str(int(time.time()) + ttl),
-            },
+            headers={"Retry-After": str(row["ttl"])},
         )
 
 

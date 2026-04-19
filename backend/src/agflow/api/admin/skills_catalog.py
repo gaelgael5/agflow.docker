@@ -15,13 +15,22 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[SkillSummary])
+@router.get(
+    "",
+    response_model=list[SkillSummary],
+    summary="List installed skills",
+    description="Returns all skills installed in the local catalog with their metadata and source discovery service reference.",
+)
 async def list_skills() -> list[SkillSummary]:
     return await skills_catalog_service.list_all()
 
 
 @router.post(
-    "", response_model=SkillSummary, status_code=status.HTTP_201_CREATED
+    "",
+    response_model=SkillSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Install a skill into the catalog",
+    description="Installs a skill from a discovery service into the local catalog by skill ID. Returns 409 if the skill is already installed.",
 )
 async def install_skill(payload: SkillInstallPayload) -> SkillSummary:
     try:
@@ -35,7 +44,12 @@ async def install_skill(payload: SkillInstallPayload) -> SkillSummary:
         ) from exc
 
 
-@router.delete("/{skill_uuid}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{skill_uuid}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Uninstall a skill from the catalog",
+    description="Removes a skill from the local catalog by its UUID. Returns 404 if the skill is not found.",
+)
 async def delete_skill(skill_uuid: UUID) -> None:
     try:
         await skills_catalog_service.delete(skill_uuid)

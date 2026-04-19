@@ -41,20 +41,20 @@ tar czf /tmp/agflow-deploy.tar.gz \
 echo "==> Uploading to pve..."
 scp /tmp/agflow-deploy.tar.gz pve:/tmp/
 
+echo "==> Stopping backend/frontend before code update..."
+ssh pve "pct exec ${CTID} -- bash -c '
+  cd ${REPO_DIR_ON_CT} 2>/dev/null && \
+  docker compose -f docker-compose.prod.yml stop backend frontend 2>/dev/null || true
+'"
+
 echo "==> Pushing into CT ${CTID} and extracting..."
 ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz && \
          pct exec ${CTID} -- bash -c '
            mkdir -p ${REPO_DIR_ON_CT}
-           # Preserve the data/ directory (persistent file storage)
-           if [ -d ${REPO_DIR_ON_CT}/data ]; then
-             mv ${REPO_DIR_ON_CT}/data /tmp/_agflow_data_backup
-           fi
-           rm -rf ${REPO_DIR_ON_CT}
-           mkdir -p ${REPO_DIR_ON_CT}
+           # Extract on top — tarball contains only code (backend/, frontend/,
+           # .env, compose, Caddyfile). data/ is NOT in the tarball so it stays
+           # untouched. No rm -rf, no mv — zero risk of corrupting data/.
            cd ${REPO_DIR_ON_CT} && tar xzf /tmp/agflow-deploy.tar.gz
-           if [ -d /tmp/_agflow_data_backup ]; then
-             mv /tmp/_agflow_data_backup ${REPO_DIR_ON_CT}/data
-           fi
          '"
 
 if [ "$REBUILD" -eq 1 ]; then

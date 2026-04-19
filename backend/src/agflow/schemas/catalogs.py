@@ -52,6 +52,21 @@ class ProbeResult(BaseModel):
     detail: str
 
 
+class TargetMode(BaseModel):
+    runtime: str
+    action_type: str
+    template: str
+    config_path: str | None = None
+
+
+class TargetSummary(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    modes: list[TargetMode] = Field(default_factory=list)
+    skill_modes: list[dict] = Field(default_factory=list)
+
+
 class MCPSearchItem(BaseModel):
     package_id: str | int
     name: str
@@ -68,6 +83,9 @@ class MCPSearchItem(BaseModel):
 class MCPInstallPayload(BaseModel):
     discovery_service_id: str
     package_id: str | int
+    recipes: dict = Field(default_factory=dict)
+    parameters: list = Field(default_factory=list)
+    category: str = ""
 
 
 class MCPServerSummary(BaseModel):
@@ -81,8 +99,10 @@ class MCPServerSummary(BaseModel):
     short_description: str
     long_description: str
     documentation_url: str
-    parameters: dict
+    parameters: list
     parameters_schema: list
+    recipes: dict = Field(default_factory=dict)
+    category: str = ""
     created_at: datetime
     updated_at: datetime
 

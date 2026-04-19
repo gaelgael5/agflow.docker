@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RoleSidebar } from "@/components/RoleSidebar";
 import type { DocumentSummary, SectionSummary } from "@/lib/rolesApi";
@@ -38,6 +38,7 @@ function renderSidebar(
       onAdd={props.onAdd ?? vi.fn()}
       onAddSection={props.onAddSection ?? vi.fn()}
       onDeleteSection={props.onDeleteSection ?? vi.fn()}
+      onFilesDropped={props.onFilesDropped}
     />,
   );
 }
@@ -134,5 +135,28 @@ describe("RoleSidebar", () => {
     const button = screen.getByRole("button", { name: /Ajouter une catégorie/i });
     await userEvent.click(button);
     expect(onAddSection).toHaveBeenCalled();
+  });
+
+  it("highlights only the section being dragged over", () => {
+    const onFilesDropped = vi.fn();
+    renderSidebar({ onFilesDropped });
+    const missionsZone = screen.getByTestId("section-dropzone-missions");
+    fireEvent.dragEnter(missionsZone, {
+      dataTransfer: { types: ["Files"], files: [] },
+    });
+    expect(missionsZone).toHaveClass("ring-2");
+    const rolesZone = screen.getByTestId("section-dropzone-roles");
+    expect(rolesZone).not.toHaveClass("ring-2");
+  });
+
+  it("calls onFilesDropped(sectionName, files) on drop", () => {
+    const onFilesDropped = vi.fn();
+    renderSidebar({ onFilesDropped });
+    const file = new File(["# hello"], "mission.md");
+    const missionsZone = screen.getByTestId("section-dropzone-missions");
+    fireEvent.drop(missionsZone, {
+      dataTransfer: { types: ["Files"], files: [file] },
+    });
+    expect(onFilesDropped).toHaveBeenCalledWith("missions", [file]);
   });
 });

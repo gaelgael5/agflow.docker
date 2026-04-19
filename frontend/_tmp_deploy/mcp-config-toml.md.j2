@@ -1,0 +1,15 @@
+{% for mcp in mcp_servers %}
+[[mcp_servers]]
+name = "{{ mcp.name }}"
+transport = "stdio"
+command = "{{ mcp.runtime }}"
+args = ["-y", "{{ mcp.package }}"]
+{% if mcp.env %}
+
+[mcp_servers.env]
+{% for k, v in mcp.env.items() %}
+{{ k }} = "{{ v }}"
+{% endfor %}
+{% endif %}
+
+{% endfor %}

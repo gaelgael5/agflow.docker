@@ -1,0 +1,74 @@
+<h2>Où peut-on lâcher les fichiers dans la page Role ?</h2>
+<p class="subtitle">Trois mécaniques d'UX possibles. La page actuelle a une sidebar à gauche (arborescence sections + documents) et un panneau droit (onglets general / prompt / document). Choisis une seule option.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Drop sur chaque section dans la sidebar (ciblage précis)</h3>
+      <p>Quand tu drag, chaque section ("MISSIONS", "COMPETENCES", ou tes sections custom) se highlight séparément. Tu lâches précisément sur la section voulue.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Mockup — highlight par section</div>
+        <div class="mockup-body" style="display:flex;gap:12px">
+          <div style="flex:1;font-family:monospace;font-size:12px;padding:10px;border:1px solid #444;background:#1f1f1f">
+            📁 ROLES<br/>
+            &nbsp;&nbsp;└─ role.md<br/>
+            <div style="padding:6px;border:2px dashed #4ade80;background:#064e3b;margin:4px 0">📁 MISSIONS <span style="color:#4ade80">← drop ici</span><br/>&nbsp;&nbsp;└─ m1.md</div>
+            📁 COMPETENCES<br/>
+            &nbsp;&nbsp;└─ c1.md<br/>
+            📁 CUSTOM-1
+          </div>
+          <div style="flex:2;padding:10px;border:1px solid #444">Panneau droit<br/>(onglets)</div>
+        </div>
+      </div>
+      <p class="label" style="margin-top:8px;color:#4ade80">✓ Cible claire · ✓ pas d'ambiguïté · ✗ zones de drop étroites (plus difficile de viser)</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Drop sur le panneau droit (section = celle actuellement ouverte)</h3>
+      <p>Tu cliques d'abord sur une section pour l'ouvrir (normal), puis tu drop n'importe où dans le panneau principal de droite. Le contexte (section active) définit la destination.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Mockup — drop dans le panneau actif</div>
+        <div class="mockup-body" style="display:flex;gap:12px">
+          <div style="flex:1;font-family:monospace;font-size:12px;padding:10px;border:1px solid #444;background:#1f1f1f">
+            📁 ROLES<br/>
+            <span style="background:#3b82f6;padding:1px 4px;border-radius:3px">📁 MISSIONS</span> ← active<br/>
+            📁 COMPETENCES<br/>
+            📁 CUSTOM-1
+          </div>
+          <div style="flex:2;padding:10px;border:2px dashed #4ade80;background:#064e3b;text-align:center;color:#4ade80">
+            ↓ Lâche des fichiers ici<br/>
+            <span style="color:#888;font-size:11px">(destination: MISSIONS)</span>
+          </div>
+        </div>
+      </div>
+      <p class="label" style="margin-top:8px;color:#4ade80">✓ Grande zone facile à viser · ✗ destination implicite (risque de se tromper)</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Overlay plein-écran avec sélecteur de section</h3>
+      <p>Dès que tu drag un fichier au-dessus de la page, un overlay s'affiche avec la liste des sections disponibles. Tu choisis au moment du drop.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Mockup — overlay au-dessus de la page</div>
+        <div class="mockup-body" style="padding:20px;background:rgba(0,0,0,0.6);text-align:center;color:#fff">
+          <div style="border:2px dashed #4ade80;padding:24px;background:#064e3b;display:inline-block">
+            <strong>Déposer dans quelle section ?</strong><br/><br/>
+            <button class="mock-button" style="margin:4px">ROLES</button>
+            <button class="mock-button" style="margin:4px">MISSIONS</button>
+            <button class="mock-button" style="margin:4px">COMPETENCES</button><br/>
+            <button class="mock-button" style="margin:4px">CUSTOM-1</button>
+          </div>
+        </div>
+      </div>
+      <p class="label" style="margin-top:8px;color:#4ade80">✓ Explicite, zéro ambiguïté · ✗ un clic de plus · ✗ plus lourd à implémenter</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:24px"><strong>Ma reco</strong> : <strong>A</strong>. C'est le comportement standard (Gmail, macOS Finder, VS Code Explorer). La zone est assez grande si on hover aussi la ligne entière et les documents enfants. Simple à implémenter avec <code>react-dropzone</code> par section.</p>

@@ -1,17 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, Lock, Plus, Save, Trash2, Upload } from "lucide-react";
+import { Download, Plus, RefreshCw, Save, Search, Trash2, Upload } from "lucide-react";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRoles } from "@/hooks/useRoles";
 import {
   useRoleDetail,
   useRoleDocumentMutations,
 } from "@/hooks/useRoleDocuments";
-import { RoleSidebar, isDocLocked, docDisplayName } from "@/components/RoleSidebar";
+import {
+  RoleSidebar,
+  isDocLocked,
+  docDisplayName,
+} from "@/components/RoleSidebar";
 import { RoleGeneralTab } from "@/components/RoleGeneralTab";
 import { RolePromptTab } from "@/components/RolePromptTab";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PromptDialog } from "@/components/PromptDialog";
+import {
+  DropConflictDialog,
+  type ConflictResolution,
+} from "@/components/DropConflictDialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -20,18 +30,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { rolesApi, type RoleSummary, type Section } from "@/lib/rolesApi";
+import {
+  isMarkdownFile,
+  sanitizeDocName,
+  stripSectionPrefix,
+  findFreeName,
+  MAX_FILE_SIZE_BYTES,
+} from "@/lib/dropFiles";
 
 type Tab = "general" | "prompt" | "document";
 
+type PendingConflict = {
+  file: File;
+  content: string;
+  name: string;
+  existingDocId: string;
+  suggestedRename: string;
+};
+
 export function RolesPage() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const {
     roles,
     isLoading,
@@ -51,9 +72,20 @@ export function RolesPage() {
   const [showAddSectionDialog, setShowAddSectionDialog] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [showDeleteRoleConfirm, setShowDeleteRoleConfirm] = useState(false);
-  const [deleteSectionTarget, setDeleteSectionTarget] = useState<string | null>(null);
+  const [deleteSectionTarget, setDeleteSectionTarget] = useState<string | null>(
+    null,
+  );
   const [draftDocContent, setDraftDocContent] = useState<string | null>(null);
+  const [editingDocName, setEditingDocName] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [conflicts, setConflicts] = useState<PendingConflict[]>([]);
+  const pendingSummaryRef = useRef<{
+    section: Section;
+    created: number;
+    replaced: number;
+    failed: number;
+  } | null>(null);
 
   const detail = useRoleDetail(selectedRoleId);
   const docMutations = useRoleDocumentMutations(selectedRoleId ?? "");
@@ -142,7 +174,8 @@ export function RolesPage() {
     try {
       await generateMutation.mutateAsync(selectedRoleId);
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } }).response?.status;
+      const status = (err as { response?: { status?: number } }).response
+        ?.status;
       const detailText =
         (err as { response?: { data?: { detail?: string } } }).response?.data
           ?.detail ?? t("roles.errors.generic");
@@ -197,19 +230,231 @@ export function RolesPage() {
     setDraftDocContent(content);
   }
 
+  async function handleRenameDocument(newName: string) {
+    if (!selectedDoc || !selectedRoleId) return;
+    try {
+      const result = await docMutations.updateDoc.mutateAsync({
+        docId: selectedDoc.id,
+        payload: { name: newName },
+      });
+      // UUID changes after rename (deterministic from name) — update selection
+      if (result && typeof result === "object" && "id" in result) {
+        setSelectedDocId(String((result as { id: string }).id));
+      }
+      queryClient.invalidateQueries({ queryKey: ["role", selectedRoleId] });
+    } catch {
+      // rename failed — silently ignore, user can retry
+    }
+  }
+
   async function handleSaveDocument() {
     if (!selectedDoc || !selectedRoleId || draftDocContent === null) return;
-    docMutations.updateDoc.mutate({
-      docId: selectedDoc.id,
-      payload: { content_md: draftDocContent },
-    });
-    setDraftDocContent(null);
+    try {
+      await docMutations.updateDoc.mutateAsync({
+        docId: selectedDoc.id,
+        payload: { content_md: draftDocContent },
+      });
+      setDraftDocContent(null);
+    } catch {
+      // Leave draft intact so user doesn't lose work
+    }
   }
 
   function handleRoleFieldChange(updates: Partial<RoleSummary>) {
     if (!currentRole) return;
     setDraftRole({ ...currentRole, ...updates });
   }
+
+  function emitFinalToast(
+    section: Section,
+    created: number,
+    replaced: number,
+    failed: number,
+  ) {
+    if (created === 0 && replaced === 0 && failed === 0) return;
+    const sectionDisplay =
+      sections.find((s) => s.name === section)?.display_name ?? section;
+    if (failed === 0 && replaced === 0) {
+      toast.success(
+        t("roles.drop.toast_success", {
+          count: created,
+          section: sectionDisplay,
+        }),
+      );
+    } else if (failed === 0 && created === 0) {
+      toast.success(
+        t("roles.drop.toast_replaced", {
+          count: replaced,
+          section: sectionDisplay,
+        }),
+      );
+    } else if (created === 0 && replaced === 0) {
+      toast.error(t("roles.drop.toast_none"));
+    } else {
+      toast(t("roles.drop.toast_mixed", { created, replaced, failed }));
+    }
+  }
+
+  async function handleDropFiles(section: Section, files: File[]) {
+    if (!selectedRoleId || !detail.data) return;
+
+    const sectionDocs = allDocuments.filter((d) => d.section === section);
+    const existingNames = sectionDocs.map((d) => d.name);
+    const existingByName: Record<string, string> = Object.fromEntries(
+      sectionDocs.map((d) => [d.name, d.id]),
+    );
+
+    const pendingCreates: Array<{ name: string; content: string; file: File }> =
+      [];
+    const pendingConflicts: PendingConflict[] = [];
+    const accumulatedNames = [...existingNames];
+
+    for (const file of files) {
+      if (!isMarkdownFile(file)) {
+        toast.error(t("roles.drop.error_extension", { name: file.name }));
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        toast.error(t("roles.drop.error_size", { name: file.name }));
+        continue;
+      }
+      const rawName = sanitizeDocName(file.name);
+      if (!rawName) {
+        toast.error(t("roles.drop.error_name", { name: file.name }));
+        continue;
+      }
+      let content: string;
+      try {
+        content = await file.text();
+        if (content.includes("\uFFFD")) throw new Error("encoding");
+      } catch {
+        toast.error(t("roles.drop.error_encoding", { name: file.name }));
+        continue;
+      }
+
+      const name = stripSectionPrefix(rawName, section);
+
+      if (name in existingByName) {
+        pendingConflicts.push({
+          file,
+          content,
+          name,
+          existingDocId: existingByName[name]!,
+          suggestedRename: findFreeName(name, accumulatedNames),
+        });
+      } else {
+        pendingCreates.push({ name, content, file });
+        accumulatedNames.push(name);
+      }
+    }
+
+    let created = 0;
+    let failed = 0;
+    for (const item of pendingCreates) {
+      try {
+        await rolesApi.createDocument(selectedRoleId, {
+          section,
+          name: item.name,
+          content_md: item.content,
+        });
+        created += 1;
+      } catch {
+        failed += 1;
+        toast.error(t("roles.drop.error_network", { name: item.file.name }));
+      }
+    }
+
+    if (pendingConflicts.length > 0) {
+      setConflicts(pendingConflicts);
+      pendingSummaryRef.current = { section, created, replaced: 0, failed };
+    } else {
+      emitFinalToast(section, created, 0, failed);
+      if (created > 0) {
+        queryClient.invalidateQueries({ queryKey: ["role", selectedRoleId] });
+      }
+    }
+  }
+
+  async function onResolveConflict(resolution: ConflictResolution) {
+    const [head, ...rest] = conflicts;
+    if (!head || !selectedRoleId) return;
+    const summary = pendingSummaryRef.current;
+    if (!summary) return;
+
+    const processConflict = async (
+      c: PendingConflict,
+      action: ConflictResolution["action"],
+    ) => {
+      if (action === "replace") {
+        try {
+          await rolesApi.updateDocument(selectedRoleId, c.existingDocId, {
+            content_md: c.content,
+          });
+          summary.replaced += 1;
+        } catch {
+          summary.failed += 1;
+          toast.error(t("roles.drop.error_network", { name: c.file.name }));
+        }
+      } else if (action === "rename") {
+        try {
+          await rolesApi.createDocument(selectedRoleId, {
+            section: summary.section,
+            name: c.suggestedRename,
+            content_md: c.content,
+          });
+          summary.created += 1;
+        } catch {
+          summary.failed += 1;
+          toast.error(t("roles.drop.error_network", { name: c.file.name }));
+        }
+      } else {
+        summary.failed += 1;
+      }
+    };
+
+    await processConflict(head, resolution.action);
+
+    let remaining = rest;
+    if (resolution.applyToAll && rest.length > 0) {
+      for (const c of rest) {
+        await processConflict(c, resolution.action);
+      }
+      remaining = [];
+    }
+
+    setConflicts(remaining);
+    if (remaining.length === 0) {
+      emitFinalToast(
+        summary.section,
+        summary.created,
+        summary.replaced,
+        summary.failed,
+      );
+      pendingSummaryRef.current = null;
+      queryClient.invalidateQueries({ queryKey: ["role", selectedRoleId] });
+    }
+  }
+
+  const sortedRoles = useMemo(
+    () =>
+      (roles ?? []).slice().sort((a, b) =>
+        a.display_name.localeCompare(b.display_name, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      ),
+    [roles],
+  );
+
+  const filteredRoles = useMemo(
+    () =>
+      roleFilter
+        ? sortedRoles.filter((r) =>
+            r.display_name.toLowerCase().includes(roleFilter.toLowerCase()),
+          )
+        : sortedRoles,
+    [sortedRoles, roleFilter],
+  );
 
   if (isLoading)
     return <p className="p-6 text-muted-foreground">{t("secrets.loading")}</p>;
@@ -221,22 +466,44 @@ export function RolesPage() {
         <Select
           value={selectedRoleId ?? ""}
           onValueChange={(value) => {
-            if (hasDirty && !window.confirm(t("common.unsaved_changes"))) return;
+            if (hasDirty && !window.confirm(t("common.unsaved_changes")))
+              return;
             setSelectedRoleId(value || null);
             setSelectedDocId(null);
             setDraftRole(null);
             setDraftDocContent(null);
+            setRoleFilter("");
           }}
         >
           <SelectTrigger className="w-40 md:w-56">
             <SelectValue placeholder={t("roles.select_role")} />
           </SelectTrigger>
           <SelectContent>
-            {(roles ?? []).map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {r.display_name}
-              </SelectItem>
-            ))}
+            <div
+              className="flex items-center gap-1.5 px-2 pb-1.5 border-b mb-1"
+              onKeyDown={(e) => e.stopPropagation()}
+              onKeyUp={(e) => e.stopPropagation()}
+            >
+              <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <input
+                autoFocus
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                placeholder={t("common.search")}
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+              />
+            </div>
+            {filteredRoles.length === 0 ? (
+              <div className="px-2 py-3 text-sm text-muted-foreground text-center">
+                {t("common.no_results")}
+              </div>
+            ) : (
+              filteredRoles.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.display_name}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
 
@@ -258,6 +525,20 @@ export function RolesPage() {
               {currentRole.id}
             </span>
             <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5 ml-auto">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ["roles"] });
+                  if (selectedRoleId) {
+                    queryClient.invalidateQueries({ queryKey: ["role", selectedRoleId] });
+                  }
+                }}
+                title={t("common.refresh")}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </Button>
               <Button
                 size="icon"
                 variant="ghost"
@@ -311,8 +592,12 @@ export function RolesPage() {
               documents={allDocuments}
               selectedDocId={selectedDocId}
               onSelect={(id) => {
-                if (hasDirtyDoc && !window.confirm(t("common.unsaved_changes"))) return;
-                setDraftDocContent(null); setSelectedDocId(id); setTab("document");
+                if (hasDirtyDoc && !window.confirm(t("common.unsaved_changes")))
+                  return;
+                setDraftDocContent(null);
+                setEditingDocName(null);
+                setSelectedDocId(id);
+                setTab("document");
               }}
               onAdd={handleAddDocument}
               onAddSection={() => {
@@ -329,6 +614,7 @@ export function RolesPage() {
                   payload: { name: newName },
                 });
               }}
+              onFilesDropped={handleDropFiles}
             />
 
             {/* Right: main content */}
@@ -346,7 +632,11 @@ export function RolesPage() {
                     <Select
                       value={selectedDocId ?? ""}
                       onValueChange={(v) => {
-                        if (v) { setDraftDocContent(null); setSelectedDocId(v); setTab("document"); }
+                        if (v) {
+                          setDraftDocContent(null);
+                          setSelectedDocId(v);
+                          setTab("document");
+                        }
                       }}
                     >
                       <SelectTrigger className="w-full h-8 text-[12px]">
@@ -355,7 +645,9 @@ export function RolesPage() {
                       <SelectContent>
                         {allDocuments.map((d) => (
                           <SelectItem key={d.id} value={d.id}>
-                            <span className="text-[12px]">{d.section} / {d.name}</span>
+                            <span className="text-[12px]">
+                              {d.section} / {d.name}
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -364,18 +656,27 @@ export function RolesPage() {
                 )}
               </div>
 
-              <div className={`flex-1 min-h-0 px-4 md:px-6 py-5 flex flex-col ${tab === "document" ? "" : "overflow-y-auto"}`}>
+              <div
+                className={`flex-1 min-h-0 px-4 md:px-6 py-5 flex flex-col ${tab === "document" ? "" : "overflow-y-auto"}`}
+              >
                 <Tabs
                   value={tab}
                   onValueChange={(v) => {
-                    if (hasDirtyDoc && v !== "document" && !window.confirm(t("common.unsaved_changes"))) return;
+                    if (
+                      hasDirtyDoc &&
+                      v !== "document" &&
+                      !window.confirm(t("common.unsaved_changes"))
+                    )
+                      return;
                     setTab(v as Tab);
                     if (v !== "document") {
                       setDraftDocContent(null);
                       setSelectedDocId(null);
                     }
                   }}
-                  className={tab === "document" ? "flex-1 flex flex-col min-h-0" : ""}
+                  className={
+                    tab === "document" ? "flex-1 flex flex-col min-h-0" : ""
+                  }
                 >
                   <TabsList>
                     <TabsTrigger value="general">
@@ -386,7 +687,7 @@ export function RolesPage() {
                     </TabsTrigger>
                     {selectedDoc && (
                       <TabsTrigger value="document">
-                        {docDisplayName(selectedDoc)}
+                        Document
                       </TabsTrigger>
                     )}
                   </TabsList>
@@ -416,16 +717,57 @@ export function RolesPage() {
                   </TabsContent>
 
                   {selectedDoc && (
-                    <TabsContent value="document" className="flex-1 flex flex-col min-h-0">
+                    <TabsContent
+                      value="document"
+                      className="flex-1 flex flex-col min-h-0"
+                    >
                       <div className="flex items-center gap-2 mb-3 shrink-0">
-                        <h3 className="text-[15px] font-semibold">
-                          {docDisplayName(selectedDoc)}
-                        </h3>
-                        {isDocLocked(selectedDoc) && (
-                          <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        {editingDocName !== null ? (
+                          <input
+                            autoFocus
+                            className="text-[15px] font-semibold bg-transparent border-b border-primary outline-none px-0 py-0.5 min-w-[16rem] w-full max-w-md"
+                            value={editingDocName}
+                            onChange={(e) => setEditingDocName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                const trimmed = editingDocName.trim();
+                                if (trimmed && trimmed !== docDisplayName(selectedDoc)) {
+                                  const newName = isDocLocked(selectedDoc) ? trimmed + "_" : trimmed;
+                                  handleRenameDocument(newName);
+                                }
+                                setEditingDocName(null);
+                              } else if (e.key === "Escape") {
+                                setEditingDocName(null);
+                              }
+                            }}
+                            onBlur={() => {
+                              const trimmed = editingDocName.trim();
+                              if (trimmed && trimmed !== docDisplayName(selectedDoc)) {
+                                const newName = isDocLocked(selectedDoc) ? trimmed + "_" : trimmed;
+                                handleRenameDocument(newName);
+                              }
+                              setEditingDocName(null);
+                            }}
+                          />
+                        ) : (
+                          <h3
+                            className="text-[15px] font-semibold cursor-pointer hover:text-primary transition-colors min-w-[16rem]"
+                            onClick={() => {
+                              if (!isDocLocked(selectedDoc)) {
+                                setEditingDocName(docDisplayName(selectedDoc));
+                              }
+                            }}
+                          >
+                            {docDisplayName(selectedDoc)}
+                          </h3>
                         )}
                         {draftDocContent !== null && (
-                          <Button size="sm" onClick={handleSaveDocument} className="ml-auto">
+                          <Button
+                            size="sm"
+                            onClick={handleSaveDocument}
+                            className="ml-auto"
+                          >
                             <Save className="w-3.5 h-3.5" />
                             {t("roles.save")}
                           </Button>
@@ -462,6 +804,7 @@ export function RolesPage() {
             name: "id",
             label: t("roles.general.id"),
             autoSlugFrom: "display_name",
+            slugSeparator: "-",
             monospace: true,
           },
         ]}
@@ -473,9 +816,7 @@ export function RolesPage() {
         title={t("roles.sidebar.new_document_dialog_title")}
         submitLabel={t("common.create")}
         onSubmit={handleAddDocumentSubmit}
-        fields={[
-          { name: "name", label: t("roles.sidebar.new_document_name") },
-        ]}
+        fields={[{ name: "name", label: t("roles.sidebar.new_document_name") }]}
       />
 
       <PromptDialog
@@ -494,6 +835,7 @@ export function RolesPage() {
             name: "name",
             label: t("roles.sidebar.new_section_slug"),
             autoSlugFrom: "display_name",
+            slugSeparator: "-",
             monospace: true,
           },
         ]}
@@ -503,18 +845,41 @@ export function RolesPage() {
         open={showDeleteRoleConfirm}
         onOpenChange={setShowDeleteRoleConfirm}
         title={t("roles.confirm_delete_title")}
-        description={t("roles.confirm_delete_message", { name: currentRole?.display_name ?? "" })}
+        description={t("roles.confirm_delete_message", {
+          name: currentRole?.display_name ?? "",
+        })}
         destructive
         onConfirm={handleDeleteRole}
       />
 
       <ConfirmDialog
         open={deleteSectionTarget !== null}
-        onOpenChange={(open) => { if (!open) setDeleteSectionTarget(null); }}
+        onOpenChange={(open) => {
+          if (!open) setDeleteSectionTarget(null);
+        }}
         title={t("roles.confirm_delete_section_title")}
-        description={t("roles.confirm_delete_section_message", { name: deleteSectionTarget ?? "" })}
+        description={t("roles.confirm_delete_section_message", {
+          name: deleteSectionTarget ?? "",
+        })}
         destructive
         onConfirm={handleDeleteSection}
+      />
+
+      <DropConflictDialog
+        open={conflicts.length > 0}
+        name={conflicts[0]?.name ?? ""}
+        section={
+          pendingSummaryRef.current?.section
+            ? (sections.find(
+                (s) => s.name === pendingSummaryRef.current?.section,
+              )?.display_name ?? "")
+            : ""
+        }
+        suggestedRename={conflicts[0]?.suggestedRename ?? ""}
+        onOpenChange={(o) => {
+          if (!o) setConflicts([]);
+        }}
+        onResolve={onResolveConflict}
       />
     </div>
   );

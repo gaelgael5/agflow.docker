@@ -1,0 +1,159 @@
+{
+  "slug": "agent-helper",
+  "display_name": "Agent Helper",
+  "description": "Assistant intégré — aide les utilisateurs à configurer, composer et piloter les agents IA de la plateforme agflow.docker",
+  "dockerfile_id": "mistral",
+  "role_id": "app-assistant",
+  "env_overrides": {},
+  "mount_overrides": {
+    "/app/workspace": {
+      "source": "./workspace"
+    }
+  },
+  "param_overrides": {},
+  "timeout_seconds": 600,
+  "workspace_path": "",
+  "network_mode": "bridge",
+  "graceful_shutdown_secs": 30,
+  "force_kill_delay_secs": 10,
+  "is_assistant": true,
+  "prompt_template_slug": "agent-prompt",
+  "prompt_template_culture": "fr",
+  "mcp_bindings": [
+    {
+      "catalog_mcp_id": "87e176a4-302c-499a-a606-61ce4a390f92",
+      "config_overrides": { "runtime": "npx" },
+      "position": 0
+    },
+    {
+      "catalog_mcp_id": "4fd10cb1-587e-446a-aa69-60570b12ce06",
+      "config_overrides": { "runtime": "npx" },
+      "position": 1
+    }
+  ],
+  "skill_bindings": [],
+  "profiles": [
+    {
+      "name": "Onboarding",
+      "description": "Guide le parcours initial M0→M4 pour un nouvel utilisateur",
+      "documents": [
+        "02556f2a-a3ec-5337-bd09-803908956984",
+        "33e06593-e0c4-580b-8dd1-52faf47f4c39"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "Secrets",
+      "description": "Diagnostique et configure les API keys selon le Dockerfile choisi",
+      "documents": [
+        "99f6401c-e906-5e5d-a2b5-c39cbb1bba75",
+        "8c9a4fcd-7db4-59e7-ae2a-bfab097ab600"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "Dockerfiles",
+      "description": "Crée, compile et teste les images Docker d'agents",
+      "documents": [
+        "0a972b22-5e65-5294-87cf-d2f96bafc4fc",
+        "49698895-237d-5134-9811-a6344331be1e"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "Roles",
+      "description": "Structure identité, missions et compétences d'un rôle",
+      "documents": [
+        "3a002512-3254-5404-9544-34ac6cb9b542",
+        "e907d0fe-d667-5f27-b258-2eee16957337"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "MCP et Skills",
+      "description": "Connecte les registres, recherche et installe les serveurs MCP et Skills",
+      "documents": [
+        "bb0c61cc-1424-5230-bc9f-5c8dd23f7a2f",
+        "99c3680c-51c8-5343-907b-6a41c8a56d96"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "Paramétrage agent",
+      "description": "Configure un agent complet : Dockerfile, rôle, env, mounts, MCP, skills, profils, template",
+      "documents": [
+        "c17f7ad9-65ed-5d20-896a-e84e643ef90e",
+        "33e06593-e0c4-580b-8dd1-52faf47f4c39"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "Composition et génération",
+      "description": "Assemble Dockerfile + Rôle + MCP + Skills et génère les fichiers de l'agent",
+      "documents": [
+        "472498c1-9073-5a08-a9ed-6ea887e1003e",
+        "e907d0fe-d667-5f27-b258-2eee16957337"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "Templates Jinja2",
+      "description": "Écrit et débugge les templates Jinja2 pour le rendu de prompts et missions",
+      "documents": [
+        "91552b6c-85be-51e2-adcd-5cb529ed8dc6",
+        "e907d0fe-d667-5f27-b258-2eee16957337"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "Diagnostic",
+      "description": "Identifie la cause racine quand un agent ne démarre pas ou ne répond pas",
+      "documents": [
+        "b43f98f3-2d1d-5784-8510-2aa99b4306a3",
+        "49698895-237d-5134-9811-a6344331be1e",
+        "8c9a4fcd-7db4-59e7-ae2a-bfab097ab600"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "API admin",
+      "description": "Pilote la plateforme par API REST — crée, configure et lance les agents",
+      "documents": [
+        "0d321722-1bfc-5af2-bc28-fbed1b6e13c6",
+        "7846488d-d51b-5a1e-8f70-66d4de9c623c"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    },
+    {
+      "name": "Consommation API",
+      "description": "Guide un développeur pour intégrer l'API publique v1 dans son application",
+      "documents": [
+        "0d017db1-ea4a-51b6-ab16-fd860c8df9de",
+        "7846488d-d51b-5a1e-8f70-66d4de9c623c"
+      ],
+      "template_slug": "roles",
+      "template_culture": "fr",
+      "output_dir": "workspace/missions"
+    }
+  ]
+}

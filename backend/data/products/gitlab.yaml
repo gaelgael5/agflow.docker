@@ -1,0 +1,27 @@
+id: gitlab
+display_name: GitLab
+description: "Hébergement de code et CI/CD (SaaS ou self-hosted)"
+category: code
+tags: [code, git, ci-cd, saas]
+config_only: true
+mcp_package_id: gitlab/mcp-gitlab
+
+openapi:
+  source: url
+  url: "https://gitlab.com/api/v4/metadata"
+  base_url: "https://{{ domain }}/api/v4"
+  auth_header: PRIVATE-TOKEN
+  auth_prefix: ""
+  auth_secret_ref: "${GITLAB_TOKEN}"
+
+secrets_required:
+  - name: GITLAB_TOKEN
+    description: "Personal Access Token GitLab"
+    generate: null
+
+variables:
+  - name: domain
+    description: "Domaine GitLab (gitlab.com ou self-hosted)"
+    type: string
+    required: true
+    example: gitlab.com

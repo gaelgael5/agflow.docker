@@ -79,6 +79,7 @@ export function ServiceTypesPage() {
             name: "name",
             label: t("service_types.prompt_name"),
             autoSlugFrom: "display_name",
+            slugSeparator: "-",
             monospace: true,
           },
         ]}

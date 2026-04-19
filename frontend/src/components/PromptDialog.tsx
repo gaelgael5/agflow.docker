@@ -24,6 +24,8 @@ export interface PromptField {
   type?: "text" | "password";
   required?: boolean;
   monospace?: boolean;
+  multiline?: boolean;
+  options?: { value: string; label: string }[];
   autoSlugFrom?: string;
   slugSeparator?: "_" | "-";
   pattern?: RegExp;
@@ -38,6 +40,7 @@ interface PromptDialogProps {
   fields: PromptField[];
   submitLabel?: string;
   cancelLabel?: string;
+  size?: "sm" | "md" | "lg" | "xl";
   onSubmit: (values: Record<string, string>) => Promise<void> | void;
 }
 
@@ -49,6 +52,7 @@ export function PromptDialog({
   fields,
   submitLabel,
   cancelLabel,
+  size,
   onSubmit,
 }: PromptDialogProps) {
   const { t } = useTranslation();
@@ -95,7 +99,7 @@ export function PromptDialog({
 
   function fieldError(field: PromptField): "empty" | "pattern" | null {
     const value = effectiveValue(field);
-    if (!value) return (field.required ?? true) ? "empty" : null;
+    if (!value) return field.required ? "empty" : null;
     const pattern = effectivePattern(field);
     if (pattern && !pattern.test(value)) return "pattern";
     return null;
@@ -126,7 +130,12 @@ export function PromptDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={
+        size === "lg" ? "sm:max-w-lg" :
+        size === "xl" ? "sm:max-w-xl" :
+        size === "sm" ? "sm:max-w-sm" :
+        "sm:max-w-md"
+      }>
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
@@ -153,20 +162,48 @@ export function PromptDialog({
                   <Label htmlFor={`prompt-field-${field.name}`}>
                     {field.label}
                   </Label>
-                  <Input
-                    id={`prompt-field-${field.name}`}
-                    ref={index === 0 ? firstFieldRef : undefined}
-                    type={field.type ?? "text"}
-                    value={value}
-                    onChange={(e) => updateField(field.name, e.target.value)}
-                    placeholder={field.placeholder}
-                    aria-invalid={showPatternError || undefined}
-                    className={cn(
-                      field.monospace && "font-mono text-[12px]",
-                      showPatternError &&
-                        "border-destructive focus-visible:ring-destructive/30 focus-visible:border-destructive",
-                    )}
-                  />
+                  {field.options ? (
+                    <select
+                      id={`prompt-field-${field.name}`}
+                      value={value}
+                      onChange={(e) => updateField(field.name, e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                    >
+                      {!field.defaultValue && field.required && (
+                        <option value="" disabled>— {field.label} —</option>
+                      )}
+                      {field.options.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  ) : field.multiline ? (
+                    <textarea
+                      id={`prompt-field-${field.name}`}
+                      value={value}
+                      onChange={(e) => updateField(field.name, e.target.value)}
+                      placeholder={field.placeholder}
+                      rows={4}
+                      className={cn(
+                        "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        field.monospace && "font-mono text-[12px]",
+                      )}
+                    />
+                  ) : (
+                    <Input
+                      id={`prompt-field-${field.name}`}
+                      ref={index === 0 ? firstFieldRef : undefined}
+                      type={field.type ?? "text"}
+                      value={value}
+                      onChange={(e) => updateField(field.name, e.target.value)}
+                      placeholder={field.placeholder}
+                      aria-invalid={showPatternError || undefined}
+                      className={cn(
+                        field.monospace && "font-mono text-[12px]",
+                        showPatternError &&
+                          "border-destructive focus-visible:ring-destructive/30 focus-visible:border-destructive",
+                      )}
+                    />
+                  )}
                   {showPatternError && hint && (
                     <p className="text-[11px] text-destructive">{hint}</p>
                   )}

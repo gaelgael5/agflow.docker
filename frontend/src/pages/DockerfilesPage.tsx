@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  Crosshair,
   Download,
   FilePlus,
   FolderPlus,
@@ -25,6 +26,9 @@ import {
   useDockerfileDetail,
   useDockerfiles,
 } from "@/hooks/useDockerfiles";
+import { useDiscoveryServices } from "@/hooks/useCatalogs";
+import { TargetSelectorDialog } from "@/components/TargetSelectorDialog";
+import type { TargetSummary } from "@/lib/catalogsApi";
 import { useContainers } from "@/hooks/useContainers";
 import { BuildStatusBadge } from "@/components/BuildStatusBadge";
 import { BuildModal } from "@/components/BuildModal";
@@ -126,6 +130,8 @@ export function DockerfilesPage() {
   const [pendingNavigation, setPendingNavigation] = useState<
     (() => void) | null
   >(null);
+  const { services: discoveryServices } = useDiscoveryServices();
+  const [showTargetDialog, setShowTargetDialog] = useState(false);
   const hasUnsavedChanges = draftContent !== null;
   const vaultIsOpen = vaultState === "unlocked";
 
@@ -158,6 +164,15 @@ export function DockerfilesPage() {
   const files = allFiles.filter((f) => !HIDDEN_FILES.includes(f.path));
   const dockerfileJsonFile =
     allFiles.find((f) => f.path === "Dockerfile.json") ?? null;
+  const currentTarget: TargetSummary | null = (() => {
+    if (!dockerfileJsonFile) return null;
+    try {
+      const parsed = JSON.parse(dockerfileJsonFile.content);
+      return parsed.Target ?? null;
+    } catch {
+      return null;
+    }
+  })();
   const { emptyKeys: launchEmptyKeys } = useEmptyLaunchKeys({
     dockerfileJsonContent: dockerfileJsonFile?.content ?? null,
     decryptedSecrets,
@@ -226,6 +241,47 @@ export function DockerfilesPage() {
       content: draftContent,
     });
     setDraftContent(null);
+  }
+
+  async function handleSelectTarget(target: TargetSummary) {
+    if (!dockerfileJsonFile || !selectedId) return;
+    try {
+      const parsed = JSON.parse(dockerfileJsonFile.content);
+      parsed.Target = {
+        id: target.id,
+        name: target.name,
+        description: target.description,
+        modes: target.modes,
+      };
+
+      // Auto-add Mount for insert_in_file config_path
+      const insertMode = target.modes.find(
+        (m: { action_type: string; config_path?: string }) =>
+          m.action_type === "insert_in_file" && m.config_path,
+      );
+      if (insertMode?.config_path) {
+        const configPath: string = insertMode.config_path;
+        // "~/.vibe/config.toml" → source = "config.toml", target = "~/.vibe/config.toml"
+        const lastSlash = configPath.lastIndexOf("/");
+        const source = lastSlash >= 0 ? configPath.slice(lastSlash + 1) : configPath;
+        const mounts: Array<{ source: string; target: string; readonly: boolean; excluded?: boolean }> =
+          parsed.docker?.Mounts ?? [];
+        // Only add if no mount with this target already exists
+        if (!mounts.some((m) => m.target === configPath)) {
+          mounts.push({ source, target: configPath, readonly: false, excluded: true });
+          if (!parsed.docker) parsed.docker = {};
+          parsed.docker.Mounts = mounts;
+        }
+      }
+
+      await updateFileMutation.mutateAsync({
+        dockerfileId: selectedId,
+        fileId: dockerfileJsonFile.id,
+        content: JSON.stringify(parsed, null, 2),
+      });
+    } catch {
+      // JSON parse error — ignore
+    }
   }
 
   async function handleDeleteFile() {
@@ -520,6 +576,16 @@ export function DockerfilesPage() {
                 size="icon"
                 variant="ghost"
                 className="h-7 w-7"
+                onClick={() => setShowTargetDialog(true)}
+                disabled={!dockerfileJsonFile || !discoveryServices?.length}
+                title={t("target.select_button")}
+              >
+                <Crosshair className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
                 onClick={() => setShowParamsDialog(true)}
                 disabled={!dockerfileJsonFile}
                 title={t("dockerfiles.params_button")}
@@ -564,6 +630,26 @@ export function DockerfilesPage() {
                 />
               </Button>
             </div>
+
+            {currentTarget ? (
+              <Badge
+                variant="outline"
+                className="text-[11px] font-mono cursor-pointer hover:bg-secondary transition-colors"
+                onClick={() => setShowTargetDialog(true)}
+                title={t("target.select_button")}
+              >
+                {currentTarget.name}
+              </Badge>
+            ) : (
+              <Badge
+                variant="secondary"
+                className="text-[11px] cursor-pointer hover:bg-secondary/80 transition-colors"
+                onClick={() => setShowTargetDialog(true)}
+                title={t("target.select_button")}
+              >
+                {t("target.none")}
+              </Badge>
+            )}
 
             <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
               <Button
@@ -911,6 +997,7 @@ export function DockerfilesPage() {
             name: "id",
             label: t("dockerfiles.new_dockerfile_id_prompt"),
             autoSlugFrom: "display_name",
+            slugSeparator: "-",
             monospace: true,
           },
         ]}
@@ -942,6 +1029,15 @@ export function DockerfilesPage() {
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
           }}
+        />
+      )}
+
+      {showTargetDialog && discoveryServices?.[0] && (
+        <TargetSelectorDialog
+          serviceId={discoveryServices[0].id}
+          currentTargetName={currentTarget?.name}
+          onSelect={handleSelectTarget}
+          onClose={() => setShowTargetDialog(false)}
         />
       )}
 

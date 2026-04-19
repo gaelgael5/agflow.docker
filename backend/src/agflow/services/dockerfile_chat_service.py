@@ -96,7 +96,7 @@ def _parse_response(text: str) -> GeneratedDockerfile:
         ) from exc
     try:
         return GeneratedDockerfile(**data)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise GenerationFailedError(
             f"LLM response does not match schema: {exc}"
         ) from exc

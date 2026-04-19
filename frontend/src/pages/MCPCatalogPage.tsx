@@ -54,10 +54,12 @@ export function MCPCatalogPage() {
   async function handleInstall(item: MCPSearchItem) {
     if (!selectedServiceId) return;
     await installMutation.mutateAsync({
-      discoveryServiceId: selectedServiceId,
-      packageId: String(item.package_id),
+      discovery_service_id: selectedServiceId,
+      package_id: String(item.package_id),
+      recipes: item.recipes ?? {},
+      parameters: item.parameters ?? [],
+      category: item.category ?? "",
     });
-    setSearchOpen(false);
   }
 
   const hasServices = (services ?? []).length > 0;
@@ -141,9 +143,23 @@ export function MCPCatalogPage() {
                           <Badge variant="secondary" className="font-mono text-[10px]">
                             {m.transport}
                           </Badge>
-                          <code className="text-[11px] text-muted-foreground font-mono hidden sm:inline">
-                            {m.package_id}
-                          </code>
+                          {m.category && (
+                            <Badge variant="outline" className="text-[10px]">
+                              {m.category}
+                            </Badge>
+                          )}
+                          {m.repo_url && (
+                            <a
+                              href={m.repo_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Repo
+                            </a>
+                          )}
                         </div>
                         {m.short_description && (
                           <div className="text-[12px] text-muted-foreground mt-0.5 truncate">
@@ -182,10 +198,54 @@ export function MCPCatalogPage() {
       {searchOpen && selectedServiceId && (
         <SearchModal<MCPSearchItem>
           title={t("mcp_catalog.page_title")}
-          showSemantic
           onSearch={handleSearch}
           onAdd={handleInstall}
+          isInstalled={(item) =>
+            (mcps ?? []).some(
+              (m) => String(m.package_id) === String(item.package_id),
+            )
+          }
           groupBy={(item) => item.category}
+          helpContent={
+            <table className="w-full text-left text-[12px]">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="py-1 pr-3 font-medium">Syntaxe</th>
+                  <th className="py-1 font-medium">Description</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono">
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/name fetch</td>
+                  <td className="py-1 font-sans">Recherche par nom exact</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/tag reference</td>
+                  <td className="py-1 font-sans">Filtrer par catégorie</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/repo owner/repo</td>
+                  <td className="py-1 font-sans">Filtrer par dépôt GitHub</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/group classical_mcp</td>
+                  <td className="py-1 font-sans">Items d'un groupe nommé</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/pseudo gael</td>
+                  <td className="py-1 font-sans">Items des groupes publics d'un utilisateur</td>
+                </tr>
+                <tr className="border-b border-muted/50">
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">@database</td>
+                  <td className="py-1 font-sans">Recherche sémantique (IA)</td>
+                </tr>
+                <tr>
+                  <td className="py-1 pr-3 whitespace-nowrap text-primary">/pseudo gael /tag reference</td>
+                  <td className="py-1 font-sans">Combinaison de filtres (AND)</td>
+                </tr>
+              </tbody>
+            </table>
+          }
           renderItem={(item) => (
             <MCPSearchResultItem
               item={item}

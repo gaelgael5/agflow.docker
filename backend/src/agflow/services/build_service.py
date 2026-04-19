@@ -140,6 +140,9 @@ async def run_build(build_id: UUID, dockerfile_id: str, tag: str) -> None:
     await _set_status(build_id, "success", finished=True)
     _log.info("build.done", build_id=str(build_id))
 
+    # Cleanup old builds (images + DB rows)
+    await _cleanup_old_builds(dockerfile_id, keep_build_id=build_id, keep_tag=tag)
+
 
 def _format_chunk(chunk: Any) -> str:
     if isinstance(chunk, dict):
@@ -150,6 +153,48 @@ def _format_chunk(chunk: Any) -> str:
         if "status" in chunk:
             return chunk["status"]
     return str(chunk).rstrip("\n")
+
+
+async def _cleanup_old_builds(
+    dockerfile_id: str, keep_build_id: UUID, keep_tag: str
+) -> None:
+    """Remove old Docker images and DB build rows for this dockerfile."""
+    old_builds = await fetch_all(
+        "SELECT id, image_tag FROM dockerfile_builds "
+        "WHERE dockerfile_id = $1 AND id != $2",
+        dockerfile_id, keep_build_id,
+    )
+    if not old_builds:
+        return
+
+    # Remove old Docker images
+    try:
+        docker = aiodocker.Docker()
+        try:
+            for build in old_builds:
+                old_tag = build["image_tag"]
+                if old_tag == keep_tag:
+                    continue
+                try:
+                    await docker.images.delete(old_tag, force=True)
+                    _log.info("build.cleanup.image_removed", tag=old_tag)
+                except aiodocker.exceptions.DockerError:
+                    pass  # Image already gone
+        finally:
+            await docker.close()
+    except Exception:
+        _log.warning("build.cleanup.docker_error", dockerfile_id=dockerfile_id)
+
+    # Remove old DB rows
+    await execute(
+        "DELETE FROM dockerfile_builds WHERE dockerfile_id = $1 AND id != $2",
+        dockerfile_id, keep_build_id,
+    )
+    _log.info(
+        "build.cleanup.rows_deleted",
+        dockerfile_id=dockerfile_id,
+        count=len(old_builds),
+    )
 
 
 async def create_build_row(

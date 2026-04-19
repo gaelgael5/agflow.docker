@@ -6,7 +6,7 @@
  * Used to pre-fill identifier fields in creation forms so users type the
  * label first and get a correct-looking slug for free.
  */
-export function slugify(label: string, separator: "_" | "-" = "_"): string {
+export function slugify(label: string, separator: "_" | "-" = "-"): string {
   const sepRegex = new RegExp(`${separator}+`, "g");
   return label
     .normalize("NFD")

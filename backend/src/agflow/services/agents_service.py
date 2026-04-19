@@ -14,6 +14,8 @@ import structlog
 from agflow.schemas.agents import (
     AgentCreate,
     AgentDetail,
+    AgentGeneration,
+    AgentGenerationProfile,
     AgentMCPBinding,
     AgentSkillBinding,
     AgentSummary,
@@ -39,6 +41,48 @@ class InvalidReferenceError(Exception):
 
 def _slug_to_id(slug: str) -> UUID:
     return agent_files_service.agent_id_from_slug(slug)
+
+
+def _parse_generations(data: dict[str, Any]) -> list[AgentGeneration]:
+    """Parse generations from agent.json, with backward compat for old format."""
+    raw = data.get("generations")
+    if raw and isinstance(raw, list):
+        return [
+            AgentGeneration(
+                role_id=g.get("role_id", ""),
+                template_slug=g.get("template_slug", ""),
+                template_culture=g.get("template_culture", ""),
+                prompt_filename=g.get("prompt_filename", "prompt.md"),
+                profiles=[
+                    AgentGenerationProfile(**p) for p in g.get("profiles", [])
+                ],
+            )
+            for g in raw
+        ]
+    # Backward compat: migrate old flat format to generations[]
+    role_id = data.get("role_id", "")
+    if not role_id:
+        return []
+    profiles = [
+        AgentGenerationProfile(
+            name=p.get("name", ""),
+            description=p.get("description", ""),
+            documents=[str(d) for d in p.get("documents", [])],
+            template_slug=p.get("template_slug", ""),
+            template_culture=p.get("template_culture", ""),
+            output_dir=p.get("output_dir", "workspace/missions"),
+        )
+        for p in data.get("profiles", [])
+    ]
+    return [
+        AgentGeneration(
+            role_id=role_id,
+            template_slug=data.get("prompt_template_slug", ""),
+            template_culture=data.get("prompt_template_culture", ""),
+            prompt_filename=data.get("prompt_filename", "prompt.md"),
+            profiles=profiles,
+        )
+    ]
 
 
 def _summary_from_disk(slug: str) -> AgentSummary:
@@ -72,6 +116,16 @@ def _summary_from_disk(slug: str) -> AgentSummary:
         graceful_shutdown_secs=data.get("graceful_shutdown_secs", 30),
         force_kill_delay_secs=data.get("force_kill_delay_secs", 10),
         is_assistant=data.get("is_assistant", False),
+        mcp_template_slug=data.get("mcp_template_slug", ""),
+        mcp_template_culture=data.get("mcp_template_culture", ""),
+        mcp_config_filename=data.get("mcp_config_filename", "config.toml"),
+        skills_template_slug=data.get("skills_template_slug", ""),
+        skills_template_culture=data.get("skills_template_culture", ""),
+        skills_config_filename=data.get("skills_config_filename", "skills.md"),
+        prompt_template_slug=data.get("prompt_template_slug", ""),
+        prompt_template_culture=data.get("prompt_template_culture", ""),
+        prompt_filename=data.get("prompt_filename", "prompt.md"),
+        generations=_parse_generations(data),
         created_at=datetime.fromtimestamp(ctime, tz=UTC),
         updated_at=datetime.fromtimestamp(mtime, tz=UTC),
     )
@@ -132,6 +186,15 @@ def _payload_to_disk(slug: str, payload: AgentCreate | AgentUpdate, existing: di
         "graceful_shutdown_secs": payload.graceful_shutdown_secs,
         "force_kill_delay_secs": payload.force_kill_delay_secs,
         "is_assistant": existing.get("is_assistant", False) if existing else False,
+        "mcp_template_slug": payload.mcp_template_slug if hasattr(payload, "mcp_template_slug") and payload.mcp_template_slug is not None else (existing.get("mcp_template_slug", "") if existing else ""),
+        "mcp_template_culture": payload.mcp_template_culture if hasattr(payload, "mcp_template_culture") and payload.mcp_template_culture is not None else (existing.get("mcp_template_culture", "") if existing else ""),
+        "mcp_config_filename": payload.mcp_config_filename if hasattr(payload, "mcp_config_filename") and payload.mcp_config_filename is not None else (existing.get("mcp_config_filename", "config.toml") if existing else "config.toml"),
+        "skills_template_slug": payload.skills_template_slug if hasattr(payload, "skills_template_slug") and payload.skills_template_slug is not None else (existing.get("skills_template_slug", "") if existing else ""),
+        "skills_template_culture": payload.skills_template_culture if hasattr(payload, "skills_template_culture") and payload.skills_template_culture is not None else (existing.get("skills_template_culture", "") if existing else ""),
+        "skills_config_filename": payload.skills_config_filename if hasattr(payload, "skills_config_filename") and payload.skills_config_filename is not None else (existing.get("skills_config_filename", "skills.md") if existing else "skills.md"),
+        "prompt_template_slug": payload.prompt_template_slug if hasattr(payload, "prompt_template_slug") and payload.prompt_template_slug is not None else (existing.get("prompt_template_slug", "") if existing else ""),
+        "prompt_template_culture": payload.prompt_template_culture if hasattr(payload, "prompt_template_culture") and payload.prompt_template_culture is not None else (existing.get("prompt_template_culture", "") if existing else ""),
+        "prompt_filename": payload.prompt_filename if hasattr(payload, "prompt_filename") and payload.prompt_filename is not None else (existing.get("prompt_filename", "prompt.md") if existing else "prompt.md"),
         "mcp_bindings": [
             {
                 "catalog_mcp_id": b.mcp_server_id if hasattr(b, "mcp_server_id") else b.get("mcp_server_id", ""),
@@ -147,6 +210,16 @@ def _payload_to_disk(slug: str, payload: AgentCreate | AgentUpdate, existing: di
             for b in (payload.skill_bindings or [])
         ],
         "profiles": existing.get("profiles", []) if existing else [],
+        "generations": [
+            {
+                "role_id": g.role_id,
+                "template_slug": g.template_slug,
+                "template_culture": g.template_culture,
+                "prompt_filename": g.prompt_filename,
+                "profiles": [p.model_dump() for p in g.profiles],
+            }
+            for g in (payload.generations or [])
+        ] if hasattr(payload, "generations") and payload.generations else (existing.get("generations", []) if existing else []),
     }
 
 

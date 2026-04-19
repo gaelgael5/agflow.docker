@@ -1,0 +1,32 @@
+id: github
+display_name: GitHub
+description: "Hébergement de code (SaaS)"
+category: code
+tags: [code, git, saas]
+config_only: true
+mcp_package_id: github/mcp-github
+
+openapi:
+  source: url
+  url: "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json"
+  base_url: "https://api.github.com"
+  auth_header: Authorization
+  auth_prefix: "Bearer"
+  auth_secret_ref: "${GITHUB_TOKEN}"
+
+secrets_required:
+  - name: GITHUB_TOKEN
+    description: "Personal Access Token GitHub"
+    generate: null
+
+variables:
+  - name: org
+    description: "Organisation GitHub"
+    type: string
+    required: true
+    example: pickup-services
+  - name: default_branch
+    description: "Branche par défaut"
+    type: string
+    required: false
+    default: main

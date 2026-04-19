@@ -57,7 +57,6 @@ export function SkillsCatalogPage() {
       discoveryServiceId: selectedServiceId,
       skillId: String(item.skill_id),
     });
-    setSearchOpen(false);
   }
 
   const hasServices = (services ?? []).length > 0;
@@ -170,6 +169,11 @@ export function SkillsCatalogPage() {
           title={t("skills_catalog.page_title")}
           onSearch={handleSearch}
           onAdd={handleInstall}
+          isInstalled={(item) =>
+            (skills ?? []).some(
+              (s) => String(s.skill_id) === String(item.skill_id),
+            )
+          }
           renderItem={(item) => (
             <div>
               <strong className="text-[13px]">{item.name}</strong>{" "}

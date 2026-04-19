@@ -22,12 +22,23 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[SecretSummary])
+@router.get(
+    "",
+    response_model=list[SecretSummary],
+    summary="List all secrets",
+    description="Returns all secrets with their metadata (name, scope, env var name). Secret values are never returned in clear text; use the /reveal endpoint to retrieve a decrypted value.",
+)
 async def list_secrets() -> list[SecretSummary]:
     return await secrets_service.list_all()
 
 
-@router.post("", response_model=SecretSummary, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=SecretSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a secret",
+    description="Stores a new encrypted secret. Returns 201 with the SecretSummary on success, or 409 if a secret with the same var_name already exists.",
+)
 async def create_secret(payload: SecretCreate) -> SecretSummary:
     try:
         return await secrets_service.create(
@@ -41,7 +52,11 @@ async def create_secret(payload: SecretCreate) -> SecretSummary:
         ) from exc
 
 
-@router.get("/resolve-status")
+@router.get(
+    "/resolve-status",
+    summary="Resolve secret status for a list of var names",
+    description="Accepts a comma-separated list of environment variable names and returns a mapping of each name to its status: missing, empty, or filled. Used to drive status indicators in the UI.",
+)
 async def resolve_status(
     var_names: str = Query(..., description="Comma-separated list of var names"),
 ) -> dict[str, str]:
@@ -49,7 +64,12 @@ async def resolve_status(
     return await secrets_service.resolve_status(names)
 
 
-@router.put("/{secret_id}", response_model=SecretSummary)
+@router.put(
+    "/{secret_id}",
+    response_model=SecretSummary,
+    summary="Update a secret",
+    description="Updates the value and/or scope of an existing secret identified by its UUID. Returns the updated SecretSummary, or 404 if not found.",
+)
 async def update_secret(secret_id: UUID, payload: SecretUpdate) -> SecretSummary:
     try:
         return await secrets_service.update(
@@ -61,7 +81,12 @@ async def update_secret(secret_id: UUID, payload: SecretUpdate) -> SecretSummary
         ) from exc
 
 
-@router.delete("/{secret_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{secret_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a secret",
+    description="Permanently deletes the secret identified by its UUID. Returns 204 on success, or 404 if the secret does not exist.",
+)
 async def delete_secret(secret_id: UUID) -> None:
     try:
         await secrets_service.delete(secret_id)
@@ -71,7 +96,12 @@ async def delete_secret(secret_id: UUID) -> None:
         ) from exc
 
 
-@router.get("/{secret_id}/reveal", response_model=SecretReveal)
+@router.get(
+    "/{secret_id}/reveal",
+    response_model=SecretReveal,
+    summary="Reveal a secret's decrypted value",
+    description="Returns the decrypted value of the secret as a SecretReveal object. This is the only endpoint that exposes the clear-text value; it should be used sparingly. Returns 404 if the secret does not exist.",
+)
 async def reveal_secret(secret_id: UUID) -> SecretReveal:
     try:
         return await secrets_service.reveal(secret_id)
@@ -81,7 +111,12 @@ async def reveal_secret(secret_id: UUID) -> SecretReveal:
         ) from exc
 
 
-@router.post("/{secret_id}/test", response_model=SecretTestResult)
+@router.post(
+    "/{secret_id}/test",
+    response_model=SecretTestResult,
+    summary="Test a secret (LLM key validation)",
+    description="Reveals the secret's value and submits it to the LLM key tester. Returns a SecretTestResult indicating whether the key is valid for its associated provider. Returns 404 if the secret does not exist.",
+)
 async def test_secret(secret_id: UUID) -> SecretTestResult:
     try:
         revealed = await secrets_service.reveal(secret_id)

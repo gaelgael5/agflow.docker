@@ -76,6 +76,8 @@ interface ParamsState {
   params: KVEntry[];
   excluded: ExcludedState;
   testOverrides: KVEntry[];
+  /** Preserve unknown top-level keys (Target, Generation, etc.) */
+  _extra: Record<string, unknown>;
 }
 
 // Environment variable names — POSIX rule: letter or underscore followed
@@ -315,6 +317,7 @@ const DEFAULT_STATE = (slug: string): ParamsState => ({
   params: [],
   excluded: { environments: [], mounts: [], params: [] },
   testOverrides: [],
+  _extra: {},
 });
 
 function substituteSlug(template: string, slug: string): string {
@@ -430,7 +433,14 @@ function parseContent(content: string, slug: string): Parsed {
         ? ((root.Excluded as Record<string, unknown>).params as string[])
         : [],
     },
+    _extra: {},
   };
+
+  // Preserve unknown top-level keys (Target, Generation, etc.)
+  const knownKeys = new Set(["docker", "Params", "TestOverrides", "Excluded"]);
+  for (const [k, v] of Object.entries(root)) {
+    if (!knownKeys.has(k)) state._extra[k] = v;
+  }
 
   return { state, parseError: null };
 }
@@ -464,6 +474,7 @@ function serialize(state: ParamsState): string {
           },
         }
       : {}),
+    ...state._extra,
   };
   return `${JSON.stringify(output, null, 2)}\n`;
 }

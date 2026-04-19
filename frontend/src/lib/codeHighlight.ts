@@ -11,7 +11,7 @@ export interface Token {
   cls: string;
 }
 
-export type Language = "dockerfile" | "bash" | "json" | "plain";
+export type Language = "dockerfile" | "bash" | "json" | "markdown" | "toml" | "yaml" | "plain";
 
 export function detectLanguage(path: string): Language {
   const lower = path.toLowerCase();
@@ -20,6 +20,10 @@ export function detectLanguage(path: string): Language {
   }
   if (lower.endsWith(".sh") || lower === "entrypoint.sh") return "bash";
   if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".md")) return "markdown";
+  if (lower.endsWith(".toml")) return "toml";
+  if (lower.endsWith(".yml") || lower.endsWith(".yaml")) return "yaml";
+  if (lower === ".env" || lower.endsWith(".env")) return "bash";
   return "plain";
 }
 
@@ -31,6 +35,12 @@ export function highlight(source: string, language: Language): Token[] {
       return highlightBash(source);
     case "json":
       return highlightJson(source);
+    case "markdown":
+      return highlightMarkdown(source);
+    case "toml":
+      return highlightToml(source);
+    case "yaml":
+      return highlightYaml(source);
     case "plain":
     default:
       return [{ text: source, cls: "" }];
@@ -295,4 +305,142 @@ export function highlightJson(source: string): Token[] {
     }
   }
   return out;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Markdown
+// ─────────────────────────────────────────────────────────────
+
+export function highlightMarkdown(source: string): Token[] {
+  const out: Token[] = [];
+  const lines = source.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.match(/^#{1,6}\s/)) {
+      out.push({ text: line, cls: "text-pink-600 dark:text-pink-400 font-semibold" });
+    } else if (line.startsWith("---") || line.startsWith("***") || line.startsWith("___")) {
+      out.push({ text: line, cls: "text-zinc-400" });
+    } else if (line.match(/^>\s/)) {
+      out.push({ text: line, cls: "text-emerald-700 dark:text-emerald-300 italic" });
+    } else if (line.match(/^[-*+]\s|^\d+\.\s/)) {
+      const m = line.match(/^([-*+]|\d+\.)\s/);
+      if (m) {
+        out.push({ text: m[0], cls: "text-cyan-700 dark:text-cyan-300 font-semibold" });
+        tokenizeMarkdownInline(line.slice(m[0].length), out);
+      } else {
+        tokenizeMarkdownInline(line, out);
+      }
+    } else if (line.startsWith("\`\`\`")) {
+      out.push({ text: line, cls: "text-violet-600 dark:text-violet-300" });
+    } else {
+      tokenizeMarkdownInline(line, out);
+    }
+    if (i < lines.length - 1) out.push({ text: "\n", cls: "" });
+  }
+  return out;
+}
+
+function tokenizeMarkdownInline(text: string, out: Token[]): void {
+  const pattern =
+    /(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\`[^\`]+\`)|(\[[^\]]*\]\([^)]*\))|(\$\{[^}]*\}|\$\w+)|([\s\S]+?(?=\*|\`|\[|\$|$))/g;
+  for (const m of text.matchAll(pattern)) {
+    if (m[1] !== undefined) out.push({ text: m[1], cls: "text-amber-700 dark:text-amber-300 font-bold" });
+    else if (m[2] !== undefined) out.push({ text: m[2], cls: "text-amber-700 dark:text-amber-300 italic" });
+    else if (m[3] !== undefined) out.push({ text: m[3], cls: "text-violet-600 dark:text-violet-300" });
+    else if (m[4] !== undefined) out.push({ text: m[4], cls: "text-cyan-700 dark:text-cyan-300" });
+    else if (m[5] !== undefined) out.push({ text: m[5], cls: "text-violet-600 dark:text-violet-300" });
+    else if (m[6] !== undefined) out.push({ text: m[6], cls: "" });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// TOML
+// ─────────────────────────────────────────────────────────────
+
+export function highlightToml(source: string): Token[] {
+  const out: Token[] = [];
+  const lines = source.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("#")) {
+      out.push({ text: line, cls: "text-zinc-400 dark:text-zinc-500 italic" });
+    } else if (trimmed.match(/^\[{1,2}[^\]]+\]{1,2}/)) {
+      out.push({ text: line, cls: "text-pink-600 dark:text-pink-400 font-semibold" });
+    } else {
+      const eqMatch = line.match(/^(\s*)([\w.-]+)(\s*=\s*)(.*)/);
+      if (eqMatch) {
+        if (eqMatch[1]) out.push({ text: eqMatch[1], cls: "" });
+        out.push({ text: eqMatch[2]!, cls: "text-cyan-700 dark:text-cyan-300" });
+        out.push({ text: eqMatch[3]!, cls: "text-zinc-400" });
+        tokenizeTomlValue(eqMatch[4]!, out);
+      } else {
+        out.push({ text: line, cls: "" });
+      }
+    }
+    if (i < lines.length - 1) out.push({ text: "\n", cls: "" });
+  }
+  return out;
+}
+
+function tokenizeTomlValue(val: string, out: Token[]): void {
+  const pattern =
+    /("(?:\\.|[^"\\])*")|('(?:\\.|[^'\\])*')|(\btrue\b|\bfalse\b)|(-?\d+(?:\.\d+)?)|(\[.*?\])|(#.*$)|([\s\S]+?(?="|'|#|\[|$))/g;
+  for (const m of val.matchAll(pattern)) {
+    if (m[1] !== undefined) out.push({ text: m[1], cls: "text-amber-700 dark:text-amber-300" });
+    else if (m[2] !== undefined) out.push({ text: m[2], cls: "text-amber-700 dark:text-amber-300" });
+    else if (m[3] !== undefined) out.push({ text: m[3], cls: "text-violet-600 dark:text-violet-300" });
+    else if (m[4] !== undefined) out.push({ text: m[4], cls: "text-orange-600 dark:text-orange-300" });
+    else if (m[5] !== undefined) out.push({ text: m[5], cls: "text-emerald-700 dark:text-emerald-300" });
+    else if (m[6] !== undefined) out.push({ text: m[6], cls: "text-zinc-400 dark:text-zinc-500 italic" });
+    else if (m[7] !== undefined) out.push({ text: m[7], cls: "" });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// YAML
+// ─────────────────────────────────────────────────────────────
+
+export function highlightYaml(source: string): Token[] {
+  const out: Token[] = [];
+  const lines = source.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("#")) {
+      out.push({ text: line, cls: "text-zinc-400 dark:text-zinc-500 italic" });
+    } else if (trimmed.startsWith("---") || trimmed.startsWith("...")) {
+      out.push({ text: line, cls: "text-zinc-400" });
+    } else {
+      const colonMatch = line.match(/^(\s*)([\w.-]+)(\s*:\s?)(.*)/);
+      if (colonMatch) {
+        if (colonMatch[1]) out.push({ text: colonMatch[1], cls: "" });
+        out.push({ text: colonMatch[2]!, cls: "text-cyan-700 dark:text-cyan-300" });
+        out.push({ text: colonMatch[3]!, cls: "text-zinc-400" });
+        tokenizeYamlValue(colonMatch[4]!, out);
+      } else if (trimmed.startsWith("- ")) {
+        const indent = line.slice(0, line.indexOf("-"));
+        out.push({ text: indent + "- ", cls: "text-cyan-700 dark:text-cyan-300" });
+        tokenizeYamlValue(trimmed.slice(2), out);
+      } else {
+        out.push({ text: line, cls: "" });
+      }
+    }
+    if (i < lines.length - 1) out.push({ text: "\n", cls: "" });
+  }
+  return out;
+}
+
+function tokenizeYamlValue(val: string, out: Token[]): void {
+  const pattern =
+    /("(?:\\.|[^"\\])*")|('(?:\\.|[^'\\])*')|(\btrue\b|\bfalse\b|\bnull\b|\byes\b|\bno\b)|(-?\d+(?:\.\d+)?)|(\$\{[^}]*\}|\$\w+)|(#.*$)|([\s\S]+?(?="|'|#|\$|$))/g;
+  for (const m of val.matchAll(pattern)) {
+    if (m[1] !== undefined) out.push({ text: m[1], cls: "text-amber-700 dark:text-amber-300" });
+    else if (m[2] !== undefined) out.push({ text: m[2], cls: "text-amber-700 dark:text-amber-300" });
+    else if (m[3] !== undefined) out.push({ text: m[3], cls: "text-violet-600 dark:text-violet-300" });
+    else if (m[4] !== undefined) out.push({ text: m[4], cls: "text-orange-600 dark:text-orange-300" });
+    else if (m[5] !== undefined) out.push({ text: m[5], cls: "text-violet-600 dark:text-violet-300" });
+    else if (m[6] !== undefined) out.push({ text: m[6], cls: "text-zinc-400 dark:text-zinc-500 italic" });
+    else if (m[7] !== undefined) out.push({ text: m[7], cls: "" });
+  }
 }

@@ -68,6 +68,8 @@ export interface FileTreeProps {
   onDeleteFolder?: (folderPath: string) => void;
   onDeleteFile?: (fileId: string) => void;
   protectedFiles?: readonly string[];
+  /** Whether directories start expanded (default: true) */
+  defaultExpanded?: boolean;
 }
 
 export function FileTree({
@@ -78,6 +80,7 @@ export function FileTree({
   onDeleteFolder,
   onDeleteFile,
   protectedFiles = [],
+  defaultExpanded = true,
 }: FileTreeProps) {
   const tree = buildTree(files);
   return (
@@ -93,6 +96,7 @@ export function FileTree({
           onDeleteFolder={onDeleteFolder}
           onDeleteFile={onDeleteFile}
           protectedFiles={protectedFiles}
+          defaultExpanded={defaultExpanded}
         />
       ))}
     </ul>
@@ -110,6 +114,7 @@ interface TreeItemProps {
   onDeleteFolder?: (folderPath: string) => void;
   onDeleteFile?: (fileId: string) => void;
   protectedFiles: readonly string[];
+  defaultExpanded: boolean;
 }
 
 function TreeItem({
@@ -121,8 +126,9 @@ function TreeItem({
   onDeleteFolder,
   onDeleteFile,
   protectedFiles,
+  defaultExpanded,
 }: TreeItemProps) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultExpanded);
   const indent = depth * 12;
 
   if (node.file) {
@@ -222,6 +228,7 @@ function TreeItem({
               onDeleteFolder={onDeleteFolder}
               onDeleteFile={onDeleteFile}
               protectedFiles={protectedFiles}
+              defaultExpanded={defaultExpanded}
             />
           ))}
         </ul>

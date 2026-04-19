@@ -1,0 +1,67 @@
+id: outline
+display_name: Outline
+description: Wiki collaboratif Markdown
+category: wiki
+tags: [wiki, docs, markdown, rag-enabled]
+min_ram_mb: 2048
+config_only: false
+mcp_package_id: agflow/mcp-outline
+
+services:
+  - id: app
+    image: docker.getoutline.com/outlinewiki/outline:latest
+    ports: [3000]
+    requires_services: [db, redis]
+    env_template:
+      URL: "https://{{ domain }}"
+      PORT: "3000"
+      DATABASE_URL: "postgres://outline:${OUTLINE_DB_PASSWORD}@{{ services.db.host }}:5432/outline"
+      REDIS_URL: "redis://{{ services.redis.host }}:6379"
+      SECRET_KEY: "${OUTLINE_SECRET_KEY}"
+      UTILS_SECRET: "${OUTLINE_UTILS_SECRET}"
+    healthcheck:
+      type: http
+      path: /api/info
+      port: 3000
+
+  - id: db
+    image: postgres:16-alpine
+    volumes:
+      - name: outline-db-data
+        mount: /var/lib/postgresql/data
+    env_template:
+      POSTGRES_DB: outline
+      POSTGRES_USER: outline
+      POSTGRES_PASSWORD: "${OUTLINE_DB_PASSWORD}"
+
+  - id: redis
+    image: redis:7-alpine
+
+openapi:
+  source: url
+  url: "http://{{ services.app.host }}:3000/api/openapi.json"
+  base_url: "{{ service_url }}/api"
+  auth_header: Authorization
+  auth_prefix: Bearer
+  auth_secret_ref: "${OUTLINE_API_TOKEN}"
+
+secrets_required:
+  - name: OUTLINE_SECRET_KEY
+    description: "Clé de chiffrement interne Outline"
+    generate: random_base64(48)
+  - name: OUTLINE_UTILS_SECRET
+    description: "Clé utilitaire Outline"
+    generate: random_base64(48)
+  - name: OUTLINE_DB_PASSWORD
+    description: "Mot de passe PostgreSQL"
+    generate: random_base64(24)
+  - name: OUTLINE_API_TOKEN
+    description: "Token API Outline pour le worker RAG et les agents"
+    generate: null
+
+variables:
+  - name: domain
+    description: "Domaine d'accès public"
+    type: string
+    required: true
+    example: docs.pickup.io

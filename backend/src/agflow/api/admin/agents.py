@@ -35,12 +35,23 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[AgentSummary])
+@router.get(
+    "",
+    response_model=list[AgentSummary],
+    summary="List all agents",
+    description="Returns all registered agents as a list of AgentSummary objects, including their slug, display name, dockerfile, role, and current status.",
+)
 async def list_agents() -> list[AgentSummary]:
     return await agents_service.list_all()
 
 
-@router.post("", response_model=AgentDetail, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=AgentDetail,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an agent",
+    description="Registers a new agent with its dockerfile, role, environment variables, and runtime settings. Returns 201 with the AgentDetail, 409 if the slug already exists, or 400 if a referenced dockerfile or role is invalid.",
+)
 async def create_agent(payload: AgentCreate) -> AgentDetail:
     try:
         return await agents_service.create(payload)
@@ -54,17 +65,42 @@ async def create_agent(payload: AgentCreate) -> AgentDetail:
         ) from exc
 
 
-@router.get("/assistant", response_model=AgentSummary | None)
+@router.get(
+    "/assistant",
+    response_model=AgentSummary | None,
+    summary="Get the designated assistant agent",
+    description="Returns the AgentSummary of the agent currently flagged as the platform assistant, or null if none is set.",
+)
 async def get_assistant() -> AgentSummary | None:
     return await agents_service.get_assistant()
 
 
-@router.delete("/assistant", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{agent_id}/set-assistant",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Set an agent as the assistant",
+    description="Designates the specified agent as the platform assistant, clearing the flag from any previously designated agent. Returns 204 on success.",
+)
+async def set_assistant(agent_id: UUID) -> None:
+    await agents_service.set_assistant(agent_id)
+
+
+@router.delete(
+    "/assistant",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Clear the assistant designation",
+    description="Removes the assistant flag from whichever agent currently holds it, leaving no agent designated as assistant. Returns 204 on success.",
+)
 async def clear_assistant() -> None:
     await agents_service.clear_assistant()
 
 
-@router.get("/{agent_id}", response_model=AgentDetail)
+@router.get(
+    "/{agent_id}",
+    response_model=AgentDetail,
+    summary="Get agent detail",
+    description="Returns the full AgentDetail for the given agent UUID, including MCP bindings, skill bindings, and mission profiles. Returns 404 if not found.",
+)
 async def get_agent(agent_id: UUID) -> AgentDetail:
     try:
         return await agents_service.get_by_id(agent_id)
@@ -74,7 +110,12 @@ async def get_agent(agent_id: UUID) -> AgentDetail:
         ) from exc
 
 
-@router.put("/{agent_id}", response_model=AgentDetail)
+@router.put(
+    "/{agent_id}",
+    response_model=AgentDetail,
+    summary="Update an agent",
+    description="Partially updates an agent's configuration (display name, dockerfile, role, env vars, runtime settings, bindings). Returns the updated AgentDetail, 404 if not found, or 400 if a referenced resource is invalid.",
+)
 async def update_agent(agent_id: UUID, payload: AgentUpdate) -> AgentDetail:
     try:
         return await agents_service.update(agent_id, payload)
@@ -88,7 +129,12 @@ async def update_agent(agent_id: UUID, payload: AgentUpdate) -> AgentDetail:
         ) from exc
 
 
-@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{agent_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an agent",
+    description="Permanently deletes the agent and all its associated profiles, bindings, and generated files. Returns 204 on success, or 404 if the agent does not exist.",
+)
 async def delete_agent(agent_id: UUID) -> None:
     try:
         await agents_service.delete(agent_id)
@@ -98,7 +144,11 @@ async def delete_agent(agent_id: UUID) -> None:
         ) from exc
 
 
-@router.get("/{agent_id}/export")
+@router.get(
+    "/{agent_id}/export",
+    summary="Export an agent as a ZIP archive",
+    description="Builds an in-memory ZIP containing agent.json (full metadata) and one JSON file per mission profile under profiles/. Streams the result as a download. Returns 404 if the agent does not exist.",
+)
 async def export_agent(agent_id: UUID) -> StreamingResponse:
     try:
         agent = await agents_service.get_detail(agent_id)
@@ -153,7 +203,11 @@ class GeneratePayload(BaseModel):
     secrets: dict[str, str] = Field(default_factory=dict)
 
 
-@router.post("/{agent_id}/generate")
+@router.post(
+    "/{agent_id}/generate",
+    summary="Generate agent runtime configuration files",
+    description="Resolves all secrets, role prompts, and MCP/skill bindings for the agent and writes the resulting configuration files to the agent's workspace. Optionally applies a mission profile. Returns a dict describing the generated files.",
+)
 async def generate_agent(agent_id: UUID, payload: GeneratePayload | None = None) -> dict:
     try:
         result = await agent_generator.generate(
@@ -168,7 +222,11 @@ async def generate_agent(agent_id: UUID, payload: GeneratePayload | None = None)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/{agent_id}/generated")
+@router.get(
+    "/{agent_id}/generated",
+    summary="List generated files for an agent",
+    description="Returns a list of file metadata dicts for all files currently present in the agent's generated workspace directory. Returns 404 if the agent does not exist.",
+)
 async def list_generated_files(agent_id: UUID) -> list[dict]:
     try:
         agent = await agents_service.get_by_id(agent_id)
@@ -177,7 +235,35 @@ async def list_generated_files(agent_id: UUID) -> list[dict]:
     return await agent_generator.list_generated_files(agent.slug)
 
 
-@router.post("/import", response_model=AgentDetail, status_code=status.HTTP_201_CREATED)
+@router.delete(
+    "/{agent_id}/generated",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete all generated files for an agent",
+    description="Recursively removes the entire generated workspace directory for the agent. Idempotent — returns 204 even if the directory does not exist. Returns 404 if the agent does not exist.",
+)
+async def clean_generated(agent_id: UUID) -> None:
+    import os
+    import shutil
+
+    try:
+        agent = await agents_service.get_by_id(agent_id)
+    except agents_service.AgentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    gen_dir = os.path.join(
+        os.environ.get("AGFLOW_DATA_DIR", "/app/data"),
+        "agents", agent.slug, "generated",
+    )
+    if os.path.isdir(gen_dir):
+        shutil.rmtree(gen_dir)
+
+
+@router.post(
+    "/import",
+    response_model=AgentDetail,
+    status_code=status.HTTP_201_CREATED,
+    summary="Import an agent from a ZIP archive",
+    description="Creates a new agent from a ZIP produced by the export endpoint. Reads agent.json for metadata and profiles/*.json for mission profiles. Returns 201 with the AgentDetail, 400 if the zip or metadata is invalid, or 409 if the slug already exists.",
+)
 async def import_agent(file: UploadFile = File(...)) -> AgentDetail:
     data = await file.read()
     try:
@@ -233,6 +319,8 @@ async def import_agent(file: UploadFile = File(...)) -> AgentDetail:
     "/{agent_id}/duplicate",
     response_model=AgentDetail,
     status_code=status.HTTP_201_CREATED,
+    summary="Duplicate an agent",
+    description="Creates a full copy of the agent under a new slug and display name, including its configuration and bindings. Returns 201 with the new AgentDetail, 404 if the source agent does not exist, or 409 if the new slug is already taken.",
 )
 async def duplicate_agent(
     agent_id: UUID, payload: DuplicatePayload
@@ -251,7 +339,12 @@ async def duplicate_agent(
         ) from exc
 
 
-@router.get("/{agent_id}/config-preview", response_model=ConfigPreview)
+@router.get(
+    "/{agent_id}/config-preview",
+    response_model=ConfigPreview,
+    summary="Preview composed agent configuration",
+    description="Returns a ConfigPreview showing the fully composed system prompt and environment that would be injected into the agent container at runtime. Optionally applies a mission profile. Returns 404 if the agent or profile does not exist, or 400 if the profile belongs to a different agent.",
+)
 async def preview_agent_config(
     agent_id: UUID,
     profile_id: UUID | None = Query(
@@ -283,7 +376,10 @@ async def preview_agent_config(
 
 
 @router.get(
-    "/{agent_id}/profiles", response_model=list[AgentProfileSummary]
+    "/{agent_id}/profiles",
+    response_model=list[AgentProfileSummary],
+    summary="List mission profiles for an agent",
+    description="Returns all mission profiles associated with the specified agent as a list of AgentProfileSummary objects. Returns 404 if the agent does not exist.",
 )
 async def list_profiles(agent_id: UUID) -> list[AgentProfileSummary]:
     try:
@@ -299,6 +395,8 @@ async def list_profiles(agent_id: UUID) -> list[AgentProfileSummary]:
     "/{agent_id}/profiles",
     response_model=AgentProfileSummary,
     status_code=status.HTTP_201_CREATED,
+    summary="Create a mission profile for an agent",
+    description="Adds a new mission profile to the specified agent, associating it with a set of role document IDs. Returns 201 with the AgentProfileSummary, 404 if the agent does not exist, or 409 if a profile with the same name already exists.",
 )
 async def create_profile(
     agent_id: UUID, payload: AgentProfileCreate
@@ -325,6 +423,8 @@ async def create_profile(
 @router.put(
     "/{agent_id}/profiles/{profile_id}",
     response_model=AgentProfileSummary,
+    summary="Update a mission profile",
+    description="Updates the name, description, document selection, and optional template settings of the mission profile. Returns the updated AgentProfileSummary, 404 if not found or profile does not belong to the agent, or 409 if the new name conflicts.",
 )
 async def update_profile(
     agent_id: UUID, profile_id: UUID, payload: AgentProfileUpdate
@@ -346,6 +446,9 @@ async def update_profile(
             name=payload.name,
             description=payload.description,
             document_ids=payload.document_ids,
+            template_slug=payload.template_slug,
+            template_culture=payload.template_culture,
+            output_dir=payload.output_dir,
         )
     except agent_profiles_service.DuplicateProfileError as exc:
         raise HTTPException(
@@ -356,6 +459,8 @@ async def update_profile(
 @router.delete(
     "/{agent_id}/profiles/{profile_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a mission profile",
+    description="Permanently deletes the specified mission profile. Returns 204 on success, or 404 if the profile does not exist or does not belong to the given agent.",
 )
 async def delete_profile(agent_id: UUID, profile_id: UUID) -> None:
     try:
@@ -370,5 +475,3 @@ async def delete_profile(agent_id: UUID, profile_id: UUID) -> None:
             detail=f"Profile {profile_id} does not belong to agent {agent_id}",
         )
     await agent_profiles_service.delete(profile_id)
-
-

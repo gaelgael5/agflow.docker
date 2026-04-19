@@ -374,7 +374,7 @@ Producteurs → MOM (bus central) → Consommateurs
 - Reçoit tous les messages, les persiste (traçabilité), et les route vers les bonnes sorties
 - File d'attente par agent/instance (garantie d'ordre, pas de perte)
 - Messages durables — si un consommateur est déconnecté, les messages sont bufferisés et livrés à la reconnexion
-- Technologie : **Redis Streams** avec consumer groups. Lib Python : `redis.asyncio`. Chaque instance d'agent a son propre stream. Les consumer groups permettent de brancher N consommateurs (WebSocket, traçabilité, inter-agents) sur le même stream avec ACK (pas de perte de messages). Redis déployé en container Docker sur l'infrastructure.
+- Technologie : **PostgreSQL comme bus** via les patterns `SELECT … FOR UPDATE SKIP LOCKED` (claim) + `LISTEN / NOTIFY` (wake-up). Lib Python : `asyncpg`. Deux tables : `agent_messages` (log append-only, 1 ligne par enveloppe) et `agent_message_delivery` (état par consumer group : pending / claimed / acked / failed). Chaque instance d'agent a son propre couple (instance_id, direction) qui joue le rôle d'un stream. Les consumer groups sont des valeurs de `group_name` — il suffit d'ajouter un consumer en insérant des lignes de delivery pour ce nom de groupe. Aucun broker externe : Postgres est la source de vérité, le bus et l'archive en un seul système.
 
 **Consommateurs (sortie depuis le MOM)** :
 - **stdin container** : le dispatcher lit la file de l'agent et pousse vers le stdin du container Docker
@@ -522,7 +522,7 @@ Le Module 5f trace les messages in/out entre le dispatcher et l'agent. Cette sec
 - **Internationalisation** : i18n sur tous les labels
 - **Qualité** : pas de fichier > 300 lignes, tests unitaires pour chaque composant
 - **Identifiants** : identifiants stables (slugs) sur chaque entité pour permettre la composition inter-modules
-- **Communication** : **Redis Streams** comme bus central (MOM) de toutes les communications agents. Lib Python : `redis.asyncio`. Consumer groups avec ACK pour la durabilité. Un stream par instance d'agent, N consommateurs par stream (WebSocket, REST, inter-agents, tools, traçabilité). Redis déployé en container Docker. Toutes les entrées/sorties transitent par le bus.
+- **Communication** : **PostgreSQL comme bus** (MOM) de toutes les communications agents, via les patterns `SELECT … FOR UPDATE SKIP LOCKED` (claim concurrent) + `LISTEN / NOTIFY` (wake-up sub-100 ms) + ACK transactionnel. Lib Python : `asyncpg`. Deux tables : `agent_messages` (log append-only) et `agent_message_delivery` (état par consumer group). Un `(instance_id, direction)` joue le rôle d'un stream ; un `group_name` joue le rôle d'un consumer group. Pas de broker externe — Postgres est bus, archive et source de vérité en un seul système. Atomicité garantie entre publish et modif d'état applicatif (pas d'outbox pattern requis).
 
 ### PostgreSQL comme source de vérité
 

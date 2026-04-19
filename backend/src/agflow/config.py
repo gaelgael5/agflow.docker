@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
 
-    redis_url: str = "redis://localhost:6379/0"
     environment: str = "dev"
     log_level: str = "INFO"
     jwt_expire_hours: int = 24

@@ -165,12 +165,25 @@ async def run_script(server_id: UUID, payload: ScriptRunRequest):
 
 
 @router.websocket("/{server_id}/exec")
-async def ws_exec(ws: WebSocket, server_id: UUID):
+async def ws_exec(ws: WebSocket, server_id: UUID, token: str = ""):
     """WebSocket SSH execution with real-time stdout/stderr streaming.
 
+    Auth via query param: ?token=JWT
     Client sends: {"command": "...", "script_url": "...", "args": {...}}
     Server streams: {"type": "stdout|stderr|exit|error|cmd", "data": "..."}
     """
+    # Authenticate via query param (browsers can't send WS headers)
+    from agflow.auth.jwt import InvalidTokenError, decode_token
+
+    if not token:
+        await ws.close(code=4001, reason="Missing token")
+        return
+    try:
+        decode_token(token)
+    except InvalidTokenError:
+        await ws.close(code=4001, reason="Invalid token")
+        return
+
     await ws.accept()
 
     try:

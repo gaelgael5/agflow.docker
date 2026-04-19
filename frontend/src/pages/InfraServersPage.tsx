@@ -416,9 +416,10 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
     setLines([]);
     setExitCode(null);
 
-    // WebSocket URL
+    // WebSocket URL with JWT token in query param
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${proto}//${window.location.host}/api/infra/servers/${serverId}/exec`;
+    const jwt = localStorage.getItem("token") ?? "";
+    const wsUrl = `${proto}//${window.location.host}/api/infra/servers/${serverId}/exec?token=${encodeURIComponent(jwt)}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

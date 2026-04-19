@@ -87,6 +87,7 @@ export function InfraCertificatesPage() {
                 <TableHead>{t("infra.cert_name")}</TableHead>
                 <TableHead>{t("infra.cert_key_type")}</TableHead>
                 <TableHead>{t("infra.cert_keys")}</TableHead>
+                <TableHead>{t("infra.cert_created_at")}</TableHead>
                 <TableHead className="text-right">{t("infra.cert_actions")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -110,6 +111,11 @@ export function InfraCertificatesPage() {
                       {c.has_public_key && <Badge variant="outline" className="text-[9px]">public</Badge>}
                       {c.has_passphrase && <Badge variant="outline" className="text-[9px]">passphrase</Badge>}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-[11px] text-muted-foreground">
+                      {new Date(c.created_at).toLocaleString()}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">

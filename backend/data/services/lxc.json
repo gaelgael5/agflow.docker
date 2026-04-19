@@ -1,8 +1,8 @@
 {
   "name": "LXC",
+  "type": "LXC",
   "connection": "SSH",
   "scripts": [
-    "https://raw.githubusercontent.com/Configurations/ag.flow/main/scripts/Infra/10-install-k3s.json",
-    "https://raw.githubusercontent.com/Configurations/ag.flow/main/scripts/Infra/11-export-kubeconfig.json"
+    "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/install-k3s.json"
   ]
 }

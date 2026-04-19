@@ -460,7 +460,7 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { wsRef.current?.close(); onClose(); } }}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col" aria-describedby={undefined}>
+      <DialogContent className="sm:max-w-[70vw] max-h-[85vh] flex flex-col" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>
             <Badge variant={action === "destroy" ? "destructive" : "default"} className="text-[10px] mr-2">{action}</Badge>

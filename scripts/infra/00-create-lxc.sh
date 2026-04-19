@@ -414,8 +414,31 @@ chmod 440 /etc/sudoers.d/agflow
 echo '  -> sudo NOPASSWD configure'
 "
 
-# ── Recuperer l'IP finale ────────────────────────────────────────────────────
+# ── Recuperer les infos systeme ──────────────────────────────────────────────
 CT_IP=$(pct exec "${CTID}" -- bash -c "ip -4 addr show eth0 2>/dev/null | grep inet | awk '{print \$2}' | cut -d/ -f1 | head -1" 2>/dev/null || echo "")
+
+# Type d'adresse IP (DHCP ou static)
+IP_TYPE=$(pct exec "${CTID}" -- bash -c "
+if [ -f /etc/systemd/network/20-eth0.network ] && grep -q 'DHCP=yes' /etc/systemd/network/20-eth0.network 2>/dev/null; then
+    echo 'dhcp'
+elif grep -q 'dhcp' /etc/netplan/*.yaml 2>/dev/null; then
+    echo 'dhcp'
+elif grep -q 'inet dhcp' /etc/network/interfaces 2>/dev/null; then
+    echo 'dhcp'
+else
+    echo 'static'
+fi
+" 2>/dev/null || echo "unknown")
+
+# Distribution Linux
+CT_DISTRO=$(pct exec "${CTID}" -- bash -c "
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    echo \"\${NAME} \${VERSION_ID}\"
+else
+    echo 'unknown'
+fi
+" 2>/dev/null || echo "unknown")
 
 # ── Resume final ─────────────────────────────────────────────────────────────
 echo ""
@@ -425,12 +448,15 @@ echo "==========================================="
 echo ""
 echo "  Mode        : ${MODE}"
 echo ""
+echo "  Systeme :"
+echo "  - Distribution : ${CT_DISTRO}"
+echo "  - IP           : ${CT_IP} (${IP_TYPE})"
+echo ""
 echo "  Infrastructure :"
 echo "  - unprivileged: 0 (privileged)"
 echo "  - nesting + keyctl actives"
 echo "  - AppArmor: unconfined"
 echo "  - cgroup2: all devices allowed"
-echo "  - Reseau: DHCP sur eth0"
 echo ""
 echo "  SSH :"
 echo "  - Clef privee : ${KEY_FILE}"
@@ -463,4 +489,4 @@ echo ""
 echo "==========================================="
 echo ""
 # ── Sortie JSON (convention pipeline agflow) ─────────────────────────────────
-echo "{\"status\":\"ok\",\"ctid\":\"${CTID}\",\"ip\":\"${CT_IP}\",\"user\":\"agflow\",\"password\":\"${AGFLOW_PASS}\",\"ssh_key\":\"${AGFLOW_KEY_FILE}\",\"docker\":\"${docker_version}\"}"
+echo "{\"status\":\"ok\",\"ctid\":\"${CTID}\",\"ip\":\"${CT_IP}\",\"ip_type\":\"${IP_TYPE}\",\"distro\":\"${CT_DISTRO}\",\"user\":\"agflow\",\"password\":\"${AGFLOW_PASS}\",\"ssh_key\":\"${AGFLOW_KEY_FILE}\",\"docker\":\"${docker_version}\"}"

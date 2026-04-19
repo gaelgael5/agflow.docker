@@ -5,10 +5,10 @@
   "connection": "SSH",
   "scripts": {
     "create": [
-      "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/main/scripts/infra/00-create-lxc.json"
+      "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/infra/00-create-lxc.json"
     ],
     "destroy": [
-      "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/main/scripts/infra/99-destroy-lxc.json"
+      "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/infra/99-destroy-lxc.json"
     ]
   }
 }

@@ -10,7 +10,7 @@
     {
       "arg": "LXC_NAME",
       "label_fr": "Nom du container",
-      "description_fr": "Hostname du container LXC (ex: agflow-docker-test)",
+      "description_fr": "Hostname DNS (lettres, chiffres, tirets uniquement — ex: agflow-test-01)",
       "type": "string",
       "required": false
     }

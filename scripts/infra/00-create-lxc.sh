@@ -32,7 +32,9 @@ set -euo pipefail
 # ── Configuration par defaut ─────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CTID="${1:-}"
-CT_NAME="${2:-agflow.docker}"
+# Sanitize hostname: replace underscores/dots with hyphens, lowercase, strip invalid chars
+CT_NAME_RAW="${2:-agflow-docker}"
+CT_NAME=$(echo "${CT_NAME_RAW}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
 CORES=4
 MEMORY=8192
 SWAP=1024

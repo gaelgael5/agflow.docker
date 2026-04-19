@@ -114,7 +114,7 @@ export function InfraCertificatesPage() {
                   </TableCell>
                   <TableCell>
                     <span className="text-[11px] text-muted-foreground">
-                      {new Date(c.created_at).toLocaleDateString()}
+                      {new Date(c.created_at).toLocaleString()}
                     </span>
                   </TableCell>
                   <TableCell>

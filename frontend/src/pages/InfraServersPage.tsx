@@ -416,9 +416,10 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
     setLines([]);
     setExitCode(null);
 
-    // WebSocket URL
+    // WebSocket URL with JWT token in query param
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${proto}//${window.location.host}/api/infra/servers/${serverId}/exec`;
+    const jwt = localStorage.getItem("agflow_token") ?? "";
+    const wsUrl = `${proto}//${window.location.host}/api/infra/servers/${serverId}/exec?token=${encodeURIComponent(jwt)}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -518,7 +519,7 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
               >
                 {lines.map((l, i) => (
                   <span key={i} className={l.type === "stderr" ? "text-red-400" : l.type === "cmd" ? "text-yellow-400" : ""}>
-                    {l.data}
+                    {l.data.endsWith("\n") ? l.data : l.data + "\n"}
                   </span>
                 ))}
                 {running && <span className="animate-pulse text-green-400">_</span>}

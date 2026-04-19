@@ -105,6 +105,8 @@ export interface ServerSummary {
   has_password: boolean;
   certificate_id: string | null;
   machine_count: number;
+  metadata: Record<string, string>;
+  status: string;
   created_at: string;
   updated_at: string;
 }

@@ -2,8 +2,7 @@
 ###############################################################################
 # Script : Installation K3s (lightweight Kubernetes) sur un container LXC
 #
-# A executer DANS le container LXC (pas sur l'hote Proxmox).
-# Le script est telecharge et lance via SSH depuis agflow.
+# Executé via SSH depuis agflow en tant qu'utilisateur agflow (sudo NOPASSWD).
 #
 # Installe :
 #   - K3s (server mode, single node)
@@ -11,11 +10,6 @@
 #   - Desactive Traefik (optionnel, parametre)
 #
 # Usage : ./install-k3s.sh [--no-traefik]
-#
-# Pre-requis :
-#   - Container LXC avec Docker installe
-#   - Acces internet (curl vers get.k3s.io)
-#   - systemd actif
 ###############################################################################
 set -euo pipefail
 
@@ -31,12 +25,12 @@ echo "[1/5] Verification des pre-requis..."
 
 if ! command -v curl &>/dev/null; then
     echo "  -> Installation curl..."
-    apt-get update -qq >/dev/null 2>&1
-    apt-get install -y -qq curl >/dev/null 2>&1
+    sudo apt-get update -qq 2>&1
+    sudo apt-get install -y -qq curl 2>&1
 fi
 echo "  -> curl: OK"
 
-if ! systemctl --version &>/dev/null 2>&1; then
+if ! sudo systemctl --version &>/dev/null 2>&1; then
     echo "  ERREUR: systemd requis mais non disponible"
     exit 1
 fi
@@ -60,7 +54,7 @@ else
     echo "  -> Runtime: containerd (built-in)"
 fi
 
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server ${K3S_OPTS}" sh -
+curl -sfL https://get.k3s.io | sudo INSTALL_K3S_EXEC="server ${K3S_OPTS}" sh -
 
 echo "  -> K3s installe"
 
@@ -69,16 +63,16 @@ echo ""
 echo "[3/5] Attente demarrage K3s..."
 
 for i in $(seq 1 30); do
-    if k3s kubectl get nodes &>/dev/null; then
+    if sudo k3s kubectl get nodes &>/dev/null; then
         echo "  -> K3s pret (${i}s)"
         break
     fi
     sleep 2
 done
 
-if ! k3s kubectl get nodes &>/dev/null; then
+if ! sudo k3s kubectl get nodes &>/dev/null; then
     echo "  ERREUR: K3s n'a pas demarre apres 60s"
-    echo "  Verifiez: journalctl -u k3s"
+    echo "  Verifiez: sudo journalctl -u k3s"
     exit 1
 fi
 
@@ -86,32 +80,33 @@ fi
 echo ""
 echo "[4/5] Configuration kubectl..."
 
-mkdir -p /root/.kube
-cp /etc/rancher/k3s/k3s.yaml /root/.kube/config
-chmod 600 /root/.kube/config
+sudo mkdir -p /home/${USER}/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml /home/${USER}/.kube/config
+sudo chown -R ${USER}:${USER} /home/${USER}/.kube
+chmod 600 /home/${USER}/.kube/config
 
 # Alias kubectl
-if ! grep -q "alias kubectl" /root/.bashrc 2>/dev/null; then
-    echo "alias kubectl='k3s kubectl'" >> /root/.bashrc
+if ! grep -q "alias kubectl" ~/.bashrc 2>/dev/null; then
+    echo "alias kubectl='sudo k3s kubectl'" >> ~/.bashrc
     echo "  -> Alias kubectl ajoute"
 fi
 
-# Installer kubectl standalone si pas present
+# Symlink kubectl
 if ! command -v kubectl &>/dev/null; then
-    ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl 2>/dev/null || true
+    sudo ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl 2>/dev/null || true
     echo "  -> Symlink kubectl cree"
 fi
 
-echo "  -> kubeconfig: /root/.kube/config"
+echo "  -> kubeconfig: ~/.kube/config"
 
 # ── Resume ──────────────────────────────────────────────────────────────────
 echo ""
 echo "[5/5] Verification finale..."
 
-K3S_VERSION=$(k3s --version 2>/dev/null | head -1 || echo "inconnu")
-NODE_STATUS=$(k3s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
+K3S_VERSION=$(sudo k3s --version 2>/dev/null | head -1 || echo "inconnu")
+NODE_STATUS=$(sudo k3s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
 NODE_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "")
-KUBECONFIG_CONTENT=$(cat /root/.kube/config 2>/dev/null | base64 -w0 || echo "")
+KUBECONFIG_CONTENT=$(sudo cat /etc/rancher/k3s/k3s.yaml 2>/dev/null | base64 -w0 || echo "")
 
 echo ""
 echo "==========================================="
@@ -121,11 +116,7 @@ echo ""
 echo "  Version    : ${K3S_VERSION}"
 echo "  Node Ready : ${NODE_STATUS}"
 echo "  Traefik    : $([ "${DISABLE_TRAEFIK}" = "--no-traefik" ] && echo "desactive" || echo "actif")"
-echo "  kubeconfig : /root/.kube/config"
-echo ""
-echo "  Commandes utiles :"
-echo "    k3s kubectl get nodes"
-echo "    k3s kubectl get pods -A"
+echo "  kubeconfig : ~/.kube/config"
 echo ""
 echo "==========================================="
 

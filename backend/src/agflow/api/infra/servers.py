@@ -265,11 +265,15 @@ async def ws_exec(ws: WebSocket, server_id: UUID, token: str = ""):
             exit_code = process.exit_status or 0
             await ws.send_json({"type": "exit", "data": str(exit_code)})
 
-            # ── Post-execution: auto-provision on create success ──
+            # ── Post-execution hooks ──
             if action == "create" and exit_code == 0:
                 await _auto_provision(
                     ws, conn, server_id, stdout_lines, creds,
                 )
+            elif action == "install" and exit_code == 0:
+                await infra_servers_service.update_status(server_id, "initialized")
+                await ws.send_json({"type": "stdout", "data": "\n✓ Status → initialized\n"})
+                await ws.send_json({"type": "status_changed", "data": "initialized"})
 
     except WebSocketDisconnect:
         _log.info("ws_exec.client_disconnected", server_id=str(server_id))
@@ -366,6 +370,13 @@ async def _auto_provision(
         )
 
         server_name = f"LXC-{ctid}" if ctid else ip
+
+        # Build metadata from script output
+        meta = {}
+        for k in ("distro", "ip_type", "docker", "ctid"):
+            if output_json.get(k):
+                meta[k] = str(output_json[k])
+
         new_server = await infra_servers_service.create(
             name=server_name,
             server_type=child_type,
@@ -374,6 +385,7 @@ async def _auto_provision(
             username=user or None,
             password=password or None,
             certificate_id=cert_summary.id if cert_summary else None,
+            metadata=meta,
         )
         await ws.send_json({"type": "stdout", "data": f"✓ Serveur créé: {server_name} ({ip}:22, user={user})\n"})
         await ws.send_json({

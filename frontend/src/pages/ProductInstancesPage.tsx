@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useProductInstances } from "@/hooks/useProductInstances";
 import { useProducts } from "@/hooks/useProducts";
 import { useProjects } from "@/hooks/useProjects";
+import { useServiceTypes } from "@/hooks/useServiceTypes";
 import { productInstancesApi, type BackendInfo } from "@/lib/productInstancesApi";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -31,6 +32,7 @@ export function ProductInstancesPage() {
   const { instances, isLoading, createMutation, deleteMutation, activateMutation, stopMutation } = useProductInstances();
   const { products } = useProducts();
   const { projects } = useProjects();
+  const { serviceTypes } = useServiceTypes();
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ projectId: string; instanceId: string; name: string } | null>(null);
   const [activateTarget, setActivateTarget] = useState<{ projectId: string; instanceId: string } | null>(null);
@@ -215,11 +217,16 @@ export function ProductInstancesPage() {
         open={showCreate}
         onOpenChange={setShowCreate}
         title={t("instances.dialog_title")}
+        size="lg"
         fields={[
           { name: "instance_name", label: t("instances.field_name"), required: true },
-          { name: "catalog_id", label: t("instances.field_product"), required: true },
-          { name: "project_id", label: t("instances.field_project"), required: true },
-          { name: "service_role", label: t("instances.field_role") },
+          { name: "instance_slug", label: t("instances.field_slug"), autoSlugFrom: "instance_name", slugSeparator: "-", monospace: true },
+          { name: "catalog_id", label: t("instances.field_product"), required: true, options: (products ?? []).map((p) => ({ value: p.id, label: p.display_name })) },
+          { name: "project_id", label: t("instances.field_project"), required: true, options: (projects ?? []).map((p) => ({ value: p.id, label: p.display_name })) },
+          { name: "service_role", label: t("instances.field_role"), options: [
+            { value: "", label: "—" },
+            ...(serviceTypes ?? []).map((st) => ({ value: st.name, label: st.display_name })),
+          ]},
         ]}
         onSubmit={async (values) => {
           await createMutation.mutateAsync({

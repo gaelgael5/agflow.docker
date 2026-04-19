@@ -43,6 +43,7 @@ async def create_session(
     row = await sessions_service.create(
         api_key_id=ctx.api_key_id, name=body.name,
         duration_seconds=body.duration_seconds,
+        project_id=body.project_id,
     )
     return SessionOut(**row)
 

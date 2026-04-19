@@ -51,8 +51,18 @@ class ProductSummary(BaseModel):
     recipe_version: str = "1.0.0"
 
 
+class ProductCreate(BaseModel):
+    slug: str = Field(min_length=1, max_length=64)
+    display_name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    category: Category = "other"
+    tags: list[str] = Field(default_factory=list)
+    recipe_yaml: str = ""
+
+
 class ProductDetail(ProductSummary):
     recipe: dict[str, Any] = Field(default_factory=dict)
+    recipe_yaml: str = ""
 
 
 # ── Projects ─────────────────────────────────────────────

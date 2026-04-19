@@ -99,7 +99,7 @@ export function PromptDialog({
 
   function fieldError(field: PromptField): "empty" | "pattern" | null {
     const value = effectiveValue(field);
-    if (!value) return (field.required ?? true) ? "empty" : null;
+    if (!value) return field.required ? "empty" : null;
     const pattern = effectivePattern(field);
     if (pattern && !pattern.test(value)) return "pattern";
     return null;
@@ -169,6 +169,9 @@ export function PromptDialog({
                       onChange={(e) => updateField(field.name, e.target.value)}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                     >
+                      {!field.defaultValue && field.required && (
+                        <option value="" disabled>— {field.label} —</option>
+                      )}
                       {field.options.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}

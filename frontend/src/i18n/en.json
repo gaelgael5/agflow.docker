@@ -36,7 +36,7 @@
   "sidebar": {
     "section_platform": "Platform",
     "section_resources": "Resources",
-    "section_catalogs": "Catalogs",
+    "section_access": "Access",
     "section_orchestration": "Orchestration",
     "api_public": "Public API",
     "supervision": "Supervision",
@@ -927,7 +927,16 @@
     "recipe": "YAML recipe",
     "services": "Services",
     "secrets": "Required secrets",
-    "variables": "Variables"
+    "variables": "Variables",
+    "add_button": "+ New product",
+    "select_product": "Select a product to edit its recipe",
+    "save_recipe": "Save",
+    "recipe_saved": "Recipe saved",
+    "dialog_title": "New product",
+    "field_filename": "File name (lowercase, no extension)",
+    "filename_hint": "Lowercase, digits, dashes and underscores only",
+    "confirm_delete_title": "Delete product",
+    "confirm_delete_message": "Delete product \"{{name}}\"?"
   },
   "projects": {
     "page_title": "Projects",
@@ -967,6 +976,7 @@
     "confirm_delete_message": "Delete instance \"{{name}}\"?",
     "dialog_title": "New instance",
     "field_name": "Instance name",
+    "field_slug": "Identifier (slug)",
     "field_product": "Product",
     "field_project": "Project",
     "field_role": "Service role",

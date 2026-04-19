@@ -8,22 +8,26 @@ from agflow.db.pool import execute, fetch_all, fetch_one
 
 _log = structlog.get_logger(__name__)
 
+_COLS = "id, api_key_id, name, status, project_id, created_at, expires_at, closed_at"
+
 
 async def create(
     *, api_key_id: UUID, name: str | None, duration_seconds: int,
+    project_id: str | None = None,
 ) -> dict:
     row = await fetch_one(
-        """
-        INSERT INTO sessions (api_key_id, name, expires_at)
-        VALUES ($1, $2, now() + ($3 || ' seconds')::interval)
-        RETURNING id, api_key_id, name, status, created_at, expires_at, closed_at
+        f"""
+        INSERT INTO sessions (api_key_id, name, project_id, expires_at)
+        VALUES ($1, $2, $3, now() + ($4 || ' seconds')::interval)
+        RETURNING {_COLS}
         """,
-        api_key_id, name, str(duration_seconds),
+        api_key_id, name, project_id, str(duration_seconds),
     )
     _log.info(
         "sessions.created",
         session_id=str(row["id"]),
         api_key_id=str(api_key_id),
+        project_id=project_id,
         duration_seconds=duration_seconds,
     )
     return dict(row)
@@ -34,14 +38,12 @@ async def get(
 ) -> dict | None:
     if is_admin:
         row = await fetch_one(
-            "SELECT id, api_key_id, name, status, created_at, expires_at, closed_at "
-            "FROM sessions WHERE id = $1",
+            f"SELECT {_COLS} FROM sessions WHERE id = $1",
             session_id,
         )
     else:
         row = await fetch_one(
-            "SELECT id, api_key_id, name, status, created_at, expires_at, closed_at "
-            "FROM sessions WHERE id = $1 AND api_key_id = $2",
+            f"SELECT {_COLS} FROM sessions WHERE id = $1 AND api_key_id = $2",
             session_id, api_key_id,
         )
     return dict(row) if row else None
@@ -50,13 +52,11 @@ async def get(
 async def list_for_key(*, api_key_id: UUID, is_admin: bool) -> list[dict]:
     if is_admin:
         rows = await fetch_all(
-            "SELECT id, api_key_id, name, status, created_at, expires_at, closed_at "
-            "FROM sessions ORDER BY created_at DESC",
+            f"SELECT {_COLS} FROM sessions ORDER BY created_at DESC",
         )
     else:
         rows = await fetch_all(
-            "SELECT id, api_key_id, name, status, created_at, expires_at, closed_at "
-            "FROM sessions WHERE api_key_id = $1 ORDER BY created_at DESC",
+            f"SELECT {_COLS} FROM sessions WHERE api_key_id = $1 ORDER BY created_at DESC",
             api_key_id,
         )
     return [dict(r) for r in rows]
@@ -67,21 +67,21 @@ async def extend(
 ) -> dict | None:
     if is_admin:
         row = await fetch_one(
-            """
+            f"""
             UPDATE sessions
             SET expires_at = expires_at + ($1 || ' seconds')::interval
             WHERE id = $2 AND status = 'active'
-            RETURNING id, api_key_id, name, status, created_at, expires_at, closed_at
+            RETURNING {_COLS}
             """,
             str(additional_seconds), session_id,
         )
     else:
         row = await fetch_one(
-            """
+            f"""
             UPDATE sessions
             SET expires_at = expires_at + ($1 || ' seconds')::interval
             WHERE id = $2 AND status = 'active' AND api_key_id = $3
-            RETURNING id, api_key_id, name, status, created_at, expires_at, closed_at
+            RETURNING {_COLS}
             """,
             str(additional_seconds), session_id, api_key_id,
         )

@@ -62,16 +62,16 @@ export function Sidebar({ open = false, onClose }: Props) {
     {
       title: t("sidebar.section_platform"),
       items: [
-        { to: "/my-secrets", label: t("my_secrets.page_title"), icon: Lock },
+        { to: "/discovery-services", label: t("discovery.page_title"), icon: RadioTower },
+        { to: "/service-types", label: t("service_types.page_title"), icon: Tags },
         { to: "/secrets", label: t("secrets.page_title"), icon: KeyRound },
         { to: "/dockerfiles", label: t("dockerfiles.page_title"), icon: FileCode2 },
         { to: "/templates", label: t("templates.page_title"), icon: Braces },
-        { to: "/roles", label: t("roles.page_title"), icon: UserRoundCog },
-        { to: "/avatars", label: t("avatars.page_title"), icon: Palette },
+        { to: "/mcp-catalog", label: t("mcp_catalog.page_title"), icon: PlugZap },
+        { to: "/skills-catalog", label: t("skills_catalog.page_title"), icon: BookMarked },
         { to: "/ai-providers", label: t("ai_providers.page_title"), icon: Wand2 },
-        { to: "/service-types", label: t("service_types.page_title"), icon: Tags },
+        { to: "/avatars", label: t("avatars.page_title"), icon: Palette },
         { to: "/users", label: t("users.page_title"), icon: Users },
-        { to: "/api-keys", label: t("api_keys.page_title"), icon: Key },
       ],
     },
     {
@@ -84,16 +84,16 @@ export function Sidebar({ open = false, onClose }: Props) {
       ],
     },
     {
-      title: t("sidebar.section_catalogs"),
+      title: t("sidebar.section_access"),
       items: [
-        { to: "/discovery-services", label: t("discovery.page_title"), icon: RadioTower },
-        { to: "/mcp-catalog", label: t("mcp_catalog.page_title"), icon: PlugZap },
-        { to: "/skills-catalog", label: t("skills_catalog.page_title"), icon: BookMarked },
+        { to: "/my-secrets", label: t("my_secrets.page_title"), icon: Lock },
+        { to: "/api-keys", label: t("api_keys.page_title"), icon: Key },
       ],
     },
     {
       title: t("sidebar.section_orchestration"),
       items: [
+        { to: "/roles", label: t("roles.page_title"), icon: UserRoundCog },
         { to: "/agents", label: t("agents.page_title"), icon: Bot },
         { to: "/api-docs", label: t("sidebar.api_public"), icon: Globe },
         { to: "/supervision", label: t("sidebar.supervision"), icon: Activity, disabled: true },

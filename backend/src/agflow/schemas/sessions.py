@@ -26,6 +26,7 @@ class SessionCreate(BaseModel):
     duration_seconds: int = Field(
         default=DEFAULT_SESSION_DURATION_S, ge=60, le=MAX_SESSION_DURATION_S,
     )
+    project_id: str | None = None
 
 
 class SessionExtend(BaseModel):
@@ -36,6 +37,7 @@ class SessionOut(BaseModel):
     id: UUID
     name: str | None
     status: str
+    project_id: str | None = None
     created_at: datetime
     expires_at: datetime
     closed_at: datetime | None

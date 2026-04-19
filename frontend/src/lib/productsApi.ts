@@ -15,6 +15,23 @@ export interface ProductSummary {
 
 export interface ProductDetail extends ProductSummary {
   recipe: Record<string, unknown>;
+  recipe_yaml: string;
+}
+
+export interface ProductCreatePayload {
+  slug: string;
+  display_name: string;
+  description?: string;
+  category?: string;
+  tags?: string[];
+  recipe_yaml?: string;
+}
+
+export interface ProductUpdatePayload {
+  display_name?: string;
+  description?: string;
+  category?: string;
+  tags?: string[];
 }
 
 export const productsApi = {
@@ -23,5 +40,17 @@ export const productsApi = {
   },
   async get(id: string): Promise<ProductDetail> {
     return (await api.get<ProductDetail>(`/admin/products/${id}`)).data;
+  },
+  async create(p: ProductCreatePayload): Promise<ProductSummary> {
+    return (await api.post<ProductSummary>("/admin/products", p)).data;
+  },
+  async update(id: string, p: ProductUpdatePayload): Promise<ProductSummary> {
+    return (await api.put<ProductSummary>(`/admin/products/${id}`, p)).data;
+  },
+  async updateRecipe(id: string, recipeYaml: string): Promise<ProductDetail> {
+    return (await api.put<ProductDetail>(`/admin/products/${id}/recipe`, { recipe_yaml: recipeYaml })).data;
+  },
+  async remove(id: string): Promise<void> {
+    await api.delete(`/admin/products/${id}`);
   },
 };

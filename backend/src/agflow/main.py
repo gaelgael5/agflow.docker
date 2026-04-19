@@ -8,13 +8,20 @@ import structlog
 from fastapi import FastAPI
 
 from agflow.api.admin.agents import router as admin_agents_router
+from agflow.api.admin.ai_providers import router as admin_ai_providers_router
 from agflow.api.admin.api_keys import router as admin_api_keys_router
 from agflow.api.admin.auth import router as admin_auth_router
+from agflow.api.admin.avatars import router as admin_avatars_router
 from agflow.api.admin.containers import router as admin_containers_router
 from agflow.api.admin.contracts import router as admin_contracts_router
 from agflow.api.admin.discovery_services import router as admin_discovery_router
 from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
+from agflow.api.admin.generations import router as admin_generations_router
+from agflow.api.admin.image_registries import router as admin_image_registries_router
 from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
+from agflow.api.admin.product_instances import router as admin_product_instances_router
+from agflow.api.admin.products import router as admin_products_router
+from agflow.api.admin.projects import router as admin_projects_router
 from agflow.api.admin.roles import router as admin_roles_router
 from agflow.api.admin.secrets import router as admin_secrets_router
 from agflow.api.admin.service_types import router as admin_service_types_router
@@ -71,6 +78,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await agents_catalog_service.sync_from_filesystem()
     except Exception as exc:
         log.warning("agents_catalog.sync.failed", error=str(exc))
+    from agflow.services import image_registries_service
+    image_registries_service.seed_defaults()
+    from agflow.services import ai_providers_service
+    ai_providers_service.seed_defaults()
     _expiry_stop = _asyncio.Event()
     _expiry_task = _asyncio.create_task(_run_expiry_loop(_expiry_stop))
     yield
@@ -124,9 +135,16 @@ def create_app() -> FastAPI:
     app.include_router(admin_mcp_catalog_router)
     app.include_router(admin_skills_catalog_router)
     app.include_router(admin_agents_router)
+    app.include_router(admin_avatars_router)
     app.include_router(admin_contracts_router)
     app.include_router(admin_templates_router)
     app.include_router(admin_terminal_router)
+    app.include_router(admin_ai_providers_router)
+    app.include_router(admin_image_registries_router)
+    app.include_router(admin_products_router)
+    app.include_router(admin_projects_router)
+    app.include_router(admin_product_instances_router)
+    app.include_router(admin_generations_router)
     app.include_router(admin_users_router)
     app.include_router(admin_api_keys_router)
     app.include_router(admin_vault_router)

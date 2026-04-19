@@ -6,6 +6,12 @@ import { MySecretsPage } from "./pages/MySecretsPage";
 import { RolesPage } from "./pages/RolesPage";
 import { DockerfilesPage } from "./pages/DockerfilesPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
+import { AiProvidersPage } from "./pages/AiProvidersPage";
+import { AvatarsPage } from "./pages/AvatarsPage";
+import { ImageRegistriesPage } from "./pages/ImageRegistriesPage";
+import { ProductCatalogPage } from "./pages/ProductCatalogPage";
+import { ProjectsPage } from "./pages/ProjectsPage";
+import { ProductInstancesPage } from "./pages/ProductInstancesPage";
 import { DiscoveryServicesPage } from "./pages/DiscoveryServicesPage";
 import { MCPCatalogPage } from "./pages/MCPCatalogPage";
 import { SkillsCatalogPage } from "./pages/SkillsCatalogPage";
@@ -58,6 +64,54 @@ export default function App() {
         element={
           <ProtectedRoute>
             <TemplatesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/avatars"
+        element={
+          <ProtectedRoute>
+            <AvatarsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ai-providers"
+        element={
+          <ProtectedRoute>
+            <AiProvidersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/image-registries"
+        element={
+          <ProtectedRoute>
+            <ImageRegistriesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/product-catalog"
+        element={
+          <ProtectedRoute>
+            <ProductCatalogPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects"
+        element={
+          <ProtectedRoute>
+            <ProjectsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/product-instances"
+        element={
+          <ProtectedRoute>
+            <ProductInstancesPage />
           </ProtectedRoute>
         }
       />

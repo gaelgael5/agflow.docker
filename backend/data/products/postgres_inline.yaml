@@ -1,0 +1,19 @@
+id: postgres-inline
+display_name: PostgreSQL (inline)
+description: "Base de données PostgreSQL déjà présente dans la stack"
+category: infra
+tags: [database, postgres, infra]
+config_only: true
+mcp_package_id: postgres/mcp-postgres
+
+secrets_required:
+  - name: POSTGRES_URL
+    description: "URL de connexion PostgreSQL"
+    generate: null
+
+variables:
+  - name: database_name
+    description: "Nom de la base de données"
+    type: string
+    required: true
+    example: agflow

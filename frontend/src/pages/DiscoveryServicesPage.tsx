@@ -78,6 +78,7 @@ export function DiscoveryServicesPage() {
             name: "id",
             label: t("discovery.prompt_id"),
             autoSlugFrom: "name",
+            slugSeparator: "-",
             monospace: true,
           },
           { name: "base_url", label: t("discovery.prompt_base_url") },

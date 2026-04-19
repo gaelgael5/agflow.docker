@@ -804,6 +804,7 @@ export function RolesPage() {
             name: "id",
             label: t("roles.general.id"),
             autoSlugFrom: "display_name",
+            slugSeparator: "-",
             monospace: true,
           },
         ]}
@@ -834,6 +835,7 @@ export function RolesPage() {
             name: "name",
             label: t("roles.sidebar.new_section_slug"),
             autoSlugFrom: "display_name",
+            slugSeparator: "-",
             monospace: true,
           },
         ]}

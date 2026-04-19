@@ -360,6 +360,7 @@ export function TemplatesPage() {
             name: "slug",
             label: t("templates.new_template_slug"),
             autoSlugFrom: "display_name",
+            slugSeparator: "-",
             monospace: true,
           },
           {

@@ -997,6 +997,7 @@ export function DockerfilesPage() {
             name: "id",
             label: t("dockerfiles.new_dockerfile_id_prompt"),
             autoSlugFrom: "display_name",
+            slugSeparator: "-",
             monospace: true,
           },
         ]}

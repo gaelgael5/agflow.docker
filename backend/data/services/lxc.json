@@ -1,0 +1,8 @@
+{
+  "name": "LXC",
+  "connection": "SSH",
+  "scripts": [
+    "https://raw.githubusercontent.com/Configurations/ag.flow/main/scripts/Infra/10-install-k3s.json",
+    "https://raw.githubusercontent.com/Configurations/ag.flow/main/scripts/Infra/11-export-kubeconfig.json"
+  ]
+}

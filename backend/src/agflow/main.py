@@ -32,6 +32,11 @@ from agflow.api.admin.user_secrets import router as admin_user_secrets_router
 from agflow.api.admin.users import router as admin_users_router
 from agflow.api.admin.vault import router as admin_vault_router
 from agflow.api.health import router as health_router
+from agflow.api.infra.certificates import router as infra_certificates_router
+from agflow.api.infra.platforms import router as infra_platforms_router
+from agflow.api.infra.servers import router as infra_servers_router
+from agflow.api.infra.services import router as infra_services_router
+from agflow.api.infra.types import router as infra_types_router
 from agflow.api.public.agents import router as public_agents_router
 from agflow.api.public.containers import router as public_containers_router
 from agflow.api.public.dockerfiles import router as public_dockerfiles_router
@@ -147,6 +152,11 @@ def create_app() -> FastAPI:
     app.include_router(admin_generations_router)
     app.include_router(admin_users_router)
     app.include_router(admin_api_keys_router)
+    app.include_router(infra_types_router)
+    app.include_router(infra_platforms_router)
+    app.include_router(infra_services_router)
+    app.include_router(infra_servers_router)
+    app.include_router(infra_certificates_router)
     app.include_router(admin_vault_router)
     app.include_router(admin_user_secrets_router)
     app.include_router(public_dockerfiles_router)

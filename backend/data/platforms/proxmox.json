@@ -1,0 +1,13 @@
+{
+  "name": "Proxmox",
+  "service": "LXC",
+  "connection": "SSH",
+  "scripts": {
+    "create": [
+      "https://raw.githubusercontent.com/Configurations/ag.flow/main/scripts/Infra/00-create-lxc.json"
+    ],
+    "destroy": [
+      "https://raw.githubusercontent.com/Configurations/ag.flow/main/scripts/Infra/99-destroy-lxc.json"
+    ]
+  }
+}

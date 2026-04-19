@@ -15,6 +15,7 @@ import {
   Lock,
   Package,
   Palette,
+  Server,
   LogOut,
   Moon,
   ExternalLink,
@@ -88,6 +89,14 @@ export function Sidebar({ open = false, onClose }: Props) {
       items: [
         { to: "/my-secrets", label: t("my_secrets.page_title"), icon: Lock },
         { to: "/api-keys", label: t("api_keys.page_title"), icon: Key },
+      ],
+    },
+    {
+      title: t("sidebar.section_infra"),
+      items: [
+        { to: "/infra/types", label: t("infra.types_title"), icon: Tags },
+        { to: "/infra/servers", label: t("infra.servers_title"), icon: Server },
+        { to: "/infra/certificates", label: t("infra.certificates_title"), icon: KeyRound },
       ],
     },
     {

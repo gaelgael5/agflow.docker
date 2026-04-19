@@ -12,6 +12,9 @@ import { ImageRegistriesPage } from "./pages/ImageRegistriesPage";
 import { ProductCatalogPage } from "./pages/ProductCatalogPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProductInstancesPage } from "./pages/ProductInstancesPage";
+import { InfraCertificatesPage } from "./pages/InfraCertificatesPage";
+import { InfraServersPage } from "./pages/InfraServersPage";
+import { InfraTypesPage } from "./pages/InfraTypesPage";
 import { DiscoveryServicesPage } from "./pages/DiscoveryServicesPage";
 import { MCPCatalogPage } from "./pages/MCPCatalogPage";
 import { SkillsCatalogPage } from "./pages/SkillsCatalogPage";
@@ -114,6 +117,18 @@ export default function App() {
             <ProductInstancesPage />
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/infra/servers"
+        element={<ProtectedRoute><InfraServersPage /></ProtectedRoute>}
+      />
+      <Route
+        path="/infra/certificates"
+        element={<ProtectedRoute><InfraCertificatesPage /></ProtectedRoute>}
+      />
+      <Route
+        path="/infra/types"
+        element={<ProtectedRoute><InfraTypesPage /></ProtectedRoute>}
       />
       <Route
         path="/discovery-services"

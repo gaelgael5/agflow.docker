@@ -1,0 +1,6 @@
+{
+  "args": [
+
+  ],
+  "command": "bash -c '$(wget -qLO - https://github.com/gaelgael5/agflow.docker/blob/main/scripts/proxmox/install-k3s.sh)'"
+}

@@ -1,6 +1,12 @@
 {
   "args": [
-
+    {
+      "arg": "TRAEFIK",
+      "label_fr": "Désactiver Traefik",
+      "description_fr": "Laisser vide pour garder Traefik, ou mettre --no-traefik pour le désactiver",
+      "type": "string",
+      "required": false
+    }
   ],
-  "command": "bash -c '$(wget -qLO - https://github.com/gaelgael5/agflow.docker/blob/main/scripts/proxmox/install-k3s.sh)'"
+  "command": "wget -qO /tmp/agflow-install-k3s.sh https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/install-k3s.sh && bash /tmp/agflow-install-k3s.sh {TRAEFIK}"
 }

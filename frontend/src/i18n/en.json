@@ -997,6 +997,7 @@
     "cert_name": "Name",
     "cert_key_type": "Key type",
     "cert_keys": "Keys",
+    "cert_created_at": "Created",
     "cert_actions": "Actions",
     "cert_generate": "Generate",
     "cert_generate_title": "Generate SSH key pair",

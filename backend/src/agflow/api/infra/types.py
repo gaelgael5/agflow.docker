@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from agflow.auth.dependencies import require_admin
+from agflow.auth.dependencies import require_operator as require_admin
 from agflow.db.pool import fetch_all, fetch_one
 from agflow.schemas.infra import TypeRow
 from agflow.services import types_loader

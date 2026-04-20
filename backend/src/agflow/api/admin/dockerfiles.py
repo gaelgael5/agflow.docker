@@ -17,7 +17,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from agflow.auth.dependencies import require_admin
+from agflow.auth.dependencies import require_operator as require_admin
 from agflow.schemas.dockerfiles import (
     BuildSummary,
     DockerfileCreate,

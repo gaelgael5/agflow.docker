@@ -9,21 +9,57 @@ from agflow.auth.jwt import InvalidTokenError, decode_token
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
+VALID_ROLES = ("admin", "operator", "viewer")
 
-async def require_admin(
+
+def _extract_role(payload: dict) -> str:
+    """Extract role from JWT payload with backward compat (default admin)."""
+    role = payload.get("role", "admin")
+    return role if role in VALID_ROLES else "viewer"
+
+
+async def _get_jwt_payload(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),  # noqa: B008
-) -> str:
+) -> dict:
     if creds is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
     try:
-        payload = decode_token(creds.credentials)
+        return decode_token(creds.credentials)
     except InvalidTokenError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    sub = payload.get("sub")
+
+
+async def require_admin(
+    payload: dict = Depends(_get_jwt_payload),  # noqa: B008
+) -> str:
+    """Only admin role."""
+    if _extract_role(payload) != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+    sub = payload.get("sub", "")
     if not sub:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+    return sub
+
+
+async def require_operator(
+    payload: dict = Depends(_get_jwt_payload),  # noqa: B008
+) -> str:
+    """Admin or operator role."""
+    if _extract_role(payload) not in ("admin", "operator"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operator role required")
+    sub = payload.get("sub", "")
+    if not sub:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+    return sub
+
+
+async def require_viewer(
+    payload: dict = Depends(_get_jwt_payload),  # noqa: B008
+) -> str:
+    """Any authenticated role (admin, operator, viewer)."""
+    sub = payload.get("sub", "")
+    if not sub:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
     return sub
 
 
@@ -31,7 +67,7 @@ async def require_auth(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),  # noqa: B008
 ) -> dict:
     """Accept both JWT (admin session) and API key (agfd_...).
-    Returns {"type": "jwt", "sub": email} or {"type": "api_key", ...row}.
+    Returns {"type": "jwt", "sub": email, "role": role} or {"type": "api_key", ...row}.
     """
     if creds is None:
         raise HTTPException(
@@ -69,7 +105,6 @@ async def require_auth(
         asyncio.create_task(_update_last_used_bg(row["id"]))  # noqa: RUF006
         return {"type": "api_key", **dict(row)}
     else:
-        # JWT path (existing logic)
         try:
             payload = decode_token(token)
         except InvalidTokenError as exc:
@@ -82,4 +117,4 @@ async def require_auth(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token payload",
             )
-        return {"type": "jwt", "sub": sub}
+        return {"type": "jwt", "sub": sub, "role": _extract_role(payload)}

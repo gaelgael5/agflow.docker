@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from agflow.auth.dependencies import require_admin
+from agflow.auth.dependencies import require_operator as require_admin
 from agflow.schemas.service_types import ServiceTypeCreate, ServiceTypeSummary
 from agflow.services import service_types_service
 

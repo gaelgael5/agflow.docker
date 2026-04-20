@@ -174,3 +174,157 @@ async def google_callback(request: Request, code: str = "", state: str = "") -> 
 )
 async def me(admin_email: str = Depends(require_admin)) -> Me:
     return Me(email=admin_email)
+
+
+# ── Auth mode endpoint (public, no auth) ────────────────────────────────────
+
+@router.get("/mode", summary="Get authentication mode")
+async def auth_mode():
+    settings = get_settings()
+    return {"mode": settings.auth_mode}
+
+
+# ── Keycloak OIDC ───────────────────────────────────────────────────────────
+
+_oidc_states: dict[str, bool] = {}
+
+
+def _build_oidc_redirect_uri(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.headers.get("host", ""))
+    return f"{proto}://{host}/api/admin/auth/oidc/callback"
+
+
+@router.get("/oidc/login", summary="Initiate Keycloak OIDC login")
+async def oidc_login(request: Request) -> RedirectResponse:
+    settings = get_settings()
+    if not settings.keycloak_url:
+        raise HTTPException(400, "Keycloak OIDC not configured")
+
+    state = secrets.token_urlsafe(32)
+    _oidc_states[state] = True
+
+    redirect_uri = _build_oidc_redirect_uri(request)
+    authorize_url = f"{settings.keycloak_base}/protocol/openid-connect/auth"
+
+    params = {
+        "client_id": settings.keycloak_client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+    }
+    return RedirectResponse(f"{authorize_url}?{urlencode(params)}")
+
+
+@router.get("/oidc/callback", summary="Handle Keycloak OIDC callback")
+async def oidc_callback(request: Request, code: str = "", state: str = "") -> RedirectResponse:
+    if not state or state not in _oidc_states:
+        raise HTTPException(400, "Invalid OAuth state")
+    del _oidc_states[state]
+
+    settings = get_settings()
+    redirect_uri = _build_oidc_redirect_uri(request)
+    token_url = f"{settings.keycloak_base}/protocol/openid-connect/token"
+    userinfo_url = f"{settings.keycloak_base}/protocol/openid-connect/userinfo"
+
+    async with httpx.AsyncClient() as client:
+        # Exchange code for tokens
+        token_res = await client.post(
+            token_url,
+            data={
+                "code": code,
+                "client_id": settings.keycloak_client_id,
+                "client_secret": settings.keycloak_client_secret,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            },
+        )
+        if token_res.status_code != 200:
+            _log.error("oidc.token_error", status=token_res.status_code, body=token_res.text)
+            raise HTTPException(502, "Keycloak token exchange failed")
+
+        tokens = token_res.json()
+        kc_access_token = tokens["access_token"]
+
+        # Fetch user info
+        userinfo_res = await client.get(
+            userinfo_url,
+            headers={"Authorization": f"Bearer {kc_access_token}"},
+        )
+        if userinfo_res.status_code != 200:
+            raise HTTPException(502, "Failed to fetch Keycloak user info")
+
+        userinfo = userinfo_res.json()
+
+    kc_sub = userinfo.get("sub", "")
+    email = userinfo.get("email", "")
+    name = userinfo.get("name", userinfo.get("preferred_username", ""))
+    avatar = userinfo.get("picture", "")
+
+    _log.info("oidc.login", email=email, sub=kc_sub)
+
+    # Extract role from Keycloak token (resource_access.{client_id}.roles)
+    import jwt as pyjwt
+
+    try:
+        # Decode without verification — we trust Keycloak (we just exchanged the code)
+        kc_payload = pyjwt.decode(kc_access_token, options={"verify_signature": False})
+        client_roles = (
+            kc_payload
+            .get("resource_access", {})
+            .get(settings.keycloak_client_id, {})
+            .get("roles", [])
+        )
+    except Exception:
+        client_roles = []
+
+    # Pick the highest role
+    if "admin" in client_roles:
+        role = "admin"
+    elif "operator" in client_roles:
+        role = "operator"
+    else:
+        role = "viewer"
+
+    # Upsert user in DB
+    identity = await fetch_one(
+        "SELECT user_id FROM user_identities WHERE provider = 'keycloak' AND subject = $1",
+        kc_sub,
+    )
+
+    if identity:
+        user = await users_service.get_by_id(identity["user_id"])
+    else:
+        existing = await users_service.get_by_email(email)
+        if existing:
+            user = existing
+        else:
+            user = await users_service.create(
+                email=email,
+                name=name,
+                role=role,
+                status="active",
+            )
+            if avatar:
+                await execute(
+                    "UPDATE users SET avatar_url = $2 WHERE id = $1",
+                    user.id, avatar,
+                )
+
+        await execute(
+            """
+            INSERT INTO user_identities (user_id, provider, subject, email, raw_claims)
+            VALUES ($1, 'keycloak', $2, $3, $4)
+            ON CONFLICT (provider, subject) DO NOTHING
+            """,
+            user.id, kc_sub, email, json.dumps(userinfo),
+        )
+
+    if user.status != "active":
+        return RedirectResponse("/login?error=account_disabled")
+
+    await execute("UPDATE users SET last_login = NOW() WHERE id = $1", user.id)
+
+    jwt_token = encode_token(user.email, role=role)
+    return RedirectResponse(f"/login?token={jwt_token}")

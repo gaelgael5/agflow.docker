@@ -65,6 +65,27 @@ export function InfraServersPage() {
   const platforms = platformsQuery.data ?? [];
   const serviceDefs = servicesQuery.data ?? [];
   const certificates = certsQuery.data ?? [];
+  const [healthMap, setHealthMap] = useState<Record<string, string | null>>({});
+  // values: null=checking, "healthy", "starting", "down"
+
+  // Health check all service-type servers on load
+  useEffect(() => {
+    if (!servers.length || !serviceDefs.length) return;
+    for (const s of servers) {
+      const isService = serviceDefs.some((sd) => sd.name === s.type || sd.type === s.type);
+      if (!isService) continue;
+      setHealthMap((prev) => ({ ...prev, [s.id]: null })); // null = checking
+      infraServersApi.healthCheck(s.id)
+        .then((res) => {
+          setHealthMap((prev) => ({ ...prev, [s.id]: res.state }));
+          if ((res.healthy && s.status !== "initialized") || (!res.healthy && s.status === "initialized")) {
+            qc.invalidateQueries({ queryKey: ["infra-servers"] });
+          }
+        })
+        .catch(() => setHealthMap((prev) => ({ ...prev, [s.id]: "down" })));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servers.length, serviceDefs.length]);
 
   function getPlatformForType(serverType: string): PlatformDef | undefined {
     return platforms.find((p) => p.name === serverType || p.type === serverType);
@@ -111,6 +132,7 @@ export function InfraServersPage() {
               {servers.map((s) => {
                 const platform = getPlatformForType(s.type);
                 const service = getServiceForType(s.type);
+                const isServiceType = !!service;
                 const createScripts = platform?.scripts.create ?? [];
                 const destroyScripts = platform?.scripts.destroy ?? [];
                 const installScripts = service?.scripts ?? [];
@@ -147,16 +169,24 @@ export function InfraServersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={s.status === "initialized" ? "default" : "outline"}
-                        className={`text-[9px] ${
-                          s.status === "initialized"
-                            ? "bg-green-600 text-white"
-                            : "border-orange-400 text-orange-500"
-                        }`}
-                      >
-                        {s.status === "initialized" ? t("infra.status_initialized") : t("infra.status_not_initialized")}
-                      </Badge>
+                      {isServiceType && (() => {
+                        const state = healthMap[s.id];
+                        if (state === null) {
+                          return <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />;
+                        }
+                        if (state === undefined) {
+                          return (
+                            <Badge variant="outline" className="text-[9px] border-gray-400 text-gray-500">—</Badge>
+                          );
+                        }
+                        const cfg: Record<string, { label: string; color: string }> = {
+                          healthy: { label: t("infra.status_healthy"), color: "bg-green-600 text-white" },
+                          starting: { label: t("infra.status_starting"), color: "bg-yellow-500 text-white" },
+                          down: { label: t("infra.status_down"), color: "bg-red-600 text-white" },
+                        };
+                        const entry = cfg[state] ?? { label: "K3s DOWN", color: "bg-red-600 text-white" };
+                        return <Badge variant="default" className={`text-[9px] ${entry.color}`}>{entry.label}</Badge>;
+                      })()}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 text-[11px]">

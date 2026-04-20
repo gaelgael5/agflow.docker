@@ -7,7 +7,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 
-from agflow.auth.dependencies import require_admin
+from agflow.auth.dependencies import require_operator as require_admin
 from agflow.schemas.infra import ScriptRunRequest, ServerCreate, ServerSummary, ServerUpdate
 from agflow.services import (
     infra_certificates_service,
@@ -104,6 +104,49 @@ async def test_connection(server_id: UUID):
         private_key=private_key,
         passphrase=passphrase,
     )
+
+
+@router.get("/{server_id}/health", dependencies=_admin)
+async def health_check(server_id: UUID):
+    """Check K3s health via HTTPS API (port 6443/healthz)."""
+    import httpx
+
+    try:
+        server = await infra_servers_service.get_by_id(server_id)
+    except infra_servers_service.ServerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    url = f"https://{server.host}:6443/healthz"
+    status_code = 0
+    detail = ""
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=5) as client:
+            resp = await client.get(url)
+            status_code = resp.status_code
+            detail = resp.text.strip()[:200]
+    except Exception as exc:
+        detail = str(exc)
+        _log.debug("health_check.failed", host=server.host, error=detail)
+
+    # 200 = ready, 401 = running (auth required), 503 = starting
+    if status_code == 200:
+        state = "healthy"
+    elif status_code == 401:
+        state = "healthy"  # API server is up, just needs auth
+    elif status_code == 503:
+        state = "starting"
+    else:
+        state = "down"
+
+    healthy = state in ("healthy",)
+
+    # Sync DB status
+    if healthy and server.status != "initialized":
+        await infra_servers_service.update_status(server_id, "initialized")
+    elif not healthy and server.status == "initialized":
+        await infra_servers_service.update_status(server_id, "not_initialized")
+
+    return {"healthy": healthy, "state": state, "status_code": status_code, "detail": detail, "server_id": str(server_id)}
 
 
 @router.post("/{server_id}/run-script", dependencies=_admin)
@@ -271,8 +314,19 @@ async def ws_exec(ws: WebSocket, server_id: UUID, token: str = ""):
                     ws, conn, server_id, stdout_lines, creds,
                 )
             elif action == "install" and exit_code == 0:
+                # Parse JSON output and store in metadata
+                output_json = _parse_last_json(stdout_lines)
+                if output_json:
+                    meta_update = {}
+                    for k in ("k3s_version", "node_ready", "ip", "kubeconfig_b64"):
+                        if output_json.get(k):
+                            meta_update[k] = str(output_json[k])
+                    if meta_update:
+                        await _merge_metadata(server_id, meta_update)
+                        await ws.send_json({"type": "stdout", "data": f"\n✓ Metadata sauvegardées: {', '.join(meta_update.keys())}\n"})
+
                 await infra_servers_service.update_status(server_id, "initialized")
-                await ws.send_json({"type": "stdout", "data": "\n✓ Status → initialized\n"})
+                await ws.send_json({"type": "stdout", "data": "✓ Status → initialized\n"})
                 await ws.send_json({"type": "status_changed", "data": "initialized"})
 
     except WebSocketDisconnect:
@@ -290,6 +344,30 @@ async def ws_exec(ws: WebSocket, server_id: UUID, token: str = ""):
             pass
 
 
+def _parse_last_json(stdout_lines: list[str]) -> dict | None:
+    """Find and parse the last JSON line from script stdout."""
+    for line in reversed(stdout_lines):
+        stripped = line.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                return json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+    return None
+
+
+async def _merge_metadata(server_id: UUID, updates: dict) -> None:
+    """Merge new keys into the server's existing metadata JSONB."""
+    from agflow.db.pool import fetch_one as _fetch_one
+
+    row = await _fetch_one(
+        "UPDATE infra_servers SET metadata = metadata || $2::jsonb WHERE id = $1 RETURNING id",
+        server_id, json.dumps(updates),
+    )
+    if row:
+        _log.info("merge_metadata", server_id=str(server_id), keys=list(updates.keys()))
+
+
 async def _auto_provision(
     ws: WebSocket,
     conn,  # asyncssh connection still open to the parent server
@@ -298,16 +376,7 @@ async def _auto_provision(
     parent_creds: dict,
 ) -> None:
     """Parse the last JSON line from script output and auto-create cert + server."""
-    # Find the last JSON line
-    output_json = None
-    for line in reversed(stdout_lines):
-        stripped = line.strip()
-        if stripped.startswith("{") and stripped.endswith("}"):
-            try:
-                output_json = json.loads(stripped)
-                break
-            except json.JSONDecodeError:
-                continue
+    output_json = _parse_last_json(stdout_lines)
 
     if not output_json or output_json.get("status") != "ok":
         _log.info("auto_provision.no_json_output")

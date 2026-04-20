@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from agflow.auth.dependencies import require_admin
+from agflow.auth.dependencies import require_operator as require_admin
 from agflow.schemas.catalogs import (
     MCPInstallPayload,
     MCPParametersUpdate,

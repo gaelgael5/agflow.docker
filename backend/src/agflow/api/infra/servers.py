@@ -108,7 +108,7 @@ async def test_connection(server_id: UUID):
 
 @router.get("/{server_id}/health", dependencies=_admin)
 async def health_check(server_id: UUID):
-    """Check K3s health via HTTPS API (port 6443/healthz)."""
+    """Check server health — auto-detects K3s (port 6443) or Docker (SSH)."""
     import httpx
 
     try:
@@ -116,29 +116,75 @@ async def health_check(server_id: UUID):
     except infra_servers_service.ServerNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    url = f"https://{server.host}:6443/healthz"
-    status_code = 0
+    meta = server.metadata or {}
+    has_k3s = bool(meta.get("k3s_version"))
+    has_docker = bool(meta.get("docker")) and meta.get("docker") != "non installe"
+
+    state = "down"
     detail = ""
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=5) as client:
-            resp = await client.get(url)
-            status_code = resp.status_code
-            detail = resp.text.strip()[:200]
-    except Exception as exc:
-        detail = str(exc)
-        _log.debug("health_check.failed", host=server.host, error=detail)
 
-    # 200 = ready, 401 = running (auth required), 503 = starting
-    if status_code == 200:
-        state = "healthy"
-    elif status_code == 401:
-        state = "healthy"  # API server is up, just needs auth
-    elif status_code == 503:
-        state = "starting"
+    if has_k3s:
+        # K3s: check HTTPS API port 6443
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=5) as client:
+                resp = await client.get(f"https://{server.host}:6443/healthz")
+                code = resp.status_code
+                detail = resp.text.strip()[:200]
+                if code in (200, 401):
+                    state = "healthy"
+                elif code == 503:
+                    state = "starting"
+        except Exception as exc:
+            detail = str(exc)
+
+    elif has_docker:
+        # Docker: SSH + docker info
+        try:
+            creds = await infra_servers_service.get_credentials(server_id)
+            private_key = None
+            passphrase = None
+            if creds.get("certificate_id"):
+                cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
+                private_key = cert.get("private_key")
+                passphrase = cert.get("passphrase")
+
+            result = await ssh_executor.exec_command(
+                host=creds["host"], port=creds["port"],
+                username=creds["username"], password=creds["password"],
+                private_key=private_key, passphrase=passphrase,
+                command="docker info --format '{{.ServerVersion}}' 2>/dev/null || echo FAIL",
+            )
+            stdout = (result.get("stdout") or "").strip()
+            if stdout and stdout != "FAIL" and result.get("exit_code") == 0:
+                state = "healthy"
+                detail = f"Docker {stdout}"
+            else:
+                detail = stdout or "docker info failed"
+        except Exception as exc:
+            detail = str(exc)
+
     else:
-        state = "down"
+        # No K3s or Docker metadata — try SSH connectivity
+        try:
+            creds = await infra_servers_service.get_credentials(server_id)
+            private_key = None
+            passphrase = None
+            if creds.get("certificate_id"):
+                cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
+                private_key = cert.get("private_key")
+                passphrase = cert.get("passphrase")
 
-    healthy = state in ("healthy",)
+            result = await ssh_executor.test_connection(
+                host=creds["host"], port=creds["port"],
+                username=creds["username"], password=creds["password"],
+                private_key=private_key, passphrase=passphrase,
+            )
+            state = "healthy" if result.get("success") else "down"
+            detail = result.get("message", "")
+        except Exception as exc:
+            detail = str(exc)
+
+    healthy = state == "healthy"
 
     # Sync DB status
     if healthy and server.status != "initialized":

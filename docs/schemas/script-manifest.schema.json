@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agflow.docker/schemas/script-manifest.json",
+  "title": "Script Manifest",
+  "description": "Manifest JSON pour les scripts d'infrastructure agflow. Définit les arguments attendus et la commande à exécuter via SSH.",
+  "type": "object",
+  "required": ["args", "command"],
+  "additionalProperties": false,
+  "properties": {
+    "args": {
+      "type": "array",
+      "description": "Liste des arguments à collecter avant exécution",
+      "items": {
+        "type": "object",
+        "required": ["arg", "type", "required"],
+        "additionalProperties": false,
+        "properties": {
+          "arg": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "description": "Nom de la variable (UPPER_SNAKE_CASE). Sera substituée dans la commande via {ARG}"
+          },
+          "label_fr": {
+            "type": "string",
+            "description": "Label affiché dans l'UI (français)"
+          },
+          "label_en": {
+            "type": "string",
+            "description": "Label affiché dans l'UI (anglais)"
+          },
+          "description_fr": {
+            "type": "string",
+            "description": "Description / aide contextuelle (français)"
+          },
+          "description_en": {
+            "type": "string",
+            "description": "Description / aide contextuelle (anglais)"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["string", "integer", "boolean", "select"],
+            "description": "Type de valeur attendue"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Si true, l'argument doit être renseigné avant exécution"
+          },
+          "default": {
+            "type": ["string", "integer", "boolean"],
+            "description": "Valeur par défaut si non renseigné"
+          },
+          "options": {
+            "type": "array",
+            "description": "Choix possibles (si type=select)",
+            "items": {
+              "type": "object",
+              "required": ["value", "label"],
+              "properties": {
+                "value": { "type": "string" },
+                "label": { "type": "string" }
+              }
+            }
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Regex de validation (si type=string)"
+          },
+          "min": {
+            "type": "integer",
+            "description": "Valeur minimale (si type=integer)"
+          },
+          "max": {
+            "type": "integer",
+            "description": "Valeur maximale (si type=integer)"
+          }
+        }
+      }
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Commande à exécuter via SSH. Les placeholders {ARG} sont remplacés par les valeurs saisies."
+    }
+  }
+}

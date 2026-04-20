@@ -17,6 +17,7 @@ import {
 } from "@/lib/infraApi";
 import { useInfraTypes } from "@/hooks/useInfra";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { TerminalWindow } from "@/components/TerminalWindow";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +61,7 @@ export function InfraServersPage() {
   const [editTarget, setEditTarget] = useState<ServerSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [scriptRun, setScriptRun] = useState<{ serverId: string; serverName: string; scriptUrl: string; action: string } | null>(null);
-  const [terminalTarget, setTerminalTarget] = useState<{ name: string; url: string } | null>(null);
+  const [terminalTarget, setTerminalTarget] = useState<{ name: string; serverId: string } | null>(null);
 
   const servers = listQuery.data ?? [];
   const platforms = platformsQuery.data ?? [];
@@ -246,7 +247,7 @@ export function InfraServersPage() {
                         </Button>
                         {s.username && (
                           <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_terminal")}
-                            onClick={() => setTerminalTarget({ name: s.name || s.host, url: `/terminal/ssh/${s.username}@${s.host}?port=${s.port}` })}
+                            onClick={() => setTerminalTarget({ name: s.name || s.host, serverId: s.id })}
                           >
                             <Terminal className="w-3.5 h-3.5 text-purple-600" />
                           </Button>
@@ -325,24 +326,18 @@ export function InfraServersPage() {
         }}
       />
 
-      {/* Terminal dialog */}
-      <Dialog open={terminalTarget !== null} onOpenChange={(o) => { if (!o) setTerminalTarget(null); }}>
-        <DialogContent className="sm:max-w-[85vw] h-[80vh] flex flex-col p-0" aria-describedby={undefined}>
-          <DialogHeader className="px-4 pt-4 pb-2">
-            <DialogTitle className="flex items-center gap-2">
-              <Terminal className="w-4 h-4" />
-              {terminalTarget?.name}
-            </DialogTitle>
-          </DialogHeader>
-          {terminalTarget && (
-            <iframe
-              src={terminalTarget.url}
-              className="flex-1 w-full border-0 rounded-b-lg bg-black"
-              title="Terminal SSH"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* SSH Terminal */}
+      {terminalTarget && (
+        <TerminalWindow
+          containerName={terminalTarget.name}
+          wsUrl={(() => {
+            const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+            const jwt = localStorage.getItem("agflow_token") ?? "";
+            return `${proto}//${window.location.host}/api/infra/servers/${terminalTarget.serverId}/shell?token=${encodeURIComponent(jwt)}`;
+          })()}
+          onClose={() => setTerminalTarget(null)}
+        />
+      )}
     </PageShell>
   );
 }
@@ -675,3 +670,4 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
     </Dialog>
   );
 }
+

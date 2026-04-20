@@ -196,6 +196,115 @@ async def health_check(server_id: UUID):
     return {"healthy": healthy, "state": state, "status_code": status_code, "detail": detail, "server_id": str(server_id)}
 
 
+@router.websocket("/{server_id}/shell")
+async def ws_shell(ws: WebSocket, server_id: UUID, token: str = ""):
+    """Interactive SSH shell via WebSocket + xterm.js.
+
+    Auth via query param: ?token=JWT
+    Bidirectional: client sends keystrokes, server sends terminal output.
+    """
+    from agflow.auth.jwt import InvalidTokenError, decode_token
+
+    if not token:
+        await ws.close(code=4001, reason="Missing token")
+        return
+    try:
+        decode_token(token)
+    except InvalidTokenError:
+        await ws.close(code=4001, reason="Invalid token")
+        return
+
+    await ws.accept()
+
+    try:
+        creds = await infra_servers_service.get_credentials(server_id)
+
+        private_key = None
+        passphrase = None
+        if creds.get("certificate_id"):
+            cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
+            private_key = cert.get("private_key")
+            passphrase = cert.get("passphrase")
+
+        import asyncssh
+
+        conn_kwargs: dict = {
+            "host": creds["host"],
+            "port": creds["port"],
+            "known_hosts": None,
+        }
+        if creds.get("username"):
+            conn_kwargs["username"] = creds["username"]
+        if creds.get("password"):
+            conn_kwargs["password"] = creds["password"]
+        if private_key:
+            key = asyncssh.import_private_key(private_key, passphrase)
+            conn_kwargs["client_keys"] = [key]
+
+        async with asyncssh.connect(**conn_kwargs) as conn:
+            process = await conn.create_process(
+                term_type="xterm-256color",
+                term_size=(120, 40),
+                encoding=None,  # binary mode for raw terminal
+            )
+
+            async def ws_to_ssh():
+                """Forward client keystrokes to SSH stdin."""
+                try:
+                    while True:
+                        data = await ws.receive_bytes()
+                        process.stdin.write(data)
+                except (WebSocketDisconnect, Exception):
+                    process.stdin.write_eof()
+
+            async def ssh_to_ws():
+                """Forward SSH stdout to client."""
+                try:
+                    while True:
+                        data = await process.stdout.read(4096)
+                        if not data:
+                            break
+                        await ws.send_bytes(data)
+                except Exception:
+                    pass
+
+            async def ssh_stderr_to_ws():
+                """Forward SSH stderr to client."""
+                try:
+                    while True:
+                        data = await process.stderr.read(4096)
+                        if not data:
+                            break
+                        await ws.send_bytes(data)
+                except Exception:
+                    pass
+
+            tasks = [
+                asyncio.create_task(ws_to_ssh()),
+                asyncio.create_task(ssh_to_ws()),
+                asyncio.create_task(ssh_stderr_to_ws()),
+            ]
+
+            # Wait for any task to finish (disconnect or process exit)
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
+
+    except WebSocketDisconnect:
+        _log.info("ws_shell.disconnected", server_id=str(server_id))
+    except Exception as exc:
+        _log.error("ws_shell.error", server_id=str(server_id), error=str(exc))
+        try:
+            await ws.send_bytes(f"\r\n\x1b[31mError: {exc}\x1b[0m\r\n".encode())
+        except Exception:
+            pass
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
 @router.post("/{server_id}/run-script", dependencies=_admin)
 async def run_script(server_id: UUID, payload: ScriptRunRequest):
     """Fetch a script manifest from URL, substitute args, execute via SSH."""

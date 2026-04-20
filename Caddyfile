@@ -6,11 +6,6 @@
 		}
 	}
 
-	@wetty path /terminal/*
-	handle @wetty {
-		reverse_proxy 172.20.0.1:3000
-	}
-
 	handle {
 		reverse_proxy frontend:80
 	}

@@ -13,8 +13,9 @@ import { bringToFront } from "@/lib/utils";
 import "@xterm/xterm/css/xterm.css";
 
 export interface TerminalWindowProps {
-  containerId: string;
+  containerId?: string;
   containerName: string;
+  wsUrl?: string;
   onClose: () => void;
 }
 
@@ -23,6 +24,7 @@ const STORAGE_KEY = "agflow.terminal.position";
 export function TerminalWindow({
   containerId,
   containerName,
+  wsUrl: wsUrlProp,
   onClose,
 }: TerminalWindowProps) {
   const termRef = useRef<HTMLDivElement>(null);
@@ -94,7 +96,7 @@ export function TerminalWindow({
     fitRef.current = fit;
 
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${proto}//${window.location.host}/api/admin/containers/${containerId}/terminal`;
+    const wsUrl = wsUrlProp ?? `${proto}//${window.location.host}/api/admin/containers/${containerId}/terminal`;
     const ws = new WebSocket(wsUrl);
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
@@ -130,7 +132,7 @@ export function TerminalWindow({
     });
 
     term.focus();
-  }, [containerId, containerName]);
+  }, [containerId, containerName, wsUrlProp]);
 
   useEffect(() => {
     initTerminal();

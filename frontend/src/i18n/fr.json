@@ -1043,6 +1043,7 @@
     "status_initialized": "Initialisé",
     "status_not_initialized": "Non initialisé",
     "status_healthy": "K3s OK",
+    "status_starting": "K3s Démarrage",
     "status_down": "K3s DOWN",
     "server_dialog_title": "Nouveau serveur",
     "server_delete_title": "Supprimer le serveur",

@@ -40,6 +40,17 @@ echo "  -> systemd: OK"
 echo ""
 echo "[2/5] Installation K3s..."
 
+# Fix LXC : /dev/kmsg manquant (kubelet en a besoin)
+if [ ! -e /dev/kmsg ]; then
+    sudo ln -sf /dev/console /dev/kmsg
+    echo "  -> /dev/kmsg cree (symlink -> /dev/console)"
+fi
+# Rendre permanent au reboot
+if [ ! -f /etc/tmpfiles.d/kmsg.conf ]; then
+    echo "L /dev/kmsg - - - - /dev/console" | sudo tee /etc/tmpfiles.d/kmsg.conf >/dev/null
+    echo "  -> /dev/kmsg persistant via tmpfiles.d"
+fi
+
 K3S_OPTS=""
 if [ "${DISABLE_TRAEFIK}" = "--no-traefik" ]; then
     K3S_OPTS="--disable=traefik"

@@ -4,7 +4,7 @@
       "arg": "LXC_ID",
       "label_fr": "Identifiant LXC (CT ID)",
       "description_fr": "Numéro unique du container (ex: 200, 201…)",
-      "type": "string",
+      "type": "integer",
       "required": true
     },
     {

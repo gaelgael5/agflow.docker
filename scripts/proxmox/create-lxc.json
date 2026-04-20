@@ -5,14 +5,19 @@
       "label_fr": "Identifiant LXC (CT ID)",
       "description_fr": "Numéro unique du container (ex: 200, 201…)",
       "type": "integer",
-      "required": true
+      "required": true,
+      "default": 200,
+      "min": 100,
+      "max": 999
     },
     {
       "arg": "LXC_NAME",
       "label_fr": "Nom du container",
       "description_fr": "Hostname DNS (lettres, chiffres, tirets — ex: agflow-test-01)",
       "type": "string",
-      "required": true
+      "required": true,
+      "default": "agflow-node",
+      "pattern": "^[a-zA-Z0-9-]+$"
     }
   ],
   "command": "wget -qO /tmp/agflow-create-lxc.sh https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/create-lxc.sh && bash /tmp/agflow-create-lxc.sh {LXC_ID} {LXC_NAME}"

@@ -121,8 +121,21 @@ export interface ServerCreatePayload {
   certificate_id?: string;
 }
 
+export interface ScriptManifestArg {
+  arg: string;
+  label_fr: string;
+  description_fr: string;
+  type: "string" | "integer" | "boolean" | "select";
+  required: boolean;
+  default?: string | number | boolean;
+  pattern?: string;
+  min?: number;
+  max?: number;
+  options?: { value: string; label: string }[];
+}
+
 export interface ScriptManifest {
-  args: { arg: string; label_fr: string; description_fr: string; type: string; required: boolean }[];
+  args: ScriptManifestArg[];
   command: string;
 }
 

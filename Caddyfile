@@ -1,12 +1,17 @@
 :80 {
-    @backend path /api/* /health /docs /redoc /openapi.json
-    handle @backend {
-        reverse_proxy backend:8000 {
-            header_up X-Forwarded-Proto https
-        }
-    }
+	@backend path /api/* /health /docs /redoc /openapi.json
+	handle @backend {
+		reverse_proxy backend:8000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
 
-    handle {
-        reverse_proxy frontend:80
-    }
+	@wetty path /terminal/*
+	handle @wetty {
+		reverse_proxy 172.20.0.1:3000
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
 }

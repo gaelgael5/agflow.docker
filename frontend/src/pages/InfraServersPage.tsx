@@ -60,6 +60,7 @@ export function InfraServersPage() {
   const [editTarget, setEditTarget] = useState<ServerSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [scriptRun, setScriptRun] = useState<{ serverId: string; serverName: string; scriptUrl: string; action: string } | null>(null);
+  const [terminalTarget, setTerminalTarget] = useState<{ name: string; url: string } | null>(null);
 
   const servers = listQuery.data ?? [];
   const platforms = platformsQuery.data ?? [];
@@ -96,7 +97,7 @@ export function InfraServersPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell maxWidth="full">
       <PageHeader
         title={t("infra.servers_title")}
         subtitle={t("infra.servers_subtitle")}
@@ -182,9 +183,10 @@ export function InfraServersPage() {
                         const cfg: Record<string, { label: string; color: string }> = {
                           healthy: { label: t("infra.status_healthy"), color: "bg-green-600 text-white" },
                           starting: { label: t("infra.status_starting"), color: "bg-yellow-500 text-white" },
+                          ssh_ok: { label: t("infra.status_ssh_ok"), color: "bg-blue-500 text-white" },
                           down: { label: t("infra.status_down"), color: "bg-red-600 text-white" },
                         };
-                        const entry = cfg[state] ?? { label: "K3s DOWN", color: "bg-red-600 text-white" };
+                        const entry = cfg[state] ?? { label: "DOWN", color: "bg-red-600 text-white" };
                         return <Badge variant="default" className={`text-[9px] ${entry.color}`}>{entry.label}</Badge>;
                       })()}
                     </TableCell>
@@ -242,6 +244,13 @@ export function InfraServersPage() {
                         >
                           <Play className="w-3.5 h-3.5 text-green-600" />
                         </Button>
+                        {s.username && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_terminal")}
+                            onClick={() => setTerminalTarget({ name: s.name || s.host, url: `/terminal/ssh/${s.username}@${s.host}?port=${s.port}` })}
+                          >
+                            <Terminal className="w-3.5 h-3.5 text-purple-600" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditTarget(s)}>
                           <Edit2 className="w-3.5 h-3.5" />
                         </Button>
@@ -315,6 +324,25 @@ export function InfraServersPage() {
           if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id);
         }}
       />
+
+      {/* Terminal dialog */}
+      <Dialog open={terminalTarget !== null} onOpenChange={(o) => { if (!o) setTerminalTarget(null); }}>
+        <DialogContent className="sm:max-w-[85vw] h-[80vh] flex flex-col p-0" aria-describedby={undefined}>
+          <DialogHeader className="px-4 pt-4 pb-2">
+            <DialogTitle className="flex items-center gap-2">
+              <Terminal className="w-4 h-4" />
+              {terminalTarget?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {terminalTarget && (
+            <iframe
+              src={terminalTarget.url}
+              className="flex-1 w-full border-0 rounded-b-lg bg-black"
+              title="Terminal SSH"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

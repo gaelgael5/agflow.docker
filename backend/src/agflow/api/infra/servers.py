@@ -122,6 +122,7 @@ async def health_check(server_id: UUID):
 
     state = "down"
     detail = ""
+    status_code = 0
 
     if has_k3s:
         # K3s: check HTTPS API port 6443
@@ -164,7 +165,7 @@ async def health_check(server_id: UUID):
             detail = str(exc)
 
     else:
-        # No K3s or Docker metadata — try SSH connectivity
+        # No K3s or Docker metadata — SSH only (no service installed yet)
         try:
             creds = await infra_servers_service.get_credentials(server_id)
             private_key = None
@@ -179,17 +180,17 @@ async def health_check(server_id: UUID):
                 username=creds["username"], password=creds["password"],
                 private_key=private_key, passphrase=passphrase,
             )
-            state = "healthy" if result.get("success") else "down"
+            state = "ssh_ok" if result.get("success") else "down"
             detail = result.get("message", "")
         except Exception as exc:
             detail = str(exc)
 
     healthy = state == "healthy"
 
-    # Sync DB status
-    if healthy and server.status != "initialized":
+    # Sync DB status — only for K3s/Docker checks, not SSH-only
+    if state in ("healthy",) and server.status != "initialized":
         await infra_servers_service.update_status(server_id, "initialized")
-    elif not healthy and server.status == "initialized":
+    elif state in ("down", "starting", "ssh_ok") and server.status == "initialized":
         await infra_servers_service.update_status(server_id, "not_initialized")
 
     return {"healthy": healthy, "state": state, "status_code": status_code, "detail": detail, "server_id": str(server_id)}

@@ -77,6 +77,15 @@ services:
     networks:
       - agflow
 
+  wetty:
+    image: wettyoss/wetty:latest
+    container_name: agflow-wetty
+    restart: unless-stopped
+    command: --base /terminal --force-ssh --port 3000 --ssh-key /ssh/wetty_key
+    volumes:
+      - /root/.ssh:/ssh:ro
+    network_mode: host
+
   portainer-agent:
     image: portainer/agent:latest
     container_name: portainer-agent

@@ -407,6 +407,23 @@ else
 fi
 chmod 600 /home/agflow/.ssh/authorized_keys
 chown -R agflow:agflow /home/agflow/.ssh
+"
+
+# ── Injecter la clef Wetty (terminal web) ───────────────────────────────────
+echo ""
+echo "  Injection clef Wetty (terminal web)..."
+
+# Clef publique du service Wetty (agflow LXC 201) — fixe, générée une fois
+WETTY_PUB="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHNerDXuUIaAU/m7AUJJaqDDKA8YJzqBRvppg85M7PpZ agflow-wetty"
+
+pct exec "${CTID}" -- bash -c "
+if ! grep -qF '${WETTY_PUB}' /home/agflow/.ssh/authorized_keys 2>/dev/null; then
+    echo '${WETTY_PUB}' >> /home/agflow/.ssh/authorized_keys
+    chown agflow:agflow /home/agflow/.ssh/authorized_keys
+    echo '  -> Clef Wetty injectee'
+else
+    echo '  -> Clef Wetty deja presente'
+fi
 
 # Sudo sans mot de passe pour agflow
 echo 'agflow ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/agflow

@@ -24,11 +24,6 @@ services:
     networks:
       - agflow
 
-volumes:
-  postgres_data:
-  caddy_data:
-  caddy_config:
-
 networks:
   agflow:
     driver: bridge

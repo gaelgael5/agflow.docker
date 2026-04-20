@@ -155,6 +155,16 @@ else
     exit 1
 fi
 
+# ── 7. Deployer la stack agflow (dozzle + portainer agents) ──────────────────
+echo "[7/7] Deploiement de la stack agflow..."
+mkdir -p /root/agflow.docker
+wget -qO /root/agflow.docker/docker-compose.yml \
+  https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/docker-compose.yml
+
+cd /root/agflow.docker
+docker compose up -d 2>&1
+echo "  -> Stack agflow deployee"
+
 DOCKER_VER=$(docker --version 2>/dev/null || echo "inconnu")
 COMPOSE_VER=$(docker compose version 2>/dev/null || echo "inconnu")
 NODE_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "")

@@ -472,7 +472,7 @@ function ScriptRunDialog({ open, serverId, serverName, scriptUrl, action, onClos
       .then((m) => {
         setManifest(m);
         const defaults: Record<string, string> = {};
-        for (const a of m.args) defaults[a.arg] = "";
+        for (const a of m.args) defaults[a.arg] = a.default != null ? String(a.default) : "";
         setArgValues(defaults);
       })
       .catch((e) => toast.error(String(e)))

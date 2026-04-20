@@ -7,7 +7,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 
-from agflow.auth.dependencies import require_admin
+from agflow.auth.dependencies import require_operator as require_admin
 from agflow.schemas.infra import ScriptRunRequest, ServerCreate, ServerSummary, ServerUpdate
 from agflow.services import (
     infra_certificates_service,
@@ -104,6 +104,34 @@ async def test_connection(server_id: UUID):
         private_key=private_key,
         passphrase=passphrase,
     )
+
+
+@router.get("/{server_id}/health", dependencies=_admin)
+async def health_check(server_id: UUID):
+    """Check K3s health via HTTPS API (port 6443/healthz)."""
+    import httpx
+
+    try:
+        server = await infra_servers_service.get_by_id(server_id)
+    except infra_servers_service.ServerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    url = f"https://{server.host}:6443/healthz"
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=5) as client:
+            resp = await client.get(url)
+            healthy = resp.status_code == 200 and resp.text.strip() == "ok"
+    except Exception as exc:
+        healthy = False
+        _log.debug("health_check.failed", host=server.host, error=str(exc))
+
+    # Sync status
+    if healthy and server.status != "initialized":
+        await infra_servers_service.update_status(server_id, "initialized")
+    elif not healthy and server.status == "initialized":
+        await infra_servers_service.update_status(server_id, "not_initialized")
+
+    return {"healthy": healthy, "server_id": str(server_id)}
 
 
 @router.post("/{server_id}/run-script", dependencies=_admin)

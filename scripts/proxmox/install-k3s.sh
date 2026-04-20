@@ -104,9 +104,17 @@ echo ""
 echo "[5/5] Verification finale..."
 
 K3S_VERSION=$(sudo k3s --version 2>/dev/null | head -1 || echo "inconnu")
-NODE_STATUS=$(sudo k3s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
 NODE_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "")
 KUBECONFIG_CONTENT=$(sudo cat /etc/rancher/k3s/k3s.yaml 2>/dev/null | base64 -w0 || echo "")
+
+# Verification K3s nodes (JSON complet)
+echo ""
+echo "  Verification K3s nodes :"
+NODES_JSON=$(sudo k3s kubectl get nodes -o json 2>/dev/null || echo '{}')
+echo "${NODES_JSON}" | head -30
+
+NODE_STATUS=$(echo "${NODES_JSON}" | grep -o '"status":"[^"]*"' | head -1 || echo "")
+NODE_READY=$(echo "${NODES_JSON}" | sudo k3s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
 
 echo ""
 echo "==========================================="
@@ -114,11 +122,11 @@ echo "  K3s INSTALLE"
 echo "==========================================="
 echo ""
 echo "  Version    : ${K3S_VERSION}"
-echo "  Node Ready : ${NODE_STATUS}"
+echo "  Node Ready : ${NODE_READY}"
 echo "  Traefik    : $([ "${DISABLE_TRAEFIK}" = "--no-traefik" ] && echo "desactive" || echo "actif")"
 echo "  kubeconfig : ~/.kube/config"
 echo ""
 echo "==========================================="
 
 # ── Sortie JSON (convention pipeline agflow) ─────────────────────────────────
-echo "{\"status\":\"ok\",\"k3s_version\":\"${K3S_VERSION}\",\"node_ready\":\"${NODE_STATUS}\",\"ip\":\"${NODE_IP}\",\"kubeconfig_b64\":\"${KUBECONFIG_CONTENT}\"}"
+echo "{\"status\":\"ok\",\"k3s_version\":\"${K3S_VERSION}\",\"node_ready\":\"${NODE_READY}\",\"ip\":\"${NODE_IP}\",\"kubeconfig_b64\":\"${KUBECONFIG_CONTENT}\"}"

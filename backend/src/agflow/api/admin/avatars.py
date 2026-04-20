@@ -5,7 +5,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
-from agflow.auth.dependencies import require_admin
+from agflow.auth.dependencies import require_operator as require_admin
 from agflow.schemas.avatars import (
     CharacterCreate,
     CharacterDetail,

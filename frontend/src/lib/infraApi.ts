@@ -146,6 +146,9 @@ export const infraServersApi = {
   async remove(id: string): Promise<void> {
     await api.delete(`/infra/servers/${id}`);
   },
+  async healthCheck(id: string): Promise<{ healthy: boolean; server_id: string }> {
+    return (await api.get(`/infra/servers/${id}/health`)).data;
+  },
   async testConnection(id: string): Promise<{ success: boolean; message: string }> {
     return (await api.post(`/infra/servers/${id}/test-connection`)).data;
   },

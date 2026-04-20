@@ -56,24 +56,26 @@ interface Props {
 export function Sidebar({ open = false, onClose }: Props) {
   const { t } = useTranslation();
   const location = useLocation();
-  const { logout } = useAuth();
+  const { logout, isAdmin } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
+
+  const platformItems: NavItem[] = [
+    { to: "/discovery-services", label: t("discovery.page_title"), icon: RadioTower },
+    { to: "/service-types", label: t("service_types.page_title"), icon: Tags },
+    ...(isAdmin ? [{ to: "/secrets", label: t("secrets.page_title"), icon: KeyRound }] : []),
+    { to: "/dockerfiles", label: t("dockerfiles.page_title"), icon: FileCode2 },
+    { to: "/templates", label: t("templates.page_title"), icon: Braces },
+    { to: "/mcp-catalog", label: t("mcp_catalog.page_title"), icon: PlugZap },
+    { to: "/skills-catalog", label: t("skills_catalog.page_title"), icon: BookMarked },
+    { to: "/ai-providers", label: t("ai_providers.page_title"), icon: Wand2 },
+    { to: "/avatars", label: t("avatars.page_title"), icon: Palette },
+    ...(isAdmin ? [{ to: "/users", label: t("users.page_title"), icon: Users }] : []),
+  ];
 
   const sections: NavSection[] = [
     {
       title: t("sidebar.section_platform"),
-      items: [
-        { to: "/discovery-services", label: t("discovery.page_title"), icon: RadioTower },
-        { to: "/service-types", label: t("service_types.page_title"), icon: Tags },
-        { to: "/secrets", label: t("secrets.page_title"), icon: KeyRound },
-        { to: "/dockerfiles", label: t("dockerfiles.page_title"), icon: FileCode2 },
-        { to: "/templates", label: t("templates.page_title"), icon: Braces },
-        { to: "/mcp-catalog", label: t("mcp_catalog.page_title"), icon: PlugZap },
-        { to: "/skills-catalog", label: t("skills_catalog.page_title"), icon: BookMarked },
-        { to: "/ai-providers", label: t("ai_providers.page_title"), icon: Wand2 },
-        { to: "/avatars", label: t("avatars.page_title"), icon: Palette },
-        { to: "/users", label: t("users.page_title"), icon: Users },
-      ],
+      items: platformItems,
     },
     {
       title: t("sidebar.section_resources"),

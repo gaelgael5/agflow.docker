@@ -12,11 +12,12 @@ class InvalidTokenError(Exception):
     pass
 
 
-def encode_token(subject: str) -> str:
+def encode_token(subject: str, role: str = "admin") -> str:
     settings = get_settings()
     now = int(time.time())
     payload = {
         "sub": subject,
+        "role": role,
         "iat": now,
         "exp": now + settings.jwt_expire_hours * 3600,
     }

@@ -65,6 +65,27 @@ export function InfraServersPage() {
   const platforms = platformsQuery.data ?? [];
   const serviceDefs = servicesQuery.data ?? [];
   const certificates = certsQuery.data ?? [];
+  const [healthMap, setHealthMap] = useState<Record<string, boolean | null>>({});
+
+  // Health check all service-type servers on load
+  useEffect(() => {
+    if (!servers.length || !serviceDefs.length) return;
+    for (const s of servers) {
+      const isService = serviceDefs.some((sd) => sd.name === s.type || sd.type === s.type);
+      if (!isService) continue;
+      setHealthMap((prev) => ({ ...prev, [s.id]: null })); // null = checking
+      infraServersApi.healthCheck(s.id)
+        .then((res) => {
+          setHealthMap((prev) => ({ ...prev, [s.id]: res.healthy }));
+          // Refresh list if status changed
+          if ((res.healthy && s.status !== "initialized") || (!res.healthy && s.status === "initialized")) {
+            qc.invalidateQueries({ queryKey: ["infra-servers"] });
+          }
+        })
+        .catch(() => setHealthMap((prev) => ({ ...prev, [s.id]: false })));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servers.length, serviceDefs.length]);
 
   function getPlatformForType(serverType: string): PlatformDef | undefined {
     return platforms.find((p) => p.name === serverType || p.type === serverType);
@@ -111,6 +132,7 @@ export function InfraServersPage() {
               {servers.map((s) => {
                 const platform = getPlatformForType(s.type);
                 const service = getServiceForType(s.type);
+                const isServiceType = !!service;
                 const createScripts = platform?.scripts.create ?? [];
                 const destroyScripts = platform?.scripts.destroy ?? [];
                 const installScripts = service?.scripts ?? [];
@@ -147,16 +169,27 @@ export function InfraServersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={s.status === "initialized" ? "default" : "outline"}
-                        className={`text-[9px] ${
-                          s.status === "initialized"
-                            ? "bg-green-600 text-white"
-                            : "border-orange-400 text-orange-500"
-                        }`}
-                      >
-                        {s.status === "initialized" ? t("infra.status_initialized") : t("infra.status_not_initialized")}
-                      </Badge>
+                      {isServiceType && (() => {
+                        const health = healthMap[s.id];
+                        if (health === null) {
+                          return <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />;
+                        }
+                        if (health === undefined) {
+                          return (
+                            <Badge variant="outline" className="text-[9px] border-orange-400 text-orange-500">
+                              {t("infra.status_not_initialized")}
+                            </Badge>
+                          );
+                        }
+                        return (
+                          <Badge
+                            variant="default"
+                            className={`text-[9px] ${health ? "bg-green-600 text-white" : "bg-red-600 text-white"}`}
+                          >
+                            {health ? t("infra.status_healthy") : t("infra.status_down")}
+                          </Badge>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 text-[11px]">

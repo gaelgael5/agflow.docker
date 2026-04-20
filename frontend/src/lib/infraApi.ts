@@ -104,6 +104,7 @@ export interface ServerSummary {
   username: string | null;
   has_password: boolean;
   certificate_id: string | null;
+  parent_id: string | null;
   machine_count: number;
   metadata: Record<string, string>;
   status: string;
@@ -119,6 +120,15 @@ export interface ServerCreatePayload {
   username?: string;
   password?: string;
   certificate_id?: string;
+}
+
+export interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  state: string;
+  ports: string;
 }
 
 export interface ScriptManifestArg {
@@ -158,6 +168,9 @@ export const infraServersApi = {
   },
   async remove(id: string): Promise<void> {
     await api.delete(`/infra/servers/${id}`);
+  },
+  async listContainers(id: string): Promise<{ containers: DockerContainer[]; server_id: string }> {
+    return (await api.get(`/infra/servers/${id}/containers`)).data;
   },
   async healthCheck(id: string): Promise<{ healthy: boolean; state: string; server_id: string }> {
     return (await api.get(`/infra/servers/${id}/health`)).data;

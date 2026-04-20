@@ -106,6 +106,44 @@ async def test_connection(server_id: UUID):
     )
 
 
+@router.get("/{server_id}/containers", dependencies=_admin)
+async def list_containers(server_id: UUID):
+    """List Docker containers running on this server via SSH."""
+    try:
+        server = await infra_servers_service.get_by_id(server_id)
+    except infra_servers_service.ServerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    creds = await infra_servers_service.get_credentials(server_id)
+    private_key = None
+    passphrase = None
+    if creds.get("certificate_id"):
+        cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
+        private_key = cert.get("private_key")
+        passphrase = cert.get("passphrase")
+
+    try:
+        result = await ssh_executor.exec_command(
+            host=creds["host"], port=creds["port"],
+            username=creds["username"], password=creds["password"],
+            private_key=private_key, passphrase=passphrase,
+            command='sudo docker ps -a --format \'{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","status":"{{.Status}}","state":"{{.State}}","ports":"{{.Ports}}"}\'',
+        )
+    except ssh_executor.SSHConnectionError as exc:
+        return {"containers": [], "error": str(exc)}
+
+    containers = []
+    for line in (result.get("stdout") or "").strip().split("\n"):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                containers.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+
+    return {"containers": containers, "server_id": str(server_id)}
+
+
 @router.get("/{server_id}/health", dependencies=_admin)
 async def health_check(server_id: UUID):
     """Check server health — auto-detects K3s (port 6443) or Docker (SSH)."""
@@ -611,6 +649,7 @@ async def _auto_provision(
             password=password or None,
             certificate_id=cert_summary.id if cert_summary else None,
             metadata=meta,
+            parent_id=parent_server_id,
         )
         await ws.send_json({"type": "stdout", "data": f"✓ Serveur créé: {server_name} ({ip}:22, user={user})\n"})
         await ws.send_json({

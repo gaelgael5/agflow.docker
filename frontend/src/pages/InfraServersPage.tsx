@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Edit2, Loader2, Play, Plus, Server, Terminal, Trash2 } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, Edit2, Loader2, Play, Plus, Server, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   infraPlatformsApi,
@@ -14,6 +14,7 @@ import {
   type ServiceDef,
   type CertificateSummary,
   type ScriptManifest,
+  type DockerContainer,
 } from "@/lib/infraApi";
 import { useInfraTypes } from "@/hooks/useInfra";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -68,7 +69,8 @@ export function InfraServersPage() {
   const serviceDefs = servicesQuery.data ?? [];
   const certificates = certsQuery.data ?? [];
   const [healthMap, setHealthMap] = useState<Record<string, string | null>>({});
-  // values: null=checking, "healthy", "starting", "down"
+  const [containersMap, setContainersMap] = useState<Record<string, DockerContainer[]>>({});
+  const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({});
 
   // Health check all service-type servers on load
   useEffect(() => {
@@ -88,6 +90,16 @@ export function InfraServersPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [servers.length, serviceDefs.length]);
+
+  function toggleContainers(serverId: string) {
+    const isExpanded = expandedServers[serverId];
+    setExpandedServers((prev) => ({ ...prev, [serverId]: !isExpanded }));
+    if (!isExpanded && !containersMap[serverId]) {
+      infraServersApi.listContainers(serverId)
+        .then((res) => setContainersMap((prev) => ({ ...prev, [serverId]: res.containers })))
+        .catch(() => setContainersMap((prev) => ({ ...prev, [serverId]: [] })));
+    }
+  }
 
   function getPlatformForType(serverType: string): PlatformDef | undefined {
     return platforms.find((p) => p.name === serverType || p.type === serverType);
@@ -110,165 +122,250 @@ export function InfraServersPage() {
         }
       />
 
-      <Card className="overflow-hidden">
-        {listQuery.isLoading ? (
-          <div className="p-6 space-y-3">
-            <Skeleton className="h-6 w-1/3" />
-            <Skeleton className="h-6 w-1/2" />
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("infra.server_name_col")}</TableHead>
-                <TableHead>{t("infra.server_type")}</TableHead>
-                <TableHead>{t("infra.server_service")}</TableHead>
-                <TableHead>{t("infra.server_host")}</TableHead>
-                <TableHead>{t("infra.server_info")}</TableHead>
-                <TableHead>{t("infra.server_status")}</TableHead>
-                <TableHead>{t("infra.server_auth")}</TableHead>
-                <TableHead className="text-right">{t("infra.cert_actions")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {servers.map((s) => {
-                const platform = getPlatformForType(s.type);
-                const service = getServiceForType(s.type);
-                const isServiceType = !!service;
-                const createScripts = platform?.scripts.create ?? [];
-                const destroyScripts = platform?.scripts.destroy ?? [];
-                const installScripts = service?.scripts ?? [];
-                const serviceName = platform?.service ?? "";
+      {listQuery.isLoading ? (
+        <div className="p-6 space-y-3"><Skeleton className="h-6 w-1/3" /><Skeleton className="h-6 w-1/2" /></div>
+      ) : (
+        <div className="space-y-4">
+          {/* Group: parent servers (no parent_id) with their children */}
+          {servers.filter((s) => !s.parent_id).map((parent) => {
+            const platform = getPlatformForType(parent.type);
+            const createScripts = platform?.scripts.create ?? [];
+            const destroyScripts = platform?.scripts.destroy ?? [];
+            const children = servers.filter((c) => c.parent_id === parent.id);
 
-                return (
-                  <TableRow key={s.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Server className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-medium">{s.name || s.host}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="default" className="text-[10px]">{s.type}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {serviceName && (
-                        <Badge variant="outline" className="text-[10px] border-green-500 text-green-600">{serviceName}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <code className="text-[12px] font-mono">{s.host}:{s.port}</code>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-0.5 text-[11px]">
-                        {s.metadata?.distro && <span className="text-muted-foreground">{s.metadata.distro}</span>}
-                        {s.metadata?.ip_type && (
-                          <Badge variant="outline" className="text-[9px]">{s.metadata.ip_type}</Badge>
-                        )}
-                        {s.metadata?.docker && s.metadata.docker !== "non installe" && (
-                          <Badge variant="secondary" className="text-[9px]">Docker</Badge>
+            return (
+              <Card key={parent.id} className="overflow-hidden">
+                {/* Parent header */}
+                <div className="flex items-center justify-between px-4 py-3 bg-muted/40 border-b">
+                  <div className="flex items-center gap-3">
+                    <Server className="w-5 h-5 text-muted-foreground" />
+                    <div>
+                      <div className="font-semibold">{parent.name || parent.host}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Badge variant="default" className="text-[10px]">{parent.type}</Badge>
+                        <code className="text-[11px] font-mono text-muted-foreground">{parent.host}:{parent.port}</code>
+                        {parent.username && <span className="text-[11px] text-muted-foreground">{parent.username}</span>}
+                        {platform?.service && (
+                          <Badge variant="outline" className="text-[9px] border-green-500 text-green-600">{platform.service}</Badge>
                         )}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {isServiceType && (() => {
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {createScripts.map((url, i) => (
+                      <Button key={`c-${i}`} variant="ghost" size="sm" className="h-7 text-[10px] text-blue-600"
+                        onClick={() => setScriptRun({ serverId: parent.id, serverName: parent.name || parent.host, scriptUrl: url, action: "create" })}
+                      >
+                        <Terminal className="w-3 h-3 mr-1" />{t("infra.action_create")}
+                      </Button>
+                    ))}
+                    {destroyScripts.map((url, i) => (
+                      <Button key={`d-${i}`} variant="ghost" size="sm" className="h-7 text-[10px] text-red-600"
+                        onClick={() => setScriptRun({ serverId: parent.id, serverName: parent.name || parent.host, scriptUrl: url, action: "destroy" })}
+                      >
+                        <Terminal className="w-3 h-3 mr-1" />{t("infra.action_destroy")}
+                      </Button>
+                    ))}
+                    <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.test_connection")}
+                      onClick={async () => { const r = await infraServersApi.testConnection(parent.id); r.success ? toast.success(r.message) : toast.error(r.message); }}
+                    ><Play className="w-3.5 h-3.5 text-green-600" /></Button>
+                    {parent.username && (
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_terminal")}
+                        onClick={() => setTerminalTarget({ name: parent.name || parent.host, serverId: parent.id })}
+                      ><Terminal className="w-3.5 h-3.5 text-purple-600" /></Button>
+                    )}
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditTarget(parent)}>
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7"
+                      onClick={() => setDeleteTarget({ id: parent.id, name: parent.name || parent.host })}
+                    ><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
+                  </div>
+                </div>
+
+                {/* Children table */}
+                {children.length > 0 && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="pl-8">{t("infra.server_name_col")}</TableHead>
+                        <TableHead>{t("infra.server_host")}</TableHead>
+                        <TableHead>{t("infra.server_info")}</TableHead>
+                        <TableHead>{t("infra.server_status")}</TableHead>
+                        <TableHead>{t("infra.server_auth")}</TableHead>
+                        <TableHead className="text-right">{t("infra.cert_actions")}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {children.map((s) => {
+                        const service = getServiceForType(s.type);
+                        const installScripts = service?.scripts ?? [];
                         const state = healthMap[s.id];
-                        if (state === null) {
-                          return <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />;
-                        }
-                        if (state === undefined) {
-                          return (
-                            <Badge variant="outline" className="text-[9px] border-gray-400 text-gray-500">—</Badge>
-                          );
-                        }
-                        const cfg: Record<string, { label: string; color: string }> = {
-                          healthy: { label: t("infra.status_healthy"), color: "bg-green-600 text-white" },
-                          starting: { label: t("infra.status_starting"), color: "bg-yellow-500 text-white" },
-                          ssh_ok: { label: t("infra.status_ssh_ok"), color: "bg-blue-500 text-white" },
-                          down: { label: t("infra.status_down"), color: "bg-red-600 text-white" },
-                        };
-                        const entry = cfg[state] ?? { label: "DOWN", color: "bg-red-600 text-white" };
-                        return <Badge variant="default" className={`text-[9px] ${entry.color}`}>{entry.label}</Badge>;
-                      })()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 text-[11px]">
-                        {s.username && <span>{s.username}</span>}
-                        {s.has_password && <Badge variant="secondary" className="text-[9px]">pwd</Badge>}
-                        {s.certificate_id && <Badge variant="outline" className="text-[9px]">cert</Badge>}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1 flex-wrap">
-                        {createScripts.map((url, i) => (
-                          <Button
-                            key={`c-${i}`}
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-[10px] text-blue-600"
-                            onClick={() => setScriptRun({ serverId: s.id, serverName: s.name || s.host, scriptUrl: url, action: "create" })}
-                          >
-                            <Terminal className="w-3 h-3 mr-1" />
-                            {t("infra.action_create")}
-                          </Button>
-                        ))}
-                        {destroyScripts.map((url, i) => (
-                          <Button
-                            key={`d-${i}`}
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-[10px] text-red-600"
-                            onClick={() => setScriptRun({ serverId: s.id, serverName: s.name || s.host, scriptUrl: url, action: "destroy" })}
-                          >
-                            <Terminal className="w-3 h-3 mr-1" />
-                            {t("infra.action_destroy")}
-                          </Button>
-                        ))}
-                        {/* Install action (from service scripts) */}
-                        {s.status !== "initialized" && installScripts.map((url, i) => (
-                          <Button
-                            key={`i-${i}`}
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-[10px] text-green-600"
-                            onClick={() => setScriptRun({ serverId: s.id, serverName: s.name || s.host, scriptUrl: url, action: "install" })}
-                          >
-                            <Terminal className="w-3 h-3 mr-1" />
-                            {t("infra.action_install")}
-                          </Button>
-                        ))}
-                        <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.test_connection")}
-                          onClick={async () => {
-                            const r = await infraServersApi.testConnection(s.id);
-                            r.success ? toast.success(r.message) : toast.error(r.message);
-                          }}
-                        >
-                          <Play className="w-3.5 h-3.5 text-green-600" />
-                        </Button>
-                        {s.username && (
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_terminal")}
-                            onClick={() => setTerminalTarget({ name: s.name || s.host, serverId: s.id })}
-                          >
-                            <Terminal className="w-3.5 h-3.5 text-purple-600" />
-                          </Button>
-                        )}
+
+                        const containers = containersMap[s.id];
+                        const isExpanded = expandedServers[s.id];
+
+                        return (
+                          <React.Fragment key={s.id}>
+                          <TableRow className="group">
+                            <TableCell className="pl-8">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  className="text-muted-foreground hover:text-foreground transition-colors"
+                                  onClick={() => toggleContainers(s.id)}
+                                >
+                                  {expandedServers[s.id]
+                                    ? <ChevronDown className="w-3.5 h-3.5" />
+                                    : <ChevronRight className="w-3.5 h-3.5" />
+                                  }
+                                </button>
+                                <span className="font-medium">{s.name || s.host}</span>
+                                <Badge variant="outline" className="text-[9px]">{s.type}</Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <code className="text-[12px] font-mono">{s.host}:{s.port}</code>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-0.5 text-[11px]">
+                                {s.metadata?.distro && <span className="text-muted-foreground">{s.metadata.distro}</span>}
+                                {s.metadata?.ip_type && <Badge variant="outline" className="text-[9px]">{s.metadata.ip_type}</Badge>}
+                                {s.metadata?.docker && s.metadata.docker !== "non installe" && <Badge variant="secondary" className="text-[9px]">Docker</Badge>}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {(() => {
+                                if (state === null) return <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />;
+                                if (state === undefined) return <Badge variant="outline" className="text-[9px] border-gray-400 text-gray-500">—</Badge>;
+                                const cfg: Record<string, { label: string; color: string }> = {
+                                  healthy: { label: t("infra.status_healthy"), color: "bg-green-600 text-white" },
+                                  starting: { label: t("infra.status_starting"), color: "bg-yellow-500 text-white" },
+                                  ssh_ok: { label: t("infra.status_ssh_ok"), color: "bg-blue-500 text-white" },
+                                  down: { label: t("infra.status_down"), color: "bg-red-600 text-white" },
+                                };
+                                const entry = cfg[state] ?? { label: "DOWN", color: "bg-red-600 text-white" };
+                                return <Badge variant="default" className={`text-[9px] ${entry.color}`}>{entry.label}</Badge>;
+                              })()}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-1 text-[11px]">
+                                {s.username && <span>{s.username}</span>}
+                                {s.has_password && <Badge variant="secondary" className="text-[9px]">pwd</Badge>}
+                                {s.certificate_id && <Badge variant="outline" className="text-[9px]">cert</Badge>}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-end gap-1 flex-wrap">
+                                {s.status !== "initialized" && installScripts.map((url, i) => (
+                                  <Button key={`i-${i}`} variant="ghost" size="sm" className="h-7 text-[10px] text-green-600"
+                                    onClick={() => setScriptRun({ serverId: s.id, serverName: s.name || s.host, scriptUrl: url, action: "install" })}
+                                  >
+                                    <Terminal className="w-3 h-3 mr-1" />{t("infra.action_install")}
+                                  </Button>
+                                ))}
+                                <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.test_connection")}
+                                  onClick={async () => { const r = await infraServersApi.testConnection(s.id); r.success ? toast.success(r.message) : toast.error(r.message); }}
+                                ><Play className="w-3.5 h-3.5 text-green-600" /></Button>
+                                {s.username && (
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_terminal")}
+                                    onClick={() => setTerminalTarget({ name: s.name || s.host, serverId: s.id })}
+                                  ><Terminal className="w-3.5 h-3.5 text-purple-600" /></Button>
+                                )}
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditTarget(s)}>
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7"
+                                  onClick={() => setDeleteTarget({ id: s.id, name: s.name || `${s.host}:${s.port}` })}
+                                ><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {/* Docker containers sub-rows */}
+                          {isExpanded && containers && containers.map((c) => (
+                            <TableRow key={c.id} className="bg-muted/20">
+                              <TableCell className="pl-16">
+                                <div className="flex items-center gap-2 text-[11px]">
+                                  <Box className="w-3 h-3 text-muted-foreground" />
+                                  <span className="font-mono">{c.name}</span>
+                                  <Badge
+                                    variant="default"
+                                    className={`text-[8px] ${c.state === "running" ? "bg-green-600" : "bg-zinc-500"} text-white`}
+                                  >
+                                    {c.state}
+                                  </Badge>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-[10px] text-muted-foreground font-mono">{c.image}</span>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-[10px] text-muted-foreground">{c.status}</span>
+                              </TableCell>
+                              <TableCell />
+                              <TableCell>
+                                {c.ports && <span className="text-[9px] font-mono text-muted-foreground">{c.ports}</span>}
+                              </TableCell>
+                              <TableCell />
+                            </TableRow>
+                          ))}
+                          {isExpanded && containers && containers.length === 0 && (
+                            <TableRow className="bg-muted/20">
+                              <TableCell colSpan={6} className="pl-16 text-[11px] text-muted-foreground italic">
+                                {t("infra.no_containers")}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {isExpanded && !containers && (
+                            <TableRow className="bg-muted/20">
+                              <TableCell colSpan={6} className="pl-16">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+
+                {children.length === 0 && (
+                  <div className="px-8 py-4 text-[12px] text-muted-foreground italic">
+                    {t("infra.no_children")}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+
+          {/* Orphan servers (have parent_id but parent not in list, or legacy) */}
+          {servers.filter((s) => s.parent_id && !servers.some((p) => p.id === s.parent_id)).length > 0 && (
+            <Card className="overflow-hidden">
+              <div className="px-4 py-3 bg-muted/40 border-b">
+                <span className="font-semibold text-muted-foreground">{t("infra.orphan_servers")}</span>
+              </div>
+              <Table>
+                <TableBody>
+                  {servers.filter((s) => s.parent_id && !servers.some((p) => p.id === s.parent_id)).map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell><span className="font-medium">{s.name || s.host}</span></TableCell>
+                      <TableCell><code className="text-[12px] font-mono">{s.host}:{s.port}</code></TableCell>
+                      <TableCell>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditTarget(s)}>
                           <Edit2 className="w-3.5 h-3.5" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7"
-                          onClick={() => setDeleteTarget({ id: s.id, name: s.name || `${s.host}:${s.port}` })}
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
+                          onClick={() => setDeleteTarget({ id: s.id, name: s.name || s.host })}
+                        ><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Create dialog */}
       <ServerFormDialog

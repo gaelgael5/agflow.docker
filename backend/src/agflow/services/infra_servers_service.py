@@ -15,7 +15,7 @@ from agflow.services import crypto_service
 
 _log = structlog.get_logger(__name__)
 
-_COLS = "id, name, type, host, port, username, password, certificate_id, metadata, status, created_at, updated_at"
+_COLS = "id, name, type, host, port, username, password, certificate_id, parent_id, metadata, status, created_at, updated_at"
 
 
 class ServerNotFoundError(Exception):
@@ -37,6 +37,7 @@ def _to_summary(row: dict[str, Any]) -> ServerSummary:
         username=row["username"],
         has_password=bool(row.get("password")),
         certificate_id=row.get("certificate_id"),
+        parent_id=row.get("parent_id"),
         metadata=raw_meta,
         status=row.get("status", "not_initialized"),
         created_at=row["created_at"],
@@ -88,18 +89,20 @@ async def create(
     certificate_id: UUID | None = None,
     name: str = "",
     metadata: dict | None = None,
+    parent_id: UUID | None = None,
 ) -> ServerSummary:
     import json as _json
 
     row = await fetch_one(
         f"""
-        INSERT INTO infra_servers (name, type, host, port, username, password, certificate_id, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        INSERT INTO infra_servers (name, type, host, port, username, password, certificate_id, parent_id, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
         RETURNING {_COLS}
         """,
         name, server_type, host, port, username,
         crypto_service.encrypt(password),
         certificate_id,
+        parent_id,
         _json.dumps(metadata or {}),
     )
     assert row is not None

@@ -11,6 +11,7 @@ import { AvatarsPage } from "./pages/AvatarsPage";
 import { ImageRegistriesPage } from "./pages/ImageRegistriesPage";
 import { ProductCatalogPage } from "./pages/ProductCatalogPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { ProductInstancesPage } from "./pages/ProductInstancesPage";
 import { InfraCertificatesPage } from "./pages/InfraCertificatesPage";
 import { InfraServersPage } from "./pages/InfraServersPage";
@@ -107,6 +108,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ProjectsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:projectId"
+        element={
+          <ProtectedRoute>
+            <ProjectDetailPage />
           </ProtectedRoute>
         }
       />

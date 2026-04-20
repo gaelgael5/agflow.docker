@@ -233,14 +233,11 @@ export function TerminalWindow({
 
       {/* Resize handle */}
       <div
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+        className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize flex items-end justify-end p-0.5"
         onMouseDown={onResizeMouseDown}
       >
-        <svg
-          viewBox="0 0 16 16"
-          className="w-full h-full text-muted-foreground/40"
-        >
-          <path d="M14 14L14 8M14 14L8 14" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <svg viewBox="0 0 16 16" className="w-4 h-4 text-zinc-500">
+          <path d="M14 14L14 6M14 14L6 14M10 14L14 10" stroke="currentColor" strokeWidth="1.5" fill="none" />
         </svg>
       </div>
     </div>

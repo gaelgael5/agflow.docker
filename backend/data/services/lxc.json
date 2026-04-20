@@ -3,6 +3,6 @@
   "type": "LXC",
   "connection": "SSH",
   "scripts": [
-    "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/install-k3s.json"
+    "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/install-docker.json"
   ]
 }

@@ -297,7 +297,11 @@ export function InfraServersPage() {
           serverName={scriptRun.serverName}
           scriptUrl={scriptRun.scriptUrl}
           action={scriptRun.action}
-          onClose={() => setScriptRun(null)}
+          onClose={() => {
+            setScriptRun(null);
+            qc.invalidateQueries({ queryKey: ["infra-servers"] });
+            qc.invalidateQueries({ queryKey: ["infra-certificates"] });
+          }}
           t={t}
         />
       )}

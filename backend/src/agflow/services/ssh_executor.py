@@ -43,12 +43,17 @@ async def exec_command(
     private_key: str | None,
     passphrase: str | None,
     command: str,
+    input: str | None = None,
 ) -> dict[str, Any]:
-    """Execute a command via SSH. Returns {exit_code, stdout, stderr}."""
+    """Execute a command via SSH. Returns {exit_code, stdout, stderr}.
+
+    `input` is piped to the remote command's stdin — utile pour ecrire
+    un fichier via `cat > path` sans avoir a juggler avec un heredoc.
+    """
     try:
         conn = await _connect(host, port, username, password, private_key, passphrase)
         async with conn:
-            result = await conn.run(command, check=False)
+            result = await conn.run(command, check=False, input=input)
             return {
                 "exit_code": result.exit_status,
                 "stdout": result.stdout or "",

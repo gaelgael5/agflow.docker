@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { YamlEditor } from "@/components/YamlEditor";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Save, Trash2 } from "lucide-react";
@@ -135,11 +136,10 @@ export function ProductCatalogPage() {
                   </Button>
                 </div>
               </div>
-              <textarea
-                className="flex-1 w-full font-mono text-[12px] bg-muted/30 border rounded-md p-3 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              <YamlEditor
                 value={editorContent}
-                onChange={(e) => setDraftYaml(e.target.value)}
-                spellCheck={false}
+                onChange={(v) => setDraftYaml(v)}
+                className="flex-1"
               />
             </>
           ) : (

@@ -148,3 +148,31 @@ class InstanceSummary(BaseModel):
     service_url: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+# ── Project Deployments ────���────────────────────────────
+
+DeploymentStatus = Literal["draft", "generated", "deployed"]
+
+
+class DeploymentCreate(BaseModel):
+    project_id: UUID
+    group_servers: dict[str, str] = Field(default_factory=dict)
+
+
+class DeploymentUpdate(BaseModel):
+    group_servers: dict[str, str] | None = None
+
+
+class DeploymentSummary(BaseModel):
+    id: UUID
+    project_id: UUID
+    user_id: UUID
+    group_servers: dict[str, str] = Field(default_factory=dict)
+    status: DeploymentStatus = "draft"
+    generated_compose: str | None = None
+    generated_env: str | None = None
+    generated_secrets: dict[str, str] = Field(default_factory=dict)
+    nullable_secrets: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime

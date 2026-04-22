@@ -2,28 +2,39 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 
 from agflow.auth.dependencies import require_operator as require_admin
-from agflow.schemas.infra import ScriptRunRequest, ServerCreate, ServerSummary, ServerUpdate
+from agflow.schemas.infra import (
+    MachineCreate,
+    MachineSummary,
+    MachineUpdate,
+    ScriptRunRequest,
+)
 from agflow.services import (
     infra_certificates_service,
-    infra_servers_service,
+    infra_machines_runs_service,
+    infra_machines_service,
+    infra_named_type_actions_service,
+    infra_named_types_service,
     ssh_executor,
 )
 
 _log = structlog.get_logger(__name__)
 
 router = APIRouter(
-    prefix="/api/infra/servers",
-    tags=["infra-servers"],
+    prefix="/api/infra/machines",
+    tags=["infra-machines"],
 )
 
 _admin = [Depends(require_admin)]
 
+
+# ── Script manifest proxy ────────────────────────────────
 
 @router.get("/manifest", dependencies=_admin)
 async def get_script_manifest(url: str):
@@ -40,61 +51,73 @@ async def get_script_manifest(url: str):
         return resp.json()
 
 
-@router.get("", response_model=list[ServerSummary], dependencies=_admin)
-async def list_servers():
-    return await infra_servers_service.list_all()
+# ── CRUD ─────────────────────────────────────────────────
+
+@router.get("", response_model=list[MachineSummary], dependencies=_admin)
+async def list_machines():
+    return await infra_machines_service.list_all()
 
 
-@router.post("", response_model=ServerSummary, status_code=status.HTTP_201_CREATED, dependencies=_admin)
-async def create_server(payload: ServerCreate):
-    return await infra_servers_service.create(
+@router.post("", response_model=MachineSummary, status_code=status.HTTP_201_CREATED, dependencies=_admin)
+async def create_machine(payload: MachineCreate):
+    return await infra_machines_service.create(
         name=payload.name,
-        server_type=payload.type,
+        type_id=payload.type_id,
         host=payload.host,
         port=payload.port,
         username=payload.username,
         password=payload.password,
         certificate_id=payload.certificate_id,
+        parent_id=payload.parent_id,
     )
 
 
-@router.get("/{server_id}", response_model=ServerSummary, dependencies=_admin)
-async def get_server(server_id: UUID):
+@router.get("/{machine_id}", response_model=MachineSummary, dependencies=_admin)
+async def get_machine(machine_id: UUID):
     try:
-        return await infra_servers_service.get_by_id(server_id)
-    except infra_servers_service.ServerNotFoundError as exc:
+        return await infra_machines_service.get_by_id(machine_id)
+    except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.put("/{server_id}", response_model=ServerSummary, dependencies=_admin)
-async def update_server(server_id: UUID, payload: ServerUpdate):
+@router.put("/{machine_id}", response_model=MachineSummary, dependencies=_admin)
+async def update_machine(machine_id: UUID, payload: MachineUpdate):
     try:
-        return await infra_servers_service.update(server_id, **payload.model_dump(exclude_unset=True))
-    except infra_servers_service.ServerNotFoundError as exc:
+        return await infra_machines_service.update(
+            machine_id, **payload.model_dump(exclude_unset=True),
+        )
+    except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_admin)
-async def delete_server(server_id: UUID):
+@router.delete("/{machine_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_admin)
+async def delete_machine(machine_id: UUID):
     try:
-        await infra_servers_service.delete(server_id)
-    except infra_servers_service.ServerNotFoundError as exc:
+        await infra_machines_service.delete(machine_id)
+    except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.post("/{server_id}/test-connection", dependencies=_admin)
-async def test_connection(server_id: UUID):
-    try:
-        creds = await infra_servers_service.get_credentials(server_id)
-    except infra_servers_service.ServerNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+# ── SSH helpers (test, containers, health) ───────────────
 
+async def _get_ssh_creds(machine_id: UUID) -> tuple[dict[str, Any], str | None, str | None]:
+    """Return (creds, private_key, passphrase) for SSH use. Raises MachineNotFoundError."""
+    creds = await infra_machines_service.get_credentials(machine_id)
     private_key = None
     passphrase = None
     if creds.get("certificate_id"):
         cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
         private_key = cert.get("private_key")
         passphrase = cert.get("passphrase")
+    return creds, private_key, passphrase
+
+
+@router.post("/{machine_id}/test-connection", dependencies=_admin)
+async def test_connection(machine_id: UUID):
+    try:
+        creds, private_key, passphrase = await _get_ssh_creds(machine_id)
+    except infra_machines_service.MachineNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     return await ssh_executor.test_connection(
         host=creds["host"],
@@ -106,21 +129,13 @@ async def test_connection(server_id: UUID):
     )
 
 
-@router.get("/{server_id}/containers", dependencies=_admin)
-async def list_containers(server_id: UUID):
-    """List Docker containers running on this server via SSH."""
+@router.get("/{machine_id}/containers", dependencies=_admin)
+async def list_containers(machine_id: UUID):
+    """List Docker containers running on this machine via SSH."""
     try:
-        server = await infra_servers_service.get_by_id(server_id)
-    except infra_servers_service.ServerNotFoundError as exc:
+        creds, private_key, passphrase = await _get_ssh_creds(machine_id)
+    except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    creds = await infra_servers_service.get_credentials(server_id)
-    private_key = None
-    passphrase = None
-    if creds.get("certificate_id"):
-        cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
-        private_key = cert.get("private_key")
-        passphrase = cert.get("passphrase")
 
     try:
         result = await ssh_executor.exec_command(
@@ -141,20 +156,20 @@ async def list_containers(server_id: UUID):
             except json.JSONDecodeError:
                 pass
 
-    return {"containers": containers, "server_id": str(server_id)}
+    return {"containers": containers, "machine_id": str(machine_id)}
 
 
-@router.get("/{server_id}/health", dependencies=_admin)
-async def health_check(server_id: UUID):
-    """Check server health — auto-detects K3s (port 6443) or Docker (SSH)."""
+@router.get("/{machine_id}/health", dependencies=_admin)
+async def health_check(machine_id: UUID):
+    """Check machine health — auto-detects K3s (port 6443) or Docker (SSH)."""
     import httpx
 
     try:
-        server = await infra_servers_service.get_by_id(server_id)
-    except infra_servers_service.ServerNotFoundError as exc:
+        machine = await infra_machines_service.get_by_id(machine_id)
+    except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    meta = server.metadata or {}
+    meta = machine.metadata or {}
     has_k3s = bool(meta.get("k3s_version"))
     has_docker = bool(meta.get("docker")) and meta.get("docker") != "non installe"
 
@@ -163,10 +178,9 @@ async def health_check(server_id: UUID):
     status_code = 0
 
     if has_k3s:
-        # K3s: check HTTPS API port 6443
         try:
             async with httpx.AsyncClient(verify=False, timeout=5) as client:
-                resp = await client.get(f"https://{server.host}:6443/healthz")
+                resp = await client.get(f"https://{machine.host}:6443/healthz")
                 code = resp.status_code
                 detail = resp.text.strip()[:200]
                 if code in (200, 401):
@@ -177,16 +191,8 @@ async def health_check(server_id: UUID):
             detail = str(exc)
 
     elif has_docker:
-        # Docker: SSH + docker info
         try:
-            creds = await infra_servers_service.get_credentials(server_id)
-            private_key = None
-            passphrase = None
-            if creds.get("certificate_id"):
-                cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
-                private_key = cert.get("private_key")
-                passphrase = cert.get("passphrase")
-
+            creds, private_key, passphrase = await _get_ssh_creds(machine_id)
             result = await ssh_executor.exec_command(
                 host=creds["host"], port=creds["port"],
                 username=creds["username"], password=creds["password"],
@@ -203,16 +209,8 @@ async def health_check(server_id: UUID):
             detail = str(exc)
 
     else:
-        # No K3s or Docker metadata — SSH only (no service installed yet)
         try:
-            creds = await infra_servers_service.get_credentials(server_id)
-            private_key = None
-            passphrase = None
-            if creds.get("certificate_id"):
-                cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
-                private_key = cert.get("private_key")
-                passphrase = cert.get("passphrase")
-
+            creds, private_key, passphrase = await _get_ssh_creds(machine_id)
             result = await ssh_executor.test_connection(
                 host=creds["host"], port=creds["port"],
                 username=creds["username"], password=creds["password"],
@@ -225,21 +223,27 @@ async def health_check(server_id: UUID):
 
     healthy = state == "healthy"
 
-    # Sync DB status — only for K3s/Docker checks, not SSH-only
-    if state in ("healthy",) and server.status != "initialized":
-        await infra_servers_service.update_status(server_id, "initialized")
-    elif state in ("down", "starting", "ssh_ok") and server.status == "initialized":
-        await infra_servers_service.update_status(server_id, "not_initialized")
+    if state == "healthy" and machine.status != "initialized":
+        await infra_machines_service.update_status(machine_id, "initialized")
+    elif state in ("down", "starting", "ssh_ok") and machine.status == "initialized":
+        await infra_machines_service.update_status(machine_id, "not_initialized")
 
-    return {"healthy": healthy, "state": state, "status_code": status_code, "detail": detail, "server_id": str(server_id)}
+    return {
+        "healthy": healthy,
+        "state": state,
+        "status_code": status_code,
+        "detail": detail,
+        "machine_id": str(machine_id),
+    }
 
 
-@router.websocket("/{server_id}/shell")
-async def ws_shell(ws: WebSocket, server_id: UUID, token: str = ""):
+# ── WebSocket SSH shell (xterm.js) ───────────────────────
+
+@router.websocket("/{machine_id}/shell")
+async def ws_shell(ws: WebSocket, machine_id: UUID, token: str = ""):
     """Interactive SSH shell via WebSocket + xterm.js.
 
     Auth via query param: ?token=JWT
-    Bidirectional: client sends keystrokes, server sends terminal output.
     """
     from agflow.auth.jwt import InvalidTokenError, decode_token
 
@@ -255,14 +259,7 @@ async def ws_shell(ws: WebSocket, server_id: UUID, token: str = ""):
     await ws.accept()
 
     try:
-        creds = await infra_servers_service.get_credentials(server_id)
-
-        private_key = None
-        passphrase = None
-        if creds.get("certificate_id"):
-            cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
-            private_key = cert.get("private_key")
-            passphrase = cert.get("passphrase")
+        creds, private_key, passphrase = await _get_ssh_creds(machine_id)
 
         import asyncssh
 
@@ -283,11 +280,10 @@ async def ws_shell(ws: WebSocket, server_id: UUID, token: str = ""):
             process = await conn.create_process(
                 term_type="xterm-256color",
                 term_size=(120, 40),
-                encoding=None,  # binary mode for raw terminal
+                encoding=None,
             )
 
             async def ws_to_ssh():
-                """Forward client keystrokes to SSH stdin."""
                 try:
                     while True:
                         data = await ws.receive_bytes()
@@ -296,7 +292,6 @@ async def ws_shell(ws: WebSocket, server_id: UUID, token: str = ""):
                     process.stdin.write_eof()
 
             async def ssh_to_ws():
-                """Forward SSH stdout to client."""
                 try:
                     while True:
                         data = await process.stdout.read(4096)
@@ -307,7 +302,6 @@ async def ws_shell(ws: WebSocket, server_id: UUID, token: str = ""):
                     pass
 
             async def ssh_stderr_to_ws():
-                """Forward SSH stderr to client."""
                 try:
                     while True:
                         data = await process.stderr.read(4096)
@@ -323,15 +317,14 @@ async def ws_shell(ws: WebSocket, server_id: UUID, token: str = ""):
                 asyncio.create_task(ssh_stderr_to_ws()),
             ]
 
-            # Wait for any task to finish (disconnect or process exit)
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            _done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for t in pending:
                 t.cancel()
 
     except WebSocketDisconnect:
-        _log.info("ws_shell.disconnected", server_id=str(server_id))
+        _log.info("ws_shell.disconnected", machine_id=str(machine_id))
     except Exception as exc:
-        _log.error("ws_shell.error", server_id=str(server_id), error=str(exc))
+        _log.error("ws_shell.error", machine_id=str(machine_id), error=str(exc))
         try:
             await ws.send_bytes(f"\r\n\x1b[31mError: {exc}\x1b[0m\r\n".encode())
         except Exception:
@@ -343,25 +336,18 @@ async def ws_shell(ws: WebSocket, server_id: UUID, token: str = ""):
             pass
 
 
-@router.post("/{server_id}/run-script", dependencies=_admin)
-async def run_script(server_id: UUID, payload: ScriptRunRequest):
+# ── One-shot script run (HTTP) ───────────────────────────
+
+@router.post("/{machine_id}/run-script", dependencies=_admin)
+async def run_script(machine_id: UUID, payload: ScriptRunRequest):
     """Fetch a script manifest from URL, substitute args, execute via SSH."""
     import httpx
 
-    # 1. Get server credentials
     try:
-        creds = await infra_servers_service.get_credentials(server_id)
-    except infra_servers_service.ServerNotFoundError as exc:
+        creds, private_key, passphrase = await _get_ssh_creds(machine_id)
+    except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    private_key = None
-    passphrase = None
-    if creds.get("certificate_id"):
-        cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
-        private_key = cert.get("private_key")
-        passphrase = cert.get("passphrase")
-
-    # 2. Fetch script manifest
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(payload.script_url)
         if resp.status_code != 200:
@@ -375,12 +361,10 @@ async def run_script(server_id: UUID, payload: ScriptRunRequest):
     if not command_template:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Script manifest has no command")
 
-    # 3. Substitute {ARG} placeholders
     command = command_template
     for key, value in payload.args.items():
         command = command.replace(f"{{{key}}}", value)
 
-    # 4. Execute via SSH
     try:
         result = await ssh_executor.exec_command(
             host=creds["host"],
@@ -402,16 +386,34 @@ async def run_script(server_id: UUID, payload: ScriptRunRequest):
     }
 
 
-@router.websocket("/{server_id}/exec")
-async def ws_exec(ws: WebSocket, server_id: UUID, token: str = ""):
+# ── Machine runs history ─────────────────────────────────
+
+@router.get("/{machine_id}/runs", dependencies=_admin)
+async def list_machine_runs(machine_id: UUID, limit: int = 50):
+    return await infra_machines_runs_service.list_by_machine(machine_id, limit=limit)
+
+
+# ── WebSocket exec (streaming + run tracking + auto-provision) ──
+
+@router.websocket("/{machine_id}/exec")
+async def ws_exec(ws: WebSocket, machine_id: UUID, token: str = ""):
     """WebSocket SSH execution with real-time stdout/stderr streaming.
 
     Auth via query param: ?token=JWT
-    Client sends: {"command":"...", "script_url":"...", "args":{...}, "action":"create|destroy"}
-    Server streams: {"type": "stdout|stderr|exit|error|cmd|provisioned", "data": "..."}
 
-    Post-execution: if action=create and exit=0, parses the last JSON line from stdout,
-    reads the SSH key from the server, and auto-creates a certificate + server entry.
+    Initial client payload (JSON):
+      - `action_id` UUID — id of an infra_named_type_actions row (URL looked up from DB).
+      - `script_url` + optional `command` — fallback for ad-hoc scripts (no run tracking)
+      - `args` dict — placeholders to substitute in the command
+
+    Post-execution tag dispatch: if the fetched manifest carries a `tags` array,
+    the last JSON line of stdout is parsed and passed to each tag's handler.
+    Supported tags:
+      - `add_node` : create a child machine (cert + machine row) using the parsed
+        JSON info. The child's type_id is inherited from the parent machine's
+        named_type.sub_type_id.
+
+    Server streams {type, data} messages: stdout, stderr, exit, error, cmd, provisioned, status_changed.
     """
     from agflow.auth.jwt import InvalidTokenError, decode_token
 
@@ -426,6 +428,10 @@ async def ws_exec(ws: WebSocket, server_id: UUID, token: str = ""):
 
     await ws.accept()
 
+    run_id: UUID | None = None
+    triggered_action_name: str | None = None
+    manifest_tags: list[str] = []
+
     try:
         raw = await ws.receive_text()
         payload = json.loads(raw)
@@ -433,8 +439,17 @@ async def ws_exec(ws: WebSocket, server_id: UUID, token: str = ""):
         command = payload.get("command", "")
         script_url = payload.get("script_url")
         args = payload.get("args", {})
-        action = payload.get("action", "")
+        action_id_raw = payload.get("action_id")
 
+        # 1. Resolve script URL and action metadata
+        if action_id_raw:
+            action = await infra_named_type_actions_service.get_by_id(UUID(action_id_raw))
+            script_url = action.url
+            triggered_action_name = action.action_name
+            run_row = await infra_machines_runs_service.start(machine_id, action.id)
+            run_id = run_row.id
+
+        # 2. Fetch manifest and substitute placeholders
         if script_url and not command:
             import httpx
 
@@ -442,30 +457,34 @@ async def ws_exec(ws: WebSocket, server_id: UUID, token: str = ""):
                 resp = await client.get(script_url)
                 if resp.status_code != 200:
                     await ws.send_json({"type": "error", "data": f"Failed to fetch manifest: HTTP {resp.status_code}"})
+                    if run_id:
+                        await infra_machines_runs_service.finish(
+                            run_id, success=False, error_message=f"Manifest HTTP {resp.status_code}",
+                        )
                     await ws.close()
                     return
                 manifest = resp.json()
 
             command = manifest.get("command", "")
+            raw_tags = manifest.get("tags") or []
+            if isinstance(raw_tags, list):
+                manifest_tags = [str(t) for t in raw_tags]
             for key, value in args.items():
                 command = command.replace(f"{{{key}}}", value)
 
         if not command:
             await ws.send_json({"type": "error", "data": "No command to execute"})
+            if run_id:
+                await infra_machines_runs_service.finish(
+                    run_id, success=False, error_message="No command to execute",
+                )
             await ws.close()
             return
 
         await ws.send_json({"type": "cmd", "data": command})
 
-        # Get credentials for the parent server
-        creds = await infra_servers_service.get_credentials(server_id)
-
-        private_key = None
-        passphrase = None
-        if creds.get("certificate_id"):
-            cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
-            private_key = cert.get("private_key")
-            passphrase = cert.get("passphrase")
+        # 3. SSH + stream
+        creds, private_key, passphrase = await _get_ssh_creds(machine_id)
 
         import asyncssh
 
@@ -502,31 +521,50 @@ async def ws_exec(ws: WebSocket, server_id: UUID, token: str = ""):
             exit_code = process.exit_status or 0
             await ws.send_json({"type": "exit", "data": str(exit_code)})
 
-            # ── Post-execution hooks ──
-            if action == "create" and exit_code == 0:
-                await _auto_provision(
-                    ws, conn, server_id, stdout_lines, creds,
-                )
-            elif action == "install" and exit_code == 0:
-                # Parse JSON output and store in metadata
-                output_json = _parse_last_json(stdout_lines)
-                if output_json:
-                    meta_update = {}
-                    for k in ("k3s_version", "node_ready", "ip", "kubeconfig_b64"):
-                        if output_json.get(k):
-                            meta_update[k] = str(output_json[k])
-                    if meta_update:
-                        await _merge_metadata(server_id, meta_update)
-                        await ws.send_json({"type": "stdout", "data": f"\n✓ Metadata sauvegardées: {', '.join(meta_update.keys())}\n"})
+            success = exit_code == 0
 
-                await infra_servers_service.update_status(server_id, "initialized")
-                await ws.send_json({"type": "stdout", "data": "✓ Status → initialized\n"})
-                await ws.send_json({"type": "status_changed", "data": "initialized"})
+            # 4. Post-execution semantic hooks
+            if success:
+                # Tag dispatch — triggered by manifest.tags
+                if manifest_tags:
+                    output_json = _parse_last_json(stdout_lines)
+                    for tag in manifest_tags:
+                        await _handle_tag(tag, ws, conn, machine_id, output_json)
+
+                # Legacy behaviour: install action → mark machine as initialized
+                if triggered_action_name == "install":
+                    output_json = _parse_last_json(stdout_lines)
+                    if output_json:
+                        meta_update = {}
+                        for k in ("k3s_version", "node_ready", "ip", "kubeconfig_b64"):
+                            if output_json.get(k):
+                                meta_update[k] = str(output_json[k])
+                        if meta_update:
+                            await infra_machines_service.merge_metadata(machine_id, meta_update)
+                            await ws.send_json({
+                                "type": "stdout",
+                                "data": f"\n✓ Metadata sauvegardées: {', '.join(meta_update.keys())}\n",
+                            })
+                    await infra_machines_service.update_status(machine_id, "initialized")
+                    await ws.send_json({"type": "stdout", "data": "✓ Status → initialized\n"})
+                    await ws.send_json({"type": "status_changed", "data": "initialized"})
+
+            # 5. Close the run row
+            if run_id:
+                await infra_machines_runs_service.finish(run_id, success=success, exit_code=exit_code)
 
     except WebSocketDisconnect:
-        _log.info("ws_exec.client_disconnected", server_id=str(server_id))
+        _log.info("ws_exec.client_disconnected", machine_id=str(machine_id))
+        if run_id:
+            await infra_machines_runs_service.finish(
+                run_id, success=False, error_message="client disconnected",
+            )
     except Exception as exc:
-        _log.error("ws_exec.error", server_id=str(server_id), error=str(exc))
+        _log.error("ws_exec.error", machine_id=str(machine_id), error=str(exc))
+        if run_id:
+            await infra_machines_runs_service.finish(
+                run_id, success=False, error_message=str(exc),
+            )
         try:
             await ws.send_json({"type": "error", "data": str(exc)})
         except Exception:
@@ -550,30 +588,34 @@ def _parse_last_json(stdout_lines: list[str]) -> dict | None:
     return None
 
 
-async def _merge_metadata(server_id: UUID, updates: dict) -> None:
-    """Merge new keys into the server's existing metadata JSONB."""
-    from agflow.db.pool import fetch_one as _fetch_one
-
-    row = await _fetch_one(
-        "UPDATE infra_servers SET metadata = metadata || $2::jsonb WHERE id = $1 RETURNING id",
-        server_id, json.dumps(updates),
-    )
-    if row:
-        _log.info("merge_metadata", server_id=str(server_id), keys=list(updates.keys()))
-
-
-async def _auto_provision(
+async def _handle_tag(
+    tag: str,
     ws: WebSocket,
-    conn,  # asyncssh connection still open to the parent server
-    parent_server_id: UUID,
-    stdout_lines: list[str],
-    parent_creds: dict,
+    conn,
+    machine_id: UUID,
+    output_json: dict | None,
 ) -> None:
-    """Parse the last JSON line from script output and auto-create cert + server."""
-    output_json = _parse_last_json(stdout_lines)
+    """Dispatch to the tag-specific handler."""
+    if tag == "add_node":
+        await _handle_add_node(ws, conn, machine_id, output_json)
+    else:
+        _log.info("tag.unknown", tag=tag)
 
+
+async def _handle_add_node(
+    ws: WebSocket,
+    conn,  # asyncssh connection still open to the parent machine
+    parent_machine_id: UUID,
+    output_json: dict | None,
+) -> None:
+    """add_node tag : create child cert + machine from the parsed stdout JSON.
+
+    The child machine's type_id is inherited from the parent machine's
+    named_type.sub_type_id. Refuses to create if the parent has no sub_type
+    (respects the "no programmatic modification of infra_types" rule).
+    """
     if not output_json or output_json.get("status") != "ok":
-        _log.info("auto_provision.no_json_output")
+        _log.info("add_node.no_json_output")
         return
 
     ip = output_json.get("ip", "")
@@ -583,23 +625,32 @@ async def _auto_provision(
     ctid = output_json.get("ctid", "")
 
     if not ip:
-        _log.warning("auto_provision.no_ip")
+        _log.warning("add_node.no_ip")
         return
 
-    await ws.send_json({"type": "stdout", "data": f"\n── Auto-provisioning ──\n"})
+    await ws.send_json({"type": "stdout", "data": "\n── add_node ──\n"})
 
-    # 1. Read the SSH private key from the parent server
+    # 1. Find parent's named_type. sub_type_id points directly to the child's
+    # named_type variant (self-reference) — use it as the child machine's type_id.
+    parent_machine = await infra_machines_service.get_by_id(parent_machine_id)
+    parent_named_type = await infra_named_types_service.get_by_id(parent_machine.type_id)
+    if not parent_named_type.sub_type_id:
+        msg = f"La variante '{parent_named_type.name}' n'a pas de sous-type configuré"
+        await ws.send_json({"type": "stderr", "data": f"✗ {msg}\n"})
+        _log.warning("add_node.no_sub_type", parent_named_type_id=str(parent_named_type.id))
+        return
+    child_type_id = parent_named_type.sub_type_id
+
+    # 2. Read the SSH private key from the parent machine
     cert_summary = None
     if ssh_key_path:
         try:
             result = await conn.run(f"cat {ssh_key_path}", check=True, encoding="utf-8")
             priv_key_content = result.stdout.strip()
 
-            # Also read public key
             result_pub = await conn.run(f"cat {ssh_key_path}.pub", check=False, encoding="utf-8")
             pub_key_content = result_pub.stdout.strip() if result_pub.exit_status == 0 else None
 
-            # Detect key type
             key_type = "ed25519" if "ed25519" in priv_key_content.lower() else "rsa"
 
             cert_name = f"lxc-{ctid}-{user}" if ctid else f"{ip}-{user}"
@@ -610,59 +661,46 @@ async def _auto_provision(
                 key_type=key_type,
             )
             await ws.send_json({"type": "stdout", "data": f"✓ Certificat SSH créé: {cert_name} ({key_type})\n"})
-            _log.info("auto_provision.cert_created", name=cert_name, key_type=key_type)
+            _log.info("add_node.cert_created", name=cert_name, key_type=key_type)
         except Exception as exc:
             await ws.send_json({"type": "stderr", "data": f"✗ Lecture clé SSH échouée: {exc}\n"})
-            _log.warning("auto_provision.key_read_failed", path=ssh_key_path, error=str(exc))
+            _log.warning("add_node.key_read_failed", path=ssh_key_path, error=str(exc))
 
-    # 2. Create the new server entry
+    # 3. Create the child machine
     try:
-        # Get the parent server type to find the service type
-        parent_server = await infra_servers_service.get_by_id(parent_server_id)
-        from agflow.services import types_loader
+        machine_name = f"LXC-{ctid}" if ctid else ip
 
-        platform = types_loader.get_platform(parent_server.type)
-        child_type = platform.service if platform else parent_server.type
-
-        # Ensure the child type exists in infra_types
-        from agflow.db.pool import execute
-
-        await execute(
-            "INSERT INTO infra_types (name, type) VALUES ($1, 'service') ON CONFLICT DO NOTHING",
-            child_type,
-        )
-
-        server_name = f"LXC-{ctid}" if ctid else ip
-
-        # Build metadata from script output
         meta = {}
         for k in ("distro", "ip_type", "docker", "ctid"):
             if output_json.get(k):
                 meta[k] = str(output_json[k])
 
-        new_server = await infra_servers_service.create(
-            name=server_name,
-            server_type=child_type,
+        new_machine = await infra_machines_service.create(
+            name=machine_name,
+            type_id=child_type_id,
             host=ip,
             port=22,
             username=user or None,
             password=password or None,
             certificate_id=cert_summary.id if cert_summary else None,
             metadata=meta,
-            parent_id=parent_server_id,
+            parent_id=parent_machine_id,
         )
-        await ws.send_json({"type": "stdout", "data": f"✓ Serveur créé: {server_name} ({ip}:22, user={user})\n"})
+        await ws.send_json({"type": "stdout", "data": f"✓ Machine créée: {machine_name} ({ip}:22, user={user})\n"})
         await ws.send_json({
             "type": "provisioned",
             "data": json.dumps({
-                "server_id": str(new_server.id),
+                "machine_id": str(new_machine.id),
                 "certificate_id": str(cert_summary.id) if cert_summary else None,
-                "name": server_name,
+                "name": machine_name,
                 "host": ip,
                 "user": user,
             }),
         })
-        _log.info("auto_provision.server_created", name=server_name, host=ip, type=child_type)
+        _log.info(
+            "add_node.machine_created",
+            name=machine_name, host=ip, type_id=str(child_type_id),
+        )
     except Exception as exc:
-        await ws.send_json({"type": "stderr", "data": f"✗ Création serveur échouée: {exc}\n"})
-        _log.error("auto_provision.server_create_failed", error=str(exc))
+        await ws.send_json({"type": "stderr", "data": f"✗ Création machine échouée: {exc}\n"})
+        _log.error("add_node.machine_create_failed", error=str(exc))

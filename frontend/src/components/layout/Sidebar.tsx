@@ -82,6 +82,7 @@ export function Sidebar({ open = false, onClose }: Props) {
         { to: "/image-registries", label: t("registries.page_title"), icon: Boxes },
         { to: "/product-catalog", label: t("products.page_title"), icon: Package },
         { to: "/projects", label: t("projects.page_title"), icon: FolderKanban },
+        { to: "/scripts", label: t("scripts.page_title"), icon: FileCode2 },
       ],
     },
     {
@@ -94,8 +95,9 @@ export function Sidebar({ open = false, onClose }: Props) {
     {
       title: t("sidebar.section_infra"),
       items: [
-        { to: "/infra/types", label: t("infra.types_title"), icon: Tags },
-        { to: "/infra/servers", label: t("infra.servers_title"), icon: Server },
+        { to: "/infra/categories", label: t("infra.categories_title"), icon: Tags },
+        { to: "/infra/named-types", label: t("infra.named_types_title"), icon: Tags },
+        { to: "/infra/machines", label: t("infra.machines_title"), icon: Server },
         { to: "/infra/certificates", label: t("infra.certificates_title"), icon: KeyRound },
       ],
     },

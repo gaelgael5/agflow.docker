@@ -17,13 +17,16 @@ from agflow.api.admin.contracts import router as admin_contracts_router
 from agflow.api.admin.discovery_services import router as admin_discovery_router
 from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
 from agflow.api.admin.generations import router as admin_generations_router
+from agflow.api.admin.group_scripts import router as admin_group_scripts_router
+from agflow.api.admin.groups import router as admin_groups_router
 from agflow.api.admin.image_registries import router as admin_image_registries_router
 from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
 from agflow.api.admin.product_instances import router as admin_product_instances_router
 from agflow.api.admin.products import router as admin_products_router
-from agflow.api.admin.groups import router as admin_groups_router
+from agflow.api.admin.project_deployments import router as admin_deployments_router
 from agflow.api.admin.projects import router as admin_projects_router
 from agflow.api.admin.roles import router as admin_roles_router
+from agflow.api.admin.scripts import router as admin_scripts_router
 from agflow.api.admin.secrets import router as admin_secrets_router
 from agflow.api.admin.service_types import router as admin_service_types_router
 from agflow.api.admin.skills_catalog import router as admin_skills_catalog_router
@@ -33,11 +36,11 @@ from agflow.api.admin.user_secrets import router as admin_user_secrets_router
 from agflow.api.admin.users import router as admin_users_router
 from agflow.api.admin.vault import router as admin_vault_router
 from agflow.api.health import router as health_router
+from agflow.api.infra.categories import router as infra_categories_router
 from agflow.api.infra.certificates import router as infra_certificates_router
-from agflow.api.infra.platforms import router as infra_platforms_router
-from agflow.api.infra.servers import router as infra_servers_router
-from agflow.api.infra.services import router as infra_services_router
-from agflow.api.infra.types import router as infra_types_router
+from agflow.api.infra.machines import router as infra_machines_router
+from agflow.api.infra.named_type_actions import router as infra_named_type_actions_router
+from agflow.api.infra.named_types import router as infra_named_types_router
 from agflow.api.public.agents import router as public_agents_router
 from agflow.api.public.containers import router as public_containers_router
 from agflow.api.public.dockerfiles import router as public_dockerfiles_router
@@ -150,14 +153,17 @@ def create_app() -> FastAPI:
     app.include_router(admin_products_router)
     app.include_router(admin_projects_router)
     app.include_router(admin_groups_router)
+    app.include_router(admin_group_scripts_router)
+    app.include_router(admin_scripts_router)
+    app.include_router(admin_deployments_router)
     app.include_router(admin_product_instances_router)
     app.include_router(admin_generations_router)
     app.include_router(admin_users_router)
     app.include_router(admin_api_keys_router)
-    app.include_router(infra_types_router)
-    app.include_router(infra_platforms_router)
-    app.include_router(infra_services_router)
-    app.include_router(infra_servers_router)
+    app.include_router(infra_categories_router)
+    app.include_router(infra_named_types_router)
+    app.include_router(infra_named_type_actions_router)
+    app.include_router(infra_machines_router)
     app.include_router(infra_certificates_router)
     app.include_router(admin_vault_router)
     app.include_router(admin_user_secrets_router)

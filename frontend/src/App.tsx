@@ -13,9 +13,11 @@ import { ProductCatalogPage } from "./pages/ProductCatalogPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { ProductInstancesPage } from "./pages/ProductInstancesPage";
+import { ScriptsPage } from "./pages/ScriptsPage";
+import { InfraCategoriesPage } from "./pages/InfraCategoriesPage";
 import { InfraCertificatesPage } from "./pages/InfraCertificatesPage";
-import { InfraServersPage } from "./pages/InfraServersPage";
-import { InfraTypesPage } from "./pages/InfraTypesPage";
+import { InfraMachinesPage } from "./pages/InfraMachinesPage";
+import { InfraNamedTypesPage } from "./pages/InfraNamedTypesPage";
 import { DiscoveryServicesPage } from "./pages/DiscoveryServicesPage";
 import { MCPCatalogPage } from "./pages/MCPCatalogPage";
 import { SkillsCatalogPage } from "./pages/SkillsCatalogPage";
@@ -128,16 +130,28 @@ export default function App() {
         }
       />
       <Route
-        path="/infra/servers"
-        element={<ProtectedRoute><InfraServersPage /></ProtectedRoute>}
+        path="/scripts"
+        element={
+          <ProtectedRoute>
+            <ScriptsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/infra/machines"
+        element={<ProtectedRoute><InfraMachinesPage /></ProtectedRoute>}
       />
       <Route
         path="/infra/certificates"
         element={<ProtectedRoute><InfraCertificatesPage /></ProtectedRoute>}
       />
       <Route
-        path="/infra/types"
-        element={<ProtectedRoute><InfraTypesPage /></ProtectedRoute>}
+        path="/infra/categories"
+        element={<ProtectedRoute><InfraCategoriesPage /></ProtectedRoute>}
+      />
+      <Route
+        path="/infra/named-types"
+        element={<ProtectedRoute><InfraNamedTypesPage /></ProtectedRoute>}
       />
       <Route
         path="/discovery-services"

@@ -66,6 +66,19 @@ services:
     depends_on: [frontend, backend]
     networks: [agflow]
 
+# http://192.168.10.158:8081/
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: agflow-pgweb
+    restart: unless-stopped
+    environment:
+      PGWEB_DATABASE_URL: postgresql://${POSTGRES_USER:-agflow}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-agflow}?sslmode=disable
+    depends_on:
+      postgres: { condition: service_healthy }
+    ports:
+      - "8081:8081"
+    networks: [agflow]
+
   dozzle-agent:
     image: amir20/dozzle:latest
     container_name: dozzle-agent

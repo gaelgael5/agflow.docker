@@ -1,8 +1,0 @@
-{
-  "name": "LXC",
-  "type": "LXC",
-  "connection": "SSH",
-  "scripts": [
-    "https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/install-docker.json"
-  ]
-}

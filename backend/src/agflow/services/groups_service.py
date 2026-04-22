@@ -28,16 +28,17 @@ def _to_summary(row: dict[str, Any]) -> GroupSummary:
     )
 
 
+_LIST_SQL = """
+    SELECT g.*, coalesce(i.cnt, 0) AS instance_count
+    FROM groups g
+    LEFT JOIN (SELECT group_id, count(*) AS cnt FROM instances GROUP BY group_id) i
+        ON i.group_id = g.id
+"""
+
+
 async def list_by_project(project_id: UUID) -> list[GroupSummary]:
     rows = await fetch_all(
-        """
-        SELECT g.*, coalesce(i.cnt, 0) AS instance_count
-        FROM groups g
-        LEFT JOIN (SELECT group_id, count(*) AS cnt FROM instances GROUP BY group_id) i
-            ON i.group_id = g.id
-        WHERE g.project_id = $1
-        ORDER BY g.name
-        """,
+        _LIST_SQL + " WHERE g.project_id = $1 ORDER BY g.name",
         project_id,
     )
     return [_to_summary(r) for r in rows]
@@ -45,13 +46,7 @@ async def list_by_project(project_id: UUID) -> list[GroupSummary]:
 
 async def get_by_id(group_id: UUID) -> GroupSummary:
     row = await fetch_one(
-        """
-        SELECT g.*, coalesce(i.cnt, 0) AS instance_count
-        FROM groups g
-        LEFT JOIN (SELECT group_id, count(*) AS cnt FROM instances GROUP BY group_id) i
-            ON i.group_id = g.id
-        WHERE g.id = $1
-        """,
+        _LIST_SQL + " WHERE g.id = $1",
         group_id,
     )
     if row is None:

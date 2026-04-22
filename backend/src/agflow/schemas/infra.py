@@ -1,51 +1,69 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-# ── Types ────────────────────────────────────────────────
+# ── Categories ───────────────────────────────────────────
 
-InfraType = Literal["platform", "service"]
-
-
-class TypeRow(BaseModel):
+class CategoryRow(BaseModel):
     name: str
-    category: InfraType = Field(alias="type")
-
-    model_config = {"populate_by_name": True}
+    is_vps: bool = False
 
 
-# ── Platforms (from disk) ────────────────────────────────
-
-class ScriptArg(BaseModel):
-    arg: str
-    label_fr: str = ""
-    description_fr: str = ""
-    type: str = "string"
-    required: bool = True
-
-
-class ScriptManifest(BaseModel):
-    args: list[ScriptArg] = Field(default_factory=list)
-    command: str = ""
-
-
-class PlatformDef(BaseModel):
+class CategoryActionRow(BaseModel):
+    id: UUID
     name: str
-    type: str = ""
-    service: str
-    connection: str = "SSH"
-    scripts: dict[str, list[str]] = Field(default_factory=dict)
 
 
-class ServiceDef(BaseModel):
+# ── Named types (variantes typées, ex. Proxmox/SSH) ──────
+
+class NamedTypeRow(BaseModel):
+    id: UUID
     name: str
-    type: str = ""
-    connection: str = "SSH"
-    scripts: list[str] = Field(default_factory=list)
+    type_id: str
+    type_name: str
+    sub_type_id: UUID | None
+    sub_type_name: str | None
+    connection_type: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class NamedTypeCreate(BaseModel):
+    name: str = Field(min_length=1)
+    type_id: str = Field(min_length=1)
+    sub_type_id: UUID | None = None
+    connection_type: str = Field(min_length=1)
+
+
+class NamedTypeUpdate(BaseModel):
+    name: str | None = None
+    type_id: str | None = None
+    sub_type_id: UUID | None = None
+    connection_type: str | None = None
+
+
+# ── Named type actions (URLs par action de catégorie) ────
+
+class NamedTypeActionRow(BaseModel):
+    id: UUID
+    named_type_id: UUID
+    category_action_id: UUID
+    action_name: str
+    url: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class NamedTypeActionCreate(BaseModel):
+    category_action_id: UUID
+    url: str = Field(min_length=1)
+
+
+class NamedTypeActionUpdate(BaseModel):
+    url: str | None = None
 
 
 # ── Certificates ─────────────────────────────────────────
@@ -81,60 +99,21 @@ class CertificateSummary(BaseModel):
     updated_at: datetime
 
 
-# ── Servers ──────────────────────────────────────────────
-
-class ServerCreate(BaseModel):
-    name: str = ""
-    type: str = Field(min_length=1)
-    host: str = Field(min_length=1)
-    port: int = 22
-    username: str | None = None
-    password: str | None = None
-    certificate_id: UUID | None = None
-
-
-class ServerUpdate(BaseModel):
-    name: str | None = None
-    host: str | None = None
-    port: int | None = None
-    username: str | None = None
-    password: str | None = None
-    certificate_id: UUID | None = None
-
-
-class ServerSummary(BaseModel):
-    id: UUID
-    name: str = ""
-    type: str
-    host: str
-    port: int
-    username: str | None
-    has_password: bool = False
-    certificate_id: UUID | None
-    parent_id: UUID | None = None
-    machine_count: int = 0
-    metadata: dict[str, str] = {}
-    status: str = "not_initialized"
-    created_at: datetime
-    updated_at: datetime
-
-
-# ── Machines ─────────────────────────────────────────────
-
-InstallStatus = Literal["pending", "initializing", "installed", "failed"]
-
+# ── Machines (ex-servers + ex-machines fusionnées) ───────
 
 class MachineCreate(BaseModel):
+    name: str = ""
+    type_id: UUID
     host: str = Field(min_length=1)
     port: int = 22
-    type: str = Field(min_length=1)
-    server_id: UUID | None = None
     username: str | None = None
     password: str | None = None
     certificate_id: UUID | None = None
+    parent_id: UUID | None = None
 
 
 class MachineUpdate(BaseModel):
+    name: str | None = None
     host: str | None = None
     port: int | None = None
     username: str | None = None
@@ -144,31 +123,35 @@ class MachineUpdate(BaseModel):
 
 class MachineSummary(BaseModel):
     id: UUID
+    name: str = ""
+    type_id: UUID
+    type_name: str
+    category: str
     host: str
     port: int
-    type: str
-    server_id: UUID | None
     username: str | None
     has_password: bool = False
     certificate_id: UUID | None
-    install_status: InstallStatus
-    install_step: int
-    install_total: int | None
+    parent_id: UUID | None = None
+    children_count: int = 0
+    metadata: dict[str, str] = {}
+    status: str = "not_initialized"
     created_at: datetime
     updated_at: datetime
 
 
-# ── Machine Metadata ─────────────────────────────────────
+# ── Machine runs (historique d'exécution de scripts) ─────
 
-class MetadataItem(BaseModel):
-    key: str
-    value: str
-    is_sensitive: bool
-
-
-class MetadataUpsert(BaseModel):
-    value: str
-    is_sensitive: bool | None = None
+class MachineRunRow(BaseModel):
+    id: UUID
+    machine_id: UUID
+    action_id: UUID
+    action_name: str
+    started_at: datetime
+    finished_at: datetime | None
+    success: bool | None
+    exit_code: int | None
+    error_message: str | None
 
 
 # ── Script Execution ─────────────────────────────────────

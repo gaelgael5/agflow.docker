@@ -38,13 +38,14 @@ interface PageShellProps {
   children: ReactNode;
   /** max content width — defaults to 6xl (1152px). */
   maxWidth?: "4xl" | "5xl" | "6xl" | "full";
+  className?: string;
 }
 
 /**
  * Standard padded container for admin pages. Use around the entire page
  * content (after the AppLayout main).
  */
-export function PageShell({ children, maxWidth = "6xl" }: PageShellProps) {
+export function PageShell({ children, maxWidth = "6xl", className = "" }: PageShellProps) {
   const maxClass =
     maxWidth === "full"
       ? ""
@@ -54,6 +55,6 @@ export function PageShell({ children, maxWidth = "6xl" }: PageShellProps) {
           ? "max-w-5xl"
           : "max-w-6xl";
   return (
-    <div className={`px-4 md:px-8 py-6 md:py-10 ${maxClass}`}>{children}</div>
+    <div className={`px-4 md:px-8 py-6 md:py-10 ${maxClass} ${className}`}>{children}</div>
   );
 }

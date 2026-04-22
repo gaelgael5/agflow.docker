@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, Download, KeyRound, ShieldPlus, Trash2, Upload } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Copy, Download, Edit2, KeyRound, ShieldPlus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useInfraCertificates } from "@/hooks/useInfra";
-import { infraCertificatesApi } from "@/lib/infraApi";
+import { infraCertificatesApi, type CertificateSummary } from "@/lib/infraApi";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -24,10 +25,12 @@ const textareaClass = "mt-1 flex w-full rounded-md border border-input bg-backgr
 
 export function InfraCertificatesPage() {
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const { certificates, isLoading, createMutation, deleteMutation } = useInfraCertificates();
   const [showGenerate, setShowGenerate] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<CertificateSummary | null>(null);
   const [generatedPublicKey, setGeneratedPublicKey] = useState<{ name: string; key: string } | null>(null);
 
   async function copyPublicKey(id: string) {
@@ -119,28 +122,33 @@ export function InfraCertificatesPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
-                      {c.has_public_key && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title={t("infra.cert_copy_public")}
-                            onClick={() => copyPublicKey(c.id)}
-                          >
-                            <Copy className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title={t("infra.cert_download_public")}
-                            onClick={() => downloadPublicKey(c.id, c.name)}
-                          >
-                            <Download className="w-3 h-3" />
-                          </Button>
-                        </>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title={t("infra.cert_copy_public")}
+                        onClick={() => copyPublicKey(c.id)}
+                      >
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title={t("infra.cert_download_public")}
+                        onClick={() => downloadPublicKey(c.id, c.name)}
+                      >
+                        <Download className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title={t("infra.cert_rename")}
+                        onClick={() => setRenameTarget(c)}
+                      >
+                        <Edit2 className="w-3 h-3" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -196,7 +204,70 @@ export function InfraCertificatesPage() {
           if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id);
         }}
       />
+
+      <RenameDialog
+        target={renameTarget}
+        onClose={() => setRenameTarget(null)}
+        onSubmit={async (id, name) => {
+          await infraCertificatesApi.rename(id, name);
+          qc.invalidateQueries({ queryKey: ["infra-certificates"] });
+          setRenameTarget(null);
+          toast.success(t("infra.cert_renamed"));
+        }}
+        t={t}
+      />
     </PageShell>
+  );
+}
+
+/* ── Rename Dialog ────────────────────────────────────── */
+
+function RenameDialog({ target, onClose, onSubmit, t }: {
+  target: CertificateSummary | null;
+  onClose: () => void;
+  onSubmit: (id: string, name: string) => Promise<void>;
+  t: (key: string) => string;
+}) {
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (target) { setName(target.name); setSaving(false); }
+  }, [target]);
+
+  return (
+    <Dialog open={target !== null} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{t("infra.cert_rename_title")}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-[11px]">{t("infra.cert_name")}</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" autoFocus />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button
+            disabled={!target || !name.trim() || saving || name.trim() === target.name}
+            onClick={async () => {
+              if (!target) return;
+              setSaving(true);
+              try {
+                await onSubmit(target.id, name.trim());
+              } catch (e) {
+                toast.error(String(e));
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {saving ? "..." : t("common.confirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

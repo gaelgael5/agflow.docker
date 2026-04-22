@@ -1,121 +1,177 @@
 import { api } from "./api";
 
-// ── Types ─────────────────────────────────────────────
+// ── Categories ────────────────────────────────────────
 
-export interface InfraType {
+export interface InfraCategory {
   name: string;
-  type: "platform" | "service";
+  is_vps: boolean;
 }
 
-export const infraTypesApi = {
-  async list(type?: "platform" | "service"): Promise<InfraType[]> {
-    const params = type ? `?type=${type}` : "";
-    return (await api.get<InfraType[]>(`/infra/types${params}`)).data;
-  },
-  async create(name: string, type: "platform" | "service"): Promise<InfraType> {
-    return (await api.post<InfraType>("/infra/types", { name, type })).data;
-  },
-  async remove(name: string): Promise<void> {
-    await api.delete(`/infra/types/${name}`);
-  },
-  async reload(): Promise<{ status: string; platforms: number; services: number }> {
-    return (await api.post("/infra/types/reload")).data;
-  },
-};
-
-// ── Platforms ─────────────────────────────────────────
-
-export interface PlatformDef {
-  name: string;
-  type: string;
-  service: string;
-  connection: string;
-  scripts: Record<string, string[]>;
-}
-
-export interface PlatformCreatePayload {
-  name: string;
-  type?: string;
-  service: string;
-  connection?: string;
-  scripts?: Record<string, string[]>;
-}
-
-export const infraPlatformsApi = {
-  async list(): Promise<PlatformDef[]> {
-    return (await api.get<PlatformDef[]>("/infra/platforms")).data;
-  },
-  async get(name: string): Promise<PlatformDef> {
-    return (await api.get<PlatformDef>(`/infra/platforms/${name}`)).data;
-  },
-  async create(p: PlatformCreatePayload): Promise<PlatformDef> {
-    return (await api.post<PlatformDef>("/infra/platforms", p)).data;
-  },
-  async update(name: string, p: PlatformCreatePayload): Promise<PlatformDef> {
-    return (await api.put<PlatformDef>(`/infra/platforms/${encodeURIComponent(name)}`, p)).data;
-  },
-  async remove(name: string): Promise<void> {
-    await api.delete(`/infra/platforms/${encodeURIComponent(name)}`);
-  },
-};
-
-// ── Services ─────────────────────────────────────────
-
-export interface ServiceDef {
-  name: string;
-  type: string;
-  connection: string;
-  scripts: string[];
-}
-
-export interface ServiceCreatePayload {
-  name: string;
-  type?: string;
-  connection?: string;
-  scripts?: string[];
-}
-
-export const infraServicesApi = {
-  async list(): Promise<ServiceDef[]> {
-    return (await api.get<ServiceDef[]>("/infra/services")).data;
-  },
-  async get(name: string): Promise<ServiceDef> {
-    return (await api.get<ServiceDef>(`/infra/services/${name}`)).data;
-  },
-  async create(p: ServiceCreatePayload): Promise<ServiceDef> {
-    return (await api.post<ServiceDef>("/infra/services", p)).data;
-  },
-  async update(name: string, p: ServiceCreatePayload): Promise<ServiceDef> {
-    return (await api.put<ServiceDef>(`/infra/services/${encodeURIComponent(name)}`, p)).data;
-  },
-  async remove(name: string): Promise<void> {
-    await api.delete(`/infra/services/${encodeURIComponent(name)}`);
-  },
-};
-
-// ── Servers ──────────────────────────────────────────
-
-export interface ServerSummary {
+export interface InfraCategoryAction {
   id: string;
   name: string;
-  type: string;
+}
+
+export const infraCategoriesApi = {
+  async list(): Promise<InfraCategory[]> {
+    return (await api.get<InfraCategory[]>("/infra/categories")).data;
+  },
+  async create(name: string, isVps = false): Promise<InfraCategory> {
+    return (await api.post<InfraCategory>("/infra/categories", { name, is_vps: isVps })).data;
+  },
+  async setVps(name: string, isVps: boolean): Promise<InfraCategory> {
+    return (await api.patch<InfraCategory>(
+      `/infra/categories/${encodeURIComponent(name)}`,
+      { is_vps: isVps },
+    )).data;
+  },
+  async remove(name: string): Promise<void> {
+    await api.delete(`/infra/categories/${encodeURIComponent(name)}`);
+  },
+  async listActions(category: string): Promise<InfraCategoryAction[]> {
+    return (await api.get<InfraCategoryAction[]>(
+      `/infra/categories/${encodeURIComponent(category)}/actions`,
+    )).data;
+  },
+  async createAction(category: string, name: string): Promise<InfraCategoryAction> {
+    return (await api.post<InfraCategoryAction>(
+      `/infra/categories/${encodeURIComponent(category)}/actions`,
+      { name },
+    )).data;
+  },
+  async removeAction(category: string, name: string): Promise<void> {
+    await api.delete(
+      `/infra/categories/${encodeURIComponent(category)}/actions/${encodeURIComponent(name)}`,
+    );
+  },
+};
+
+// ── Named Types (variantes : Proxmox/SSH, LXC/SSH) ────
+
+export interface InfraNamedType {
+  id: string;
+  name: string;
+  // type_id is the category name (FK → infra_categories.name)
+  type_id: string;
+  type_name: string;
+  // sub_type_id is a named_type UUID (self-reference)
+  sub_type_id: string | null;
+  sub_type_name: string | null;
+  connection_type: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InfraNamedTypeCreatePayload {
+  name: string;
+  type_id: string;
+  sub_type_id?: string | null;
+  connection_type: string;
+}
+
+export interface InfraNamedTypeUpdatePayload {
+  name?: string;
+  type_id?: string;
+  sub_type_id?: string | null;
+  connection_type?: string;
+}
+
+export const infraNamedTypesApi = {
+  async list(): Promise<InfraNamedType[]> {
+    return (await api.get<InfraNamedType[]>("/infra/named-types")).data;
+  },
+  async get(id: string): Promise<InfraNamedType> {
+    return (await api.get<InfraNamedType>(`/infra/named-types/${id}`)).data;
+  },
+  async create(p: InfraNamedTypeCreatePayload): Promise<InfraNamedType> {
+    return (await api.post<InfraNamedType>("/infra/named-types", p)).data;
+  },
+  async update(id: string, p: InfraNamedTypeUpdatePayload): Promise<InfraNamedType> {
+    return (await api.put<InfraNamedType>(`/infra/named-types/${id}`, p)).data;
+  },
+  async remove(id: string): Promise<void> {
+    await api.delete(`/infra/named-types/${id}`);
+  },
+};
+
+// ── Named Type Actions (URL par action × named_type) ──
+
+export interface InfraNamedTypeAction {
+  id: string;
+  named_type_id: string;
+  category_action_id: string;
+  action_name: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const infraNamedTypeActionsApi = {
+  async list(namedTypeId: string): Promise<InfraNamedTypeAction[]> {
+    return (await api.get<InfraNamedTypeAction[]>(
+      `/infra/named-types/${namedTypeId}/actions`,
+    )).data;
+  },
+  async create(
+    namedTypeId: string,
+    categoryActionId: string,
+    url: string,
+  ): Promise<InfraNamedTypeAction> {
+    return (await api.post<InfraNamedTypeAction>(
+      `/infra/named-types/${namedTypeId}/actions`,
+      { category_action_id: categoryActionId, url },
+    )).data;
+  },
+  async update(
+    namedTypeId: string,
+    actionId: string,
+    url: string,
+  ): Promise<InfraNamedTypeAction> {
+    return (await api.put<InfraNamedTypeAction>(
+      `/infra/named-types/${namedTypeId}/actions/${actionId}`,
+      { url },
+    )).data;
+  },
+  async remove(namedTypeId: string, actionId: string): Promise<void> {
+    await api.delete(`/infra/named-types/${namedTypeId}/actions/${actionId}`);
+  },
+};
+
+// ── Machines (fusion des ex-servers + ex-machines) ────
+
+export interface MachineSummary {
+  id: string;
+  name: string;
+  type_id: string;
+  type_name: string;
+  category: string;
   host: string;
   port: number;
   username: string | null;
   has_password: boolean;
   certificate_id: string | null;
   parent_id: string | null;
-  machine_count: number;
+  children_count: number;
   metadata: Record<string, string>;
   status: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface ServerCreatePayload {
+export interface MachineCreatePayload {
   name?: string;
-  type: string;
+  type_id: string;
   host: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  certificate_id?: string;
+  parent_id?: string;
+}
+
+export interface MachineUpdatePayload {
+  name?: string;
+  host?: string;
   port?: number;
   username?: string;
   password?: string;
@@ -156,33 +212,51 @@ export interface ScriptRunResult {
   command: string;
 }
 
-export const infraServersApi = {
-  async list(): Promise<ServerSummary[]> {
-    return (await api.get<ServerSummary[]>("/infra/servers")).data;
+export interface MachineRun {
+  id: string;
+  machine_id: string;
+  action_id: string;
+  action_name: string;
+  started_at: string;
+  finished_at: string | null;
+  success: boolean | null;
+  exit_code: number | null;
+  error_message: string | null;
+}
+
+export const infraMachinesApi = {
+  async list(): Promise<MachineSummary[]> {
+    return (await api.get<MachineSummary[]>("/infra/machines")).data;
   },
-  async create(p: ServerCreatePayload): Promise<ServerSummary> {
-    return (await api.post<ServerSummary>("/infra/servers", p)).data;
+  async create(p: MachineCreatePayload): Promise<MachineSummary> {
+    return (await api.post<MachineSummary>("/infra/machines", p)).data;
   },
-  async update(id: string, p: ServerCreatePayload): Promise<ServerSummary> {
-    return (await api.put<ServerSummary>(`/infra/servers/${id}`, p)).data;
+  async update(id: string, p: MachineUpdatePayload): Promise<MachineSummary> {
+    return (await api.put<MachineSummary>(`/infra/machines/${id}`, p)).data;
   },
   async remove(id: string): Promise<void> {
-    await api.delete(`/infra/servers/${id}`);
+    await api.delete(`/infra/machines/${id}`);
   },
-  async listContainers(id: string): Promise<{ containers: DockerContainer[]; server_id: string }> {
-    return (await api.get(`/infra/servers/${id}/containers`)).data;
+  async listContainers(id: string): Promise<{ containers: DockerContainer[]; machine_id: string }> {
+    return (await api.get(`/infra/machines/${id}/containers`)).data;
   },
-  async healthCheck(id: string): Promise<{ healthy: boolean; state: string; server_id: string }> {
-    return (await api.get(`/infra/servers/${id}/health`)).data;
+  async healthCheck(id: string): Promise<{ healthy: boolean; state: string; machine_id: string }> {
+    return (await api.get(`/infra/machines/${id}/health`)).data;
   },
   async testConnection(id: string): Promise<{ success: boolean; message: string }> {
-    return (await api.post(`/infra/servers/${id}/test-connection`)).data;
+    return (await api.post(`/infra/machines/${id}/test-connection`)).data;
   },
   async runScript(id: string, scriptUrl: string, args: Record<string, string>): Promise<ScriptRunResult> {
-    return (await api.post<ScriptRunResult>(`/infra/servers/${id}/run-script`, { script_url: scriptUrl, args })).data;
+    return (await api.post<ScriptRunResult>(
+      `/infra/machines/${id}/run-script`,
+      { script_url: scriptUrl, args },
+    )).data;
   },
   async fetchManifest(url: string): Promise<ScriptManifest> {
-    return (await api.get<ScriptManifest>(`/infra/servers/manifest`, { params: { url } })).data;
+    return (await api.get<ScriptManifest>(`/infra/machines/manifest`, { params: { url } })).data;
+  },
+  async listRuns(id: string, limit = 50): Promise<MachineRun[]> {
+    return (await api.get<MachineRun[]>(`/infra/machines/${id}/runs`, { params: { limit } })).data;
   },
 };
 
@@ -226,6 +300,9 @@ export const infraCertificatesApi = {
   },
   async generate(p: CertificateGeneratePayload): Promise<CertificateGenerateResult> {
     return (await api.post<CertificateGenerateResult>("/infra/certificates/generate", p)).data;
+  },
+  async rename(id: string, name: string): Promise<CertificateSummary> {
+    return (await api.put<CertificateSummary>(`/infra/certificates/${id}`, { name })).data;
   },
   async getPublicKey(id: string): Promise<string> {
     return (await api.get<string>(`/infra/certificates/${id}/public-key`)).data;

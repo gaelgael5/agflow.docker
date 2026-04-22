@@ -77,13 +77,36 @@ async def get_by_id(cert_id: UUID) -> CertificateSummary:
 
 
 async def get_public_key(cert_id: UUID) -> str | None:
-    """Return the public key (plain text) if available."""
+    """Return the public key (plain text). Derive from the private key if not stored."""
     row = await fetch_one(
-        "SELECT public_key FROM infra_certificates WHERE id = $1", cert_id,
+        "SELECT public_key, private_key, passphrase FROM infra_certificates WHERE id = $1",
+        cert_id,
     )
     if row is None:
         raise CertificateNotFoundError(f"Certificate {cert_id} not found")
-    return row["public_key"]
+
+    stored = row.get("public_key")
+    if stored:
+        return stored
+
+    # Derive on the fly from the private key.
+    encrypted_private = row.get("private_key")
+    if not encrypted_private:
+        return None
+    try:
+        priv_pem = crypto_service.decrypt(encrypted_private)
+        passphrase_plain = crypto_service.decrypt(row.get("passphrase"))
+        priv_bytes = priv_pem.encode()
+        pwd = passphrase_plain.encode() if passphrase_plain else None
+        private_key = serialization.load_ssh_private_key(priv_bytes, password=pwd)
+        public_ssh = private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.OpenSSH,
+            format=serialization.PublicFormat.OpenSSH,
+        ).decode()
+        return public_ssh
+    except Exception as exc:
+        _log.warning("infra_certificates.derive_public_key_failed", id=str(cert_id), error=str(exc))
+        return None
 
 
 async def get_decrypted(cert_id: UUID) -> dict[str, Any]:

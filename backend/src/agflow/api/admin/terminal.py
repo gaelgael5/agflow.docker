@@ -1,6 +1,6 @@
 """Interactive terminal for Docker containers via SSH + docker exec.
 
-Same approach as infra/servers shell: WebSocket → asyncssh → docker exec -ti.
+Same approach as infra/machines shell: WebSocket → asyncssh → docker exec -ti.
 Works for local containers (SSH to localhost) and remote containers (SSH to host).
 """
 from __future__ import annotations

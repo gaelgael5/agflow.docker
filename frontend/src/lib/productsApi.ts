@@ -50,7 +50,68 @@ export const productsApi = {
   async updateRecipe(id: string, recipeYaml: string): Promise<ProductDetail> {
     return (await api.put<ProductDetail>(`/admin/products/${id}/recipe`, { recipe_yaml: recipeYaml })).data;
   },
+  async getVariables(id: string): Promise<ProductVariablesResult> {
+    return (await api.get<ProductVariablesResult>(`/admin/products/${id}/variables`)).data;
+  },
   async remove(id: string): Promise<void> {
     await api.delete(`/admin/products/${id}`);
   },
 };
+
+export interface ProductVariable {
+  name: string;
+  description: string;
+  type: "variable" | "secret";
+  syntax: string;
+  required: boolean;
+  default: string;
+  generate?: string | null;
+  undeclared?: boolean;
+}
+
+export interface SharedDep {
+  name: string;
+  property: string;
+  syntax: string;
+}
+
+export interface ProductConnector {
+  name: string;
+  description: string;
+  package: string;
+  runtime: string;
+  transport: string;
+  status: string;
+  env: Record<string, string>;
+}
+
+export interface ProductComputed {
+  path: string;
+  description: string;
+}
+
+export interface ProductApiDef {
+  source: string;
+  url: string;
+  base_url: string;
+  auth_header: string;
+  auth_prefix: string;
+  auth_secret_ref: string;
+}
+
+export interface ProductService {
+  id: string;
+  image: string;
+  ports: number[];
+  requires_services: string[];
+}
+
+export interface ProductVariablesResult {
+  product_id: string;
+  variables: ProductVariable[];
+  connectors: ProductConnector[];
+  computed: ProductComputed[];
+  api: ProductApiDef | null;
+  services: ProductService[];
+  shared_deps: SharedDep[];
+}

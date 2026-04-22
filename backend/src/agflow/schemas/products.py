@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -65,13 +67,12 @@ class ProductDetail(ProductSummary):
     recipe_yaml: str = ""
 
 
-# ── Projects ─────────────────────────────────────────────
+# ── Projects (logique) ──────────────────────────────────
 
 Environment = Literal["dev", "staging", "prod"]
 
 
 class ProjectCreate(BaseModel):
-    id: str = Field(min_length=1, max_length=64)
     display_name: str = Field(min_length=1, max_length=200)
     description: str = ""
     environment: Environment = "dev"
@@ -86,41 +87,64 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectSummary(BaseModel):
-    id: str
+    id: UUID
     display_name: str
     description: str
     environment: Environment
     tags: list[str] = Field(default_factory=list)
+    group_count: int = 0
+    created_at: datetime
+    updated_at: datetime
 
 
-# ── Product Instances ────────────────────────────────────
+# ── Groups (logique) ────────────────────────────────────
+
+class GroupCreate(BaseModel):
+    project_id: UUID
+    name: str = Field(min_length=1, max_length=200)
+    max_agents: int = 0
+
+
+class GroupUpdate(BaseModel):
+    name: str | None = None
+    max_agents: int | None = None
+
+
+class GroupSummary(BaseModel):
+    id: UUID
+    project_id: UUID
+    name: str
+    max_agents: int = 0
+    instance_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── Instances (logique) ─────────────────────────────────
 
 InstanceStatus = Literal["draft", "active", "stopped"]
 
 
 class InstanceCreate(BaseModel):
+    group_id: UUID
     instance_name: str = Field(min_length=1, max_length=128)
     catalog_id: str = Field(min_length=1)
-    project_id: str = Field(min_length=1)
     variables: dict[str, str] = Field(default_factory=dict)
-    secret_refs: dict[str, str] = Field(default_factory=dict)
-    service_role: str | None = None
 
 
 class InstanceUpdate(BaseModel):
+    instance_name: str | None = None
     variables: dict[str, str] | None = None
-    secret_refs: dict[str, str] | None = None
-    service_role: str | None = None
     service_url: str | None = None
 
 
 class InstanceSummary(BaseModel):
-    id: str
+    id: UUID
+    group_id: UUID
     instance_name: str
     catalog_id: str
-    project_id: str
     variables: dict[str, str] = Field(default_factory=dict)
-    secret_refs: dict[str, str] = Field(default_factory=dict)
-    service_role: str | None = None
     status: InstanceStatus = "draft"
     service_url: str | None = None
+    created_at: datetime
+    updated_at: datetime

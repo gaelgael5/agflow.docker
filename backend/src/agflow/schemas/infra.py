@@ -111,6 +111,7 @@ class ServerSummary(BaseModel):
     username: str | None
     has_password: bool = False
     certificate_id: UUID | None
+    parent_id: UUID | None = None
     machine_count: int = 0
     metadata: dict[str, str] = {}
     status: str = "not_initialized"

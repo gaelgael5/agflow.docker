@@ -94,6 +94,12 @@ EOF
 
 systemctl enable docker
 systemctl restart docker
+
+# Ajouter l'utilisateur agflow au groupe docker (s'il existe)
+if id agflow &>/dev/null; then
+    usermod -aG docker agflow
+    echo "  -> agflow ajouté au groupe docker"
+fi
 echo "  -> OK"
 
 # ── 6. Caddy reverse proxy (TLS interne) ─────────────────────────────────────

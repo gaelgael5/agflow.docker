@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2 } from "lucide-react";
-import { useProjects } from "@/hooks/useProjects";
+import { FolderKanban, Plus, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { projectsApi, type ProjectCreatePayload } from "@/lib/projectsApi";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -21,9 +23,21 @@ const ENV_COLORS: Record<string, string> = {
 
 export function ProjectsPage() {
   const { t } = useTranslation();
-  const { projects, isLoading, createMutation, deleteMutation } = useProjects();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const listQuery = useQuery({ queryKey: ["projects"], queryFn: () => projectsApi.list() });
+  const createMutation = useMutation({
+    mutationFn: (p: ProjectCreatePayload) => projectsApi.create(p),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => projectsApi.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+  });
+
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const projects = listQuery.data ?? [];
 
   return (
     <PageShell>
@@ -39,35 +53,39 @@ export function ProjectsPage() {
       />
 
       <Card className="overflow-hidden">
-        {isLoading ? (
+        {listQuery.isLoading ? (
           <div className="p-6 space-y-3">
             <Skeleton className="h-6 w-1/3" />
             <Skeleton className="h-6 w-1/2" />
           </div>
-        ) : (projects ?? []).length === 0 ? (
+        ) : projects.length === 0 ? (
           <p className="text-muted-foreground italic p-6">{t("projects.no_projects")}</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t("projects.col_id")}</TableHead>
                 <TableHead>{t("projects.col_name")}</TableHead>
                 <TableHead>{t("projects.col_env")}</TableHead>
+                <TableHead>{t("projects.col_groups")}</TableHead>
                 <TableHead className="text-right">{t("projects.col_actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(projects ?? []).map((p) => (
-                <TableRow key={p.id}>
+              {projects.map((p) => (
+                <TableRow
+                  key={p.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => navigate(`/projects/${p.id}`)}
+                >
                   <TableCell>
-                    <code className="text-[12px]">{p.id}</code>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <span className="font-medium">{p.display_name}</span>
-                      {p.description && (
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{p.description}</p>
-                      )}
+                    <div className="flex items-center gap-2">
+                      <FolderKanban className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <span className="font-medium">{p.display_name}</span>
+                        {p.description && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{p.description}</p>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -75,11 +93,16 @@ export function ProjectsPage() {
                       {p.environment}
                     </Badge>
                   </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-[10px]">
+                      {p.group_count} {t("projects.groups")}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => setDeleteTarget({ id: p.id, name: p.display_name })}
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: p.id, name: p.display_name }); }}
                     >
                       <Trash2 className="w-3.5 h-3.5 text-destructive" />
                     </Button>
@@ -97,13 +120,18 @@ export function ProjectsPage() {
         title={t("projects.dialog_title")}
         fields={[
           { name: "display_name", label: t("projects.field_name"), required: true },
-          { name: "id", label: t("projects.field_id"), required: true, autoSlugFrom: "display_name", slugSeparator: "-", monospace: true },
           { name: "description", label: t("projects.field_description") },
-          { name: "environment", label: t("projects.field_environment"), defaultValue: "dev" },
+          {
+            name: "environment", label: t("projects.field_environment"), defaultValue: "dev",
+            options: [
+              { value: "dev", label: "Dev" },
+              { value: "staging", label: "Staging" },
+              { value: "prod", label: "Prod" },
+            ],
+          },
         ]}
         onSubmit={async (values) => {
           await createMutation.mutateAsync({
-            id: values.id ?? "",
             display_name: values.display_name ?? "",
             description: values.description ?? "",
             environment: (values.environment as "dev" | "staging" | "prod") ?? "dev",

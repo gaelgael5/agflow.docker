@@ -1,9 +1,14 @@
+"""Interactive terminal for Docker containers via SSH + docker exec.
+
+Same approach as infra/servers shell: WebSocket → asyncssh → docker exec -ti.
+Works for local containers (SSH to localhost) and remote containers (SSH to host).
+"""
 from __future__ import annotations
 
 import asyncio
 import contextlib
 
-import aiodocker
+import asyncssh
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -19,75 +24,78 @@ router = APIRouter(
 async def container_terminal(ws: WebSocket, container_id: str) -> None:
     await ws.accept()
 
-    docker = aiodocker.Docker()
     try:
-        try:
-            container = await docker.containers.get(container_id)
-        except aiodocker.exceptions.DockerError as exc:
-            if exc.status == 404:
-                await ws.close(code=4004, reason="Container not found")
-                return
-            raise
+        # SSH to the Docker host to run docker exec.
+        # From inside the backend container, the host is at the Docker gateway.
+        import os
 
-        info = await container.show()
-        if not info.get("State", {}).get("Running", False):
-            await ws.close(code=4009, reason="Container not running")
-            return
+        host = os.environ.get("DOCKER_HOST_SSH", "172.20.0.1")
+        port = 22
+        username = "root"
+        key_path = "/app/.ssh/backend_key"
 
-        exec_inst = await container.exec(
-            cmd=["/bin/sh"],
-            stdin=True,
-            stdout=True,
-            stderr=True,
-            tty=True,
-        )
+        conn_kwargs: dict = {
+            "host": host,
+            "port": port,
+            "username": username,
+            "known_hosts": None,
+        }
+        if os.path.exists(key_path):
+            conn_kwargs["client_keys"] = [asyncssh.read_private_key(key_path)]
 
-        stream = exec_inst.start()
-        async with stream:
-            _log.info(
-                "terminal.open",
-                container_id=container_id[:12],
-                container_name=(info.get("Name") or "").lstrip("/"),
+        async with asyncssh.connect(**conn_kwargs) as conn:
+            command = f"docker exec -ti {container_id} /bin/sh"
+
+            process = await conn.create_process(
+                command,
+                term_type="xterm-256color",
+                term_size=(120, 40),
+                encoding=None,
             )
 
-            async def _read_exec() -> None:
+            _log.info("terminal.open", container_id=container_id[:12], host=host)
+
+            async def ssh_to_ws():
                 try:
                     while True:
-                        msg = await stream.read_out()
-                        if msg is None:
+                        data = await process.stdout.read(4096)
+                        if not data:
                             break
-                        await ws.send_bytes(msg.data)
+                        await ws.send_bytes(data)
                 except (asyncio.CancelledError, WebSocketDisconnect):
                     pass
                 except Exception as exc:
                     _log.warning("terminal.read_error", error=str(exc))
 
-            async def _write_exec() -> None:
+            async def ws_to_ssh():
                 try:
                     while True:
                         data = await ws.receive_bytes()
-                        await stream.write_in(data)
+                        process.stdin.write(data)
                 except (WebSocketDisconnect, asyncio.CancelledError):
-                    pass
+                    process.stdin.write_eof()
                 except Exception as exc:
                     _log.warning("terminal.write_error", error=str(exc))
 
-            read_task = asyncio.create_task(_read_exec())
-            write_task = asyncio.create_task(_write_exec())
+            async def ssh_stderr_to_ws():
+                try:
+                    while True:
+                        data = await process.stderr.read(4096)
+                        if not data:
+                            break
+                        await ws.send_bytes(data)
+                except (asyncio.CancelledError, WebSocketDisconnect):
+                    pass
 
-            try:
-                done, pending = await asyncio.wait(
-                    {read_task, write_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                for t in pending:
-                    t.cancel()
-                for t in done:
-                    if t.exception() is not None:
-                        _log.warning("terminal.task_error", error=str(t.exception()))
-            except Exception:
-                read_task.cancel()
-                write_task.cancel()
+            tasks = [
+                asyncio.create_task(ssh_to_ws()),
+                asyncio.create_task(ws_to_ssh()),
+                asyncio.create_task(ssh_stderr_to_ws()),
+            ]
+
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
 
         _log.info("terminal.close", container_id=container_id[:12])
 
@@ -96,6 +104,6 @@ async def container_terminal(ws: WebSocket, container_id: str) -> None:
     except Exception as exc:
         _log.error("terminal.error", error=str(exc))
         with contextlib.suppress(Exception):
+            await ws.send_bytes(f"\r\n\x1b[31mError: {exc}\x1b[0m\r\n".encode())
+        with contextlib.suppress(Exception):
             await ws.close(code=4500, reason="Internal error")
-    finally:
-        await docker.close()

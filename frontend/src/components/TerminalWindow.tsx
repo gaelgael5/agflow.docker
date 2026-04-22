@@ -8,13 +8,13 @@ import {
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { bringToFront } from "@/lib/utils";
 import "@xterm/xterm/css/xterm.css";
 
 export interface TerminalWindowProps {
-  containerId: string;
+  containerId?: string;
   containerName: string;
+  wsUrl?: string;
   onClose: () => void;
 }
 
@@ -23,6 +23,7 @@ const STORAGE_KEY = "agflow.terminal.position";
 export function TerminalWindow({
   containerId,
   containerName,
+  wsUrl: wsUrlProp,
   onClose,
 }: TerminalWindowProps) {
   const termRef = useRef<HTMLDivElement>(null);
@@ -70,18 +71,14 @@ export function TerminalWindow({
   const initTerminal = useCallback(() => {
     if (!termRef.current || xtermRef.current) return;
 
-    const isDark = document.documentElement.classList.contains("dark");
-    const bg = isDark ? "hsl(240, 6%, 12%)" : "hsl(240, 5%, 96%)";
-    const fg = isDark ? "hsl(0, 0%, 98%)" : "hsl(240, 10%, 10%)";
-
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
       theme: {
-        background: bg,
-        foreground: fg,
-        cursor: fg,
+        background: "#0a0a0a",
+        foreground: "#e4e4e7",
+        cursor: "#e4e4e7",
         selectionBackground: "rgba(128,128,128,0.3)",
       },
     });
@@ -94,7 +91,7 @@ export function TerminalWindow({
     fitRef.current = fit;
 
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${proto}//${window.location.host}/api/admin/containers/${containerId}/terminal`;
+    const wsUrl = wsUrlProp ?? `${proto}//${window.location.host}/api/admin/containers/${containerId}/terminal`;
     const ws = new WebSocket(wsUrl);
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
@@ -130,7 +127,7 @@ export function TerminalWindow({
     });
 
     term.focus();
-  }, [containerId, containerName]);
+  }, [containerId, containerName, wsUrlProp]);
 
   useEffect(() => {
     initTerminal();
@@ -205,7 +202,7 @@ export function TerminalWindow({
 
   return (
     <div
-      className="fixed flex flex-col rounded-lg border bg-background shadow-2xl overflow-hidden"
+      className="fixed flex flex-col rounded-lg border border-zinc-700 bg-[#0a0a0a] shadow-2xl overflow-hidden"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
@@ -217,20 +214,18 @@ export function TerminalWindow({
     >
       {/* Header */}
       <div
-        className="flex items-center justify-between px-3 py-1.5 bg-muted/60 border-b cursor-move select-none shrink-0"
+        className="flex items-center justify-between px-3 py-1.5 bg-zinc-900 border-b border-zinc-700 cursor-move select-none shrink-0"
         onMouseDown={onHeaderMouseDown}
       >
-        <span className="text-xs font-mono text-muted-foreground truncate">
+        <span className="text-xs font-mono text-zinc-400 truncate">
           Terminal — {containerName}
         </span>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-5 w-5 shrink-0"
+        <button
+          className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
           onClick={onClose}
         >
-          <X className="w-3.5 h-3.5" />
-        </Button>
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Terminal */}
@@ -238,14 +233,11 @@ export function TerminalWindow({
 
       {/* Resize handle */}
       <div
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+        className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize flex items-end justify-end p-0.5"
         onMouseDown={onResizeMouseDown}
       >
-        <svg
-          viewBox="0 0 16 16"
-          className="w-full h-full text-muted-foreground/40"
-        >
-          <path d="M14 14L14 8M14 14L8 14" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <svg viewBox="0 0 16 16" className="w-4 h-4 text-zinc-500">
+          <path d="M14 14L14 6M14 14L6 14M10 14L14 10" stroke="currentColor" strokeWidth="1.5" fill="none" />
         </svg>
       </div>
     </div>

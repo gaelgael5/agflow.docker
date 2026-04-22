@@ -11,7 +11,6 @@ import {
   Globe,
   Key,
   KeyRound,
-  Layers,
   Lock,
   Package,
   Palette,
@@ -83,7 +82,6 @@ export function Sidebar({ open = false, onClose }: Props) {
         { to: "/image-registries", label: t("registries.page_title"), icon: Boxes },
         { to: "/product-catalog", label: t("products.page_title"), icon: Package },
         { to: "/projects", label: t("projects.page_title"), icon: FolderKanban },
-        { to: "/product-instances", label: t("instances.page_title"), icon: Layers },
       ],
     },
     {

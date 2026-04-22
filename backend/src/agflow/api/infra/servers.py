@@ -106,6 +106,44 @@ async def test_connection(server_id: UUID):
     )
 
 
+@router.get("/{server_id}/containers", dependencies=_admin)
+async def list_containers(server_id: UUID):
+    """List Docker containers running on this server via SSH."""
+    try:
+        server = await infra_servers_service.get_by_id(server_id)
+    except infra_servers_service.ServerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    creds = await infra_servers_service.get_credentials(server_id)
+    private_key = None
+    passphrase = None
+    if creds.get("certificate_id"):
+        cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
+        private_key = cert.get("private_key")
+        passphrase = cert.get("passphrase")
+
+    try:
+        result = await ssh_executor.exec_command(
+            host=creds["host"], port=creds["port"],
+            username=creds["username"], password=creds["password"],
+            private_key=private_key, passphrase=passphrase,
+            command='sudo docker ps -a --format \'{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","status":"{{.Status}}","state":"{{.State}}","ports":"{{.Ports}}"}\'',
+        )
+    except ssh_executor.SSHConnectionError as exc:
+        return {"containers": [], "error": str(exc)}
+
+    containers = []
+    for line in (result.get("stdout") or "").strip().split("\n"):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                containers.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+
+    return {"containers": containers, "server_id": str(server_id)}
+
+
 @router.get("/{server_id}/health", dependencies=_admin)
 async def health_check(server_id: UUID):
     """Check server health — auto-detects K3s (port 6443) or Docker (SSH)."""
@@ -122,6 +160,7 @@ async def health_check(server_id: UUID):
 
     state = "down"
     detail = ""
+    status_code = 0
 
     if has_k3s:
         # K3s: check HTTPS API port 6443
@@ -164,7 +203,7 @@ async def health_check(server_id: UUID):
             detail = str(exc)
 
     else:
-        # No K3s or Docker metadata — try SSH connectivity
+        # No K3s or Docker metadata — SSH only (no service installed yet)
         try:
             creds = await infra_servers_service.get_credentials(server_id)
             private_key = None
@@ -179,20 +218,129 @@ async def health_check(server_id: UUID):
                 username=creds["username"], password=creds["password"],
                 private_key=private_key, passphrase=passphrase,
             )
-            state = "healthy" if result.get("success") else "down"
+            state = "ssh_ok" if result.get("success") else "down"
             detail = result.get("message", "")
         except Exception as exc:
             detail = str(exc)
 
     healthy = state == "healthy"
 
-    # Sync DB status
-    if healthy and server.status != "initialized":
+    # Sync DB status — only for K3s/Docker checks, not SSH-only
+    if state in ("healthy",) and server.status != "initialized":
         await infra_servers_service.update_status(server_id, "initialized")
-    elif not healthy and server.status == "initialized":
+    elif state in ("down", "starting", "ssh_ok") and server.status == "initialized":
         await infra_servers_service.update_status(server_id, "not_initialized")
 
     return {"healthy": healthy, "state": state, "status_code": status_code, "detail": detail, "server_id": str(server_id)}
+
+
+@router.websocket("/{server_id}/shell")
+async def ws_shell(ws: WebSocket, server_id: UUID, token: str = ""):
+    """Interactive SSH shell via WebSocket + xterm.js.
+
+    Auth via query param: ?token=JWT
+    Bidirectional: client sends keystrokes, server sends terminal output.
+    """
+    from agflow.auth.jwt import InvalidTokenError, decode_token
+
+    if not token:
+        await ws.close(code=4001, reason="Missing token")
+        return
+    try:
+        decode_token(token)
+    except InvalidTokenError:
+        await ws.close(code=4001, reason="Invalid token")
+        return
+
+    await ws.accept()
+
+    try:
+        creds = await infra_servers_service.get_credentials(server_id)
+
+        private_key = None
+        passphrase = None
+        if creds.get("certificate_id"):
+            cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
+            private_key = cert.get("private_key")
+            passphrase = cert.get("passphrase")
+
+        import asyncssh
+
+        conn_kwargs: dict = {
+            "host": creds["host"],
+            "port": creds["port"],
+            "known_hosts": None,
+        }
+        if creds.get("username"):
+            conn_kwargs["username"] = creds["username"]
+        if creds.get("password"):
+            conn_kwargs["password"] = creds["password"]
+        if private_key:
+            key = asyncssh.import_private_key(private_key, passphrase)
+            conn_kwargs["client_keys"] = [key]
+
+        async with asyncssh.connect(**conn_kwargs) as conn:
+            process = await conn.create_process(
+                term_type="xterm-256color",
+                term_size=(120, 40),
+                encoding=None,  # binary mode for raw terminal
+            )
+
+            async def ws_to_ssh():
+                """Forward client keystrokes to SSH stdin."""
+                try:
+                    while True:
+                        data = await ws.receive_bytes()
+                        process.stdin.write(data)
+                except (WebSocketDisconnect, Exception):
+                    process.stdin.write_eof()
+
+            async def ssh_to_ws():
+                """Forward SSH stdout to client."""
+                try:
+                    while True:
+                        data = await process.stdout.read(4096)
+                        if not data:
+                            break
+                        await ws.send_bytes(data)
+                except Exception:
+                    pass
+
+            async def ssh_stderr_to_ws():
+                """Forward SSH stderr to client."""
+                try:
+                    while True:
+                        data = await process.stderr.read(4096)
+                        if not data:
+                            break
+                        await ws.send_bytes(data)
+                except Exception:
+                    pass
+
+            tasks = [
+                asyncio.create_task(ws_to_ssh()),
+                asyncio.create_task(ssh_to_ws()),
+                asyncio.create_task(ssh_stderr_to_ws()),
+            ]
+
+            # Wait for any task to finish (disconnect or process exit)
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
+
+    except WebSocketDisconnect:
+        _log.info("ws_shell.disconnected", server_id=str(server_id))
+    except Exception as exc:
+        _log.error("ws_shell.error", server_id=str(server_id), error=str(exc))
+        try:
+            await ws.send_bytes(f"\r\n\x1b[31mError: {exc}\x1b[0m\r\n".encode())
+        except Exception:
+            pass
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 @router.post("/{server_id}/run-script", dependencies=_admin)
@@ -501,6 +649,7 @@ async def _auto_provision(
             password=password or None,
             certificate_id=cert_summary.id if cert_summary else None,
             metadata=meta,
+            parent_id=parent_server_id,
         )
         await ws.send_json({"type": "stdout", "data": f"✓ Serveur créé: {server_name} ({ip}:22, user={user})\n"})
         await ws.send_json({

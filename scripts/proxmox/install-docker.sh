@@ -161,15 +161,24 @@ else
     exit 1
 fi
 
-# ── 7. Deployer la stack agflow (dozzle + portainer agents) ──────────────────
-echo "[7/7] Deploiement de la stack agflow..."
-mkdir -p /root/agflow.docker
-wget -qO /root/agflow.docker/docker-compose.yml \
-  https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/docker-compose.yml
+# ── 7. Deployer Alloy (collecteur logs vers Loki central) ────────────────────
+echo "[7/7] Deploiement Alloy (collecteur logs)..."
+LOKI_URL="${LOKI_URL:-http://192.168.10.158:3100/loki/api/v1/push}"
+HOSTNAME_LABEL="${HOSTNAME_LABEL:-$(hostname)}"
+RAW_BASE="https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/infra/alloy-agent"
 
-cd /root/agflow.docker
+mkdir -p /root/alloy-agent
+wget -qO /root/alloy-agent/docker-compose.yml "${RAW_BASE}/docker-compose.yml"
+wget -qO /root/alloy-agent/config.alloy "${RAW_BASE}/config.alloy"
+
+cat > /root/alloy-agent/.env << EOF
+LOKI_URL=${LOKI_URL}
+HOSTNAME=${HOSTNAME_LABEL}
+EOF
+
+cd /root/alloy-agent
 docker compose up -d 2>&1
-echo "  -> Stack agflow deployee"
+echo "  -> Alloy deploye -> push vers ${LOKI_URL} (host=${HOSTNAME_LABEL})"
 
 DOCKER_VER=$(docker --version 2>/dev/null || echo "inconnu")
 COMPOSE_VER=$(docker compose version 2>/dev/null || echo "inconnu")

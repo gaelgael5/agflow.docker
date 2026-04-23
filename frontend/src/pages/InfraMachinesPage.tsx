@@ -38,6 +38,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const selectClass = "mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm";
 
+// Build a deeplink to Grafana Explore (Loki datasource) with a query
+// preselecting the machine's IP as a line filter, so the user lands on
+// "all logs that mention this machine's host" out of the box. The user
+// can refine in Grafana (e.g. by adding `{compose_service="..."}`).
+function buildGrafanaExploreUrl(grafanaUrl: string, machine: { name?: string | null; host: string }): string {
+  const ipFilter = machine.host;
+  const exploreState = {
+    datasource: "loki",
+    queries: [{ refId: "A", expr: `{host=~".+"} |= "${ipFilter}"` }],
+    range: { from: "now-1h", to: "now" },
+  };
+  return `${grafanaUrl}/explore?orgId=1&left=${encodeURIComponent(JSON.stringify(exploreState))}`;
+}
+
 export function InfraMachinesPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -46,10 +60,10 @@ export function InfraMachinesPage() {
   const listQuery = useQuery({ queryKey: ["infra-machines"], queryFn: () => infraMachinesApi.list() });
   const platformConfigQuery = useQuery({
     queryKey: ["platform-config"],
-    queryFn: async () => (await api.get<{ dozzle_url: string }>("/admin/platform-config")).data,
+    queryFn: async () => (await api.get<{ grafana_url: string }>("/admin/platform-config")).data,
     staleTime: 5 * 60_000,
   });
-  const dozzleUrl = platformConfigQuery.data?.dozzle_url ?? "";
+  const grafanaUrl = platformConfigQuery.data?.grafana_url ?? "";
 
   const createMutation = useMutation({
     mutationFn: (p: MachineCreatePayload) => infraMachinesApi.create(p),
@@ -137,7 +151,7 @@ export function InfraMachinesPage() {
                 healthMap={healthMap}
                 containersMap={containersMap}
                 expandedMachines={expandedMachines}
-                dozzleUrl={dozzleUrl}
+                grafanaUrl={grafanaUrl}
                 onEdit={setEditTarget}
                 onDelete={(m) => setDeleteTarget({ id: m.id, name: m.name || m.host })}
                 onScriptRun={setScriptRun}
@@ -271,7 +285,7 @@ type ScriptRunContext = {
 
 function MachineParentCard({
   parent, parentNamedType, children, healthMap, containersMap, expandedMachines,
-  dozzleUrl,
+  grafanaUrl,
   onEdit, onDelete, onScriptRun, onToggleContainers, onTerminal, onHistory, t,
 }: {
   parent: MachineSummary;
@@ -280,7 +294,7 @@ function MachineParentCard({
   healthMap: Record<string, string | null>;
   containersMap: Record<string, DockerContainer[]>;
   expandedMachines: Record<string, boolean>;
-  dozzleUrl: string;
+  grafanaUrl: string;
   onEdit: (m: MachineSummary) => void;
   onDelete: (m: MachineSummary) => void;
   onScriptRun: (ctx: ScriptRunContext) => void;
@@ -369,13 +383,10 @@ function MachineParentCard({
               onClick={() => onTerminal(parent)}
             ><Terminal className="w-3.5 h-3.5 text-purple-600" /></Button>
           )}
-          {dozzleUrl && (
+          {grafanaUrl && (
             <Button
-              variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_dozzle")}
-              onClick={() => {
-                const hostFilter = encodeURIComponent(parent.name || parent.host);
-                window.open(`${dozzleUrl}/?host=${hostFilter}`, "_blank", "noopener");
-              }}
+              variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_logs")}
+              onClick={() => window.open(buildGrafanaExploreUrl(grafanaUrl, parent), "_blank", "noopener")}
             ><ScrollText className="w-3.5 h-3.5 text-sky-600" /></Button>
           )}
           <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.runs_history")} onClick={() => onHistory(parent)}>
@@ -410,7 +421,7 @@ function MachineParentCard({
                 health={healthMap[m.id]}
                 containers={containersMap[m.id]}
                 isExpanded={!!expandedMachines[m.id]}
-                dozzleUrl={dozzleUrl}
+                grafanaUrl={grafanaUrl}
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onScriptRun={onScriptRun}
@@ -434,14 +445,14 @@ function MachineParentCard({
 }
 
 function MachineChildRow({
-  machine, health, containers, isExpanded, dozzleUrl,
+  machine, health, containers, isExpanded, grafanaUrl,
   onEdit, onDelete, onScriptRun, onToggleContainers, onTerminal, onHistory, t,
 }: {
   machine: MachineSummary;
   health: string | null | undefined;
   containers: DockerContainer[] | undefined;
   isExpanded: boolean;
-  dozzleUrl: string;
+  grafanaUrl: string;
   onEdit: (m: MachineSummary) => void;
   onDelete: (m: MachineSummary) => void;
   onScriptRun: (ctx: ScriptRunContext) => void;
@@ -562,13 +573,10 @@ function MachineChildRow({
                 onClick={() => onTerminal(machine)}
               ><Terminal className="w-3.5 h-3.5 text-purple-600" /></Button>
             )}
-            {dozzleUrl && (
+            {grafanaUrl && (
               <Button
-                variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_dozzle")}
-                onClick={() => {
-                  const hostFilter = encodeURIComponent(machine.name || machine.host);
-                  window.open(`${dozzleUrl}/?host=${hostFilter}`, "_blank", "noopener");
-                }}
+                variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_logs")}
+                onClick={() => window.open(buildGrafanaExploreUrl(grafanaUrl, machine), "_blank", "noopener")}
               ><ScrollText className="w-3.5 h-3.5 text-sky-600" /></Button>
             )}
             <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.runs_history")} onClick={() => onHistory(machine)}>

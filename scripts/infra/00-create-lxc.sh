@@ -35,13 +35,13 @@ CTID="${1:-}"
 # Sanitize hostname: replace underscores/dots with hyphens, lowercase, strip invalid chars
 CT_NAME_RAW="${2:-agflow-docker}"
 CT_NAME=$(echo "${CT_NAME_RAW}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
-CORES=4
-MEMORY=8192
-SWAP=1024
-DISK_SIZE=30
-STORAGE="local-lvm"
-BRIDGE="vmbr0"
-SSH_KEY_DIR="/root/.ssh/lxc-keys"
+CORES="${CORES:-4}"
+MEMORY="${MEMORY:-8192}"
+SWAP="${SWAP:-1024}"
+DISK_SIZE="${DISK_SIZE:-30}"
+STORAGE="${STORAGE:-local-lvm}"
+BRIDGE="${BRIDGE:-vmbr0}"
+SSH_KEY_DIR="${SSH_KEY_DIR:-/root/.ssh/lxc-keys}"
 
 if [ -z "${CTID}" ]; then
     echo "Usage: $0 <CTID> [hostname]"

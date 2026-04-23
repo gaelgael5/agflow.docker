@@ -1242,7 +1242,7 @@
     "no_actions": "Aucune action",
     "test_connection": "Tester la connexion",
     "open_terminal": "Ouvrir un terminal",
-    "open_dozzle": "Voir les logs (Dozzle)",
+    "open_logs": "Voir les logs (Grafana)",
     "connection_type": "Type de connexion",
     "category_action_label": "Action de catégorie",
     "named_types_title": "Variantes typées",

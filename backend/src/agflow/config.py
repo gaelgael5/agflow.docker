@@ -33,9 +33,10 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 24
     api_key_salt: str = ""
 
-    # Base URL of the central Dozzle UI (without trailing slash) used to open
-    # per-machine log views from the admin UI.
-    dozzle_url: str = "http://192.168.10.158:7000"
+    # Base URL of the central Grafana UI (without trailing slash) used to open
+    # per-machine log views from the admin UI. Defaults to the public URL routed
+    # by the Cloudflare tunnel (LXC 112) towards the agflow-logs LXC (116).
+    grafana_url: str = "https://log.yoops.org"
 
     @property
     def keycloak_base(self) -> str:

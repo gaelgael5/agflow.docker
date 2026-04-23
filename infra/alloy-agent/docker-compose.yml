@@ -1,13 +1,16 @@
-# Alias docker-compose pour le pipeline d'install agflow.
-#
-# Le contenu reel est maintenu dans infra/alloy-agent/docker-compose.yml.
-# Ce fichier est telecharge par scripts/proxmox/install-docker.sh apres
-# la creation d'un nouveau LXC, pour deployer le collecteur Alloy qui
-# pousse les logs Docker + journald vers le Loki central (LXC 116).
+# agflow-logs / Alloy agent — compose pour les LXC qui ont Docker
 #
 # Variables d'env attendues dans .env :
-#   LOKI_URL  - endpoint Loki central
-#   HOSTNAME  - identifiant du LXC (label `host`)
+#   LOKI_URL  — endpoint Loki, ex: http://192.168.10.<IP_LXC116>:3100/loki/api/v1/push
+#   HOSTNAME  — identifiant de l'hôte (label `host`), ex: lxc201
+#
+# Mounts en lecture seule :
+#   - socket Docker pour discovery + lecture des logs containers
+#   - /run/log/journal pour journald
+#   - /etc/machine-id requis par systemd journal pour identifier le journal
+#
+# Le container tourne en mode `network_mode: host` UNIQUEMENT si Loki est accessible
+# par hostname résolvable depuis le LAN (sinon une URL IP fonctionne avec un bridge).
 
 services:
   alloy:

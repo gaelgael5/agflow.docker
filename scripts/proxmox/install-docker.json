@@ -1,4 +1,13 @@
 {
-  "args": [],
-  "command": "wget -qO /tmp/agflow-install-docker.sh https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/install-docker.sh && sudo bash /tmp/agflow-install-docker.sh"
+  "args": [
+    {
+      "arg": "LOKI_URL",
+      "label_fr": "URL Loki central",
+      "description_fr": "Endpoint Loki vers lequel l'Alloy local poussera ses logs (vide = par défaut http://<IP_LXC116>:3100/loki/api/v1/push)",
+      "type": "string",
+      "required": false,
+      "default": "http://192.168.10.158:3100/loki/api/v1/push"
+    }
+  ],
+  "command": "wget -qO /tmp/agflow-install-docker.sh https://raw.githubusercontent.com/gaelgael5/agflow.docker/refs/heads/feat/mom-bus/scripts/proxmox/install-docker.sh && sudo LOKI_URL='{LOKI_URL}' bash /tmp/agflow-install-docker.sh"
 }

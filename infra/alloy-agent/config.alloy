@@ -1,0 +1,96 @@
+// agflow-logs / Alloy collector — config full (Docker + journald)
+//
+// À utiliser sur les LXC qui ont Docker installé.
+// Pour les LXC sans Docker, utiliser config-journald-only.alloy.
+//
+// Variables d'env attendues :
+//   LOKI_URL  — endpoint complet Loki, ex: http://192.168.10.<IP_LXC116>:3100/loki/api/v1/push
+//   HOSTNAME  — identifiant de l'hôte qui sera attaché en label `host`, ex: lxc201
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// ── Source 1 : containers Docker ─────────────────────────────────────────────
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "30s"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_log_stream"]
+    target_label  = "stream"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  labels     = {
+    job  = "docker",
+    host = sys.env("HOSTNAME"),
+  }
+  forward_to = [loki.write.central.receiver]
+}
+
+// ── Source 2 : systemd journal ───────────────────────────────────────────────
+
+loki.source.journal "host" {
+  // /var/log/journal (persistent storage) est le défaut Ubuntu/Debian.
+  // /run/log/journal (volatile) n'est peuplé que si journald est en Storage=volatile.
+  path           = "/var/log/journal"
+  max_age        = "12h"
+  format_as_json = false
+  labels         = {
+    job  = "systemd-journal",
+    host = sys.env("HOSTNAME"),
+  }
+  relabel_rules  = loki.relabel.journal.rules
+  forward_to     = [loki.write.central.receiver]
+}
+
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+  rule {
+    source_labels = ["__journal_syslog_identifier"]
+    target_label  = "syslog_identifier"
+  }
+}
+
+// ── Sink : Loki central ──────────────────────────────────────────────────────
+
+loki.write "central" {
+  endpoint {
+    url = sys.env("LOKI_URL")
+  }
+  external_labels = {
+    cluster = "homelab",
+  }
+}

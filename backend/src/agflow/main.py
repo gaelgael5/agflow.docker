@@ -93,13 +93,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     image_registries_service.seed_defaults()
     from agflow.services import ai_providers_service
     ai_providers_service.seed_defaults()
-    # Initial Dozzle sync — write the remote-agent list + restart the central
-    # container so it picks up any machines already in DB.
-    from agflow.services import dozzle_sync_service
-    try:
-        await dozzle_sync_service.sync()
-    except Exception as exc:
-        log.warning("dozzle_sync.startup_failed", error=str(exc))
     _expiry_stop = _asyncio.Event()
     _expiry_task = _asyncio.create_task(_run_expiry_loop(_expiry_stop))
     yield

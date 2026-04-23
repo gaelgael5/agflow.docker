@@ -16,7 +16,6 @@ from agflow.schemas.infra import (
     ScriptRunRequest,
 )
 from agflow.services import (
-    dozzle_sync_service,
     infra_certificates_service,
     infra_machines_runs_service,
     infra_machines_service,
@@ -71,7 +70,6 @@ async def create_machine(payload: MachineCreate):
         certificate_id=payload.certificate_id,
         parent_id=payload.parent_id,
     )
-    asyncio.create_task(dozzle_sync_service.sync())
     return created
 
 
@@ -91,8 +89,6 @@ async def update_machine(machine_id: UUID, payload: MachineUpdate):
         )
     except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    if "host" in payload.model_dump(exclude_unset=True):
-        asyncio.create_task(dozzle_sync_service.sync())
     return updated
 
 
@@ -102,7 +98,6 @@ async def delete_machine(machine_id: UUID):
         await infra_machines_service.delete(machine_id)
     except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    asyncio.create_task(dozzle_sync_service.sync())
 
 
 # ── SSH helpers (test, containers, health) ───────────────

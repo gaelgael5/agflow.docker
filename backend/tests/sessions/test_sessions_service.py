@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from uuid import UUID, uuid4
 
 import pytest
@@ -191,7 +192,8 @@ class TestSessionsService:
             f"pfx_{str(kid)[:8]}",
             ["read"],
         )
-        await agents_catalog_service.upsert("claude-code")
+        agent_slug = f"test-slug-{uuid.uuid4().hex[:8]}"
+        await agents_catalog_service.upsert(agent_slug)
         try:
             sess = await sessions_service.create(
                 api_key_id=kid,
@@ -203,9 +205,10 @@ class TestSessionsService:
                 """
                 INSERT INTO agents_instances
                     (session_id, agent_id, labels, mission)
-                VALUES ($1, 'claude-code', '{}'::jsonb, 'mission test')
+                VALUES ($1, $2, '{}'::jsonb, 'mission test')
                 """,
                 sess["id"],
+                agent_slug,
             )
 
             rows = await sessions_service.list_all_with_counts()
@@ -222,4 +225,4 @@ class TestSessionsService:
             # via api_keys before removing the catalog row they reference.
             await execute("DELETE FROM api_keys WHERE id = $1", kid)
             await execute("DELETE FROM users WHERE id = $1", user_id)
-            await agents_catalog_service.delete("claude-code")
+            await agents_catalog_service.delete(agent_slug)

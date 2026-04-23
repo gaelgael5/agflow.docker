@@ -120,13 +120,17 @@ def create(
     return _to_summary(registry_id, data)
 
 
+_NULLABLE_FIELDS = {"credential_ref"}
+
+
 def update(registry_id: str, **kwargs: Any) -> RegistrySummary:
     data = _read(registry_id)
     if data is None:
         raise RegistryNotFoundError(f"Registry '{registry_id}' not found")
     for k, v in kwargs.items():
-        if v is not None:
-            data[k] = v
+        if v is None and k not in _NULLABLE_FIELDS:
+            continue
+        data[k] = v
     _write(registry_id, data)
     _log.info("registries.update", id=registry_id)
     return _to_summary(registry_id, data)

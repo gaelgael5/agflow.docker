@@ -21,7 +21,7 @@ export interface RegistryUpdatePayload {
   display_name?: string;
   url?: string;
   auth_type?: "none" | "basic" | "token";
-  credential_ref?: string;
+  credential_ref?: string | null;
 }
 
 export const imageRegistriesApi = {

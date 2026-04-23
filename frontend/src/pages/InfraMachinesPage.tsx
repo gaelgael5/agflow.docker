@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, ChevronDown, ChevronRight, Edit2, History, Loader2, Play, Plus, Server, Terminal, Trash2 } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, Edit2, History, Loader2, Play, Plus, Server, ScrollText, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -19,6 +19,7 @@ import {
   type DockerContainer,
 } from "@/lib/infraApi";
 import { useInfraNamedTypes, useInfraMachinesRuns } from "@/hooks/useInfra";
+import { api } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { TerminalWindow } from "@/components/TerminalWindow";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -43,6 +44,12 @@ export function InfraMachinesPage() {
   const { data: namedTypes } = useInfraNamedTypes();
   const certsQuery = useQuery({ queryKey: ["infra-certificates"], queryFn: () => infraCertificatesApi.list() });
   const listQuery = useQuery({ queryKey: ["infra-machines"], queryFn: () => infraMachinesApi.list() });
+  const platformConfigQuery = useQuery({
+    queryKey: ["platform-config"],
+    queryFn: async () => (await api.get<{ dozzle_url: string }>("/admin/platform-config")).data,
+    staleTime: 5 * 60_000,
+  });
+  const dozzleUrl = platformConfigQuery.data?.dozzle_url ?? "";
 
   const createMutation = useMutation({
     mutationFn: (p: MachineCreatePayload) => infraMachinesApi.create(p),
@@ -130,6 +137,7 @@ export function InfraMachinesPage() {
                 healthMap={healthMap}
                 containersMap={containersMap}
                 expandedMachines={expandedMachines}
+                dozzleUrl={dozzleUrl}
                 onEdit={setEditTarget}
                 onDelete={(m) => setDeleteTarget({ id: m.id, name: m.name || m.host })}
                 onScriptRun={setScriptRun}
@@ -263,6 +271,7 @@ type ScriptRunContext = {
 
 function MachineParentCard({
   parent, parentNamedType, children, healthMap, containersMap, expandedMachines,
+  dozzleUrl,
   onEdit, onDelete, onScriptRun, onToggleContainers, onTerminal, onHistory, t,
 }: {
   parent: MachineSummary;
@@ -271,6 +280,7 @@ function MachineParentCard({
   healthMap: Record<string, string | null>;
   containersMap: Record<string, DockerContainer[]>;
   expandedMachines: Record<string, boolean>;
+  dozzleUrl: string;
   onEdit: (m: MachineSummary) => void;
   onDelete: (m: MachineSummary) => void;
   onScriptRun: (ctx: ScriptRunContext) => void;
@@ -306,6 +316,16 @@ function MachineParentCard({
                   {parentNamedType.sub_type_name}
                 </Badge>
               )}
+              {parent.required_actions.map((a) => (
+                <Badge
+                  key={a.name}
+                  variant="default"
+                  className={`text-[9px] ${a.done ? "bg-green-600" : "bg-red-600"} text-white`}
+                  title={a.done ? t("infra.status_required_done", { name: a.name }) : t("infra.status_required_pending", { name: a.name })}
+                >
+                  {a.done ? "✓" : "⚠"} {a.name}
+                </Badge>
+              ))}
             </div>
           </div>
         </div>
@@ -349,6 +369,15 @@ function MachineParentCard({
               onClick={() => onTerminal(parent)}
             ><Terminal className="w-3.5 h-3.5 text-purple-600" /></Button>
           )}
+          {dozzleUrl && (
+            <Button
+              variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_dozzle")}
+              onClick={() => {
+                const hostFilter = encodeURIComponent(parent.name || parent.host);
+                window.open(`${dozzleUrl}/?host=${hostFilter}`, "_blank", "noopener");
+              }}
+            ><ScrollText className="w-3.5 h-3.5 text-sky-600" /></Button>
+          )}
           <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.runs_history")} onClick={() => onHistory(parent)}>
             <History className="w-3.5 h-3.5" />
           </Button>
@@ -381,6 +410,7 @@ function MachineParentCard({
                 health={healthMap[m.id]}
                 containers={containersMap[m.id]}
                 isExpanded={!!expandedMachines[m.id]}
+                dozzleUrl={dozzleUrl}
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onScriptRun={onScriptRun}
@@ -404,13 +434,14 @@ function MachineParentCard({
 }
 
 function MachineChildRow({
-  machine, health, containers, isExpanded,
+  machine, health, containers, isExpanded, dozzleUrl,
   onEdit, onDelete, onScriptRun, onToggleContainers, onTerminal, onHistory, t,
 }: {
   machine: MachineSummary;
   health: string | null | undefined;
   containers: DockerContainer[] | undefined;
   isExpanded: boolean;
+  dozzleUrl: string;
   onEdit: (m: MachineSummary) => void;
   onDelete: (m: MachineSummary) => void;
   onScriptRun: (ctx: ScriptRunContext) => void;
@@ -458,18 +489,30 @@ function MachineChildRow({
           </div>
         </TableCell>
         <TableCell>
-          {(() => {
-            if (health === null) return <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />;
-            if (health === undefined) return <Badge variant="outline" className="text-[9px] border-gray-400 text-gray-500">—</Badge>;
-            const cfg: Record<string, { label: string; color: string }> = {
-              healthy: { label: t("infra.status_healthy"), color: "bg-green-600 text-white" },
-              starting: { label: t("infra.status_starting"), color: "bg-yellow-500 text-white" },
-              ssh_ok: { label: t("infra.status_ssh_ok"), color: "bg-blue-500 text-white" },
-              down: { label: t("infra.status_down"), color: "bg-red-600 text-white" },
-            };
-            const entry = cfg[health] ?? { label: "DOWN", color: "bg-red-600 text-white" };
-            return <Badge variant="default" className={`text-[9px] ${entry.color}`}>{entry.label}</Badge>;
-          })()}
+          <div className="flex flex-col gap-1 items-start">
+            {machine.required_actions.map((a) => (
+              <Badge
+                key={a.name}
+                variant="default"
+                className={`text-[9px] ${a.done ? "bg-green-600" : "bg-red-600"} text-white`}
+                title={a.done ? t("infra.status_required_done", { name: a.name }) : t("infra.status_required_pending", { name: a.name })}
+              >
+                {a.done ? "✓" : "⚠"} {a.name}
+              </Badge>
+            ))}
+            {(() => {
+              if (health === null) return <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />;
+              if (health === undefined) return null;
+              const cfg: Record<string, { label: string; color: string }> = {
+                healthy: { label: t("infra.status_healthy"), color: "bg-green-600 text-white" },
+                starting: { label: t("infra.status_starting"), color: "bg-yellow-500 text-white" },
+                ssh_ok: { label: t("infra.status_ssh_ok"), color: "bg-blue-500 text-white" },
+                down: { label: t("infra.status_down"), color: "bg-red-600 text-white" },
+              };
+              const entry = cfg[health] ?? { label: "DOWN", color: "bg-red-600 text-white" };
+              return <Badge variant="default" className={`text-[9px] ${entry.color}`}>{entry.label}</Badge>;
+            })()}
+          </div>
         </TableCell>
         <TableCell>
           <div className="flex gap-1 text-[11px]">
@@ -518,6 +561,15 @@ function MachineChildRow({
                 variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_terminal")}
                 onClick={() => onTerminal(machine)}
               ><Terminal className="w-3.5 h-3.5 text-purple-600" /></Button>
+            )}
+            {dozzleUrl && (
+              <Button
+                variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_dozzle")}
+                onClick={() => {
+                  const hostFilter = encodeURIComponent(machine.name || machine.host);
+                  window.open(`${dozzleUrl}/?host=${hostFilter}`, "_blank", "noopener");
+                }}
+              ><ScrollText className="w-3.5 h-3.5 text-sky-600" /></Button>
             )}
             <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.runs_history")} onClick={() => onHistory(machine)}>
               <History className="w-3.5 h-3.5" />

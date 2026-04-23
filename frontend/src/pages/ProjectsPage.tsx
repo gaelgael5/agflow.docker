@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { FolderKanban, Plus, Trash2 } from "lucide-react";
+import { FolderKanban, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { projectsApi, type ProjectCreatePayload } from "@/lib/projectsApi";
+import { projectsApi, type ProjectCreatePayload, type ProjectSummary } from "@/lib/projectsApi";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -34,8 +34,14 @@ export function ProjectsPage() {
     mutationFn: (id: string) => projectsApi.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
   });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<ProjectCreatePayload> }) =>
+      projectsApi.update(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+  });
 
   const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState<ProjectSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const projects = listQuery.data ?? [];
 
@@ -99,13 +105,23 @@ export function ProjectsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: p.id, name: p.display_name }); }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => { e.stopPropagation(); setEditTarget(p); }}
+                        title={t("common.edit")}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: p.id, name: p.display_name }); }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -129,14 +145,48 @@ export function ProjectsPage() {
               { value: "prod", label: "Prod" },
             ],
           },
+          { name: "network", label: t("projects.field_network"), defaultValue: "agflow", monospace: true },
         ]}
         onSubmit={async (values) => {
           await createMutation.mutateAsync({
             display_name: values.display_name ?? "",
             description: values.description ?? "",
             environment: (values.environment as "dev" | "staging" | "prod") ?? "dev",
+            network: (values.network ?? "agflow").trim() || "agflow",
           });
           setShowCreate(false);
+        }}
+      />
+
+      <PromptDialog
+        open={editTarget !== null}
+        onOpenChange={(o) => { if (!o) setEditTarget(null); }}
+        title={t("projects.dialog_edit_title")}
+        fields={editTarget ? [
+          { name: "display_name", label: t("projects.field_name"), required: true, defaultValue: editTarget.display_name },
+          { name: "description", label: t("projects.field_description"), defaultValue: editTarget.description },
+          {
+            name: "environment", label: t("projects.field_environment"), defaultValue: editTarget.environment,
+            options: [
+              { value: "dev", label: "Dev" },
+              { value: "staging", label: "Staging" },
+              { value: "prod", label: "Prod" },
+            ],
+          },
+          { name: "network", label: t("projects.field_network"), defaultValue: editTarget.network || "agflow", monospace: true },
+        ] : []}
+        onSubmit={async (values) => {
+          if (!editTarget) return;
+          await updateMutation.mutateAsync({
+            id: editTarget.id,
+            payload: {
+              display_name: values.display_name ?? editTarget.display_name,
+              description: values.description ?? "",
+              environment: (values.environment as "dev" | "staging" | "prod") ?? editTarget.environment,
+              network: (values.network ?? "agflow").trim() || "agflow",
+            },
+          });
+          setEditTarget(null);
         }}
       />
 

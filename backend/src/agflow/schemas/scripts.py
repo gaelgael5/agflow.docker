@@ -9,6 +9,15 @@ from pydantic import BaseModel, Field
 
 # ── Script (fichier .sh en BDD) ──────────────────────────
 
+InputStatus = Literal["keep", "clean", "replace"]
+
+
+class ScriptInputVariable(BaseModel):
+    name: str
+    description: str = ""
+    default: str = ""
+
+
 class ScriptRow(BaseModel):
     id: UUID
     name: str
@@ -16,6 +25,7 @@ class ScriptRow(BaseModel):
     content: str
     execute_on_types_named: UUID | None = None
     execute_on_types_named_name: str | None = None
+    input_variables: list[ScriptInputVariable] = []
     created_at: datetime
     updated_at: datetime
 
@@ -27,6 +37,7 @@ class ScriptSummary(BaseModel):
     description: str
     execute_on_types_named: UUID | None = None
     execute_on_types_named_name: str | None = None
+    input_variables: list[ScriptInputVariable] = []
     created_at: datetime
     updated_at: datetime
 
@@ -36,6 +47,7 @@ class ScriptCreate(BaseModel):
     description: str = ""
     content: str = ""
     execute_on_types_named: UUID | None = None
+    input_variables: list[ScriptInputVariable] = Field(default_factory=list)
 
 
 class ScriptUpdate(BaseModel):
@@ -43,6 +55,7 @@ class ScriptUpdate(BaseModel):
     description: str | None = None
     content: str | None = None
     execute_on_types_named: UUID | None = None
+    input_variables: list[ScriptInputVariable] | None = None
 
 
 # ── Group → Script reference ─────────────────────────────
@@ -50,9 +63,19 @@ class ScriptUpdate(BaseModel):
 Timing = Literal["before", "after"]
 
 
+TriggerOp = Literal["equals", "not_equals", "is_null"]
+
+
+class TriggerRule(BaseModel):
+    variable: str
+    op: TriggerOp
+    value: str = ""
+
+
 class GroupScriptRow(BaseModel):
     id: UUID
     group_id: UUID
+    group_name: str = ""
     script_id: UUID
     script_name: str
     machine_id: UUID
@@ -60,6 +83,9 @@ class GroupScriptRow(BaseModel):
     timing: Timing
     position: int
     env_mapping: dict[str, str]
+    input_values: dict[str, str]
+    input_statuses: dict[str, InputStatus] = {}
+    trigger_rules: list[TriggerRule] = []
     created_at: datetime
     updated_at: datetime
 
@@ -70,6 +96,9 @@ class GroupScriptCreate(BaseModel):
     timing: Timing
     position: int = 0
     env_mapping: dict[str, str] = Field(default_factory=dict)
+    input_values: dict[str, str] = Field(default_factory=dict)
+    input_statuses: dict[str, InputStatus] = Field(default_factory=dict)
+    trigger_rules: list[TriggerRule] = Field(default_factory=list)
 
 
 class GroupScriptUpdate(BaseModel):
@@ -78,3 +107,6 @@ class GroupScriptUpdate(BaseModel):
     timing: Timing | None = None
     position: int | None = None
     env_mapping: dict[str, str] | None = None
+    input_values: dict[str, str] | None = None
+    input_statuses: dict[str, InputStatus] | None = None
+    trigger_rules: list[TriggerRule] | None = None

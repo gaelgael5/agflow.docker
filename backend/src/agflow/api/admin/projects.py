@@ -27,6 +27,7 @@ async def create_project(payload: ProjectCreate):
         description=payload.description,
         environment=payload.environment,
         tags=payload.tags,
+        network=payload.network,
     )
 
 

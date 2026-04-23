@@ -33,6 +33,7 @@ async def create_script(payload: ScriptCreate):
             description=payload.description,
             content=payload.content,
             execute_on_types_named=payload.execute_on_types_named,
+            input_variables=payload.input_variables,
         )
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

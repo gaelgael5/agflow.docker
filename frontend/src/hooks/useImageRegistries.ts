@@ -1,5 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { imageRegistriesApi, type RegistryCreatePayload } from "@/lib/imageRegistriesApi";
+import {
+  imageRegistriesApi,
+  type RegistryCreatePayload,
+  type RegistryUpdatePayload,
+} from "@/lib/imageRegistriesApi";
 
 const KEY = ["image-registries"] as const;
 
@@ -16,6 +20,12 @@ export function useImageRegistries() {
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: RegistryUpdatePayload }) =>
+      imageRegistriesApi.update(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => imageRegistriesApi.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
@@ -25,6 +35,7 @@ export function useImageRegistries() {
     registries: listQuery.data,
     isLoading: listQuery.isLoading,
     createMutation,
+    updateMutation,
     deleteMutation,
   };
 }

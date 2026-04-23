@@ -28,6 +28,7 @@ async def create_group(payload: GroupCreate):
         project_id=payload.project_id,
         name=payload.name,
         max_agents=payload.max_agents,
+        compose_template_slug=payload.compose_template_slug,
     )
 
 

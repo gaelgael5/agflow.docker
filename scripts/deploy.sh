@@ -51,6 +51,8 @@ echo "==> Pushing into CT ${CTID} and extracting..."
 ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz && \
          pct exec ${CTID} -- bash -c '
            mkdir -p ${REPO_DIR_ON_CT}
+           mkdir -p ${REPO_DIR_ON_CT}/data
+           touch ${REPO_DIR_ON_CT}/data/dozzle-agents.env
            # Extract on top — tarball contains only code (backend/, frontend/,
            # .env, compose, Caddyfile). data/ is NOT in the tarball so it stays
            # untouched. No rm -rf, no mv — zero risk of corrupting data/.

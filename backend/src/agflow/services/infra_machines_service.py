@@ -12,7 +12,7 @@ from uuid import UUID
 import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
-from agflow.schemas.infra import MachineSummary
+from agflow.schemas.infra import MachineSummary, RequiredActionStatus
 from agflow.services import crypto_service
 
 _log = structlog.get_logger(__name__)
@@ -27,7 +27,29 @@ _LIST_SQL = """
         m.created_at, m.updated_at,
         nt.name AS type_name,
         nt.type_id AS category,
-        coalesce(c.cnt, 0) AS children_count
+        coalesce(c.cnt, 0) AS children_count,
+        coalesce(
+            (
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+                        'name', ca.name,
+                        'done', EXISTS (
+                            SELECT 1
+                            FROM infra_named_type_actions nta
+                            JOIN infra_machines_runs r
+                                 ON r.action_id = nta.id AND r.machine_id = m.id
+                            WHERE nta.named_type_id = m.type_id
+                              AND nta.category_action_id = ca.id
+                              AND r.success = true
+                        )
+                    ) ORDER BY ca.name
+                )
+                FROM infra_category_actions ca
+                WHERE ca.category = nt.type_id
+                  AND ca.is_required = true
+            ),
+            '[]'::jsonb
+        ) AS required_actions
     FROM infra_machines m
     JOIN infra_named_types nt ON nt.id = m.type_id
     LEFT JOIN (
@@ -47,6 +69,13 @@ def _to_summary(row: dict[str, Any]) -> MachineSummary:
     raw_meta = row.get("metadata") or {}
     if isinstance(raw_meta, str):
         raw_meta = _json.loads(raw_meta)
+    raw_required = row.get("required_actions") or []
+    if isinstance(raw_required, str):
+        raw_required = _json.loads(raw_required)
+    required = [
+        RequiredActionStatus(name=a["name"], done=bool(a.get("done")))
+        for a in raw_required
+    ]
     return MachineSummary(
         id=row["id"],
         name=row.get("name", ""),
@@ -62,6 +91,7 @@ def _to_summary(row: dict[str, Any]) -> MachineSummary:
         children_count=row.get("children_count", 0),
         metadata=raw_meta,
         status=row.get("status", "not_initialized"),
+        required_actions=required,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

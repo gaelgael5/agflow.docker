@@ -16,6 +16,7 @@ from agflow.schemas.infra import (
     ScriptRunRequest,
 )
 from agflow.services import (
+    dozzle_sync_service,
     infra_certificates_service,
     infra_machines_runs_service,
     infra_machines_service,
@@ -60,7 +61,7 @@ async def list_machines():
 
 @router.post("", response_model=MachineSummary, status_code=status.HTTP_201_CREATED, dependencies=_admin)
 async def create_machine(payload: MachineCreate):
-    return await infra_machines_service.create(
+    created = await infra_machines_service.create(
         name=payload.name,
         type_id=payload.type_id,
         host=payload.host,
@@ -70,6 +71,8 @@ async def create_machine(payload: MachineCreate):
         certificate_id=payload.certificate_id,
         parent_id=payload.parent_id,
     )
+    asyncio.create_task(dozzle_sync_service.sync())
+    return created
 
 
 @router.get("/{machine_id}", response_model=MachineSummary, dependencies=_admin)
@@ -83,11 +86,14 @@ async def get_machine(machine_id: UUID):
 @router.put("/{machine_id}", response_model=MachineSummary, dependencies=_admin)
 async def update_machine(machine_id: UUID, payload: MachineUpdate):
     try:
-        return await infra_machines_service.update(
+        updated = await infra_machines_service.update(
             machine_id, **payload.model_dump(exclude_unset=True),
         )
     except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if "host" in payload.model_dump(exclude_unset=True):
+        asyncio.create_task(dozzle_sync_service.sync())
+    return updated
 
 
 @router.delete("/{machine_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_admin)
@@ -96,6 +102,7 @@ async def delete_machine(machine_id: UUID):
         await infra_machines_service.delete(machine_id)
     except infra_machines_service.MachineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    asyncio.create_task(dozzle_sync_service.sync())
 
 
 # ── SSH helpers (test, containers, health) ───────────────
@@ -469,6 +476,12 @@ async def ws_exec(ws: WebSocket, machine_id: UUID, token: str = ""):
             raw_tags = manifest.get("tags") or []
             if isinstance(raw_tags, list):
                 manifest_tags = [str(t) for t in raw_tags]
+            _log.info(
+                "ws_exec.manifest_fetched",
+                url=script_url,
+                manifest_tags=manifest_tags,
+                has_command=bool(command),
+            )
             for key, value in args.items():
                 command = command.replace(f"{{{key}}}", value)
 
@@ -524,10 +537,22 @@ async def ws_exec(ws: WebSocket, machine_id: UUID, token: str = ""):
             success = exit_code == 0
 
             # 4. Post-execution semantic hooks
+            _log.info(
+                "ws_exec.post",
+                success=success,
+                manifest_tags=manifest_tags,
+                triggered_action_name=triggered_action_name,
+                stdout_lines_count=len(stdout_lines),
+            )
             if success:
                 # Tag dispatch — triggered by manifest.tags
                 if manifest_tags:
                     output_json = _parse_last_json(stdout_lines)
+                    _log.info(
+                        "ws_exec.tag_dispatch_entering",
+                        manifest_tags=manifest_tags,
+                        parsed_ok=bool(output_json),
+                    )
                     for tag in manifest_tags:
                         await _handle_tag(tag, ws, conn, machine_id, output_json)
 

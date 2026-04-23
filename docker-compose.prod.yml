@@ -79,15 +79,21 @@ services:
       - "8081:8081"
     networks: [agflow]
 
-  dozzle-agent:
+  # Dozzle central — collecte les logs des containers locaux + des agents distants.
+  # La liste DOZZLE_REMOTE_AGENT est maintenue automatiquement par le backend
+  # (service dozzle_sync_service) à partir de la table infra_machines, écrite
+  # dans data/dozzle-agents.env et rechargée en redémarrant ce container via
+  # l'API Docker (docker.sock).
+  dozzle:
     image: amir20/dozzle:latest
-    container_name: dozzle-agent
+    container_name: agflow-dozzle
     restart: unless-stopped
-    command: agent
+    env_file:
+      - ./data/dozzle-agents.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
-      - "7007:7007"
+      - "7000:8080"
     networks:
       - agflow
 

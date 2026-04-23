@@ -15,6 +15,7 @@ class CategoryRow(BaseModel):
 class CategoryActionRow(BaseModel):
     id: UUID
     name: str
+    is_required: bool = False
 
 
 # ── Named types (variantes typées, ex. Proxmox/SSH) ──────
@@ -121,6 +122,11 @@ class MachineUpdate(BaseModel):
     certificate_id: UUID | None = None
 
 
+class RequiredActionStatus(BaseModel):
+    name: str
+    done: bool
+
+
 class MachineSummary(BaseModel):
     id: UUID
     name: str = ""
@@ -136,6 +142,7 @@ class MachineSummary(BaseModel):
     children_count: int = 0
     metadata: dict[str, str] = {}
     status: str = "not_initialized"
+    required_actions: list[RequiredActionStatus] = []
     created_at: datetime
     updated_at: datetime
 

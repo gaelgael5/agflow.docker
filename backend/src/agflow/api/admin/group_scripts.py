@@ -33,6 +33,9 @@ async def create_group_script(group_id: UUID, payload: GroupScriptCreate):
         timing=payload.timing,
         position=payload.position,
         env_mapping=payload.env_mapping,
+        input_values=payload.input_values,
+        input_statuses=payload.input_statuses,
+        trigger_rules=payload.trigger_rules,
     )
 
 

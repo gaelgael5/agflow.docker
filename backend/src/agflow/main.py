@@ -21,9 +21,11 @@ from agflow.api.admin.group_scripts import router as admin_group_scripts_router
 from agflow.api.admin.groups import router as admin_groups_router
 from agflow.api.admin.image_registries import router as admin_image_registries_router
 from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
+from agflow.api.admin.platform_config import router as admin_platform_config_router
 from agflow.api.admin.product_instances import router as admin_product_instances_router
 from agflow.api.admin.products import router as admin_products_router
 from agflow.api.admin.project_deployments import router as admin_deployments_router
+from agflow.api.admin.project_runtimes import router as admin_runtimes_router
 from agflow.api.admin.projects import router as admin_projects_router
 from agflow.api.admin.roles import router as admin_roles_router
 from agflow.api.admin.scripts import router as admin_scripts_router
@@ -91,6 +93,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     image_registries_service.seed_defaults()
     from agflow.services import ai_providers_service
     ai_providers_service.seed_defaults()
+    # Initial Dozzle sync — write the remote-agent list + restart the central
+    # container so it picks up any machines already in DB.
+    from agflow.services import dozzle_sync_service
+    try:
+        await dozzle_sync_service.sync()
+    except Exception as exc:
+        log.warning("dozzle_sync.startup_failed", error=str(exc))
     _expiry_stop = _asyncio.Event()
     _expiry_task = _asyncio.create_task(_run_expiry_loop(_expiry_stop))
     yield
@@ -150,12 +159,14 @@ def create_app() -> FastAPI:
     app.include_router(admin_terminal_router)
     app.include_router(admin_ai_providers_router)
     app.include_router(admin_image_registries_router)
+    app.include_router(admin_platform_config_router)
     app.include_router(admin_products_router)
     app.include_router(admin_projects_router)
     app.include_router(admin_groups_router)
     app.include_router(admin_group_scripts_router)
     app.include_router(admin_scripts_router)
     app.include_router(admin_deployments_router)
+    app.include_router(admin_runtimes_router)
     app.include_router(admin_product_instances_router)
     app.include_router(admin_generations_router)
     app.include_router(admin_users_router)

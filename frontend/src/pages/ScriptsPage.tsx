@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileCode, Plus, Save, Trash2 } from "lucide-react";
+import { FileCode, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   scriptsApi,
+  type ScriptInputVariable,
   type ScriptRow,
   type ScriptSummary,
 } from "@/lib/scriptsApi";
@@ -141,6 +142,7 @@ function ScriptEditor({ id, summaries, t }: {
   const [description, setDescription] = useState("");
   const [content, setContent] = useState("");
   const [executeOnTypeId, setExecuteOnTypeId] = useState<string>("");
+  const [inputs, setInputs] = useState<ScriptInputVariable[]>([]);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -149,6 +151,7 @@ function ScriptEditor({ id, summaries, t }: {
     setDescription(detailQuery.data.description);
     setContent(detailQuery.data.content);
     setExecuteOnTypeId(detailQuery.data.execute_on_types_named ?? "");
+    setInputs(detailQuery.data.input_variables ?? []);
     setDirty(false);
   }, [detailQuery.data]);
 
@@ -158,6 +161,7 @@ function ScriptEditor({ id, summaries, t }: {
       description,
       content,
       execute_on_types_named: executeOnTypeId || null,
+      input_variables: inputs,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scripts"] });
@@ -213,6 +217,74 @@ function ScriptEditor({ id, summaries, t }: {
           className="mt-1"
           placeholder={t("scripts.description_placeholder")}
         />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <Label className="text-[11px]">{t("scripts.inputs_title")}</Label>
+          <Button
+            size="sm" variant="outline" className="h-6 text-[10px]"
+            onClick={() => {
+              setInputs([...inputs, { name: "", description: "", default: "" }]);
+              setDirty(true);
+            }}
+          >
+            <Plus className="w-3 h-3" />
+            {t("scripts.inputs_add")}
+          </Button>
+        </div>
+        {inputs.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground italic">{t("scripts.inputs_empty")}</p>
+        ) : (
+          <div className="space-y-1 border rounded p-2">
+            {inputs.map((v, idx) => (
+              <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center">
+                <Input
+                  value={v.name}
+                  onChange={(e) => {
+                    const next = [...inputs];
+                    next[idx] = { ...next[idx]!, name: e.target.value };
+                    setInputs(next); setDirty(true);
+                  }}
+                  className="h-7 text-[11px] font-mono"
+                  placeholder="VAR_NAME"
+                />
+                <Input
+                  value={v.description}
+                  onChange={(e) => {
+                    const next = [...inputs];
+                    next[idx] = { ...next[idx]!, description: e.target.value };
+                    setInputs(next); setDirty(true);
+                  }}
+                  className="h-7 text-[11px]"
+                  placeholder={t("scripts.inputs_description_placeholder")}
+                />
+                <Input
+                  value={v.default}
+                  onChange={(e) => {
+                    const next = [...inputs];
+                    next[idx] = { ...next[idx]!, default: e.target.value };
+                    setInputs(next); setDirty(true);
+                  }}
+                  className="h-7 text-[11px] font-mono"
+                  placeholder={t("scripts.inputs_default_placeholder")}
+                />
+                <Button
+                  variant="ghost" size="icon" className="h-6 w-6"
+                  onClick={() => {
+                    setInputs(inputs.filter((_, i) => i !== idx));
+                    setDirty(true);
+                  }}
+                >
+                  <X className="w-3 h-3 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground mt-1">
+          {t("scripts.inputs_hint")}
+        </p>
       </div>
 
       <div className="flex flex-col flex-1 min-h-0">

@@ -20,6 +20,10 @@ async def async_client() -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
+    # NOTE (deferred): closing the pool per-test is the current pattern because
+    # pytest-asyncio creates a fresh event loop per test. Moving this to a
+    # module/session-scoped fixture requires coordinating event-loop scope
+    # across the whole suite — out of scope for this PR. See review follow-up.
     await close_pool()
 
 
@@ -168,6 +172,103 @@ async def test_admin_list_session_agents(async_client: AsyncClient) -> None:
         assert match["agent_id"] == agent_slug
         assert match["mission"] == "mission admin"
         assert match["status"] in ("idle", "busy")
+    finally:
+        await _cleanup(user_id, kid, agent_slug)
+
+
+@pytest.mark.asyncio
+async def test_admin_list_agent_messages_filters_by_kind(
+    async_client: AsyncClient,
+) -> None:
+    agent_slug = f"adm-{uuid.uuid4().hex[:8]}"
+    user_id, kid = await _seed_user_and_key()
+    await agents_catalog_service.upsert(agent_slug)
+    try:
+        session_id, instance_id = await _seed_session_with_instance(
+            kid,
+            agent_slug,
+        )
+
+        msg_instruction = uuid4()
+        msg_event = uuid4()
+        await execute(
+            """
+            INSERT INTO agent_messages
+                (msg_id, session_id, instance_id, direction, kind, payload, source)
+            VALUES
+                ($1, $2, $3, 'in', 'instruction', $4::jsonb, 'test'),
+                ($5, $2, $3, 'out', 'event', $6::jsonb, 'test')
+            """,
+            msg_instruction,
+            str(session_id),
+            str(instance_id),
+            json.dumps({"text": "do something"}),
+            msg_event,
+            json.dumps({"text": "something happened"}),
+        )
+
+        headers = await _auth_header(async_client)
+        res = await async_client.get(
+            f"/api/admin/sessions/{session_id}/agents/{instance_id}/messages",
+            headers=headers,
+            params={"kind": "instruction", "limit": 50},
+        )
+        assert res.status_code == 200, res.text
+        items = res.json()
+        assert isinstance(items, list)
+        assert all(m["kind"] == "instruction" for m in items)
+        ids = {m["msg_id"] for m in items}
+        assert str(msg_instruction) in ids
+        assert str(msg_event) not in ids
+    finally:
+        await _cleanup(user_id, kid, agent_slug)
+
+
+@pytest.mark.asyncio
+async def test_admin_list_agent_messages_invalid_kind_returns_422(
+    async_client: AsyncClient,
+) -> None:
+    agent_slug = f"adm-{uuid.uuid4().hex[:8]}"
+    user_id, kid = await _seed_user_and_key()
+    await agents_catalog_service.upsert(agent_slug)
+    try:
+        session_id, instance_id = await _seed_session_with_instance(
+            kid,
+            agent_slug,
+        )
+
+        headers = await _auth_header(async_client)
+        res = await async_client.get(
+            f"/api/admin/sessions/{session_id}/agents/{instance_id}/messages",
+            headers=headers,
+            params={"kind": "not_a_kind"},
+        )
+        assert res.status_code == 422, res.text
+    finally:
+        await _cleanup(user_id, kid, agent_slug)
+
+
+@pytest.mark.asyncio
+async def test_admin_list_agent_messages_unknown_instance_returns_empty(
+    async_client: AsyncClient,
+) -> None:
+    agent_slug = f"adm-{uuid.uuid4().hex[:8]}"
+    user_id, kid = await _seed_user_and_key()
+    await agents_catalog_service.upsert(agent_slug)
+    try:
+        session_id, _ = await _seed_session_with_instance(kid, agent_slug)
+
+        headers = await _auth_header(async_client)
+        random_instance = uuid4()
+        res = await async_client.get(
+            f"/api/admin/sessions/{session_id}/agents/{random_instance}/messages",
+            headers=headers,
+        )
+        # Behavior: session exists -> 200 with empty list even if instance_id
+        # is unknown. The endpoint scopes on `instance_id` via the SQL filter
+        # and does not pre-validate instance existence.
+        assert res.status_code == 200, res.text
+        assert res.json() == []
     finally:
         await _cleanup(user_id, kid, agent_slug)
 

@@ -19,7 +19,11 @@ from agflow.db.pool import fetch_all, get_pool
 from agflow.mom.consumers.ws_push import WsPushConsumer
 from agflow.mom.envelope import Direction, Kind, Route
 from agflow.mom.publisher import MomPublisher
-from agflow.services import agents_instances_service, sessions_service
+from agflow.services import (
+    agent_messages_service,
+    agents_instances_service,
+    sessions_service,
+)
 
 _log = structlog.get_logger(__name__)
 
@@ -38,44 +42,38 @@ class MessageIn(BaseModel):
 
 
 async def _assert_session_owned(
-    session_id: UUID, ctx: AuthContext,
+    session_id: UUID,
+    ctx: AuthContext,
 ) -> None:
     session = await sessions_service.get(
-        session_id=session_id, api_key_id=ctx.api_key_id, is_admin=ctx.is_admin,
+        session_id=session_id,
+        api_key_id=ctx.api_key_id,
+        is_admin=ctx.is_admin,
     )
     if session is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
     if session["status"] != "active":
         raise HTTPException(
-            status.HTTP_409_CONFLICT, f"session is {session['status']}",
+            status.HTTP_409_CONFLICT,
+            f"session is {session['status']}",
         )
 
 
 async def _assert_instance_alive(
-    session_id: UUID, instance_id: UUID,
+    session_id: UUID,
+    instance_id: UUID,
 ) -> None:
     rows = await fetch_all(
         "SELECT id FROM agents_instances "
         "WHERE id = $1 AND session_id = $2 AND destroyed_at IS NULL",
-        instance_id, session_id,
+        instance_id,
+        session_id,
     )
     if not rows:
         raise HTTPException(
-            status.HTTP_404_NOT_FOUND, "instance not found or destroyed",
+            status.HTTP_404_NOT_FOUND,
+            "instance not found or destroyed",
         )
-
-
-def _serialize_msg(r: dict) -> dict[str, Any]:
-    return {
-        "msg_id": str(r["msg_id"]),
-        "parent_msg_id": str(r["parent_msg_id"]) if r["parent_msg_id"] else None,
-        "direction": r["direction"],
-        "kind": r["kind"],
-        "payload": r["payload"],
-        "source": r["source"],
-        "created_at": r["created_at"].isoformat(),
-        "route": r["route"],
-    }
 
 
 @router.post(
@@ -119,27 +117,13 @@ async def get_messages(
     ctx = AuthContext.from_api_key(api_key)
     await _assert_session_owned(session_id, ctx)
 
-    conditions = ["session_id = $1", "instance_id = $2"]
-    params: list[Any] = [str(session_id), str(instance_id)]
-    idx = 3
-    if kind:
-        conditions.append(f"kind = ${idx}")
-        params.append(kind)
-        idx += 1
-    if direction:
-        conditions.append(f"direction = ${idx}")
-        params.append(direction)
-        idx += 1
-    where = " AND ".join(conditions)
-    params.append(limit)
-    query = (
-        "SELECT msg_id, parent_msg_id, direction, kind, payload, source, "
-        "created_at, route "
-        f"FROM agent_messages WHERE {where} "
-        f"ORDER BY created_at DESC LIMIT ${idx}"
+    return await agent_messages_service.list_for_instance(
+        session_id=session_id,
+        instance_id=instance_id,
+        kind=kind,
+        direction=direction,
+        limit=limit,
     )
-    rows = await fetch_all(query, *params)
-    return [_serialize_msg(r) for r in rows]
 
 
 @router.websocket("/api/v1/sessions/{session_id}/agents/{instance_id}/stream")
@@ -152,7 +136,9 @@ async def ws_agent_stream(
     pool = await get_pool()
     connection_id = uuid4().hex[:8]
     ws_consumer = WsPushConsumer(
-        pool=pool, instance_id=str(instance_id), connection_id=connection_id,
+        pool=pool,
+        instance_id=str(instance_id),
+        connection_id=connection_id,
     )
     try:
         async for event in ws_consumer.iter_events():
@@ -186,7 +172,9 @@ async def get_agent_logs(
         ORDER BY created_at DESC
         LIMIT $3
         """,
-        str(session_id), str(instance_id), limit,
+        str(session_id),
+        str(instance_id),
+        limit,
     )
     rows.reverse()
 
@@ -198,6 +186,7 @@ async def get_agent_logs(
         text = payload.get("text") or payload.get("message") or ""
         if not text and payload:
             import json as _json
+
             text = _json.dumps(payload, ensure_ascii=False)
         lines.append(f"[{ts}] [{kind}] {text}")
 
@@ -216,7 +205,8 @@ def _safe_subpath(root: Path, user_path: str) -> Path:
         target.relative_to(root)
     except ValueError as exc:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "path traversal detected",
+            status.HTTP_400_BAD_REQUEST,
+            "path traversal detected",
         ) from exc
     return target
 
@@ -232,7 +222,8 @@ async def browse_files(
     await _assert_session_owned(session_id, ctx)
 
     instance = await agents_instances_service.get(
-        session_id=session_id, instance_id=instance_id,
+        session_id=session_id,
+        instance_id=instance_id,
     )
     if instance is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "instance not found")
@@ -250,19 +241,22 @@ async def browse_files(
                 "file too large (>1MB); use a different tool",
             )
         return FileResponse(
-            path=str(target), media_type="application/octet-stream",
+            path=str(target),
+            media_type="application/octet-stream",
         )
 
     if target.is_dir():
         entries = []
         for child in sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name)):
             stat = child.stat()
-            entries.append({
-                "name": child.name,
-                "type": "dir" if child.is_dir() else "file",
-                "size": stat.st_size if child.is_file() else None,
-                "modified": stat.st_mtime,
-            })
+            entries.append(
+                {
+                    "name": child.name,
+                    "type": "dir" if child.is_dir() else "file",
+                    "size": stat.st_size if child.is_file() else None,
+                    "modified": stat.st_mtime,
+                }
+            )
         return {
             "type": "dir",
             "path": str(target.relative_to(root)) or ".",
@@ -287,7 +281,8 @@ async def ws_agent_exec(
     )
     if not container_name:
         await websocket.close(
-            code=4009, reason="no running container for this instance",
+            code=4009,
+            reason="no running container for this instance",
         )
         return
 
@@ -307,12 +302,17 @@ async def ws_agent_exec(
             return
 
         exec_inst = await container.exec(
-            cmd=["/bin/sh"], stdin=True, stdout=True, stderr=True, tty=True,
+            cmd=["/bin/sh"],
+            stdin=True,
+            stdout=True,
+            stderr=True,
+            tty=True,
         )
         stream = exec_inst.start()
         async with stream:
             _log.info(
-                "exec.open", instance_id=str(instance_id),
+                "exec.open",
+                instance_id=str(instance_id),
                 container=container_name,
             )
 

@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from agflow.auth.dependencies import require_admin
-from agflow.db.pool import fetch_all
+from agflow.mom.envelope import Kind
 from agflow.schemas.admin_sessions import AdminSessionListItem
+from agflow.schemas.agent_messages import AgentMessageOut
 from agflow.schemas.sessions import AgentInstanceOut, SessionOut
-from agflow.services import agents_instances_service, sessions_service
+from agflow.services import (
+    agent_messages_service,
+    agents_instances_service,
+    sessions_service,
+)
 
 router = APIRouter(prefix="/api/admin/sessions", tags=["admin-sessions"])
 
@@ -18,19 +23,6 @@ router = APIRouter(prefix="/api/admin/sessions", tags=["admin-sessions"])
 # admin-scoped path (is_admin=True). The services ignore `api_key_id` in that
 # branch so the value is inert.
 _ADMIN_SENTINEL_KEY = UUID(int=0)
-
-
-def _serialize_message(r: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "msg_id": str(r["msg_id"]),
-        "parent_msg_id": str(r["parent_msg_id"]) if r["parent_msg_id"] else None,
-        "direction": r["direction"],
-        "kind": r["kind"],
-        "payload": r["payload"],
-        "source": r["source"],
-        "created_at": r["created_at"].isoformat(),
-        "route": r["route"],
-    }
 
 
 @router.get("", response_model=list[AdminSessionListItem])
@@ -75,6 +67,7 @@ async def admin_list_session_agents(
     # `labels` is stored as JSONB and returned by asyncpg as a JSON string
     # unless a codec is registered on the connection. Decode here so the
     # Pydantic model can validate a `dict[str, Any]`.
+    # TODO: register jsonb codec in db/pool.py to remove this local normalization.
     normalized: list[dict[str, Any]] = []
     for r in rows:
         row = dict(r)
@@ -85,15 +78,18 @@ async def admin_list_session_agents(
     return [AgentInstanceOut(**r) for r in normalized]
 
 
-@router.get("/{session_id}/agents/{instance_id}/messages")
+@router.get(
+    "/{session_id}/agents/{instance_id}/messages",
+    response_model=list[AgentMessageOut],
+)
 async def admin_list_agent_messages(
     session_id: UUID,
     instance_id: UUID,
     _admin: str = Depends(require_admin),
-    kind: str | None = Query(default=None),
-    direction: str | None = Query(default=None, pattern="^(in|out)$"),
-    limit: int = Query(default=200, ge=1, le=1000),
-) -> list[dict[str, Any]]:
+    kind: Annotated[Kind | None, Query()] = None,
+    direction: Annotated[str | None, Query(pattern="^(in|out)$")] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+) -> list[AgentMessageOut]:
     # Confirm session ownership / existence before exposing messages.
     session = await sessions_service.get(
         session_id=session_id,
@@ -103,28 +99,14 @@ async def admin_list_agent_messages(
     if session is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
 
-    conditions = ["session_id = $1", "instance_id = $2"]
-    params: list[Any] = [str(session_id), str(instance_id)]
-    idx = 3
-    if kind:
-        conditions.append(f"kind = ${idx}")
-        params.append(kind)
-        idx += 1
-    if direction:
-        conditions.append(f"direction = ${idx}")
-        params.append(direction)
-        idx += 1
-    where = " AND ".join(conditions)
-    params.append(limit)
-
-    query = (
-        "SELECT msg_id, parent_msg_id, direction, kind, payload, source, "
-        "created_at, route "
-        f"FROM agent_messages WHERE {where} "
-        f"ORDER BY created_at DESC LIMIT ${idx}"
+    rows = await agent_messages_service.list_for_instance(
+        session_id=session_id,
+        instance_id=instance_id,
+        kind=kind.value if kind is not None else None,
+        direction=direction,
+        limit=limit,
     )
-    rows = await fetch_all(query, *params)
-    return [_serialize_message(r) for r in rows]
+    return [AgentMessageOut(**r) for r in rows]
 
 
 __all__ = ["router"]

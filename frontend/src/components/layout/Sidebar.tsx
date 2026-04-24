@@ -104,6 +104,7 @@ export function Sidebar({ open = false, onClose }: Props) {
     {
       title: t("sidebar.section_orchestration"),
       items: [
+        { to: "/sessions", label: t("sessions.page_title"), icon: Activity },
         { to: "/roles", label: t("roles.page_title"), icon: UserRoundCog },
         { to: "/agents", label: t("agents.page_title"), icon: Bot },
         { to: "/api-docs", label: t("sidebar.api_public"), icon: Globe },

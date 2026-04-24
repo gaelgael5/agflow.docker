@@ -23,6 +23,9 @@ import { MCPCatalogPage } from "./pages/MCPCatalogPage";
 import { SkillsCatalogPage } from "./pages/SkillsCatalogPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { AgentEditorPage } from "./pages/AgentEditorPage";
+import { SessionsPage } from "./pages/SessionsPage";
+import { SessionDetailPage } from "./pages/SessionDetailPage";
+import { SessionAgentTimelinePage } from "./pages/SessionAgentTimelinePage";
 import { ServiceTypesPage } from "./pages/ServiceTypesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
@@ -238,6 +241,30 @@ export default function App() {
         element={
           <ProtectedRoute>
             <MySecretsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sessions"
+        element={
+          <ProtectedRoute>
+            <SessionsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sessions/:id"
+        element={
+          <ProtectedRoute>
+            <SessionDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sessions/:id/agents/:instanceId"
+        element={
+          <ProtectedRoute>
+            <SessionAgentTimelinePage />
           </ProtectedRoute>
         }
       />

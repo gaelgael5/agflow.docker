@@ -22,6 +22,18 @@ INSERT INTO agent_message_delivery (group_name, msg_id, status)
 VALUES ($1, $2, 'pending')
 """
 
+_TOUCH_ACTIVITY_BUSY = """
+UPDATE agents_instances
+SET last_activity_at = now(), status = 'busy'
+WHERE id::text = $1 AND destroyed_at IS NULL
+"""
+
+_TOUCH_ACTIVITY_SIMPLE = """
+UPDATE agents_instances
+SET last_activity_at = now()
+WHERE id::text = $1 AND destroyed_at IS NULL
+"""
+
 _NOTIFY = "SELECT pg_notify($1, $2)"
 
 
@@ -56,11 +68,21 @@ class MomPublisher:
         async def _do(c: asyncpg.Connection) -> UUID:
             msg_id: UUID = await c.fetchval(
                 _INSERT_MSG,
-                session_id, instance_id, str(direction), str(kind),
-                payload_json, route_json, source, parent,
+                session_id,
+                instance_id,
+                str(direction),
+                str(kind),
+                payload_json,
+                route_json,
+                source,
+                parent,
             )
             for g in groups:
                 await c.execute(_INSERT_DELIVERY, g, msg_id)
+            # Touche la supervision : activité + passage en 'busy' sur instruction entrante.
+            should_mark_busy = str(direction) == "in" and str(kind) == "instruction"
+            touch_sql = _TOUCH_ACTIVITY_BUSY if should_mark_busy else _TOUCH_ACTIVITY_SIMPLE
+            await c.execute(touch_sql, instance_id)
             channel = f"mom_{instance_id}_{direction}"
             await c.execute(_NOTIFY, channel, str(msg_id))
             _log.info(

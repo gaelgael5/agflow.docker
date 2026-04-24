@@ -10,6 +10,8 @@ from agflow.db.pool import execute, fetch_all, fetch_one
 
 _log = structlog.get_logger(__name__)
 
+_VALID_STATUSES = ("idle", "busy", "error", "destroyed")
+
 
 async def create(
     *,
@@ -28,7 +30,10 @@ async def create(
             VALUES ($1, $2, $3::jsonb, $4)
             RETURNING id
             """,
-            session_id, agent_id, labels_json, mission,
+            session_id,
+            agent_id,
+            labels_json,
+            mission,
         )
         ids.append(row["id"])
     _log.info(
@@ -43,40 +48,57 @@ async def create(
 async def list_for_session(*, session_id: UUID) -> list[dict]:
     rows = await fetch_all(
         """
-        SELECT
-            i.id,
-            i.session_id,
-            i.agent_id,
-            i.labels,
-            i.mission,
-            i.created_at,
-            CASE WHEN EXISTS (
-                SELECT 1
-                FROM agent_messages m
-                JOIN agent_message_delivery d
-                  ON d.msg_id = m.msg_id AND d.group_name = 'dispatcher'
-                WHERE m.instance_id = i.id::text
-                  AND m.direction = 'in'
-                  AND m.kind = 'instruction'
-                  AND d.status IN ('pending','claimed')
-            ) THEN 'busy' ELSE 'idle' END AS status
-        FROM agents_instances i
-        WHERE i.session_id = $1 AND i.destroyed_at IS NULL
-        ORDER BY i.created_at
+        SELECT id, session_id, agent_id, labels, mission,
+               created_at, last_activity_at, status
+        FROM agents_instances
+        WHERE session_id = $1 AND destroyed_at IS NULL
+        ORDER BY created_at
         """,
         session_id,
     )
     return [dict(r) for r in rows]
 
 
+async def list_all_for_supervision(
+    *,
+    status: str | None = None,
+    limit: int = 200,
+) -> list[dict]:
+    if status is not None and status not in _VALID_STATUSES:
+        raise ValueError(f"invalid status: {status!r}")
+    query = """
+        SELECT id, session_id, agent_id, labels, mission,
+               created_at, last_activity_at, status, error_message,
+               destroyed_at, last_container_name
+        FROM agents_instances
+    """
+    if status is None:
+        query += " WHERE destroyed_at IS NULL"
+    elif status == "destroyed":
+        query += " WHERE destroyed_at IS NOT NULL"
+    else:
+        query += " WHERE destroyed_at IS NULL AND status = $1"
+    query += " ORDER BY last_activity_at DESC LIMIT "
+    # LIMIT doit être un littéral SQL, clampé
+    query += str(max(1, min(1000, int(limit))))
+    if status is None or status == "destroyed":
+        rows = await fetch_all(query)
+    else:
+        rows = await fetch_all(query, status)
+    return [dict(r) for r in rows]
+
+
 async def get(*, session_id: UUID, instance_id: UUID) -> dict | None:
     row = await fetch_one(
         """
-        SELECT id, session_id, agent_id, labels, mission, created_at, destroyed_at
+        SELECT id, session_id, agent_id, labels, mission,
+               created_at, destroyed_at, last_activity_at,
+               status, error_message, last_container_name
         FROM agents_instances
         WHERE id = $1 AND session_id = $2
         """,
-        instance_id, session_id,
+        instance_id,
+        session_id,
     )
     return dict(row) if row else None
 
@@ -85,10 +107,11 @@ async def destroy(*, session_id: UUID, instance_id: UUID) -> bool:
     result = await execute(
         """
         UPDATE agents_instances
-        SET destroyed_at = now()
+        SET destroyed_at = now(), status = 'destroyed'
         WHERE id = $1 AND session_id = $2 AND destroyed_at IS NULL
         """,
-        instance_id, session_id,
+        instance_id,
+        session_id,
     )
     ok = result.endswith(" 1")
     if ok:
@@ -100,12 +123,52 @@ async def destroy(*, session_id: UUID, instance_id: UUID) -> bool:
     return ok
 
 
+async def touch_activity(
+    *,
+    instance_id: UUID,
+    status: str | None = None,
+    error_message: str | None = None,
+) -> bool:
+    """Met à jour last_activity_at et, optionnellement, status/error_message.
+
+    Retourne True si une ligne non-destroyed a été modifiée.
+    """
+    if status is not None and status not in _VALID_STATUSES:
+        raise ValueError(f"invalid status: {status!r}")
+    if status is None:
+        result = await execute(
+            """
+            UPDATE agents_instances
+            SET last_activity_at = now()
+            WHERE id = $1 AND destroyed_at IS NULL
+            """,
+            instance_id,
+        )
+    else:
+        result = await execute(
+            """
+            UPDATE agents_instances
+            SET last_activity_at = now(),
+                status = $2,
+                error_message = $3
+            WHERE id = $1 AND destroyed_at IS NULL
+            """,
+            instance_id,
+            status,
+            error_message,
+        )
+    return result.endswith(" 1")
+
+
 async def set_last_container(
-    *, instance_id: UUID, container_name: str | None,
+    *,
+    instance_id: UUID,
+    container_name: str | None,
 ) -> None:
     await execute(
         "UPDATE agents_instances SET last_container_name = $1 WHERE id = $2",
-        container_name, instance_id,
+        container_name,
+        instance_id,
     )
 
 

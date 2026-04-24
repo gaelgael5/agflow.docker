@@ -43,6 +43,18 @@ UPDATE agent_message_delivery SET status = 'acked', acked_at = now()
 WHERE group_name = $1 AND msg_id = $2
 """
 
+_FETCH_KIND_INSTANCE_SQL = """
+SELECT kind, direction, instance_id
+FROM agent_messages
+WHERE msg_id = $1
+"""
+
+_MARK_IDLE_SQL = """
+UPDATE agents_instances
+SET status = 'idle', last_activity_at = now()
+WHERE id::text = $1 AND destroyed_at IS NULL AND status = 'busy'
+"""
+
 _FAIL_SQL = """
 UPDATE agent_message_delivery
 SET status = CASE WHEN retry_count + 1 >= $3 THEN 'failed' ELSE 'pending' END,
@@ -66,6 +78,7 @@ MAX_RETRIES = 3
 def _decode_jsonb(value: object) -> object:
     if isinstance(value, str):
         import json
+
         return json.loads(value)
     return value
 
@@ -91,7 +104,10 @@ def _row_to_envelope(row: asyncpg.Record) -> Envelope:
 
 class MomConsumer:
     def __init__(
-        self, pool: asyncpg.Pool, group_name: str, consumer_id: str,
+        self,
+        pool: asyncpg.Pool,
+        group_name: str,
+        consumer_id: str,
     ) -> None:
         self._pool = pool
         self._group_name = group_name
@@ -108,8 +124,11 @@ class MomConsumer:
         async with self._pool.acquire() as conn, conn.transaction():
             claimed_rows = await conn.fetch(
                 _CLAIM_SQL,
-                self._group_name, instance_id, dir_str,
-                batch_size, self._consumer_id,
+                self._group_name,
+                instance_id,
+                dir_str,
+                batch_size,
+                self._consumer_id,
             )
             if not claimed_rows:
                 return []
@@ -118,23 +137,40 @@ class MomConsumer:
         return [_row_to_envelope(r) for r in msg_rows]
 
     async def ack(self, msg_id: str | UUID) -> None:
-        async with self._pool.acquire() as conn:
-            await conn.execute(_ACK_SQL, self._group_name, UUID(str(msg_id)))
+        mid = UUID(str(msg_id))
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.execute(_ACK_SQL, self._group_name, mid)
+            # Si c'est le dispatcher qui ack une instruction IN, l'agent revient idle.
+            if self._group_name == "dispatcher":
+                info = await conn.fetchrow(_FETCH_KIND_INSTANCE_SQL, mid)
+                if (
+                    info is not None
+                    and info["direction"] == "in"
+                    and info["kind"] == "instruction"
+                    and info["instance_id"]
+                ):
+                    await conn.execute(_MARK_IDLE_SQL, info["instance_id"])
 
     async def fail(self, msg_id: str | UUID, error: str) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
-                _FAIL_SQL, self._group_name, UUID(str(msg_id)),
-                MAX_RETRIES, error,
+                _FAIL_SQL,
+                self._group_name,
+                UUID(str(msg_id)),
+                MAX_RETRIES,
+                error,
             )
 
     async def reclaim_stale(
-        self, max_idle: timedelta = timedelta(seconds=30),
+        self,
+        max_idle: timedelta = timedelta(seconds=30),
     ) -> int:
         interval_str = f"{int(max_idle.total_seconds())} seconds"
         async with self._pool.acquire() as conn:
             result = await conn.execute(
-                _RECLAIM_SQL, interval_str, self._group_name,
+                _RECLAIM_SQL,
+                interval_str,
+                self._group_name,
             )
         count = int(result.split()[-1]) if result else 0
         if count > 0:

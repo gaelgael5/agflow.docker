@@ -33,6 +33,7 @@ from agflow.api.admin.secrets import router as admin_secrets_router
 from agflow.api.admin.service_types import router as admin_service_types_router
 from agflow.api.admin.sessions import router as admin_sessions_router
 from agflow.api.admin.skills_catalog import router as admin_skills_catalog_router
+from agflow.api.admin.supervision import router as admin_supervision_router
 from agflow.api.admin.templates import router as admin_templates_router
 from agflow.api.admin.terminal import router as admin_terminal_router
 from agflow.api.admin.user_secrets import router as admin_user_secrets_router
@@ -56,7 +57,13 @@ from agflow.api.public.scopes import router as public_scopes_router
 from agflow.api.public.sessions import router as public_sessions_router
 from agflow.config import get_settings
 from agflow.logging_setup import configure_logging
+from agflow.workers.agent_reaper import run_agent_reaper_loop as _run_agent_reaper_loop
+from agflow.workers.docker_reconciler import run_docker_reconciliation
+from agflow.workers.mom_reclaimer import run_mom_reclaimer_loop as _run_mom_reclaimer_loop
 from agflow.workers.session_expiry import run_expiry_loop as _run_expiry_loop
+from agflow.workers.session_idle_reaper import (
+    run_session_idle_reaper_loop as _run_session_idle_reaper_loop,
+)
 
 
 @asynccontextmanager
@@ -97,15 +104,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from agflow.services import ai_providers_service
 
     ai_providers_service.seed_defaults()
-    _expiry_stop = _asyncio.Event()
-    _expiry_task = _asyncio.create_task(_run_expiry_loop(_expiry_stop))
+    # Supervision : reconciliation Docker ↔ DB au démarrage (best-effort)
+    try:
+        await run_docker_reconciliation()
+    except Exception as exc:
+        log.warning("docker_reconciler.startup_failed", error=str(exc))
+
+    # Démarrage des workers de fond
+    _stops = [_asyncio.Event() for _ in range(4)]
+    _tasks = [
+        _asyncio.create_task(_run_expiry_loop(_stops[0])),
+        _asyncio.create_task(_run_agent_reaper_loop(_stops[1])),
+        _asyncio.create_task(_run_session_idle_reaper_loop(_stops[2])),
+        _asyncio.create_task(_run_mom_reclaimer_loop(_stops[3])),
+    ]
     yield
     log.info("app.shutdown")
-    _expiry_stop.set()
-    try:
-        await _asyncio.wait_for(_expiry_task, timeout=5)
-    except TimeoutError:
-        _expiry_task.cancel()
+    for _stop in _stops:
+        _stop.set()
+    for _task in _tasks:
+        try:
+            await _asyncio.wait_for(_task, timeout=5)
+        except TimeoutError:
+            _task.cancel()
 
 
 def create_app() -> FastAPI:
@@ -220,6 +241,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_group_scripts_router)
     app.include_router(admin_scripts_router)
     app.include_router(admin_sessions_router)
+    app.include_router(admin_supervision_router)
     app.include_router(admin_deployments_router)
     app.include_router(admin_runtimes_router)
     app.include_router(admin_product_instances_router)

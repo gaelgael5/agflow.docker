@@ -1277,5 +1277,34 @@
     "runs_finished": "Terminé",
     "runs_result": "Résultat",
     "runs_running": "en cours"
+  },
+  "sessions": {
+    "page_title": "Sessions",
+    "subtitle": "Sessions actives et agents rattachés",
+    "search_placeholder": "Filtrer sessions ou projet…",
+    "empty": "Aucune session pour le moment",
+    "ad_hoc_label": "Ad hoc",
+    "project_label": "Projet",
+    "agents_count_one": "{{count}} agent",
+    "agents_count_other": "{{count}} agents",
+    "status_active": "active",
+    "status_closed": "fermée",
+    "status_expired": "expirée",
+    "status_busy": "occupé",
+    "status_idle": "au repos",
+    "expires_in": "expire {{when}}",
+    "session_detail": {
+      "back_to_list": "← Sessions",
+      "back_to_project": "← {{project}}",
+      "no_agents": "Aucun agent dans cette session"
+    },
+    "agent_timeline": {
+      "back_to_session": "← Session {{id}}",
+      "no_messages": "Aucun message échangé",
+      "filter_placeholder": "🔎 filtre…",
+      "live_badge": "● Live",
+      "direction_in": "◀ in",
+      "direction_out": "▶ out"
+    }
   }
 }

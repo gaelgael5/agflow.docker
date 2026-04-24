@@ -1277,5 +1277,34 @@
     "runs_finished": "Finished",
     "runs_result": "Result",
     "runs_running": "running"
+  },
+  "sessions": {
+    "page_title": "Sessions",
+    "subtitle": "Active sessions and attached agents",
+    "search_placeholder": "Filter sessions or project…",
+    "empty": "No sessions yet",
+    "ad_hoc_label": "Ad hoc",
+    "project_label": "Project",
+    "agents_count_one": "{{count}} agent",
+    "agents_count_other": "{{count}} agents",
+    "status_active": "active",
+    "status_closed": "closed",
+    "status_expired": "expired",
+    "status_busy": "busy",
+    "status_idle": "idle",
+    "expires_in": "expires {{when}}",
+    "session_detail": {
+      "back_to_list": "← Sessions",
+      "back_to_project": "← {{project}}",
+      "no_agents": "No agents in this session"
+    },
+    "agent_timeline": {
+      "back_to_session": "← Session {{id}}",
+      "no_messages": "No messages exchanged",
+      "filter_placeholder": "🔎 filter…",
+      "live_badge": "● Live",
+      "direction_in": "◀ in",
+      "direction_out": "▶ out"
+    }
   }
 }

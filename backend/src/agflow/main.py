@@ -52,7 +52,9 @@ from agflow.api.public.files import router as public_files_router
 from agflow.api.public.launched import router as public_launched_router
 from agflow.api.public.messages import router as public_messages_router
 from agflow.api.public.params import router as public_params_router
+from agflow.api.public.projects import router as public_projects_router
 from agflow.api.public.roles import router as public_roles_router
+from agflow.api.public.runtimes import router as public_runtimes_router
 from agflow.api.public.scopes import router as public_scopes_router
 from agflow.api.public.sessions import router as public_sessions_router
 from agflow.config import get_settings
@@ -265,6 +267,8 @@ def create_app() -> FastAPI:
     app.include_router(public_messages_router)
     app.include_router(public_sessions_router)
     app.include_router(public_roles_router)
+    app.include_router(public_projects_router)
+    app.include_router(public_runtimes_router)
     return app
 
 

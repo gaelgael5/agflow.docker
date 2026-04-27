@@ -45,6 +45,7 @@ export interface GroupSummary {
   project_id: string;
   name: string;
   max_agents: number;
+  max_replicas: number;
   compose_template_slug: string | null;
   instance_count: number;
   created_at: string;
@@ -55,6 +56,7 @@ export interface GroupCreatePayload {
   project_id: string;
   name: string;
   max_agents?: number;
+  max_replicas?: number;
   compose_template_slug?: string | null;
 }
 

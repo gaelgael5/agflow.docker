@@ -249,6 +249,7 @@ export function ProjectDetailPage() {
         fields={[
           { name: "name", label: t("projects.group_name"), required: true },
           { name: "max_agents", label: t("projects.group_max_agents"), defaultValue: "0" },
+          { name: "max_replicas", label: t("projects.group_max_replicas"), defaultValue: "1" },
           {
             name: "compose_template_slug",
             label: t("projects.group_compose_template"),
@@ -261,6 +262,7 @@ export function ProjectDetailPage() {
             project_id: projectId!,
             name: values.name ?? "",
             max_agents: parseInt(values.max_agents ?? "0", 10),
+            max_replicas: Math.max(1, parseInt(values.max_replicas ?? "1", 10)),
             compose_template_slug: values.compose_template_slug || null,
           });
           qc.invalidateQueries({ queryKey: ["groups", projectId] });
@@ -277,6 +279,7 @@ export function ProjectDetailPage() {
         fields={[
           { name: "name", label: t("projects.group_name"), required: true, defaultValue: editGroup?.name ?? "" },
           { name: "max_agents", label: t("projects.group_max_agents"), defaultValue: String(editGroup?.max_agents ?? 0) },
+          { name: "max_replicas", label: t("projects.group_max_replicas"), defaultValue: String(editGroup?.max_replicas ?? 1) },
           {
             name: "compose_template_slug",
             label: t("projects.group_compose_template"),
@@ -289,6 +292,7 @@ export function ProjectDetailPage() {
           await groupsApi.update(editGroup.id, {
             name: values.name ?? editGroup.name,
             max_agents: parseInt(values.max_agents ?? "0", 10),
+            max_replicas: Math.max(1, parseInt(values.max_replicas ?? "1", 10)),
             compose_template_slug: values.compose_template_slug || null,
           });
           qc.invalidateQueries({ queryKey: ["groups", projectId] });

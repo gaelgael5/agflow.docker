@@ -101,12 +101,14 @@ class GroupCreate(BaseModel):
     project_id: UUID
     name: str = Field(min_length=1, max_length=200)
     max_agents: int = 0
+    max_replicas: int = Field(default=1, ge=1)
     compose_template_slug: str | None = None
 
 
 class GroupUpdate(BaseModel):
     name: str | None = None
     max_agents: int | None = None
+    max_replicas: int | None = Field(default=None, ge=1)
     compose_template_slug: str | None = None
 
 
@@ -115,6 +117,7 @@ class GroupSummary(BaseModel):
     project_id: UUID
     name: str
     max_agents: int = 0
+    max_replicas: int = 1
     compose_template_slug: str | None = None
     instance_count: int = 0
     created_at: datetime

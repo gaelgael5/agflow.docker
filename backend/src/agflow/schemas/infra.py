@@ -111,6 +111,8 @@ class MachineCreate(BaseModel):
     password: str | None = None
     certificate_id: UUID | None = None
     parent_id: UUID | None = None
+    user_id: UUID | None = None
+    environment: str | None = None
 
 
 class MachineUpdate(BaseModel):
@@ -120,6 +122,8 @@ class MachineUpdate(BaseModel):
     username: str | None = None
     password: str | None = None
     certificate_id: UUID | None = None
+    user_id: UUID | None = None
+    environment: str | None = None
 
 
 class RequiredActionStatus(BaseModel):
@@ -139,6 +143,8 @@ class MachineSummary(BaseModel):
     has_password: bool = False
     certificate_id: UUID | None
     parent_id: UUID | None = None
+    user_id: UUID | None = None
+    environment: str | None = None
     children_count: int = 0
     metadata: dict[str, str] = {}
     status: str = "not_initialized"

@@ -69,6 +69,8 @@ async def create_machine(payload: MachineCreate):
         password=payload.password,
         certificate_id=payload.certificate_id,
         parent_id=payload.parent_id,
+        user_id=payload.user_id,
+        environment=payload.environment,
     )
     return created
 

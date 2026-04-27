@@ -18,6 +18,7 @@ import {
   type ScriptManifest,
   type DockerContainer,
 } from "@/lib/infraApi";
+import { usersApi, type UserSummary } from "@/lib/usersApi";
 import { useInfraNamedTypes, useInfraMachinesRuns } from "@/hooks/useInfra";
 import { api } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -57,6 +58,7 @@ export function InfraMachinesPage() {
   const qc = useQueryClient();
   const { data: namedTypes } = useInfraNamedTypes();
   const certsQuery = useQuery({ queryKey: ["infra-certificates"], queryFn: () => infraCertificatesApi.list() });
+  const usersQuery = useQuery({ queryKey: ["users"], queryFn: () => usersApi.list() });
   const listQuery = useQuery({ queryKey: ["infra-machines"], queryFn: () => infraMachinesApi.list() });
   const platformConfigQuery = useQuery({
     queryKey: ["platform-config"],
@@ -83,6 +85,7 @@ export function InfraMachinesPage() {
 
   const machines = listQuery.data ?? [];
   const certificates = certsQuery.data ?? [];
+  const users = usersQuery.data ?? [];
   const [healthMap, setHealthMap] = useState<Record<string, string | null>>({});
   const [containersMap, setContainersMap] = useState<Record<string, DockerContainer[]>>({});
   const [expandedMachines, setExpandedMachines] = useState<Record<string, boolean>>({});
@@ -199,6 +202,7 @@ export function InfraMachinesPage() {
         onClose={() => setShowCreate(false)}
         namedTypes={namedTypes ?? []}
         certificates={certificates}
+        users={users}
         onSubmit={async (p) => {
           await createMutation.mutateAsync(p);
           setShowCreate(false);
@@ -213,6 +217,7 @@ export function InfraMachinesPage() {
         onClose={() => setEditTarget(null)}
         namedTypes={namedTypes ?? []}
         certificates={certificates}
+        users={users}
         onSubmit={async (p) => {
           if (!editTarget) return;
           await infraMachinesApi.update(editTarget.id, p);
@@ -639,12 +644,13 @@ function MachineChildRow({
 
 /* ── Machine Form Dialog (create + edit) ──────────────── */
 
-function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, onSubmit, t }: {
+function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, users, onSubmit, t }: {
   open: boolean;
   initial?: MachineSummary | null;
   onClose: () => void;
   namedTypes: InfraNamedType[];
   certificates: CertificateSummary[];
+  users: UserSummary[];
   onSubmit: (p: MachineCreatePayload) => Promise<void>;
   t: (key: string) => string;
 }) {
@@ -655,6 +661,8 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, o
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [certificateId, setCertificateId] = useState("");
+  const [userId, setUserId] = useState("");
+  const [environment, setEnvironment] = useState("");
   const [saving, setSaving] = useState(false);
   const isEdit = !!initial;
 
@@ -668,9 +676,12 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, o
       setUsername(initial.username ?? "");
       setPassword("");
       setCertificateId(initial.certificate_id ?? "");
+      setUserId(initial.user_id ?? "");
+      setEnvironment(initial.environment ?? "");
     } else {
       setName(""); setTypeId(""); setHost(""); setPort("22");
       setUsername(""); setPassword(""); setCertificateId("");
+      setUserId(""); setEnvironment("");
     }
     setSaving(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -728,6 +739,26 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, o
               ))}
             </select>
           </div>
+          <div>
+            <Label className="text-[11px]">{t("infra.machine_owner_user")}</Label>
+            <select value={userId} onChange={(e) => setUserId(e.target.value)} className={selectClass}>
+              <option value="">— {t("infra.machine_owner_shared")} —</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name || u.email}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("infra.machine_owner_hint")}</p>
+          </div>
+          <div>
+            <Label className="text-[11px]">{t("infra.machine_environment")}</Label>
+            <Input
+              value={environment}
+              onChange={(e) => setEnvironment(e.target.value)}
+              className="mt-1 font-mono text-[12px]"
+              placeholder={t("infra.machine_environment_placeholder")}
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">{t("infra.machine_environment_hint")}</p>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
@@ -742,6 +773,8 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, o
                 username: username || undefined,
                 password: password || undefined,
                 certificate_id: certificateId || undefined,
+                user_id: userId || undefined,
+                environment: environment.trim() || undefined,
               });
             } finally { setSaving(false); }
           }}>

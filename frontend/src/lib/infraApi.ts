@@ -163,6 +163,8 @@ export interface MachineSummary {
   has_password: boolean;
   certificate_id: string | null;
   parent_id: string | null;
+  user_id: string | null;
+  environment: string | null;
   children_count: number;
   metadata: Record<string, string>;
   status: string;
@@ -180,6 +182,8 @@ export interface MachineCreatePayload {
   password?: string;
   certificate_id?: string;
   parent_id?: string;
+  user_id?: string;
+  environment?: string;
 }
 
 export interface MachineUpdatePayload {
@@ -189,6 +193,8 @@ export interface MachineUpdatePayload {
   username?: string;
   password?: string;
   certificate_id?: string;
+  user_id?: string | null;
+  environment?: string | null;
 }
 
 export interface DockerContainer {

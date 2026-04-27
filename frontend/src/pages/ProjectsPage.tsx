@@ -15,12 +15,6 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const ENV_COLORS: Record<string, string> = {
-  dev: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  staging: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  prod: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-};
-
 export function ProjectsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -71,7 +65,6 @@ export function ProjectsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t("projects.col_name")}</TableHead>
-                <TableHead>{t("projects.col_env")}</TableHead>
                 <TableHead>{t("projects.col_groups")}</TableHead>
                 <TableHead className="text-right">{t("projects.col_actions")}</TableHead>
               </TableRow>
@@ -93,11 +86,6 @@ export function ProjectsPage() {
                         )}
                       </div>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={`text-[10px] ${ENV_COLORS[p.environment] ?? ""}`}>
-                      {p.environment}
-                    </Badge>
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="text-[10px]">
@@ -137,21 +125,12 @@ export function ProjectsPage() {
         fields={[
           { name: "display_name", label: t("projects.field_name"), required: true },
           { name: "description", label: t("projects.field_description") },
-          {
-            name: "environment", label: t("projects.field_environment"), defaultValue: "dev",
-            options: [
-              { value: "dev", label: "Dev" },
-              { value: "staging", label: "Staging" },
-              { value: "prod", label: "Prod" },
-            ],
-          },
           { name: "network", label: t("projects.field_network"), defaultValue: "agflow", monospace: true },
         ]}
         onSubmit={async (values) => {
           await createMutation.mutateAsync({
             display_name: values.display_name ?? "",
             description: values.description ?? "",
-            environment: (values.environment as "dev" | "staging" | "prod") ?? "dev",
             network: (values.network ?? "agflow").trim() || "agflow",
           });
           setShowCreate(false);
@@ -165,14 +144,6 @@ export function ProjectsPage() {
         fields={editTarget ? [
           { name: "display_name", label: t("projects.field_name"), required: true, defaultValue: editTarget.display_name },
           { name: "description", label: t("projects.field_description"), defaultValue: editTarget.description },
-          {
-            name: "environment", label: t("projects.field_environment"), defaultValue: editTarget.environment,
-            options: [
-              { value: "dev", label: "Dev" },
-              { value: "staging", label: "Staging" },
-              { value: "prod", label: "Prod" },
-            ],
-          },
           { name: "network", label: t("projects.field_network"), defaultValue: editTarget.network || "agflow", monospace: true },
         ] : []}
         onSubmit={async (values) => {
@@ -182,7 +153,6 @@ export function ProjectsPage() {
             payload: {
               display_name: values.display_name ?? editTarget.display_name,
               description: values.description ?? "",
-              environment: (values.environment as "dev" | "staging" | "prod") ?? editTarget.environment,
               network: (values.network ?? "agflow").trim() || "agflow",
             },
           });

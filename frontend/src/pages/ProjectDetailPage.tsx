@@ -138,9 +138,6 @@ export function ProjectDetailPage() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <span>{project?.display_name ?? "..."}</span>
-            {project && (
-              <Badge className="text-[10px]">{project.environment}</Badge>
-            )}
           </div>
         }
         subtitle={project?.description}

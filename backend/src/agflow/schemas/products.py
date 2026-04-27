@@ -69,13 +69,10 @@ class ProductDetail(ProductSummary):
 
 # ── Projects (logique) ──────────────────────────────────
 
-Environment = Literal["dev", "staging", "prod"]
-
 
 class ProjectCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=200)
     description: str = ""
-    environment: Environment = "dev"
     tags: list[str] = Field(default_factory=list)
     network: str = "agflow"
 
@@ -83,7 +80,6 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     display_name: str | None = None
     description: str | None = None
-    environment: Environment | None = None
     tags: list[str] | None = None
     network: str | None = None
 
@@ -92,7 +88,6 @@ class ProjectSummary(BaseModel):
     id: UUID
     display_name: str
     description: str
-    environment: Environment
     tags: list[str] = Field(default_factory=list)
     network: str = "agflow"
     group_count: int = 0

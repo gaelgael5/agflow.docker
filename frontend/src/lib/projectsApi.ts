@@ -6,7 +6,6 @@ export interface ProjectSummary {
   id: string;
   display_name: string;
   description: string;
-  environment: "dev" | "staging" | "prod";
   tags: string[];
   network: string;
   group_count: number;
@@ -17,7 +16,6 @@ export interface ProjectSummary {
 export interface ProjectCreatePayload {
   display_name: string;
   description?: string;
-  environment?: "dev" | "staging" | "prod";
   tags?: string[];
   network?: string;
 }

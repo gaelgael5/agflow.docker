@@ -22,7 +22,7 @@ COMMENT ON COLUMN sessions.callback_hmac_key_id IS
     'Identifiant logique de la clé HMAC à utiliser pour signer les hooks';
 
 -- ── Product instances : enrichir pour les resources contractuelles ─────────
-ALTER TABLE product_instances
+ALTER TABLE instances
     ADD COLUMN IF NOT EXISTS connection_params JSONB,
     ADD COLUMN IF NOT EXISTS mcp_bindings JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS setup_steps JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -30,11 +30,11 @@ ALTER TABLE product_instances
         NOT NULL DEFAULT 'ready'
         CHECK (provisioning_status IN ('provisioning', 'ready', 'pending_setup', 'failed'));
 
-COMMENT ON COLUMN product_instances.mcp_bindings IS
+COMMENT ON COLUMN instances.mcp_bindings IS
     'Liste des MCP servers exposés par cette resource (injectés dans les agents des sessions liées au runtime)';
-COMMENT ON COLUMN product_instances.connection_params IS
+COMMENT ON COLUMN instances.connection_params IS
     'Params de connexion exposés par la resource après provisioning (urls, var names, etc.)';
-COMMENT ON COLUMN product_instances.setup_steps IS
+COMMENT ON COLUMN instances.setup_steps IS
     'Instructions templated Jinja (résolues côté Docker) à effectuer manuellement par l''utilisateur après provisioning';
 
 -- ── Agents instances : trace de l'injection MCP ─────────────────────────────

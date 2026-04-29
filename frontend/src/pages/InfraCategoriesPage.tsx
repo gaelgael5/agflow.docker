@@ -120,8 +120,26 @@ function CategoryRowItem({ category, t }: {
             <span className="text-[11px] text-muted-foreground mr-2">{t("infra.no_actions")}</span>
           )}
           {(actions ?? []).map((a) => (
-            <Badge key={a.id} variant="secondary" className="text-[10px] gap-1 pr-1">
-              {a.name}
+            <Badge
+              key={a.id}
+              variant={a.is_required ? "default" : "secondary"}
+              className={`text-[10px] gap-1 pr-1 ${a.is_required ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
+            >
+              <button
+                type="button"
+                title={a.is_required ? t("infra.action_required_on") : t("infra.action_required_off")}
+                className="font-medium"
+                onClick={async () => {
+                  try {
+                    await infraCategoriesApi.setActionRequired(category.name, a.name, !a.is_required);
+                    qc.invalidateQueries({ queryKey: ["infra-category-actions", category.name] });
+                  } catch (e) {
+                    toast.error(String(e));
+                  }
+                }}
+              >
+                {a.is_required ? "★ " : ""}{a.name}
+              </button>
               <button
                 type="button"
                 className="ml-1 rounded-sm hover:bg-destructive/20"

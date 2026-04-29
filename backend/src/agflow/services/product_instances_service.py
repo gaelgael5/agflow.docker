@@ -21,12 +21,16 @@ def _to_summary(row: dict[str, Any]) -> InstanceSummary:
     variables = row.get("variables") or {}
     if isinstance(variables, str):
         variables = json.loads(variables)
+    statuses = row.get("variable_statuses") or {}
+    if isinstance(statuses, str):
+        statuses = json.loads(statuses)
     return InstanceSummary(
         id=row["id"],
         group_id=row["group_id"],
         instance_name=row["instance_name"],
         catalog_id=row["catalog_id"],
         variables=variables,
+        variable_statuses=statuses,
         status=row["status"],
         service_url=row.get("service_url"),
         created_at=row["created_at"],
@@ -72,14 +76,17 @@ async def create(
     instance_name: str,
     catalog_id: str,
     variables: dict[str, str] | None = None,
+    variable_statuses: dict[str, str] | None = None,
 ) -> InstanceSummary:
     row = await fetch_one(
         """
-        INSERT INTO instances (group_id, instance_name, catalog_id, variables)
-        VALUES ($1, $2, $3, $4::jsonb)
+        INSERT INTO instances (group_id, instance_name, catalog_id, variables, variable_statuses)
+        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
         RETURNING *
         """,
-        group_id, instance_name, catalog_id, json.dumps(variables or {}),
+        group_id, instance_name, catalog_id,
+        json.dumps(variables or {}),
+        json.dumps(variable_statuses or {}),
     )
     assert row is not None
     _log.info("instances.create", name=instance_name, group_id=str(group_id))
@@ -89,20 +96,32 @@ async def create(
 async def update(instance_id: UUID, **kwargs: Any) -> InstanceSummary:
     await get_by_id(instance_id)
     updates: dict[str, Any] = {}
-    for field in ("instance_name", "variables", "service_url"):
+    jsonb_fields: set[str] = set()
+    for field in ("instance_name", "service_url"):
         if field in kwargs and kwargs[field] is not None:
-            val = kwargs[field]
-            if field == "variables":
-                val = json.dumps(val)
-            updates[field] = val
+            updates[field] = kwargs[field]
+    if "variables" in kwargs and kwargs["variables"] is not None:
+        updates["variables"] = json.dumps(kwargs["variables"])
+        jsonb_fields.add("variables")
+    if "variable_statuses" in kwargs and kwargs["variable_statuses"] is not None:
+        updates["variable_statuses"] = json.dumps(kwargs["variable_statuses"])
+        jsonb_fields.add("variable_statuses")
 
     if not updates:
         return await get_by_id(instance_id)
 
-    sets = [f"{k} = ${i}" for i, k in enumerate(updates, 2)]
+    sets = []
+    values = []
+    for i, (k, v) in enumerate(updates.items(), 2):
+        if k in jsonb_fields:
+            sets.append(f"{k} = ${i}::jsonb")
+        else:
+            sets.append(f"{k} = ${i}")
+        values.append(v)
+
     await execute(
         f"UPDATE instances SET {', '.join(sets)} WHERE id = $1",
-        instance_id, *updates.values(),
+        instance_id, *values,
     )
     _log.info("instances.update", id=str(instance_id))
     return await get_by_id(instance_id)

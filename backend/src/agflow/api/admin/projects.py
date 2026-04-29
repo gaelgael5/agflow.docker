@@ -25,8 +25,8 @@ async def create_project(payload: ProjectCreate):
     return await projects_service.create(
         display_name=payload.display_name,
         description=payload.description,
-        environment=payload.environment,
         tags=payload.tags,
+        network=payload.network,
     )
 
 
@@ -79,7 +79,6 @@ async def get_project_full(project_id: UUID):
         "id": str(project.id),
         "display_name": project.display_name,
         "description": project.description,
-        "environment": project.environment,
         "groups": groups_out,
     }
 
@@ -113,7 +112,6 @@ async def list_projects_full():
             "id": str(project.id),
             "display_name": project.display_name,
             "description": project.description,
-            "environment": project.environment,
             "groups": groups_out,
         })
     return result

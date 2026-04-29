@@ -79,17 +79,6 @@ services:
       - "8081:8081"
     networks: [agflow]
 
-  dozzle-agent:
-    image: amir20/dozzle:latest
-    container_name: dozzle-agent
-    restart: unless-stopped
-    command: agent
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "7007:7007"
-    networks:
-      - agflow
 
 
 volumes:

@@ -25,8 +25,8 @@ def _to_summary(row: dict[str, Any]) -> ProjectSummary:
         id=row["id"],
         display_name=row["display_name"],
         description=row["description"],
-        environment=row["environment"],
         tags=tags,
+        network=row.get("network") or "agflow",
         group_count=row.get("group_count", 0),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -65,16 +65,16 @@ async def get_by_id(project_id: UUID) -> ProjectSummary:
 async def create(
     display_name: str,
     description: str = "",
-    environment: str = "dev",
     tags: list[str] | None = None,
+    network: str = "agflow",
 ) -> ProjectSummary:
     row = await fetch_one(
         """
-        INSERT INTO projects (display_name, description, environment, tags)
-        VALUES ($1, $2, $3, $4::jsonb)
+        INSERT INTO projects (display_name, description, tags, network)
+        VALUES ($1, $2, $3::jsonb, $4)
         RETURNING *, 0 AS group_count
         """,
-        display_name, description, environment, json.dumps(tags or []),
+        display_name, description, json.dumps(tags or []), network,
     )
     assert row is not None
     _log.info("projects.create", name=display_name)
@@ -84,7 +84,7 @@ async def create(
 async def update(project_id: UUID, **kwargs: Any) -> ProjectSummary:
     await get_by_id(project_id)
     updates: dict[str, Any] = {}
-    for field in ("display_name", "description", "environment", "tags"):
+    for field in ("display_name", "description", "tags", "network"):
         if field in kwargs and kwargs[field] is not None:
             val = kwargs[field]
             if field == "tags":

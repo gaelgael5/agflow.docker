@@ -69,29 +69,27 @@ class ProductDetail(ProductSummary):
 
 # ── Projects (logique) ──────────────────────────────────
 
-Environment = Literal["dev", "staging", "prod"]
-
 
 class ProjectCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=200)
     description: str = ""
-    environment: Environment = "dev"
     tags: list[str] = Field(default_factory=list)
+    network: str = "agflow"
 
 
 class ProjectUpdate(BaseModel):
     display_name: str | None = None
     description: str | None = None
-    environment: Environment | None = None
     tags: list[str] | None = None
+    network: str | None = None
 
 
 class ProjectSummary(BaseModel):
     id: UUID
     display_name: str
     description: str
-    environment: Environment
     tags: list[str] = Field(default_factory=list)
+    network: str = "agflow"
     group_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -103,11 +101,15 @@ class GroupCreate(BaseModel):
     project_id: UUID
     name: str = Field(min_length=1, max_length=200)
     max_agents: int = 0
+    max_replicas: int = Field(default=1, ge=1)
+    compose_template_slug: str | None = None
 
 
 class GroupUpdate(BaseModel):
     name: str | None = None
     max_agents: int | None = None
+    max_replicas: int | None = Field(default=None, ge=1)
+    compose_template_slug: str | None = None
 
 
 class GroupSummary(BaseModel):
@@ -115,6 +117,8 @@ class GroupSummary(BaseModel):
     project_id: UUID
     name: str
     max_agents: int = 0
+    max_replicas: int = 1
+    compose_template_slug: str | None = None
     instance_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -123,6 +127,7 @@ class GroupSummary(BaseModel):
 # ── Instances (logique) ─────────────────────────────────
 
 InstanceStatus = Literal["draft", "active", "stopped"]
+InstanceVariableStatus = Literal["keep", "clean", "replace"]
 
 
 class InstanceCreate(BaseModel):
@@ -130,11 +135,13 @@ class InstanceCreate(BaseModel):
     instance_name: str = Field(min_length=1, max_length=128)
     catalog_id: str = Field(min_length=1)
     variables: dict[str, str] = Field(default_factory=dict)
+    variable_statuses: dict[str, InstanceVariableStatus] = Field(default_factory=dict)
 
 
 class InstanceUpdate(BaseModel):
     instance_name: str | None = None
     variables: dict[str, str] | None = None
+    variable_statuses: dict[str, InstanceVariableStatus] | None = None
     service_url: str | None = None
 
 
@@ -144,6 +151,7 @@ class InstanceSummary(BaseModel):
     instance_name: str
     catalog_id: str
     variables: dict[str, str] = Field(default_factory=dict)
+    variable_statuses: dict[str, InstanceVariableStatus] = Field(default_factory=dict)
     status: InstanceStatus = "draft"
     service_url: str | None = None
     created_at: datetime
@@ -174,5 +182,6 @@ class DeploymentSummary(BaseModel):
     generated_env: str | None = None
     generated_secrets: dict[str, str] = Field(default_factory=dict)
     nullable_secrets: list[str] = Field(default_factory=list)
+    generated_data: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime

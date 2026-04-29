@@ -1,0 +1,85 @@
+services:
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: agflow-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    # Port exposé sur le LAN homelab pour que les Alloy distants (autres LXC)
+    # puissent pousser leurs logs. Pas d'auth Loki (auth_enabled: false dans
+    # loki-config.yml) — protection assurée par l'isolation réseau LAN.
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    networks: [logs]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 10s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: agflow-grafana
+    restart: unless-stopped
+    depends_on:
+      loki: { condition: service_healthy }
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Grafana admin password required}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ${KEYCLOAK_GRAFANA_CLIENT_SECRET:?Keycloak client secret required}
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    networks: [logs]
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      retries: 5
+
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: agflow-alloy
+    restart: unless-stopped
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+    environment:
+      LOKI_URL: http://loki:3100/loki/api/v1/push
+      HOSTNAME: lxc116
+    volumes:
+      # Source unique du config Alloy : infra/alloy-agent/ (réutilisé par les
+      # autres LXC du homelab via scripts/infra/02-install-alloy.sh).
+      - ../alloy-agent/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log:/var/log:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - alloy_data:/var/lib/alloy/data
+    networks: [logs]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: agflow-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [grafana]
+    networks: [logs]
+
+volumes:
+  loki_data:
+  grafana_data:
+  alloy_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  logs:
+    driver: bridge

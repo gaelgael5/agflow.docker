@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Bell, BotMessageSquare, ChevronRight, Menu, Search } from "lucide-react";
+import { Bell, BotMessageSquare, ChevronRight, Download, Loader2, Menu, Search } from "lucide-react";
+import { toast } from "sonner";
+import { api } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -60,10 +64,40 @@ function resolveCrumbs(path: string, t: (k: string) => string): Crumb | null {
   return null;
 }
 
+function extractFilename(contentDisposition: string | undefined, fallback: string): string {
+  if (!contentDisposition) return fallback;
+  const match = /filename="([^"]+)"/.exec(contentDisposition);
+  return match?.[1] ?? fallback;
+}
+
 export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive, assistantName }: Props) {
   const { t } = useTranslation();
   const location = useLocation();
+  const { isAdmin } = useAuth();
+  const [exporting, setExporting] = useState(false);
   const crumb = resolveCrumbs(location.pathname, t);
+
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const r = await api.get("/admin/system/export", { responseType: "blob" });
+      const filename = extractFilename(
+        r.headers["content-disposition"] as string | undefined,
+        "agflow-data.zip",
+      );
+      const url = URL.createObjectURL(r.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error(t("topbar.export_error"));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <header className="h-14 border-b bg-card flex items-center justify-between px-4 md:px-6 shrink-0">
@@ -96,6 +130,25 @@ export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive, assi
         )}
       </div>
       <div className="flex items-center gap-2">
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting}
+            className={cn(
+              "hidden sm:flex w-8 h-8 rounded-md hover:bg-secondary items-center justify-center text-muted-foreground transition-colors",
+              exporting && "opacity-50 cursor-wait",
+            )}
+            aria-label={t("topbar.export")}
+            title={t("topbar.export_tooltip")}
+          >
+            {exporting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+          </button>
+        )}
         <button
           type="button"
           className="hidden sm:flex w-8 h-8 rounded-md hover:bg-secondary items-center justify-center text-muted-foreground transition-colors"

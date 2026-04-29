@@ -2,12 +2,21 @@ import { api } from "./api";
 
 // ── Scripts (shell .sh stocké en BDD) ─────────────────
 
+export type InputStatus = "keep" | "clean" | "replace";
+
+export interface ScriptInputVariable {
+  name: string;
+  description: string;
+  default: string;
+}
+
 export interface ScriptSummary {
   id: string;
   name: string;
   description: string;
   execute_on_types_named: string | null;
   execute_on_types_named_name: string | null;
+  input_variables: ScriptInputVariable[];
   created_at: string;
   updated_at: string;
 }
@@ -21,6 +30,7 @@ export interface ScriptCreatePayload {
   description?: string;
   content?: string;
   execute_on_types_named?: string | null;
+  input_variables?: ScriptInputVariable[];
 }
 
 export interface ScriptUpdatePayload {
@@ -28,6 +38,7 @@ export interface ScriptUpdatePayload {
   description?: string;
   content?: string;
   execute_on_types_named?: string | null;
+  input_variables?: ScriptInputVariable[];
 }
 
 export const scriptsApi = {
@@ -52,9 +63,18 @@ export const scriptsApi = {
 
 export type ScriptTiming = "before" | "after";
 
+export type TriggerOp = "equals" | "not_equals" | "is_null";
+
+export interface TriggerRule {
+  variable: string;
+  op: TriggerOp;
+  value: string;
+}
+
 export interface GroupScript {
   id: string;
   group_id: string;
+  group_name: string;
   script_id: string;
   script_name: string;
   machine_id: string;
@@ -62,6 +82,9 @@ export interface GroupScript {
   timing: ScriptTiming;
   position: number;
   env_mapping: Record<string, string>;
+  input_values: Record<string, string>;
+  input_statuses: Record<string, InputStatus>;
+  trigger_rules: TriggerRule[];
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +95,9 @@ export interface GroupScriptCreatePayload {
   timing: ScriptTiming;
   position?: number;
   env_mapping?: Record<string, string>;
+  input_values?: Record<string, string>;
+  input_statuses?: Record<string, InputStatus>;
+  trigger_rules?: TriggerRule[];
 }
 
 export interface GroupScriptUpdatePayload {
@@ -80,6 +106,9 @@ export interface GroupScriptUpdatePayload {
   timing?: ScriptTiming;
   position?: number;
   env_mapping?: Record<string, string>;
+  input_values?: Record<string, string>;
+  input_statuses?: Record<string, InputStatus>;
+  trigger_rules?: TriggerRule[];
 }
 
 export const groupScriptsApi = {

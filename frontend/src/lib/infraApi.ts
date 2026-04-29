@@ -10,6 +10,7 @@ export interface InfraCategory {
 export interface InfraCategoryAction {
   id: string;
   name: string;
+  is_required: boolean;
 }
 
 export const infraCategoriesApi = {
@@ -33,10 +34,16 @@ export const infraCategoriesApi = {
       `/infra/categories/${encodeURIComponent(category)}/actions`,
     )).data;
   },
-  async createAction(category: string, name: string): Promise<InfraCategoryAction> {
+  async createAction(category: string, name: string, isRequired = false): Promise<InfraCategoryAction> {
     return (await api.post<InfraCategoryAction>(
       `/infra/categories/${encodeURIComponent(category)}/actions`,
-      { name },
+      { name, is_required: isRequired },
+    )).data;
+  },
+  async setActionRequired(category: string, name: string, isRequired: boolean): Promise<InfraCategoryAction> {
+    return (await api.patch<InfraCategoryAction>(
+      `/infra/categories/${encodeURIComponent(category)}/actions/${encodeURIComponent(name)}`,
+      { is_required: isRequired },
     )).data;
   },
   async removeAction(category: string, name: string): Promise<void> {
@@ -139,6 +146,11 @@ export const infraNamedTypeActionsApi = {
 
 // ── Machines (fusion des ex-servers + ex-machines) ────
 
+export interface RequiredActionStatus {
+  name: string;
+  done: boolean;
+}
+
 export interface MachineSummary {
   id: string;
   name: string;
@@ -151,9 +163,12 @@ export interface MachineSummary {
   has_password: boolean;
   certificate_id: string | null;
   parent_id: string | null;
+  user_id: string | null;
+  environment: string | null;
   children_count: number;
   metadata: Record<string, string>;
   status: string;
+  required_actions: RequiredActionStatus[];
   created_at: string;
   updated_at: string;
 }
@@ -167,6 +182,8 @@ export interface MachineCreatePayload {
   password?: string;
   certificate_id?: string;
   parent_id?: string;
+  user_id?: string;
+  environment?: string;
 }
 
 export interface MachineUpdatePayload {
@@ -176,6 +193,8 @@ export interface MachineUpdatePayload {
   username?: string;
   password?: string;
   certificate_id?: string;
+  user_id?: string | null;
+  environment?: string | null;
 }
 
 export interface DockerContainer {

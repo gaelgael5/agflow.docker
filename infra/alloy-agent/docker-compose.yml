@@ -1,0 +1,37 @@
+# agflow-logs / Alloy agent — compose pour les LXC qui ont Docker
+#
+# Variables d'env attendues dans .env :
+#   LOKI_URL  — endpoint Loki, ex: http://192.168.10.<IP_LXC116>:3100/loki/api/v1/push
+#   HOSTNAME  — identifiant de l'hôte (label `host`), ex: lxc201
+#
+# Mounts en lecture seule :
+#   - socket Docker pour discovery + lecture des logs containers
+#   - /run/log/journal pour journald
+#   - /etc/machine-id requis par systemd journal pour identifier le journal
+#
+# Le container tourne en mode `network_mode: host` UNIQUEMENT si Loki est accessible
+# par hostname résolvable depuis le LAN (sinon une URL IP fonctionne avec un bridge).
+
+services:
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: agflow-alloy-agent
+    restart: unless-stopped
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+    environment:
+      LOKI_URL: ${LOKI_URL:?LOKI_URL is required}
+      HOSTNAME: ${HOSTNAME:?HOSTNAME is required}
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log:/var/log:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - alloy_data:/var/lib/alloy/data
+
+volumes:
+  alloy_data:

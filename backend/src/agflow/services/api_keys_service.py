@@ -28,6 +28,9 @@ SCOPE_CATALOGUE: list[dict[str, Any]] = [
     {"group": "containers", "scopes": ["containers:read", "containers:run", "containers:stop"]},
     {"group": "containers.logs", "scopes": ["containers.logs:read"]},
     {"group": "containers.chat", "scopes": ["containers.chat:read", "containers.chat:write"]},
+    {"group": "projects", "scopes": ["projects:read"]},
+    {"group": "runtimes", "scopes": ["runtimes:read", "runtimes:write", "runtimes:delete"]},
+    {"group": "m2m", "scopes": ["m2m:orchestrate"]},
     {"group": "keys", "scopes": ["keys:manage"], "always_on": True},
 ]
 

@@ -41,6 +41,7 @@ export function TemplatesPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showAddFileDialog, setShowAddFileDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteFileTarget, setDeleteFileTarget] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const hasUnsavedChanges = draftContent !== null;
@@ -268,12 +269,12 @@ export function TemplatesPage() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
+                        className="h-5 w-5 shrink-0"
                         onClick={(e) => {
                           e.stopPropagation();
-                          void handleDeleteFile(file.filename);
+                          setDeleteFileTarget(file.filename);
                         }}
-                        title={t("templates.delete_button")}
+                        title={t("templates.delete_file_button")}
                       >
                         <Trash2 className="w-3 h-3 text-destructive" />
                       </Button>
@@ -397,6 +398,21 @@ export function TemplatesPage() {
         confirmLabel={t("templates.delete_button")}
         destructive
         onConfirm={handleDeleteTemplate}
+      />
+
+      <ConfirmDialog
+        open={deleteFileTarget !== null}
+        onOpenChange={(o) => { if (!o) setDeleteFileTarget(null); }}
+        title={t("templates.confirm_delete_file_title")}
+        description={t("templates.confirm_delete_file_message", {
+          filename: deleteFileTarget ?? "",
+        })}
+        confirmLabel={t("templates.delete_file_button")}
+        destructive
+        onConfirm={async () => {
+          if (deleteFileTarget) await handleDeleteFile(deleteFileTarget);
+          setDeleteFileTarget(null);
+        }}
       />
     </div>
   );

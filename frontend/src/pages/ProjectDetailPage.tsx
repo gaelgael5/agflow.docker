@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Box, ChevronDown, ChevronRight, Edit2, Eye, Layers, Lock, LockOpen, Play, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, Box, ChevronDown, ChevronRight, Edit2, Eye, FileText, Layers, Loader2, Lock, LockOpen, Play, Plus, RefreshCw, Save, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   projectsApi,
@@ -11,6 +11,7 @@ import {
   deploymentsApi,
   type GroupSummary,
   type InstanceSummary,
+  type InstanceVariableStatus,
   type DeploymentSummary,
 } from "@/lib/projectsApi";
 import { infraMachinesApi, type MachineSummary } from "@/lib/infraApi";
@@ -19,14 +20,22 @@ import {
   scriptsApi,
   type GroupScript,
   type GroupScriptCreatePayload,
+  type InputStatus,
   type ScriptSummary,
   type ScriptTiming,
+  type TriggerOp,
+  type TriggerRule,
 } from "@/lib/scriptsApi";
+import {
+  runtimesApi,
+  type ProjectGroupRuntime,
+} from "@/lib/runtimesApi";
 import { useVault } from "@/hooks/useVault";
 import { VaultUnlockDialog } from "@/components/VaultUnlockDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import { productsApi, type ProductVariable, type ProductConnector, type ProductComputed, type ProductApiDef, type ProductService, type SharedDep } from "@/lib/productsApi";
+import { templatesApi } from "@/lib/templatesApi";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -76,6 +85,27 @@ export function ProjectDetailPage() {
     queryFn: async () => (await api.get<ProductOption[]>("/admin/products")).data,
   });
 
+  const templatesQuery = useQuery({
+    queryKey: ["templates", "with-sh-j2"],
+    queryFn: async () => {
+      const summaries = await templatesApi.list();
+      const details = await Promise.all(
+        summaries.map((t) => templatesApi.get(t.slug).catch(() => null)),
+      );
+      return summaries.filter((_t, i) => {
+        const d = details[i];
+        return d?.files.some((f) => f.filename.endsWith(".sh.j2"));
+      });
+    },
+  });
+  const composeTemplateOptions = [
+    { value: "", label: t("projects.group_compose_template_none") },
+    ...(templatesQuery.data ?? []).map((tpl) => ({
+      value: tpl.slug,
+      label: tpl.display_name || tpl.slug,
+    })),
+  ];
+
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [addInstanceGroup, setAddInstanceGroup] = useState<GroupSummary | null>(null);
   const [editGroup, setEditGroup] = useState<GroupSummary | null>(null);
@@ -108,9 +138,6 @@ export function ProjectDetailPage() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <span>{project?.display_name ?? "..."}</span>
-            {project && (
-              <Badge className="text-[10px]">{project.environment}</Badge>
-            )}
           </div>
         }
         subtitle={project?.description}
@@ -206,6 +233,7 @@ export function ProjectDetailPage() {
                     </div>
                   )}
                   <GroupScriptsSection groupId={g.id} t={t} />
+                  <GroupRuntimesSection groupId={g.id} t={t} />
                 </CardContent>
               </Card>
             );
@@ -221,12 +249,21 @@ export function ProjectDetailPage() {
         fields={[
           { name: "name", label: t("projects.group_name"), required: true },
           { name: "max_agents", label: t("projects.group_max_agents"), defaultValue: "0" },
+          { name: "max_replicas", label: t("projects.group_max_replicas"), defaultValue: "1" },
+          {
+            name: "compose_template_slug",
+            label: t("projects.group_compose_template"),
+            options: composeTemplateOptions,
+            defaultValue: "",
+          },
         ]}
         onSubmit={async (values) => {
           await groupsApi.create({
             project_id: projectId!,
             name: values.name ?? "",
             max_agents: parseInt(values.max_agents ?? "0", 10),
+            max_replicas: Math.max(1, parseInt(values.max_replicas ?? "1", 10)),
+            compose_template_slug: values.compose_template_slug || null,
           });
           qc.invalidateQueries({ queryKey: ["groups", projectId] });
           setShowAddGroup(false);
@@ -242,12 +279,21 @@ export function ProjectDetailPage() {
         fields={[
           { name: "name", label: t("projects.group_name"), required: true, defaultValue: editGroup?.name ?? "" },
           { name: "max_agents", label: t("projects.group_max_agents"), defaultValue: String(editGroup?.max_agents ?? 0) },
+          { name: "max_replicas", label: t("projects.group_max_replicas"), defaultValue: String(editGroup?.max_replicas ?? 1) },
+          {
+            name: "compose_template_slug",
+            label: t("projects.group_compose_template"),
+            options: composeTemplateOptions,
+            defaultValue: editGroup?.compose_template_slug ?? "",
+          },
         ]}
         onSubmit={async (values) => {
           if (!editGroup) return;
           await groupsApi.update(editGroup.id, {
             name: values.name ?? editGroup.name,
             max_agents: parseInt(values.max_agents ?? "0", 10),
+            max_replicas: Math.max(1, parseInt(values.max_replicas ?? "1", 10)),
+            compose_template_slug: values.compose_template_slug || null,
           });
           qc.invalidateQueries({ queryKey: ["groups", projectId] });
           setEditGroup(null);
@@ -357,14 +403,16 @@ function DeployDialog({ projectId, groups, vault: vaultCtx, onClose, t }: {
   groups: GroupSummary[];
   vault: ReturnType<typeof useVault>;
   onClose: () => void;
-  t: (key: string) => string;
+  t: (key: string, opts?: Record<string, string>) => string;
 }) {
   const [servers, setServers] = useState<{ id: string; name: string; host: string; parent_id: string | null }[]>([]);
   const [groupServers, setGroupServers] = useState<Record<string, string>>({});
   const [deployment, setDeployment] = useState<DeploymentSummary | null>(null);
   const [generating, setGenerating] = useState(false);
   const [pushing, setPushing] = useState(false);
-  const [tab, setTab] = useState<"assign" | "compose" | "env">("assign");
+  const [tab, setTab] = useState<string>("assign");
+  const composeTabPrefix = "compose-";
+  const activeComposeGroupId = tab.startsWith(composeTabPrefix) ? tab.slice(composeTabPrefix.length) : null;
 
   // Load child machines on open (service-category machines that can host deployments)
   useState(() => {
@@ -401,7 +449,7 @@ function DeployDialog({ projectId, groups, vault: vaultCtx, onClose, t }: {
       const dep = await deploymentsApi.create(projectId, groupServers);
       const generated = await deploymentsApi.generate(dep.id, userSecrets);
       setDeployment(generated);
-      setTab("compose");
+      setTab("data");
       toast.success(t("projects.deploy_generated"));
     } catch (e) {
       toast.error(String(e));
@@ -426,28 +474,9 @@ function DeployDialog({ projectId, groups, vault: vaultCtx, onClose, t }: {
 
   const nullableSet = new Set(deployment?.nullable_secrets ?? []);
 
-  function colorizeYaml(text: string): React.ReactNode[] {
-    const parts: React.ReactNode[] = [];
-    const regex = /(\$\{[^}]+\})/g;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-      const token = match[1] ?? "";
-      const ref = token.slice(2, -1);
-      let color = "text-orange-400"; // unknown
-      if (resolvedEnvKeys.has(ref)) color = "text-green-400";
-      else if (unresolvedEnvKeys.has(ref)) color = nullableSet.has(ref) ? "text-yellow-400" : "text-red-400";
-      parts.push(<span key={match.index} className={color}>{token}</span>);
-      lastIndex = match.index + token.length;
-    }
-    if (lastIndex < text.length) parts.push(text.slice(lastIndex));
-    return parts;
-  }
-
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-[75vw] max-h-[85vh] flex flex-col" aria-describedby={undefined}>
+      <DialogContent className="sm:max-w-[75vw] h-[85vh] flex flex-col" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{t("projects.deploy_title")}</DialogTitle>
         </DialogHeader>
@@ -459,12 +488,30 @@ function DeployDialog({ projectId, groups, vault: vaultCtx, onClose, t }: {
           </Button>
           {deployment && (
             <>
-              <Button size="sm" variant={tab === "compose" ? "default" : "outline"} onClick={() => setTab("compose")}>
-                docker-compose.yml
+              <Button size="sm" variant={tab === "data" ? "default" : "outline"} onClick={() => setTab("data")}>
+                {t("projects.tab_data")}
               </Button>
               <Button size="sm" variant={tab === "env" ? "default" : "outline"} onClick={() => setTab("env")}>
                 .env
               </Button>
+              <Button size="sm" variant={tab === "scripts" ? "default" : "outline"} onClick={() => setTab("scripts")}>
+                {t("scripts.deploy_tab_title")}
+              </Button>
+              {groups
+                .filter((g) => g.compose_template_slug)
+                .map((g) => {
+                  const tabKey = `${composeTabPrefix}${g.id}`;
+                  return (
+                    <Button
+                      key={tabKey}
+                      size="sm"
+                      variant={tab === tabKey ? "default" : "outline"}
+                      onClick={() => setTab(tabKey)}
+                    >
+                      {t("projects.tab_compose_group", { name: g.name })}
+                    </Button>
+                  );
+                })}
             </>
           )}
         </div>
@@ -490,19 +537,11 @@ function DeployDialog({ projectId, groups, vault: vaultCtx, onClose, t }: {
                   </select>
                 </div>
               ))}
-
-              <div className="flex justify-end pt-3">
-                <Button disabled={!canGenerate || generating} onClick={handleGenerate}>
-                  {generating ? "..." : t("projects.deploy_generate")}
-                </Button>
-              </div>
             </div>
           )}
 
-          {tab === "compose" && deployment?.generated_compose && (
-            <pre className="p-4 bg-zinc-950 text-zinc-300 rounded-md text-[12px] font-mono whitespace-pre-wrap leading-5 overflow-auto max-h-[60vh]">
-              {colorizeYaml(deployment.generated_compose)}
-            </pre>
+          {tab === "data" && deployment && (
+            <DeployDataPanel deployment={deployment} t={t} />
           )}
 
           {tab === "env" && deployment?.generated_env && (
@@ -527,36 +566,61 @@ function DeployDialog({ projectId, groups, vault: vaultCtx, onClose, t }: {
               })}
             </pre>
           )}
+
+          {tab === "scripts" && deployment && (
+            <DeployScriptsPanel
+              groupIds={groups.map((g) => g.id)}
+              envText={deployment.generated_env ?? ""}
+              t={t}
+            />
+          )}
+
+          {activeComposeGroupId && deployment && (
+            <GroupComposePanel
+              deploymentId={deployment.id}
+              groupId={activeComposeGroupId}
+              t={t}
+            />
+          )}
         </div>
 
-        {/* Footer with Push button */}
-        {deployment && deployment.status === "generated" && (
-          <div className="flex justify-end border-t pt-3">
+        {/* Footer : bouton Générer toujours dispo, Pousser quand le déploiement est prêt */}
+        {deployment?.status !== "deployed" && (
+          <div className="flex justify-end gap-2 border-t pt-3">
             <Button
-              disabled={pushing || [...unresolvedEnvKeys].some((k) => !nullableSet.has(k))}
-              onClick={async () => {
-                setPushing(true);
-                try {
-                  const res = await deploymentsApi.push(deployment.id);
-                  const allOk = res.results.every((r) => r.success);
-                  if (allOk) {
-                    toast.success(t("projects.deploy_pushed"));
-                    setDeployment({ ...deployment, status: "deployed" });
-                  } else {
-                    for (const r of res.results) {
-                      if (!r.success) toast.error(`${r.server}: ${r.error || r.stderr}`);
-                    }
-                  }
-                } catch (e) {
-                  toast.error(String(e));
-                } finally {
-                  setPushing(false);
-                }
-              }}
+              variant="outline"
+              disabled={!canGenerate || generating}
+              onClick={handleGenerate}
             >
-              <Play className="w-4 h-4" />
-              {pushing ? "..." : t("projects.deploy_push")}
+              {generating ? "..." : t("projects.deploy_generate")}
             </Button>
+            {deployment && deployment.status === "generated" && (
+              <Button
+                disabled={pushing || [...unresolvedEnvKeys].some((k) => !nullableSet.has(k))}
+                onClick={async () => {
+                  setPushing(true);
+                  try {
+                    const res = await deploymentsApi.push(deployment.id);
+                    const allOk = res.results.every((r) => r.success);
+                    if (allOk) {
+                      toast.success(t("projects.deploy_pushed"));
+                      setDeployment({ ...deployment, status: "deployed" });
+                    } else {
+                      for (const r of res.results) {
+                        if (!r.success) toast.error(`${r.server}: ${r.error || r.stderr}`);
+                      }
+                    }
+                  } catch (e) {
+                    toast.error(String(e));
+                  } finally {
+                    setPushing(false);
+                  }
+                }}
+              >
+                <Play className="w-4 h-4" />
+                {pushing ? "..." : t("projects.deploy_push")}
+              </Button>
+            )}
           </div>
         )}
 
@@ -572,13 +636,196 @@ function DeployDialog({ projectId, groups, vault: vaultCtx, onClose, t }: {
   );
 }
 
+/* ── Deploy : vue Docker Compose rendu par groupe ───── */
+
+function GroupComposePanel({ deploymentId, groupId, t }: {
+  deploymentId: string;
+  groupId: string;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["deployment-compose", deploymentId, groupId],
+    queryFn: () => deploymentsApi.groupCompose(deploymentId, groupId),
+    retry: false,
+  });
+
+  if (isLoading) {
+    return <p className="text-[12px] text-muted-foreground italic p-4">{t("common.refresh")}…</p>;
+  }
+  if (error) {
+    const axiosErr = error as { response?: { data?: { detail?: string } }; message?: string };
+    const detail = axiosErr.response?.data?.detail ?? axiosErr.message ?? String(error);
+    return (
+      <pre className="text-[12px] text-red-400 p-4 whitespace-pre-wrap font-mono">
+        {detail}
+      </pre>
+    );
+  }
+  return (
+    <pre className="p-4 bg-zinc-950 text-zinc-300 rounded-md text-[12px] font-mono whitespace-pre leading-5 overflow-auto max-h-[60vh]">
+      {data?.compose ?? ""}
+    </pre>
+  );
+}
+
+
+/* ── Deploy : vue Données (structure pré-résolue) ─────── */
+
+function DeployDataPanel({ deployment, t }: {
+  deployment: DeploymentSummary;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const data = deployment.generated_data as DeploymentData | Record<string, never>;
+  const envMap: Record<string, string> = {};
+  for (const line of (deployment.generated_env ?? "").split("\n")) {
+    const s = line.trim();
+    if (!s || s.startsWith("#") || !line.includes("=")) continue;
+    const [k, ...rest] = line.split("=");
+    if (k) envMap[k.trim()] = rest.join("=").trim();
+  }
+  const nullableSet = new Set(deployment.nullable_secrets ?? []);
+
+  function refClass(name: string): string {
+    const v = envMap[name];
+    if (v) return "text-emerald-400";
+    if (nullableSet.has(name)) return "text-amber-400";
+    return "text-red-400";
+  }
+
+  function colorize(value: string): React.ReactNode[] {
+    const parts: React.ReactNode[] = [];
+    // Match both ${VAR} (env ref) and {{VAR}} (system placeholder resolved by renderer)
+    const re = /(\$\{([A-Z_][A-Z0-9_]*)\})|(\{\{([A-Z_][A-Z0-9_]*)\}\})/g;
+    let last = 0;
+    let match;
+    while ((match = re.exec(value)) !== null) {
+      if (match.index > last) parts.push(value.slice(last, match.index));
+      const isEnvRef = Boolean(match[1]);
+      const name = isEnvRef ? match[2]! : match[4]!;
+      const cls = isEnvRef ? refClass(name) : "text-sky-400";
+      parts.push(
+        <span key={match.index} className={cls}>
+          {match[0]}
+        </span>,
+      );
+      last = match.index + match[0].length;
+    }
+    if (last < value.length) parts.push(value.slice(last));
+    return parts;
+  }
+
+  if (!("groups" in data) || !data.groups) {
+    return (
+      <p className="text-[12px] text-muted-foreground italic p-4">
+        {t("projects.deploy_data_empty")}
+      </p>
+    );
+  }
+
+  return (
+    <pre className="p-4 bg-zinc-950 text-zinc-300 rounded-md text-[12px] font-mono whitespace-pre leading-5 overflow-auto max-h-[60vh]">
+      <span className="text-zinc-500"># project: </span>
+      <span>{data.project.name}</span>
+      <span className="text-zinc-500">  network: </span>
+      <span className="text-sky-400">{data.project.network}</span>
+      {"\n"}
+      {data.groups.map((g) => (
+        <div key={g.group.id}>
+          {"\n"}
+          <span className="text-sky-300"># group: {g.group.name}</span>
+          <span className="text-zinc-500"> (slug={g.group_slug})</span>
+          {"\n"}
+          {g.instances.map((inst) => (
+            <div key={inst.id}>
+              <span className="text-zinc-500">  # instance: </span>
+              <span className="text-fuchsia-300">{inst.instance_name}</span>
+              <span className="text-zinc-500">  ({inst.catalog_id})</span>
+              {"\n"}
+              {inst.services.map((svc) => (
+                <div key={svc.container_name}>
+                  <span className="text-amber-300">  {svc.container_name}:</span>
+                  {"\n"}
+                  <span className="text-zinc-500">    image: </span>
+                  {svc.image}{"\n"}
+                  <span className="text-zinc-500">    restart: </span>
+                  {svc.restart}{"\n"}
+                  <span className="text-zinc-500">    networks: </span>
+                  [{svc.networks.join(", ")}]{"\n"}
+                  {svc.ports.length > 0 && (
+                    <>
+                      <span className="text-zinc-500">    ports: </span>
+                      [{svc.ports.join(", ")}]{"\n"}
+                    </>
+                  )}
+                  <span className="text-zinc-500">    labels:</span>{"\n"}
+                  {svc.labels.map((lbl, i) => (
+                    <div key={i}>
+                      <span className="text-zinc-500">      - </span>
+                      {colorize(lbl)}{"\n"}
+                    </div>
+                  ))}
+                  {Object.keys(svc.environment).length > 0 && (
+                    <>
+                      <span className="text-zinc-500">    environment:</span>{"\n"}
+                      {Object.entries(svc.environment).map(([k, v]) => (
+                        <div key={k}>
+                          <span className="text-zinc-500">      {k}: </span>
+                          <span>&quot;{colorize(v)}&quot;</span>{"\n"}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {svc.volumes.length > 0 && (
+                    <>
+                      <span className="text-zinc-500">    volumes:</span>{"\n"}
+                      {svc.volumes.map((vol, i) => (
+                        <div key={i}>
+                          <span className="text-zinc-500">      - </span>
+                          {vol.docker_volume || "(empty)"}:{vol.mount}{"\n"}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {svc.depends_on.length > 0 && (
+                    <>
+                      <span className="text-zinc-500">    depends_on:</span>{"\n"}
+                      {svc.depends_on.map((d, i) => (
+                        <div key={i}>
+                          <span className="text-zinc-500">      - </span>
+                          {d}{"\n"}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+          {g.volumes.length > 0 && (
+            <>
+              <span className="text-zinc-500">  # group volumes:</span>{"\n"}
+              {g.volumes.map((v) => (
+                <div key={v}>
+                  <span className="text-zinc-500">  - </span>
+                  {v}{"\n"}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      ))}
+    </pre>
+  );
+}
+
+
 /* ── Preview Dialog ───────────────────────────────────── */
 
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import type { GroupPreview } from "@/lib/projectsApi";
+import type { GroupPreview, DeploymentData } from "@/lib/projectsApi";
 
 function PreviewDialog({ group, onClose, t }: {
   group: GroupSummary;
@@ -688,25 +935,39 @@ function CollapsibleSection({ title, count, defaultOpen = true, children }: {
 
 /* ── Variable Row ─────────────────────────────────────── */
 
-function VarRow({ v, values, onUpdate, t }: {
+function VarRow({ v, values, statuses, instSlug, onUpdate, onUpdateStatus, t }: {
   v: ProductVariable;
   values: Record<string, string>;
+  statuses: Record<string, InstanceVariableStatus>;
+  instSlug: string;
   onUpdate: (name: string, val: string) => void;
-  t: (key: string) => string;
+  onUpdateStatus: (name: string, status: InstanceVariableStatus) => void;
+  t: (key: string, opts?: Record<string, string>) => string;
 }) {
   const isUndeclared = v.undeclared === true;
+  const currentStatus = statuses[v.name] ?? "keep";
+  const hasGenerator = Boolean(v.generate && v.generate !== "null");
+  const hasValue = Boolean(String(values[v.name] ?? "").trim());
+  const isResolved = !isUndeclared && (hasGenerator || hasValue);
+  // Rewrite ${VARNAME} → ${INSTSLUG_VARNAME} for secrets so the badge matches
+  // what actually appears in the generated .env.
+  const displayedSyntax =
+    v.type === "secret" && instSlug
+      ? v.syntax.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (_, n) => `\${${instSlug}_${n}}`)
+      : v.syntax;
+  const badgeColorClass = isUndeclared
+    ? "border-red-500 text-red-500"
+    : isResolved
+      ? "border-green-500 text-green-600"
+      : v.type === "secret"
+        ? "border-orange-400 text-orange-500"
+        : "border-blue-400 text-blue-500";
   return (
     <div className="flex items-start gap-3">
       <div className="w-48 shrink-0 pt-1.5">
         <div className="flex items-center gap-1.5">
-          <Badge
-            variant="outline"
-            className={`text-[8px] font-mono ${
-              isUndeclared ? "border-red-500 text-red-500" :
-              v.type === "secret" ? "border-orange-400 text-orange-500" : "border-blue-400 text-blue-500"
-            }`}
-          >
-            {v.syntax}
+          <Badge variant="outline" className={`text-[8px] font-mono ${badgeColorClass}`}>
+            {displayedSyntax}
           </Badge>
           {v.required && <span className="text-destructive text-[10px]">*</span>}
           {isUndeclared && <span className="text-[9px] text-red-500">{t("projects.undeclared")}</span>}
@@ -729,6 +990,16 @@ function VarRow({ v, values, onUpdate, t }: {
           className={`font-mono text-[12px] flex-1 h-8 ${v.type === "secret" ? "text-orange-500" : ""}`}
         />
       )}
+      <select
+        value={currentStatus}
+        onChange={(e) => onUpdateStatus(v.name, e.target.value as InstanceVariableStatus)}
+        className="h-8 text-[11px] rounded-md border border-input bg-background px-2"
+        title={t(`projects.var_status_${currentStatus}_tooltip`)}
+      >
+        <option value="keep">{t("projects.var_status_keep")}</option>
+        <option value="clean">{t("projects.var_status_clean")}</option>
+        <option value="replace">{t("projects.var_status_replace")}</option>
+      </select>
     </div>
   );
 }
@@ -755,8 +1026,23 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
   const [sharedDeps, setSharedDeps] = useState<SharedDep[]>([]);
   const [availableServices, setAvailableServices] = useState<import("@/lib/projectsApi").AvailableService[]>([]);
   const [values, setValues] = useState<Record<string, string>>(instance.variables ?? {});
+  const [statuses, setStatuses] = useState<Record<string, InstanceVariableStatus>>(
+    (instance.variable_statuses ?? {}) as Record<string, InstanceVariableStatus>,
+  );
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Rewrite ${VAR} references to ${<INSTSLUG>_VAR} for any VAR declared as a
+  // secret in the recipe. Used in the Connectors + API panels so the display
+  // matches what actually lands in the generated .env.
+  const instSlugForDisplay = instance.instance_name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  const secretNames = new Set((productVars ?? []).filter((v) => v.type === "secret").map((v) => v.name));
+  function rewriteSecretRefs(value: string): string {
+    if (!value) return value;
+    return value.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (m, name) => {
+      if (secretNames.has(name)) return `\${${instSlugForDisplay}_${name}}`;
+      return m;
+    });
+  }
 
   function toggle() {
     if (!expanded && productVars === null) {
@@ -797,10 +1083,15 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
     setDirty(true);
   }
 
+  function updateStatus(name: string, s: InstanceVariableStatus) {
+    setStatuses((prev) => ({ ...prev, [name]: s }));
+    setDirty(true);
+  }
+
   async function save() {
     setSaving(true);
     try {
-      await instancesApi.update(instance.id, { variables: values });
+      await instancesApi.update(instance.id, { variables: values, variable_statuses: statuses });
       qc.invalidateQueries({ queryKey: ["instances", projectId] });
       setDirty(false);
       toast.success(t("projects.variables_saved"));
@@ -850,7 +1141,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                 <CollapsibleSection title={t("projects.section_variables")} count={productVars.filter((v) => v.type === "variable").length}>
                   <div className="space-y-2">
                     {productVars.filter((v) => v.type === "variable").map((v) => (
-                      <VarRow key={v.name} v={v} values={values} onUpdate={updateValue} t={t} />
+                      <VarRow key={v.name} v={v} values={values} statuses={statuses} instSlug={instSlugForDisplay} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
                     ))}
                   </div>
                 </CollapsibleSection>
@@ -861,7 +1152,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                 <CollapsibleSection title={t("projects.section_secrets")} count={productVars.filter((v) => v.type === "secret").length}>
                   <div className="space-y-2">
                     {productVars.filter((v) => v.type === "secret").map((v) => (
-                      <VarRow key={v.name} v={v} values={values} onUpdate={updateValue} t={t} />
+                      <VarRow key={v.name} v={v} values={values} statuses={statuses} instSlug={instSlugForDisplay} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
                     ))}
                   </div>
                 </CollapsibleSection>
@@ -932,13 +1223,16 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                         {c.package && <code className="text-[10px] font-mono text-muted-foreground">{c.package}</code>}
                         {Object.keys(c.env).length > 0 && (
                           <div className="mt-2 space-y-0.5">
-                            {Object.entries(c.env).map(([k, v]) => (
-                              <div key={k} className="flex items-center gap-2 text-[10px] font-mono">
-                                <span className="text-muted-foreground">{k}</span>
-                                <span className="text-muted-foreground">=</span>
-                                <span className={v.startsWith("${") ? "text-orange-500" : "text-blue-500"}>{v}</span>
-                              </div>
-                            ))}
+                            {Object.entries(c.env).map(([k, v]) => {
+                              const rewritten = rewriteSecretRefs(v);
+                              return (
+                                <div key={k} className="flex items-center gap-2 text-[10px] font-mono">
+                                  <span className="text-muted-foreground">{k}</span>
+                                  <span className="text-muted-foreground">=</span>
+                                  <span className={rewritten.startsWith("${") ? "text-orange-500" : "text-blue-500"}>{rewritten}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -958,7 +1252,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                       <div><span className="text-muted-foreground">url:</span> <span className="text-blue-500">{apiDef.url}</span></div>
                       <div><span className="text-muted-foreground">base_url:</span> <span className="text-blue-500">{apiDef.base_url}</span></div>
                       {apiDef.auth_header && (
-                        <div><span className="text-muted-foreground">auth:</span> {apiDef.auth_header} {apiDef.auth_prefix} <span className="text-orange-500">{apiDef.auth_secret_ref}</span></div>
+                        <div><span className="text-muted-foreground">auth:</span> {apiDef.auth_header} {apiDef.auth_prefix} <span className="text-orange-500">{rewriteSecretRefs(apiDef.auth_secret_ref ?? "")}</span></div>
                       )}
                     </div>
                   </div>
@@ -1004,6 +1298,300 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Group runtimes section ──────────────────────────── */
+
+function GroupRuntimesSection({ groupId, t }: {
+  groupId: string;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const q = useQuery({
+    queryKey: ["group-runtimes", groupId],
+    queryFn: () => runtimesApi.listByGroup(groupId),
+  });
+  const runtimes = q.data ?? [];
+
+  return (
+    <div className="border-t px-4 py-3">
+      <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+        {t("projects.runtimes_title", { count: String(runtimes.length) })}
+      </h4>
+      {runtimes.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground italic">{t("projects.runtimes_empty")}</p>
+      ) : (
+        <div className="space-y-1">
+          {runtimes.map((r) => <RuntimeRow key={r.id} runtime={r} t={t} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RuntimeRow({ runtime, t }: {
+  runtime: ProjectGroupRuntime;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const qc = useQueryClient();
+  const [runtimeState, setRuntimeState] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+
+  async function handleDelete() {
+    try {
+      await runtimesApi.remove(runtime.id);
+      qc.invalidateQueries({ queryKey: ["group-runtimes", runtime.group_id] });
+      toast.success(t("projects.runtime_deleted"));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function refresh() {
+    setLoading(true);
+    try {
+      const r = await runtimesApi.status(runtime.id);
+      setRuntimeState(r.overall_state);
+    } catch (e) {
+      setRuntimeState("error");
+      toast.error(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function doStart() {
+    try { await runtimesApi.start(runtime.id); toast.success(t("projects.runtime_start_ok")); refresh(); }
+    catch (e) { toast.error(String(e)); }
+  }
+
+  async function doStop() {
+    try { await runtimesApi.stop(runtime.id); toast.success(t("projects.runtime_stop_ok")); refresh(); }
+    catch (e) { toast.error(String(e)); }
+  }
+
+  const statusColor =
+    runtime.status === "deployed" ? "bg-green-600 text-white"
+    : runtime.status === "failed" ? "bg-red-600 text-white"
+    : "bg-zinc-500 text-white";
+
+  const runtimeBadgeColor =
+    runtimeState === "running" ? "bg-green-600 text-white"
+    : runtimeState === "stopped" ? "bg-zinc-600 text-white"
+    : runtimeState === "partial" ? "bg-yellow-500 text-white"
+    : runtimeState ? "bg-red-600 text-white"
+    : "";
+
+  return (
+    <div className="border rounded p-2 bg-muted/20">
+      <div className="flex items-center gap-2 text-[11px]">
+        <Badge variant="outline" className="text-[9px] font-mono">#{runtime.seq}</Badge>
+        <code className="font-mono text-[9px] text-muted-foreground" title={runtime.id}>{runtime.id.slice(0, 8)}…</code>
+        <Badge variant="default" className={`text-[9px] ${statusColor}`}>{runtime.status}</Badge>
+        {runtimeState && (
+          <Badge variant="default" className={`text-[9px] ${runtimeBadgeColor}`}>{runtimeState}</Badge>
+        )}
+        <span className="text-muted-foreground">→ {runtime.machine_name}</span>
+        {runtime.remote_path && (
+          <code className="text-[10px] font-mono text-muted-foreground">{runtime.remote_path}</code>
+        )}
+        <div className="flex-1" />
+        <Button variant="ghost" size="icon" className="h-6 w-6" title={t("projects.runtime_refresh")} onClick={refresh} disabled={loading}>
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+        </Button>
+        <Button variant="ghost" size="icon" className="h-6 w-6" title={t("projects.runtime_start")} onClick={doStart}>
+          <Play className="w-3 h-3 text-green-600" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-6 w-6" title={t("projects.runtime_stop")} onClick={doStop}>
+          <Square className="w-3 h-3 text-orange-600" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-6 w-6" title={t("projects.runtime_view")} onClick={() => setShowDetail(true)}>
+          <FileText className="w-3 h-3" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-6 w-6" title={t("projects.runtime_delete")} onClick={() => setShowDelete(true)}>
+          <Trash2 className="w-3 h-3 text-destructive" />
+        </Button>
+      </div>
+      {runtime.error_message && (
+        <p className="text-[10px] text-red-500 mt-1 font-mono">{runtime.error_message}</p>
+      )}
+      {showDetail && (
+        <RuntimeDetailDialog runtimeId={runtime.id} onClose={() => setShowDetail(false)} t={t} />
+      )}
+      <ConfirmDialog
+        open={showDelete}
+        onOpenChange={(o) => { if (!o) setShowDelete(false); }}
+        title={t("projects.runtime_delete_title", { seq: String(runtime.seq) })}
+        description={
+          runtimeState === "running" || runtimeState === "partial"
+            ? t("projects.runtime_delete_running_message", { seq: String(runtime.seq) })
+            : t("projects.runtime_delete_message", { seq: String(runtime.seq) })
+        }
+        onConfirm={handleDelete}
+      />
+    </div>
+  );
+}
+
+function RuntimeDetailDialog({ runtimeId, onClose, t }: {
+  runtimeId: string;
+  onClose: () => void;
+  t: (key: string) => string;
+}) {
+  const q = useQuery({
+    queryKey: ["group-runtime", runtimeId],
+    queryFn: () => runtimesApi.get(runtimeId),
+  });
+  const [tab, setTab] = useState<"compose" | "env">("compose");
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-[70vw] max-h-[80vh] flex flex-col" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{t("projects.runtime_view")} — {q.data ? `#${q.data.seq}` : runtimeId.slice(0, 8) + "…"}</DialogTitle>
+        </DialogHeader>
+        <div className="flex gap-2 border-b pb-2">
+          <Button size="sm" variant={tab === "compose" ? "default" : "outline"} onClick={() => setTab("compose")}>
+            docker-compose.yml
+          </Button>
+          <Button size="sm" variant={tab === "env" ? "default" : "outline"} onClick={() => setTab("env")}>
+            .env
+          </Button>
+        </div>
+        <div className="flex-1 overflow-auto">
+          {q.isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : q.isError ? (
+            <p className="text-destructive text-[12px]">{String(q.error)}</p>
+          ) : (
+            <pre className="p-3 bg-zinc-950 text-zinc-200 rounded text-[11px] font-mono whitespace-pre-wrap leading-5 overflow-auto">
+              {tab === "compose" ? (q.data?.compose_yaml || "(empty)") : (q.data?.env_text || "(empty)")}
+            </pre>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{t("common.close")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ── Deploy preview : Scripts panel ──────────────────── */
+
+function DeployScriptsPanel({ groupIds, envText, t }: {
+  groupIds: string[];
+  envText: string;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const linksQueries = useQuery({
+    queryKey: ["deploy-scripts", groupIds.join(",")],
+    queryFn: async () => {
+      const all = await Promise.all(groupIds.map((gid) => groupScriptsApi.list(gid)));
+      return all.flat();
+    },
+  });
+  const scriptsQuery = useQuery({ queryKey: ["scripts"], queryFn: () => scriptsApi.list() });
+
+  const links = linksQueries.data ?? [];
+  const scripts = scriptsQuery.data ?? [];
+
+  // Parse envText into a map
+  const envMap: Record<string, string> = {};
+  for (const line of envText.split("\n")) {
+    const s = line.trim();
+    if (!s || s.startsWith("#") || !line.includes("=")) continue;
+    const [k, ...rest] = line.split("=");
+    envMap[k!.trim()] = rest.join("=").trim();
+  }
+
+  function resolveValue(raw: string, groupName: string): { resolved: string; ok: boolean } {
+    let unresolved = false;
+    const prefix = (groupName || "").toUpperCase().replace(/[^A-Z0-9]/g, "_");
+    const out = raw.replace(/\$\{([A-Z_][A-Z0-9_]*)\}|\$([A-Z_][A-Z0-9_]*)/g, (m, g1, g2) => {
+      const key = g1 || g2;
+      if (!key) { unresolved = true; return m; }
+      if (envMap[key] !== undefined && envMap[key] !== "") return envMap[key];
+      const prefixed = prefix ? `${prefix}_${key}` : key;
+      if (envMap[prefixed] !== undefined && envMap[prefixed] !== "") return envMap[prefixed];
+      unresolved = true;
+      return m;
+    });
+    if (!raw) unresolved = true;
+    return { resolved: out, ok: !unresolved };
+  }
+
+  if (linksQueries.isLoading) {
+    return <p className="p-4 text-[12px] text-muted-foreground">…</p>;
+  }
+  if (links.length === 0) {
+    return (
+      <p className="p-4 text-[12px] text-muted-foreground italic">
+        {t("scripts.deploy_tab_empty")}
+      </p>
+    );
+  }
+
+  const before = links.filter((l) => l.timing === "before").sort((a, b) => a.position - b.position);
+  const after = links.filter((l) => l.timing === "after").sort((a, b) => a.position - b.position);
+
+  return (
+    <div className="p-2 space-y-3 max-h-[60vh] overflow-auto">
+      {[
+        { timing: "before" as const, label: t("scripts.group_timing_before"), items: before },
+        { timing: "after" as const, label: t("scripts.group_timing_after"), items: after },
+      ].map((section) => (
+        section.items.length > 0 && (
+          <div key={section.timing}>
+            <div className="text-[11px] font-semibold uppercase text-muted-foreground mb-1">
+              {section.label}
+            </div>
+            <div className="space-y-2">
+              {section.items.map((l) => {
+                const script = scripts.find((s) => s.id === l.script_id);
+                const declared = script?.input_variables ?? [];
+                return (
+                  <div key={l.id} className="border rounded p-2 bg-zinc-950 text-zinc-300 text-[12px]">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono font-semibold">{l.script_name}</span>
+                      <span className="text-[10px] text-zinc-500">→ {l.machine_name}</span>
+                      {l.trigger_rules.length > 0 && (
+                        <span className="text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded">
+                          {l.trigger_rules.length} rule(s)
+                        </span>
+                      )}
+                    </div>
+                    {declared.length === 0 ? (
+                      <p className="text-[10px] text-zinc-500 italic">{t("scripts.deploy_tab_no_inputs")}</p>
+                    ) : (
+                      <div className="space-y-0.5 font-mono">
+                        {declared.map((iv) => {
+                          const raw = l.input_values[iv.name] ?? "";
+                          const { resolved, ok } = resolveValue(raw, l.group_name || "");
+                          const color = ok ? "text-green-400" : "text-red-400";
+                          return (
+                            <div key={iv.name}>
+                              <span className="text-zinc-500">{iv.name}</span>
+                              <span className="text-zinc-600">=</span>
+                              <span className={color}>{resolved || "(empty)"}</span>
+                              {raw !== resolved && (
+                                <span className="text-zinc-600 ml-2 text-[10px]">← {raw}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )
+      ))}
     </div>
   );
 }
@@ -1142,6 +1730,11 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
   const [timing, setTiming] = useState<ScriptTiming>("before");
   const [position, setPosition] = useState("0");
   const [mappingText, setMappingText] = useState("");
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [inputStatuses, setInputStatuses] = useState<Record<string, InputStatus>>({});
+  const [inputsOpen, setInputsOpen] = useState(true);
+  const [triggerRules, setTriggerRules] = useState<TriggerRule[]>([]);
+  const [rulesOpen, setRulesOpen] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -1152,9 +1745,15 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
       setTiming(initial.timing);
       setPosition(String(initial.position));
       setMappingText(Object.entries(initial.env_mapping).map(([k, v]) => `${k}=${v}`).join("\n"));
+      setInputValues(initial.input_values ?? {});
+      setInputStatuses((initial.input_statuses ?? {}) as Record<string, InputStatus>);
+      setTriggerRules(initial.trigger_rules ?? []);
     } else {
-      setScriptId(""); setMachineId(""); setTiming("before"); setPosition("0"); setMappingText("");
+      setScriptId(""); setMachineId(""); setTiming("before"); setPosition("0");
+      setMappingText(""); setInputValues({}); setInputStatuses({}); setTriggerRules([]);
     }
+    setInputsOpen(true);
+    setRulesOpen(true);
     setSaving(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -1163,6 +1762,22 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
   // show only machines of that variant. Otherwise show all.
   const selectedScript = scripts.find((s) => s.id === scriptId);
   const requiredTypeId = selectedScript?.execute_on_types_named ?? null;
+  const declaredInputs = selectedScript?.input_variables ?? [];
+
+  // Prefill defaults when picking a script that has declared defaults
+  useEffect(() => {
+    if (!selectedScript) return;
+    setInputValues((prev) => {
+      const next = { ...prev };
+      for (const v of selectedScript.input_variables ?? []) {
+        if (next[v.name] === undefined || next[v.name] === "") {
+          next[v.name] = v.default ?? "";
+        }
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scriptId]);
   const filteredMachines = requiredTypeId
     ? machines.filter((m) => m.type_id === requiredTypeId)
     : machines;
@@ -1232,6 +1847,125 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
             />
             <p className="text-[10px] text-muted-foreground mt-1">{t("scripts.group_env_mapping_hint")}</p>
           </div>
+
+          {declaredInputs.length > 0 && (
+            <div className="border-t pt-3">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-[11px] font-semibold w-full text-left"
+                onClick={() => setInputsOpen((v) => !v)}
+              >
+                {inputsOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                {t("scripts.group_inputs_title", { count: String(declaredInputs.length) })}
+              </button>
+              {inputsOpen && (
+                <div className="mt-2 space-y-2">
+                  {declaredInputs.map((iv) => {
+                    const s = inputStatuses[iv.name] ?? "keep";
+                    return (
+                      <div key={iv.name}>
+                        <Label className="text-[10px]">
+                          <span className="font-mono">{iv.name}</span>
+                          {iv.description && <span className="text-muted-foreground ml-1">— {iv.description}</span>}
+                        </Label>
+                        <div className="flex gap-1 mt-1">
+                          <Input
+                            value={inputValues[iv.name] ?? ""}
+                            onChange={(e) => setInputValues({ ...inputValues, [iv.name]: e.target.value })}
+                            className="font-mono text-[11px] flex-1"
+                            placeholder={iv.default || "${ENV_VAR} ou valeur littérale"}
+                          />
+                          <select
+                            value={s}
+                            onChange={(e) => setInputStatuses({ ...inputStatuses, [iv.name]: e.target.value as InputStatus })}
+                            className="h-9 text-[11px] rounded-md border border-input bg-background px-2"
+                            title={t(`scripts.inputs_status_${s}_tooltip`)}
+                          >
+                            <option value="keep">{t("scripts.inputs_status_keep")}</option>
+                            <option value="clean">{t("scripts.inputs_status_clean")}</option>
+                            <option value="replace">{t("scripts.inputs_status_replace")}</option>
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="border-t pt-3">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-[11px] font-semibold"
+                onClick={() => setRulesOpen((v) => !v)}
+              >
+                {rulesOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                {t("scripts.group_rules_title", { count: String(triggerRules.length) })}
+              </button>
+              {rulesOpen && (
+                <Button
+                  type="button" size="sm" variant="outline" className="h-6 text-[10px]"
+                  onClick={() => setTriggerRules([...triggerRules, { variable: "", op: "equals", value: "" }])}
+                >
+                  <Plus className="w-3 h-3" />
+                  {t("scripts.group_rules_add")}
+                </Button>
+              )}
+            </div>
+            {rulesOpen && triggerRules.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {triggerRules.map((r, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_auto_1fr_auto] gap-1 items-center">
+                    <Input
+                      value={r.variable}
+                      onChange={(e) => {
+                        const next = [...triggerRules];
+                        next[idx] = { ...next[idx]!, variable: e.target.value };
+                        setTriggerRules(next);
+                      }}
+                      className="h-7 font-mono text-[11px]"
+                      placeholder="VAR_NAME"
+                    />
+                    <select
+                      value={r.op}
+                      onChange={(e) => {
+                        const next = [...triggerRules];
+                        next[idx] = { ...next[idx]!, op: e.target.value as TriggerOp };
+                        setTriggerRules(next);
+                      }}
+                      className="h-7 text-[11px] rounded-md border border-input bg-background px-2"
+                    >
+                      <option value="equals">{t("scripts.rule_op_equals")}</option>
+                      <option value="not_equals">{t("scripts.rule_op_not_equals")}</option>
+                      <option value="is_null">{t("scripts.rule_op_is_null")}</option>
+                    </select>
+                    <Input
+                      value={r.value}
+                      onChange={(e) => {
+                        const next = [...triggerRules];
+                        next[idx] = { ...next[idx]!, value: e.target.value };
+                        setTriggerRules(next);
+                      }}
+                      className="h-7 text-[11px]"
+                      placeholder="valeur"
+                      disabled={r.op === "is_null"}
+                    />
+                    <Button
+                      type="button" variant="ghost" size="icon" className="h-6 w-6"
+                      onClick={() => setTriggerRules(triggerRules.filter((_, i) => i !== idx))}
+                    >
+                      <Trash2 className="w-3 h-3 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {rulesOpen && (
+              <p className="text-[10px] text-muted-foreground mt-1">{t("scripts.group_rules_hint")}</p>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
@@ -1256,6 +1990,9 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
                   timing,
                   position: parseInt(position || "0", 10),
                   env_mapping: mapping,
+                  input_values: inputValues,
+                  input_statuses: inputStatuses,
+                  trigger_rules: triggerRules.filter((r) => r.variable.trim()),
                 }, initial?.id);
               } catch (e) {
                 toast.error(String(e));

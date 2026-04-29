@@ -1,0 +1,52 @@
+services:
+{%- for inst in instances %}
+{%- for svc in inst.services %}
+  {{ svc.container_name }}:
+    image: {{ svc.image }}
+    container_name: {{ svc.container_name }}
+    restart: {{ svc.restart }}
+    labels:
+{%- for lbl in svc.labels %}
+      - {{ lbl }}
+{%- endfor %}
+    networks:
+{%- for net in svc.networks %}
+      - {{ net }}
+{%- endfor %}
+{%- if svc.ports %}
+    ports:
+{%- for port in svc.ports %}
+      - "{{ port }}:{{ port }}"
+{%- endfor %}
+{%- endif %}
+{%- if svc.environment %}
+    environment:
+{%- for k, v in svc.environment.items() %}
+      {{ k }}: "{{ v }}"
+{%- endfor %}
+{%- endif %}
+{%- if svc.volumes %}
+    volumes:
+{%- for vol in svc.volumes %}
+      - {{ vol.docker_volume }}:{{ vol.mount }}
+{%- endfor %}
+{%- endif %}
+{%- if svc.depends_on %}
+    depends_on:
+{%- for dep in svc.depends_on %}
+      - {{ dep }}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- endfor %}
+
+networks:
+  {{ network }}:
+    driver: bridge
+{%- if volumes %}
+
+volumes:
+{%- for v in volumes %}
+  {{ v }}:
+{%- endfor %}
+{%- endif %}

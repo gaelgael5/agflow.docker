@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
+import { Copy, Eye, EyeOff, KeyRound, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { useVault } from "@/hooks/useVault";
 import { useUserSecrets } from "@/hooks/useUserSecrets";
 import { VaultSetupDialog } from "@/components/VaultSetupDialog";
@@ -228,6 +229,30 @@ function SecretsTable({ secrets, decrypted, onEdit, onDelete }: SecretsTableProp
     });
   }
 
+  async function copyValue(secret: UserSecretSummary) {
+    const plain = decrypted[secret.id];
+    if (plain === undefined || plain === `⚠ ${t("my_secrets.decrypt_error")}`) {
+      toast.error(t("my_secrets.copy_error"));
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(plain);
+      toast.success(t("my_secrets.copy_success", { name: secret.name }));
+    } catch {
+      toast.error(t("my_secrets.copy_error"));
+    }
+  }
+
+  async function copyName(secret: UserSecretSummary) {
+    const ref = `\${${secret.name}}`;
+    try {
+      await navigator.clipboard.writeText(ref);
+      toast.success(t("my_secrets.copy_name_success", { name: ref }));
+    } catch {
+      toast.error(t("my_secrets.copy_error"));
+    }
+  }
+
   function maskedValue(id: string): string {
     const plain = decrypted[id];
     if (plain === undefined) return "••••••••";
@@ -266,6 +291,15 @@ function SecretsTable({ secrets, decrypted, onEdit, onDelete }: SecretsTableProp
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => void copyName(s)}
+                    title={t("my_secrets.copy_name_button")}
+                  >
+                    <KeyRound className="h-4 w-4" />
+                    <span className="sr-only">{t("my_secrets.copy_name_button")}</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => toggleReveal(s.id)}
                     title={isRevealed ? t("my_secrets.hide_button") : t("my_secrets.reveal_button")}
                   >
@@ -273,6 +307,15 @@ function SecretsTable({ secrets, decrypted, onEdit, onDelete }: SecretsTableProp
                     <span className="sr-only">
                       {isRevealed ? t("my_secrets.hide_button") : t("my_secrets.reveal_button")}
                     </span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void copyValue(s)}
+                    title={t("my_secrets.copy_button")}
+                  >
+                    <Copy className="h-4 w-4" />
+                    <span className="sr-only">{t("my_secrets.copy_button")}</span>
                   </Button>
                   <Button
                     variant="ghost"

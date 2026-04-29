@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, ChevronDown, ChevronRight, Edit2, History, Loader2, Play, Plus, Server, Terminal, Trash2 } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, Edit2, History, Loader2, Play, Plus, Server, ScrollText, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -18,7 +18,9 @@ import {
   type ScriptManifest,
   type DockerContainer,
 } from "@/lib/infraApi";
+import { usersApi, type UserSummary } from "@/lib/usersApi";
 import { useInfraNamedTypes, useInfraMachinesRuns } from "@/hooks/useInfra";
+import { api } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { TerminalWindow } from "@/components/TerminalWindow";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -37,12 +39,33 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const selectClass = "mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm";
 
+// Build a deeplink to Grafana Explore (Loki datasource) with a query
+// preselecting the machine's IP as a line filter, so the user lands on
+// "all logs that mention this machine's host" out of the box. The user
+// can refine in Grafana (e.g. by adding `{compose_service="..."}`).
+function buildGrafanaExploreUrl(grafanaUrl: string, machine: { name?: string | null; host: string }): string {
+  const ipFilter = machine.host;
+  const exploreState = {
+    datasource: "loki",
+    queries: [{ refId: "A", expr: `{host=~".+"} |= "${ipFilter}"` }],
+    range: { from: "now-1h", to: "now" },
+  };
+  return `${grafanaUrl}/explore?orgId=1&left=${encodeURIComponent(JSON.stringify(exploreState))}`;
+}
+
 export function InfraMachinesPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { data: namedTypes } = useInfraNamedTypes();
   const certsQuery = useQuery({ queryKey: ["infra-certificates"], queryFn: () => infraCertificatesApi.list() });
+  const usersQuery = useQuery({ queryKey: ["users"], queryFn: () => usersApi.list() });
   const listQuery = useQuery({ queryKey: ["infra-machines"], queryFn: () => infraMachinesApi.list() });
+  const platformConfigQuery = useQuery({
+    queryKey: ["platform-config"],
+    queryFn: async () => (await api.get<{ grafana_url: string }>("/admin/platform-config")).data,
+    staleTime: 5 * 60_000,
+  });
+  const grafanaUrl = platformConfigQuery.data?.grafana_url ?? "";
 
   const createMutation = useMutation({
     mutationFn: (p: MachineCreatePayload) => infraMachinesApi.create(p),
@@ -62,6 +85,7 @@ export function InfraMachinesPage() {
 
   const machines = listQuery.data ?? [];
   const certificates = certsQuery.data ?? [];
+  const users = usersQuery.data ?? [];
   const [healthMap, setHealthMap] = useState<Record<string, string | null>>({});
   const [containersMap, setContainersMap] = useState<Record<string, DockerContainer[]>>({});
   const [expandedMachines, setExpandedMachines] = useState<Record<string, boolean>>({});
@@ -130,6 +154,7 @@ export function InfraMachinesPage() {
                 healthMap={healthMap}
                 containersMap={containersMap}
                 expandedMachines={expandedMachines}
+                grafanaUrl={grafanaUrl}
                 onEdit={setEditTarget}
                 onDelete={(m) => setDeleteTarget({ id: m.id, name: m.name || m.host })}
                 onScriptRun={setScriptRun}
@@ -177,6 +202,7 @@ export function InfraMachinesPage() {
         onClose={() => setShowCreate(false)}
         namedTypes={namedTypes ?? []}
         certificates={certificates}
+        users={users}
         onSubmit={async (p) => {
           await createMutation.mutateAsync(p);
           setShowCreate(false);
@@ -191,6 +217,7 @@ export function InfraMachinesPage() {
         onClose={() => setEditTarget(null)}
         namedTypes={namedTypes ?? []}
         certificates={certificates}
+        users={users}
         onSubmit={async (p) => {
           if (!editTarget) return;
           await infraMachinesApi.update(editTarget.id, p);
@@ -263,6 +290,7 @@ type ScriptRunContext = {
 
 function MachineParentCard({
   parent, parentNamedType, children, healthMap, containersMap, expandedMachines,
+  grafanaUrl,
   onEdit, onDelete, onScriptRun, onToggleContainers, onTerminal, onHistory, t,
 }: {
   parent: MachineSummary;
@@ -271,6 +299,7 @@ function MachineParentCard({
   healthMap: Record<string, string | null>;
   containersMap: Record<string, DockerContainer[]>;
   expandedMachines: Record<string, boolean>;
+  grafanaUrl: string;
   onEdit: (m: MachineSummary) => void;
   onDelete: (m: MachineSummary) => void;
   onScriptRun: (ctx: ScriptRunContext) => void;
@@ -306,6 +335,16 @@ function MachineParentCard({
                   {parentNamedType.sub_type_name}
                 </Badge>
               )}
+              {parent.required_actions.map((a) => (
+                <Badge
+                  key={a.name}
+                  variant="default"
+                  className={`text-[9px] ${a.done ? "bg-green-600" : "bg-red-600"} text-white`}
+                  title={a.done ? t("infra.status_required_done", { name: a.name }) : t("infra.status_required_pending", { name: a.name })}
+                >
+                  {a.done ? "✓" : "⚠"} {a.name}
+                </Badge>
+              ))}
             </div>
           </div>
         </div>
@@ -349,6 +388,12 @@ function MachineParentCard({
               onClick={() => onTerminal(parent)}
             ><Terminal className="w-3.5 h-3.5 text-purple-600" /></Button>
           )}
+          {grafanaUrl && (
+            <Button
+              variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_logs")}
+              onClick={() => window.open(buildGrafanaExploreUrl(grafanaUrl, parent), "_blank", "noopener")}
+            ><ScrollText className="w-3.5 h-3.5 text-sky-600" /></Button>
+          )}
           <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.runs_history")} onClick={() => onHistory(parent)}>
             <History className="w-3.5 h-3.5" />
           </Button>
@@ -381,6 +426,7 @@ function MachineParentCard({
                 health={healthMap[m.id]}
                 containers={containersMap[m.id]}
                 isExpanded={!!expandedMachines[m.id]}
+                grafanaUrl={grafanaUrl}
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onScriptRun={onScriptRun}
@@ -404,13 +450,14 @@ function MachineParentCard({
 }
 
 function MachineChildRow({
-  machine, health, containers, isExpanded,
+  machine, health, containers, isExpanded, grafanaUrl,
   onEdit, onDelete, onScriptRun, onToggleContainers, onTerminal, onHistory, t,
 }: {
   machine: MachineSummary;
   health: string | null | undefined;
   containers: DockerContainer[] | undefined;
   isExpanded: boolean;
+  grafanaUrl: string;
   onEdit: (m: MachineSummary) => void;
   onDelete: (m: MachineSummary) => void;
   onScriptRun: (ctx: ScriptRunContext) => void;
@@ -458,18 +505,30 @@ function MachineChildRow({
           </div>
         </TableCell>
         <TableCell>
-          {(() => {
-            if (health === null) return <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />;
-            if (health === undefined) return <Badge variant="outline" className="text-[9px] border-gray-400 text-gray-500">—</Badge>;
-            const cfg: Record<string, { label: string; color: string }> = {
-              healthy: { label: t("infra.status_healthy"), color: "bg-green-600 text-white" },
-              starting: { label: t("infra.status_starting"), color: "bg-yellow-500 text-white" },
-              ssh_ok: { label: t("infra.status_ssh_ok"), color: "bg-blue-500 text-white" },
-              down: { label: t("infra.status_down"), color: "bg-red-600 text-white" },
-            };
-            const entry = cfg[health] ?? { label: "DOWN", color: "bg-red-600 text-white" };
-            return <Badge variant="default" className={`text-[9px] ${entry.color}`}>{entry.label}</Badge>;
-          })()}
+          <div className="flex flex-col gap-1 items-start">
+            {machine.required_actions.map((a) => (
+              <Badge
+                key={a.name}
+                variant="default"
+                className={`text-[9px] ${a.done ? "bg-green-600" : "bg-red-600"} text-white`}
+                title={a.done ? t("infra.status_required_done", { name: a.name }) : t("infra.status_required_pending", { name: a.name })}
+              >
+                {a.done ? "✓" : "⚠"} {a.name}
+              </Badge>
+            ))}
+            {(() => {
+              if (health === null) return <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />;
+              if (health === undefined) return null;
+              const cfg: Record<string, { label: string; color: string }> = {
+                healthy: { label: t("infra.status_healthy"), color: "bg-green-600 text-white" },
+                starting: { label: t("infra.status_starting"), color: "bg-yellow-500 text-white" },
+                ssh_ok: { label: t("infra.status_ssh_ok"), color: "bg-blue-500 text-white" },
+                down: { label: t("infra.status_down"), color: "bg-red-600 text-white" },
+              };
+              const entry = cfg[health] ?? { label: "DOWN", color: "bg-red-600 text-white" };
+              return <Badge variant="default" className={`text-[9px] ${entry.color}`}>{entry.label}</Badge>;
+            })()}
+          </div>
         </TableCell>
         <TableCell>
           <div className="flex gap-1 text-[11px]">
@@ -518,6 +577,12 @@ function MachineChildRow({
                 variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_terminal")}
                 onClick={() => onTerminal(machine)}
               ><Terminal className="w-3.5 h-3.5 text-purple-600" /></Button>
+            )}
+            {grafanaUrl && (
+              <Button
+                variant="ghost" size="icon" className="h-7 w-7" title={t("infra.open_logs")}
+                onClick={() => window.open(buildGrafanaExploreUrl(grafanaUrl, machine), "_blank", "noopener")}
+              ><ScrollText className="w-3.5 h-3.5 text-sky-600" /></Button>
             )}
             <Button variant="ghost" size="icon" className="h-7 w-7" title={t("infra.runs_history")} onClick={() => onHistory(machine)}>
               <History className="w-3.5 h-3.5" />
@@ -579,12 +644,13 @@ function MachineChildRow({
 
 /* ── Machine Form Dialog (create + edit) ──────────────── */
 
-function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, onSubmit, t }: {
+function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, users, onSubmit, t }: {
   open: boolean;
   initial?: MachineSummary | null;
   onClose: () => void;
   namedTypes: InfraNamedType[];
   certificates: CertificateSummary[];
+  users: UserSummary[];
   onSubmit: (p: MachineCreatePayload) => Promise<void>;
   t: (key: string) => string;
 }) {
@@ -595,6 +661,8 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, o
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [certificateId, setCertificateId] = useState("");
+  const [userId, setUserId] = useState("");
+  const [environment, setEnvironment] = useState("");
   const [saving, setSaving] = useState(false);
   const isEdit = !!initial;
 
@@ -608,9 +676,12 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, o
       setUsername(initial.username ?? "");
       setPassword("");
       setCertificateId(initial.certificate_id ?? "");
+      setUserId(initial.user_id ?? "");
+      setEnvironment(initial.environment ?? "");
     } else {
       setName(""); setTypeId(""); setHost(""); setPort("22");
       setUsername(""); setPassword(""); setCertificateId("");
+      setUserId(""); setEnvironment("");
     }
     setSaving(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -668,6 +739,26 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, o
               ))}
             </select>
           </div>
+          <div>
+            <Label className="text-[11px]">{t("infra.machine_owner_user")}</Label>
+            <select value={userId} onChange={(e) => setUserId(e.target.value)} className={selectClass}>
+              <option value="">— {t("infra.machine_owner_shared")} —</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name || u.email}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-muted-foreground mt-1">{t("infra.machine_owner_hint")}</p>
+          </div>
+          <div>
+            <Label className="text-[11px]">{t("infra.machine_environment")}</Label>
+            <Input
+              value={environment}
+              onChange={(e) => setEnvironment(e.target.value)}
+              className="mt-1 font-mono text-[12px]"
+              placeholder={t("infra.machine_environment_placeholder")}
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">{t("infra.machine_environment_hint")}</p>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
@@ -682,6 +773,8 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, o
                 username: username || undefined,
                 password: password || undefined,
                 certificate_id: certificateId || undefined,
+                user_id: userId || undefined,
+                environment: environment.trim() || undefined,
               });
             } finally { setSaving(false); }
           }}>

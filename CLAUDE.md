@@ -15,11 +15,13 @@ Plateforme d'instanciation d'agents IA packagés en Docker (claude-code, aider, 
 - **Docker runtime** : aiodocker (pas de subprocess)
 - **Reverse proxy prod** : Caddy (SSL géré par Cloudflare Tunnel en front)
 - **Registre externe MCP** : `https://mcp.yoops.org/api/v1`
+- **Observabilité** : Loki + Grafana sur LXC 116 (`agflow-logs`), exposé sur `https://log.yoops.org` via Cloudflare tunnel, auth SSO Keycloak (client `grafana` du realm `yoops`). Collecte via Grafana Alloy déployé sur tous les LXC actifs (Docker socket + journald). Rétention 7 jours. Config dans `infra/logs-stack/` (stack centrale) + `infra/alloy-agent/` (collecteur).
 
 ## Dev & cible
 
 - **Développement** : local Windows (uv + node), tests connectés à l'infra LXC 201 (Postgres/Redis hébergés sur `192.168.10.158`)
 - **Intégration / cible MVP** : LXC 201 (`agflow-docker-test`, 192.168.10.158) — Docker 29.4 + Compose v5.1 déjà installés
+- **Stack logs** : LXC 116 (`agflow-logs`) — Loki + Grafana + Alloy, à provisionner via `scripts/infra/00-create-lxc.sh 116 agflow-logs` puis `infra/logs-stack/`
 - **Prod future** : à définir quand le MVP vertical sera validé
 
 ## Commandes essentielles

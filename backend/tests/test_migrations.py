@@ -173,3 +173,68 @@ async def test_migrations_010_011_012_create_catalogs_tables() -> None:
         "skills",
     ]
     await close_pool()
+
+
+@pytest.mark.asyncio
+async def test_migration_083_adds_supervision_columns_and_platform_config() -> None:
+    applied = await run_migrations(_MIGRATIONS_DIR)
+    # Migration a été appliquée à ce point (soit maintenant, soit par une run précédente)
+    _ = applied
+
+    cols = await fetch_all(
+        """
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_name = 'agents_instances'
+          AND column_name IN ('last_activity_at', 'status', 'error_message')
+        ORDER BY column_name
+        """
+    )
+    by_name = {c["column_name"]: c for c in cols}
+
+    assert "last_activity_at" in by_name
+    assert by_name["last_activity_at"]["data_type"] == "timestamp with time zone"
+    assert by_name["last_activity_at"]["is_nullable"] == "NO"
+
+    assert "status" in by_name
+    assert by_name["status"]["is_nullable"] == "NO"
+
+    assert "error_message" in by_name
+    assert by_name["error_message"]["is_nullable"] == "YES"
+
+    chk = await fetch_one(
+        """
+        SELECT conname
+        FROM pg_constraint
+        WHERE conname = 'agents_instances_status_chk'
+        """
+    )
+    assert chk is not None, "CHECK constraint on agents_instances.status missing"
+
+    tbl = await fetch_one(
+        """
+        SELECT table_name FROM information_schema.tables
+        WHERE table_name = 'platform_config'
+        """
+    )
+    assert tbl is not None, "platform_config table missing"
+
+    defaults = await fetch_all(
+        """
+        SELECT key, value FROM platform_config
+        WHERE key IN (
+            'session_idle_timeout_s',
+            'agent_idle_timeout_s',
+            'supervision_reaper_interval_s',
+            'supervision_reclaim_interval_s',
+            'supervision_reclaim_stale_threshold_s'
+        )
+        """
+    )
+    seeded = {d["key"]: d["value"] for d in defaults}
+    assert seeded["session_idle_timeout_s"] == "120"
+    assert seeded["agent_idle_timeout_s"] == "600"
+    assert seeded["supervision_reaper_interval_s"] == "20"
+    assert seeded["supervision_reclaim_interval_s"] == "15"
+    assert seeded["supervision_reclaim_stale_threshold_s"] == "30"
+    await close_pool()

@@ -1,0 +1,9 @@
+# agflow-logs / LXC 116 — Reverse proxy front
+# Caddy écoute en HTTP (TLS terminé par Cloudflare Tunnel en amont).
+# Route unique : tout le trafic vers Grafana.
+
+:80 {
+    handle {
+        reverse_proxy grafana:3000
+    }
+}

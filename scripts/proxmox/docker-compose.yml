@@ -1,17 +1,34 @@
+# Alias docker-compose pour le pipeline d'install agflow.
+#
+# Le contenu reel est maintenu dans infra/alloy-agent/docker-compose.yml.
+# Ce fichier est telecharge par scripts/proxmox/install-docker.sh apres
+# la creation d'un nouveau LXC, pour deployer le collecteur Alloy qui
+# pousse les logs Docker + journald vers le Loki central (LXC 116).
+#
+# Variables d'env attendues dans .env :
+#   LOKI_URL  - endpoint Loki central
+#   HOSTNAME  - identifiant du LXC (label `host`)
+
 services:
-
-  dozzle-agent:
-    image: amir20/dozzle:latest
-    container_name: dozzle-agent
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: agflow-alloy-agent
     restart: unless-stopped
-    command: agent
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+    environment:
+      LOKI_URL: ${LOKI_URL:?LOKI_URL is required}
+      HOSTNAME: ${HOSTNAME:?HOSTNAME is required}
     volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "7007:7007"
-    networks:
-      - agflow
+      - /var/log:/var/log:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - alloy_data:/var/lib/alloy/data
 
-networks:
-  agflow:
-    driver: bridge
+volumes:
+  alloy_data:

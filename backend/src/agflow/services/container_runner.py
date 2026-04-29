@@ -57,7 +57,7 @@ def _generate_tmp_files(
     config: dict[str, Any],
     task_payload: dict[str, Any] | None = None,
 ) -> str:
-    """Generate .env + run.sh (+ task.json if task_payload) in {AGFLOW_DATA_DIR}/{dockerfile_id}/.tmp/.
+    """Generate .env + run.sh (+ task.json if task_payload) in {AGFLOW_DATA_DIR}/dockerfiles/{dockerfile_id}/.tmp/.
 
     Returns the absolute path of the generated run.sh. When task_payload is
     provided, run.sh is generated in "task mode": ``docker run -i … < task.json``
@@ -65,8 +65,9 @@ def _generate_tmp_files(
     """
     import json as _json
 
-    data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
-    tmp_dir = os.path.join(data_dir, dockerfile_id, ".tmp")
+    from agflow.services.dockerfile_files_service import _slug_dir
+
+    tmp_dir = os.path.join(_slug_dir(dockerfile_id), ".tmp")
     os.makedirs(tmp_dir, exist_ok=True)
 
     # .env — all resolved env vars
@@ -257,16 +258,17 @@ def resolve_mount_source(
                              resolved source was already absolute (we don't
                              reach into arbitrary host paths from here).
       * auto_prefixed      — True if we auto-prefixed the source under
-                             ``{HOST_DIR}/{slug}/``; False if it was kept
-                             as-is because it was already absolute.
+                             ``{HOST_DIR}/dockerfiles/{slug}/``; False if it
+                             was kept as-is because it was already absolute.
 
     Rules:
       1. Run the full templating (agflow {KEY} + shell ${VAR}) first.
       2. If the resolved path starts with ``/`` → keep as-is (user wants an
          explicit host path). No auto-prefix, no existence check.
       3. Otherwise → strip any leading ``./`` and prepend
-         ``{AGFLOW_DATA_HOST_DIR}/{slug}/``. The same path under
-         ``{AGFLOW_DATA_DIR}/{slug}/`` is returned for existence checks.
+         ``{AGFLOW_DATA_HOST_DIR}/dockerfiles/{slug}/``. The same path under
+         ``{AGFLOW_DATA_DIR}/dockerfiles/{slug}/`` is returned for existence
+         checks.
     """
     resolved = full_resolve(raw_source, vars, extra_env).strip()
     if resolved.startswith("/"):
@@ -276,8 +278,8 @@ def resolve_mount_source(
         resolved = resolved[2:]
     resolved = resolved.lstrip("/")
 
-    host_path = f"{_data_host_dir()}/{dockerfile_id}/{resolved}"
-    container_path = f"{_data_container_dir()}/{dockerfile_id}/{resolved}"
+    host_path = f"{_data_host_dir()}/dockerfiles/{dockerfile_id}/{resolved}"
+    container_path = f"{_data_container_dir()}/dockerfiles/{dockerfile_id}/{resolved}"
     return host_path, container_path, True
 
 

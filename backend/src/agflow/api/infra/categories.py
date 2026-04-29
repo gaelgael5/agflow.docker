@@ -88,7 +88,7 @@ async def delete_category(name: str):
 )
 async def list_category_actions(category: str):
     rows = await fetch_all(
-        "SELECT id, name FROM infra_category_actions WHERE category = $1 ORDER BY name",
+        "SELECT id, name, is_required FROM infra_category_actions WHERE category = $1 ORDER BY name",
         category,
     )
     return [CategoryActionRow(**r) for r in rows]
@@ -96,6 +96,11 @@ async def list_category_actions(category: str):
 
 class CategoryActionCreate(BaseModel):
     name: str
+    is_required: bool = False
+
+
+class CategoryActionUpdate(BaseModel):
+    is_required: bool
 
 
 @router.post(
@@ -116,13 +121,32 @@ async def create_category_action(category: str, payload: CategoryActionCreate):
         )
     try:
         row = await fetch_one(
-            "INSERT INTO infra_category_actions (category, name) VALUES ($1, $2) RETURNING id, name",
+            "INSERT INTO infra_category_actions (category, name, is_required) VALUES ($1, $2, $3) RETURNING id, name, is_required",
             category,
             action_name,
+            payload.is_required,
         )
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     assert row is not None
+    return CategoryActionRow(**row)
+
+
+@router.patch(
+    "/{category}/actions/{name}",
+    response_model=CategoryActionRow,
+    dependencies=[Depends(require_admin)],
+)
+async def update_category_action(category: str, name: str, payload: CategoryActionUpdate):
+    row = await fetch_one(
+        "UPDATE infra_category_actions SET is_required = $3 WHERE category = $1 AND name = $2 RETURNING id, name, is_required",
+        category, name, payload.is_required,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Action '{name}' not found in category '{category}'",
+        )
     return CategoryActionRow(**row)
 
 

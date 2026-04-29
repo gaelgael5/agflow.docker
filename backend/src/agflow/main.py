@@ -34,6 +34,7 @@ from agflow.api.admin.service_types import router as admin_service_types_router
 from agflow.api.admin.sessions import router as admin_sessions_router
 from agflow.api.admin.skills_catalog import router as admin_skills_catalog_router
 from agflow.api.admin.supervision import router as admin_supervision_router
+from agflow.api.admin.system import router as admin_system_router
 from agflow.api.admin.templates import router as admin_templates_router
 from agflow.api.admin.terminal import router as admin_terminal_router
 from agflow.api.admin.user_secrets import router as admin_user_secrets_router
@@ -244,6 +245,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_scripts_router)
     app.include_router(admin_sessions_router)
     app.include_router(admin_supervision_router)
+    app.include_router(admin_system_router)
     app.include_router(admin_deployments_router)
     app.include_router(admin_runtimes_router)
     app.include_router(admin_product_instances_router)

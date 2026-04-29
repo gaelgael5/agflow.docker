@@ -9,13 +9,13 @@ so memory stays flat regardless of the volume size.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
 def export_filename() -> str:
     """Return a UTC-timestamped filename like agflow-data-20260429-141500.zip."""
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     return f"agflow-data-{ts}.zip"
 
 

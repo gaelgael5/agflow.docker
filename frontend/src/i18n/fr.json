@@ -881,6 +881,11 @@
     "save": "Enregistrer",
     "select_file": "Sélectionne un fichier .j2"
   },
+  "topbar": {
+    "export": "Exporter les données",
+    "export_tooltip": "Télécharger une archive ZIP du volume data/",
+    "export_error": "Échec de l'export. Réessayez."
+  },
   "contracts": {
     "tab_title": "Contrats API",
     "add_button": "+ Nouveau contrat",

@@ -180,7 +180,7 @@ def _data_dir() -> str:
 
 
 def _slug_dir(dockerfile_id: str) -> str:
-    return os.path.join(_data_dir(), dockerfile_id)
+    return os.path.join(_data_dir(), "dockerfiles", dockerfile_id)
 
 
 def _file_summary(dockerfile_id: str, path: str, full_path: str) -> FileSummary:
@@ -340,7 +340,7 @@ async def create(
 
 async def get_by_id(file_id: UUID) -> FileSummary:
     """Scan all dockerfile dirs to find the file with this deterministic UUID5."""
-    base = _data_dir()
+    base = os.path.join(_data_dir(), "dockerfiles")
     if not os.path.isdir(base):
         raise FileNotFoundError(f"File {file_id} not found")
     for slug in sorted(os.listdir(base)):

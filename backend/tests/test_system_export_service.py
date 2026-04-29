@@ -1,20 +1,14 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
-from agflow.services.system_export import export_filename
+from agflow.services.system_export import _iter_files, export_filename
 
 
 def test_export_filename_format() -> None:
     name = export_filename()
     assert re.fullmatch(r"agflow-data-\d{8}-\d{6}\.zip", name), name
-
-
-from pathlib import Path
-
-import pytest
-
-from agflow.services.system_export import _iter_files
 
 
 def test_iter_files_yields_relative_paths(tmp_path: Path) -> None:

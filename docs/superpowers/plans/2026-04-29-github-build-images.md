@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Several tasks contain USER GATES** — actions that must be done by the human (creating GitHub PAT, validating CI run from GitHub UI, etc.). The implementer subagent must STOP at each USER GATE and report what's needed.
 
-**Goal:** Construire les images Docker `agflow-backend` et `agflow-frontend` automatiquement sur GitHub Actions à chaque push `main`, les publier sur GHCR (privé), et basculer le déploiement LXC 201 sur `docker compose pull` au lieu de `docker build`.
+**Goal:** Construire les images Docker `backend-docker` et `frontend-docker` automatiquement sur GitHub Actions à chaque push `main`, les publier sur GHCR (privé), et basculer le déploiement LXC 201 sur `docker compose pull` au lieu de `docker build`.
 
 **Architecture:** 1 workflow GitHub Actions avec 2 jobs parallèles (path-filter), publication via `docker/build-push-action` + cache `type=gha`, auth push via `GITHUB_TOKEN` éphémère, auth pull côté LXC via PAT classique stocké une fois. `docker-compose.prod.yml` bascule sur les images GHCR ; `scripts/deploy.sh` perd l'étape `docker build` et gagne `docker compose pull`.
 
@@ -17,7 +17,7 @@
 | Fichier | Rôle |
 |---------|------|
 | `.github/workflows/build-images.yml` (nouveau) | Workflow CI : path-filter + 2 jobs parallèles `build-backend` / `build-frontend` qui pushent sur `ghcr.io/gaelgael5/agflow-{backend,frontend}:latest`. |
-| `docker-compose.prod.yml` (modifié, 2 lignes) | Bascule des `image: agflow-backend:latest` (locale) vers `image: ghcr.io/gaelgael5/agflow-backend:latest` (registry). Idem frontend. |
+| `docker-compose.prod.yml` (modifié, 2 lignes) | Bascule des `image: agflow-backend:latest` (locale) vers `image: ghcr.io/gaelgael5/backend-docker:latest` (registry). Idem frontend. |
 | `scripts/deploy.sh` (modifié, gros allègement) | Tarball réduit à `.env` + `compose` + `Caddyfile`. Plus de `docker build`. Ajout d'un `docker compose pull` avant `up -d`. Suppression du flag `--rebuild`. |
 
 Aucun fichier backend/frontend modifié. Pas de migration DB. Plusieurs USER GATES manuels (génération PAT, premier `workflow_dispatch`, login GHCR sur LXC).
@@ -93,7 +93,7 @@ jobs:
           file: ./backend/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/gaelgael5/agflow-backend:latest
+          tags: ghcr.io/gaelgael5/backend-docker:latest
           cache-from: type=gha,scope=backend
           cache-to:   type=gha,scope=backend,mode=max
 
@@ -115,7 +115,7 @@ jobs:
           file: ./frontend/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/gaelgael5/agflow-frontend:latest
+          tags: ghcr.io/gaelgael5/frontend-docker:latest
           cache-from: type=gha,scope=frontend
           cache-to:   type=gha,scope=frontend,mode=max
 ```
@@ -179,8 +179,8 @@ Si un job rouge : ouvrir les logs, identifier l'étape qui échoue. Causes typiq
 Aller sur https://github.com/gaelgael5?tab=packages
 
 Attendu : 2 packages visibles
-- `agflow-backend` (privé, lié à ce repo)
-- `agflow-frontend` (privé, lié à ce repo)
+- `backend-docker` (privé, lié à ce repo)
+- `frontend-docker` (privé, lié à ce repo)
 
 Cliquer dessus → tag `latest` doit apparaître avec date récente.
 
@@ -245,8 +245,8 @@ Attendu : un JSON contenant `"ghcr.io"` dans `auths` avec une `auth` base64.
 - [ ] **Step 3 : Tester le pull manuel**
 
 ```bash
-ssh pve "pct exec 201 -- docker pull ghcr.io/gaelgael5/agflow-backend:latest"
-ssh pve "pct exec 201 -- docker pull ghcr.io/gaelgael5/agflow-frontend:latest"
+ssh pve "pct exec 201 -- docker pull ghcr.io/gaelgael5/backend-docker:latest"
+ssh pve "pct exec 201 -- docker pull ghcr.io/gaelgael5/frontend-docker:latest"
 ```
 
 Attendu : les 2 pulls réussissent et affichent `Status: Downloaded newer image for ghcr.io/...`.
@@ -261,9 +261,9 @@ ssh pve "pct exec 201 -- bash -c 'docker images | grep -E \"agflow|ghcr\"'"
 
 Attendu : 4 lignes
 - `agflow-backend:latest` (locale, datée d'aujourd'hui — issue du dernier `deploy.sh --rebuild`)
-- `ghcr.io/gaelgael5/agflow-backend:latest` (vient d'être pull)
+- `ghcr.io/gaelgael5/backend-docker:latest` (vient d'être pull)
 - `agflow-frontend:latest` (locale)
-- `ghcr.io/gaelgael5/agflow-frontend:latest` (vient d'être pull)
+- `ghcr.io/gaelgael5/frontend-docker:latest` (vient d'être pull)
 
 > Ce n'est pas grave d'avoir les deux pour l'instant. Quand le compose va basculer sur `ghcr.io/...`, l'image locale `agflow-backend:latest` deviendra orpheline — on la nettoiera plus tard avec `docker image prune`.
 
@@ -293,14 +293,14 @@ Changer dans `docker-compose.prod.yml` :
 ```diff
    backend:
 -    image: agflow-backend:latest
-+    image: ghcr.io/gaelgael5/agflow-backend:latest
++    image: ghcr.io/gaelgael5/backend-docker:latest
      container_name: agflow-backend
 ```
 
 ```diff
    frontend:
 -    image: agflow-frontend:latest
-+    image: ghcr.io/gaelgael5/agflow-frontend:latest
++    image: ghcr.io/gaelgael5/frontend-docker:latest
      container_name: agflow-frontend
 ```
 
@@ -436,7 +436,7 @@ Si la branche est déjà tracké (Task 2), ça suffit. Sinon `git push -u origin
 > **Important** : le trigger automatique est `on: push: branches: [main]`. Un push sur `feat/mom-bus` **NE déclenche PAS** le workflow. Donc à ce stade les images `:latest` sur GHCR contiennent le code de Task 2 (avant les modifs compose+deploy.sh — mais ces modifs ne touchent pas le contenu des images, c'est juste la conf de déploiement). Donc les images GHCR existantes sont **suffisantes** pour le déploiement de cette tâche.
 
 Vérifier sur https://github.com/gaelgael5?tab=packages :
-- Les 2 packages `agflow-backend` et `agflow-frontend` existent
+- Les 2 packages `backend-docker` et `frontend-docker` existent
 - Le tag `latest` a une date récente (Task 2)
 
 Si pour une raison quelconque tu veux re-builder (par ex. si Tasks 3/4/5/6 ont mis du temps et que tu veux un rebuild propre) : déclencher manuellement via "Run workflow" sur la branche `feat/mom-bus` avec `force_all=true`.
@@ -484,8 +484,8 @@ ssh pve "pct exec 201 -- bash -c 'docker inspect agflow-backend agflow-frontend 
 
 Attendu :
 ```
-/agflow-backend ghcr.io/gaelgael5/agflow-backend:latest
-/agflow-frontend ghcr.io/gaelgael5/agflow-frontend:latest
+/agflow-backend ghcr.io/gaelgael5/backend-docker:latest
+/agflow-frontend ghcr.io/gaelgael5/frontend-docker:latest
 ```
 
 (Plus de `agflow-backend:latest` locale.)

@@ -95,7 +95,7 @@ jobs:
           file: ./backend/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/gaelgael5/agflow-backend:latest
+          tags: ghcr.io/gaelgael5/backend-docker:latest
           cache-from: type=gha,scope=backend
           cache-to:   type=gha,scope=backend,mode=max
 
@@ -117,7 +117,7 @@ jobs:
           file: ./frontend/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/gaelgael5/agflow-frontend:latest
+          tags: ghcr.io/gaelgael5/frontend-docker:latest
           cache-from: type=gha,scope=frontend
           cache-to:   type=gha,scope=frontend,mode=max
 ```
@@ -129,12 +129,12 @@ Diff :
 ```diff
    backend:
 -    image: agflow-backend:latest
-+    image: ghcr.io/gaelgael5/agflow-backend:latest
++    image: ghcr.io/gaelgael5/backend-docker:latest
      ...
 
    frontend:
 -    image: agflow-frontend:latest
-+    image: ghcr.io/gaelgael5/agflow-frontend:latest
++    image: ghcr.io/gaelgael5/frontend-docker:latest
      ...
 ```
 
@@ -212,7 +212,7 @@ Procédure documentée — exécutée par l'utilisateur, guidée par Claude au m
    ```bash
    ssh pve "pct exec 201 -- bash -c 'echo <PAT> | docker login ghcr.io -u gaelgael5 --password-stdin'"
    ```
-3. Vérifier : `ssh pve "pct exec 201 -- docker pull ghcr.io/gaelgael5/agflow-backend:latest"` (après le premier build CI)
+3. Vérifier : `ssh pve "pct exec 201 -- docker pull ghcr.io/gaelgael5/backend-docker:latest"` (après le premier build CI)
 4. Le credential est persisté dans `/root/.docker/config.json` du LXC
 
 ## 4. Migration progressive (sans casse)
@@ -221,7 +221,7 @@ Procédure documentée — exécutée par l'utilisateur, guidée par Claude au m
 |-------|--------|------------|
 | 0 | Pré-requis : avoir exporté le volume `data/` (cf. spec Export) | Archive `.zip` archivée hors LXC |
 | A | Ajouter `.github/workflows/build-images.yml` dans une branche, merger | Première run via `workflow_dispatch` `force_all=true`. Vérifier les 2 images sur https://github.com/gaelgael5?tab=packages |
-| B | Setup PAT côté LXC 201 (étape 3.4) | `docker pull ghcr.io/gaelgael5/agflow-backend:latest` réussit côté LXC |
+| B | Setup PAT côté LXC 201 (étape 3.4) | `docker pull ghcr.io/gaelgael5/backend-docker:latest` réussit côté LXC |
 | C | Modifier `docker-compose.prod.yml` (images GHCR) + `deploy.sh` (simplifié) | Premier déploiement via images GHCR, smoke test : `curl http://192.168.10.158/health` |
 
 Si étape C foire, rollback :
@@ -237,7 +237,7 @@ Premier run : déclencher manuellement avec `force_all=true` après merge du wor
 - [ ] Job `changes` sort `backend=true` et `frontend=true` (input forcé)
 - [ ] Jobs `build-backend` et `build-frontend` réussissent en parallèle
 - [ ] Images visibles sous github.com/gaelgael5?tab=packages
-- [ ] `docker pull ghcr.io/gaelgael5/agflow-backend:latest` réussit côté LXC après login
+- [ ] `docker pull ghcr.io/gaelgael5/backend-docker:latest` réussit côté LXC après login
 
 Run suivant (push main réel) : modifier un fichier dans `backend/`, push. Vérifier :
 

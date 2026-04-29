@@ -49,7 +49,7 @@ jobs:
           file: ./backend/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/gaelgael5/agflow-backend:latest
+          tags: ghcr.io/gaelgael5/backend-docker:latest
           cache-from: type=gha,scope=backend
           cache-to:   type=gha,scope=backend,mode=max
 
@@ -71,6 +71,6 @@ jobs:
           file: ./frontend/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/gaelgael5/agflow-frontend:latest
+          tags: ghcr.io/gaelgael5/frontend-docker:latest
           cache-from: type=gha,scope=frontend
           cache-to:   type=gha,scope=frontend,mode=max

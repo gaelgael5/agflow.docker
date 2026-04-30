@@ -27,6 +27,7 @@ from agflow.services import (
     product_catalog_service,
     product_instances_service,
     projects_service,
+    swarm_defaults,
     template_files_service,
 )
 
@@ -188,7 +189,6 @@ def _build_group_context(
                 "id": svc_id,
                 "container_name": container,
                 "image": svc.get("image", ""),
-                "restart": "unless-stopped",
                 "ports": list(svc.get("ports") or []),
                 "environment": env,
                 "volumes": [
@@ -205,6 +205,7 @@ def _build_group_context(
                 ],
                 "labels": labels,
                 "networks": [network],
+                "deploy": swarm_defaults.resolve_deploy(svc.get("deploy")),
             })
 
         rendered_instances.append({

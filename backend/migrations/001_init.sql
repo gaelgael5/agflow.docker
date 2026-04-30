@@ -29,27 +29,28 @@ $$;
 -- agent_api_contracts (TABLE)
 
 CREATE TABLE agent_api_contracts (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     agent_id text NOT NULL,
     slug text NOT NULL,
     display_name text NOT NULL,
-    description text DEFAULT ''::text NOT NULL,
-    source_type text DEFAULT 'manual'::text NOT NULL,
+    description text DEFAULT '' NOT NULL,
+    source_type text DEFAULT 'manual' NOT NULL,
     source_url text,
     spec_content text NOT NULL,
-    base_url text DEFAULT ''::text NOT NULL,
-    auth_header text DEFAULT 'Authorization'::text NOT NULL,
-    auth_prefix text DEFAULT 'Bearer'::text NOT NULL,
+    base_url text DEFAULT '' NOT NULL,
+    auth_header text DEFAULT 'Authorization' NOT NULL,
+    auth_prefix text DEFAULT 'Bearer' NOT NULL,
     auth_secret_ref text,
     parsed_tags jsonb DEFAULT '[]'::jsonb NOT NULL,
     "position" integer DEFAULT 0 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    output_dir text DEFAULT 'workspace/docs/ctr'::text NOT NULL,
+    output_dir text DEFAULT 'workspace/docs/ctr' NOT NULL,
     tag_overrides jsonb DEFAULT '{}'::jsonb NOT NULL,
     managed_by_instance uuid,
-    runtime_base_url text DEFAULT ''::text NOT NULL,
-    CONSTRAINT agent_api_contracts_source_type_check CHECK ((source_type = ANY (ARRAY['upload'::text, 'url'::text, 'manual'::text])))
+    runtime_base_url text DEFAULT '' NOT NULL,
+    CONSTRAINT agent_api_contracts_source_type_check CHECK ((source_type = ANY (ARRAY['upload'::text, 'url'::text, 'manual'::text]))),
+    UNIQUE (agent_id, slug)
 );
 
 -- agent_message_delivery (TABLE)
@@ -63,13 +64,14 @@ CREATE TABLE agent_message_delivery (
     acked_at timestamp with time zone,
     retry_count integer DEFAULT 0 NOT NULL,
     last_error text,
-    CONSTRAINT agent_message_delivery_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'claimed'::text, 'acked'::text, 'failed'::text])))
+    CONSTRAINT agent_message_delivery_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'claimed'::text, 'acked'::text, 'failed'::text]))),
+    PRIMARY KEY (group_name, msg_id)
 );
 
 -- agent_messages (TABLE)
 
 CREATE TABLE agent_messages (
-    msg_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    msg_id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     parent_msg_id uuid,
     v integer DEFAULT 1 NOT NULL,
     session_id text NOT NULL,
@@ -87,7 +89,7 @@ CREATE TABLE agent_messages (
 -- agents_catalog (TABLE)
 
 CREATE TABLE agents_catalog (
-    slug text NOT NULL,
+    slug text NOT NULL PRIMARY KEY,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     last_seen timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -95,7 +97,7 @@ CREATE TABLE agents_catalog (
 -- agents_instances (TABLE)
 
 CREATE TABLE agents_instances (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     session_id uuid NOT NULL,
     agent_id text NOT NULL,
     labels jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -104,7 +106,7 @@ CREATE TABLE agents_instances (
     destroyed_at timestamp with time zone,
     last_container_name text,
     last_activity_at timestamp with time zone DEFAULT now() NOT NULL,
-    status text DEFAULT 'idle'::text NOT NULL,
+    status text DEFAULT 'idle' NOT NULL,
     error_message text,
     mcp_bindings_injected jsonb DEFAULT '[]'::jsonb NOT NULL,
     CONSTRAINT agents_instances_status_chk CHECK ((status = ANY (ARRAY['idle'::text, 'busy'::text, 'error'::text, 'destroyed'::text])))
@@ -113,7 +115,7 @@ CREATE TABLE agents_instances (
 -- api_keys (TABLE)
 
 CREATE TABLE api_keys (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     owner_id uuid,
     name text NOT NULL,
     prefix text NOT NULL,
@@ -123,13 +125,14 @@ CREATE TABLE api_keys (
     expires_at timestamp with time zone,
     revoked boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_used_at timestamp with time zone
+    last_used_at timestamp with time zone,
+    UNIQUE (prefix)
 );
 
 -- deployment_instances (TABLE)
 
 CREATE TABLE deployment_instances (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     deployment_id uuid NOT NULL,
     instance_id uuid NOT NULL,
     machine_id uuid,
@@ -141,11 +144,11 @@ CREATE TABLE deployment_instances (
 -- discovery_services (TABLE)
 
 CREATE TABLE discovery_services (
-    id text NOT NULL,
+    id text NOT NULL PRIMARY KEY,
     name text NOT NULL,
     base_url text NOT NULL,
     api_key_var text,
-    description text DEFAULT ''::text NOT NULL,
+    description text DEFAULT '' NOT NULL,
     enabled boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
@@ -154,12 +157,12 @@ CREATE TABLE discovery_services (
 -- dockerfile_builds (TABLE)
 
 CREATE TABLE dockerfile_builds (
-    id uuid DEFAULT uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuid_generate_v4() NOT NULL PRIMARY KEY,
     dockerfile_id text NOT NULL,
     content_hash text NOT NULL,
     image_tag text NOT NULL,
-    status text DEFAULT 'pending'::text NOT NULL,
-    logs text DEFAULT ''::text NOT NULL,
+    status text DEFAULT 'pending' NOT NULL,
+    logs text DEFAULT '' NOT NULL,
     started_at timestamp with time zone DEFAULT now() NOT NULL,
     finished_at timestamp with time zone,
     CONSTRAINT dockerfile_builds_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'success'::text, 'failed'::text])))
@@ -168,9 +171,9 @@ CREATE TABLE dockerfile_builds (
 -- dockerfiles (TABLE)
 
 CREATE TABLE dockerfiles (
-    id text NOT NULL,
+    id text NOT NULL PRIMARY KEY,
     display_name text NOT NULL,
-    description text DEFAULT ''::text NOT NULL,
+    description text DEFAULT '' NOT NULL,
     parameters jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
@@ -179,7 +182,7 @@ CREATE TABLE dockerfiles (
 -- group_scripts (TABLE)
 
 CREATE TABLE group_scripts (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     group_id uuid NOT NULL,
     script_id uuid NOT NULL,
     machine_id uuid NOT NULL,
@@ -197,7 +200,7 @@ CREATE TABLE group_scripts (
 -- groups (TABLE)
 
 CREATE TABLE groups (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     project_id uuid NOT NULL,
     name character varying(200) NOT NULL,
     max_agents integer DEFAULT 0 NOT NULL,
@@ -206,54 +209,57 @@ CREATE TABLE groups (
     machine_id uuid,
     compose_template_slug character varying,
     max_replicas integer DEFAULT 1 NOT NULL,
-    CONSTRAINT groups_max_replicas_check CHECK ((max_replicas >= 1))
+    CONSTRAINT groups_max_replicas_check CHECK ((max_replicas >= 1)),
+    UNIQUE (project_id, name)
 );
 
 -- hmac_keys (TABLE)
 
 CREATE TABLE hmac_keys (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     key_id character varying(64) NOT NULL,
     key_value_encrypted bytea NOT NULL,
-    description text DEFAULT ''::text NOT NULL,
+    description text DEFAULT '' NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    rotated_at timestamp with time zone
+    rotated_at timestamp with time zone,
+    UNIQUE (key_id)
 );
 
 -- infra_categories (TABLE)
 
 CREATE TABLE infra_categories (
-    name character varying NOT NULL,
+    name character varying NOT NULL PRIMARY KEY,
     is_vps boolean DEFAULT false NOT NULL
 );
 
 -- infra_category_actions (TABLE)
 
 CREATE TABLE infra_category_actions (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     category character varying NOT NULL,
     name character varying NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    is_required boolean DEFAULT false NOT NULL
+    is_required boolean DEFAULT false NOT NULL,
+    UNIQUE (category, name)
 );
 
 -- infra_certificates (TABLE)
 
 CREATE TABLE infra_certificates (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     name character varying NOT NULL,
     private_key text NOT NULL,
     public_key text,
     passphrase character varying,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    key_type character varying DEFAULT 'rsa'::character varying NOT NULL
+    key_type character varying DEFAULT 'rsa' NOT NULL
 );
 
 -- infra_machines (TABLE)
 
 CREATE TABLE infra_machines (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     host character varying NOT NULL,
     port integer DEFAULT 22 NOT NULL,
     username character varying,
@@ -261,9 +267,9 @@ CREATE TABLE infra_machines (
     certificate_id uuid,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    name character varying DEFAULT ''::character varying NOT NULL,
+    name character varying DEFAULT '' NOT NULL,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    status character varying DEFAULT 'not_initialized'::character varying NOT NULL,
+    status character varying DEFAULT 'not_initialized' NOT NULL,
     parent_id uuid,
     type_id uuid NOT NULL,
     user_id uuid,
@@ -273,7 +279,7 @@ CREATE TABLE infra_machines (
 -- infra_machines_runs (TABLE)
 
 CREATE TABLE infra_machines_runs (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     machine_id uuid NOT NULL,
     action_id uuid NOT NULL,
     started_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -287,22 +293,23 @@ CREATE TABLE infra_machines_runs (
 -- infra_named_type_actions (TABLE)
 
 CREATE TABLE infra_named_type_actions (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     named_type_id uuid NOT NULL,
     category_action_id uuid NOT NULL,
     url character varying NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    UNIQUE (named_type_id, category_action_id)
 );
 
 -- infra_named_types (TABLE)
 
 CREATE TABLE infra_named_types (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     connection_type character varying NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    name character varying DEFAULT ''::character varying NOT NULL,
+    name character varying DEFAULT '' NOT NULL,
     type_id character varying NOT NULL,
     sub_type_id uuid
 );
@@ -310,12 +317,12 @@ CREATE TABLE infra_named_types (
 -- instances (TABLE)
 
 CREATE TABLE instances (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     group_id uuid NOT NULL,
     instance_name character varying(128) NOT NULL,
     catalog_id character varying(128) NOT NULL,
     variables jsonb DEFAULT '{}'::jsonb NOT NULL,
-    status character varying(20) DEFAULT 'draft'::character varying NOT NULL,
+    status character varying(20) DEFAULT 'draft' NOT NULL,
     service_url character varying,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -323,20 +330,21 @@ CREATE TABLE instances (
     connection_params jsonb,
     mcp_bindings jsonb DEFAULT '[]'::jsonb NOT NULL,
     setup_steps jsonb DEFAULT '[]'::jsonb NOT NULL,
-    provisioning_status character varying(32) DEFAULT 'ready'::character varying NOT NULL,
+    provisioning_status character varying(32) DEFAULT 'ready' NOT NULL,
     CONSTRAINT instances_provisioning_status_check CHECK (((provisioning_status)::text = ANY ((ARRAY['provisioning'::character varying, 'ready'::character varying, 'pending_setup'::character varying, 'failed'::character varying])::text[]))),
-    CONSTRAINT instances_status_check CHECK (((status)::text = ANY ((ARRAY['draft'::character varying, 'active'::character varying, 'stopped'::character varying])::text[])))
+    CONSTRAINT instances_status_check CHECK (((status)::text = ANY ((ARRAY['draft'::character varying, 'active'::character varying, 'stopped'::character varying])::text[]))),
+    UNIQUE (group_id, instance_name)
 );
 
 -- launched_tasks (TABLE)
 
 CREATE TABLE launched_tasks (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     dockerfile_id text NOT NULL,
     container_id text,
     container_name text,
-    instruction text DEFAULT ''::text NOT NULL,
-    status text DEFAULT 'pending'::text NOT NULL,
+    instruction text DEFAULT '' NOT NULL,
+    status text DEFAULT 'pending' NOT NULL,
     started_at timestamp with time zone DEFAULT now() NOT NULL,
     finished_at timestamp with time zone,
     exit_code integer,
@@ -346,49 +354,51 @@ CREATE TABLE launched_tasks (
 -- mcp_servers (TABLE)
 
 CREATE TABLE mcp_servers (
-    id uuid DEFAULT uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuid_generate_v4() NOT NULL PRIMARY KEY,
     discovery_service_id text NOT NULL,
     package_id text NOT NULL,
     name text NOT NULL,
-    repo text DEFAULT ''::text NOT NULL,
-    repo_url text DEFAULT ''::text NOT NULL,
-    transport text DEFAULT 'stdio'::text NOT NULL,
-    short_description text DEFAULT ''::text NOT NULL,
-    long_description text DEFAULT ''::text NOT NULL,
-    documentation_url text DEFAULT ''::text NOT NULL,
+    repo text DEFAULT '' NOT NULL,
+    repo_url text DEFAULT '' NOT NULL,
+    transport text DEFAULT 'stdio' NOT NULL,
+    short_description text DEFAULT '' NOT NULL,
+    long_description text DEFAULT '' NOT NULL,
+    documentation_url text DEFAULT '' NOT NULL,
     parameters jsonb DEFAULT '{}'::jsonb NOT NULL,
     parameters_schema jsonb DEFAULT '[]'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     recipes jsonb DEFAULT '{}'::jsonb NOT NULL,
-    category text DEFAULT ''::text NOT NULL,
-    CONSTRAINT mcp_servers_transport_check CHECK ((transport = ANY (ARRAY['stdio'::text, 'sse'::text, 'docker'::text])))
+    category text DEFAULT '' NOT NULL,
+    CONSTRAINT mcp_servers_transport_check CHECK ((transport = ANY (ARRAY['stdio'::text, 'sse'::text, 'docker'::text]))),
+    UNIQUE (discovery_service_id, package_id)
 );
 
 -- outbound_hooks (TABLE)
 
 CREATE TABLE outbound_hooks (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     hook_id uuid NOT NULL,
     task_id uuid,
     callback_url text NOT NULL,
     hmac_key_id character varying(64) NOT NULL,
     payload jsonb NOT NULL,
     attempt_number integer DEFAULT 0 NOT NULL,
-    status character varying(32) DEFAULT 'pending'::character varying NOT NULL,
+    status character varying(32) DEFAULT 'pending' NOT NULL,
     last_response_code integer,
     last_attempt_at timestamp with time zone,
     next_retry_at timestamp with time zone DEFAULT now() NOT NULL,
     error_message text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT outbound_hooks_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'delivered'::character varying, 'dead'::character varying])::text[])))
+    CONSTRAINT outbound_hooks_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'delivered'::character varying, 'dead'::character varying])::text[]))),
+    UNIQUE (hook_id)
 );
 
 -- platform_config (TABLE)
 
 CREATE TABLE platform_config (
-    key text NOT NULL,
+    key text NOT NULL PRIMARY KEY,
     value text NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -396,11 +406,11 @@ CREATE TABLE platform_config (
 -- project_deployments (TABLE)
 
 CREATE TABLE project_deployments (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     project_id uuid NOT NULL,
     user_id uuid NOT NULL,
     group_servers jsonb DEFAULT '{}'::jsonb NOT NULL,
-    status character varying(20) DEFAULT 'draft'::character varying NOT NULL,
+    status character varying(20) DEFAULT 'draft' NOT NULL,
     generated_compose text,
     generated_env text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -414,14 +424,14 @@ CREATE TABLE project_deployments (
 -- project_group_runtimes (TABLE)
 
 CREATE TABLE project_group_runtimes (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     project_runtime_id uuid NOT NULL,
     group_id uuid NOT NULL,
     machine_id uuid,
-    env_text text DEFAULT ''::text NOT NULL,
-    compose_yaml text DEFAULT ''::text NOT NULL,
-    remote_path text DEFAULT ''::text NOT NULL,
-    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    env_text text DEFAULT '' NOT NULL,
+    compose_yaml text DEFAULT '' NOT NULL,
+    remote_path text DEFAULT '' NOT NULL,
+    status character varying DEFAULT 'pending' NOT NULL,
     pushed_at timestamp with time zone,
     error_message text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -430,7 +440,9 @@ CREATE TABLE project_group_runtimes (
     deleted_at timestamp with time zone,
     replica_count integer DEFAULT 1 NOT NULL,
     CONSTRAINT project_group_runtimes_replica_count_check CHECK ((replica_count >= 0)),
-    CONSTRAINT project_group_runtimes_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'deployed'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT project_group_runtimes_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'deployed'::character varying, 'failed'::character varying])::text[]))),
+    UNIQUE (project_runtime_id, group_id),
+    UNIQUE (seq)
 );
 
 -- project_group_runtimes_seq_seq (SEQUENCE)
@@ -447,18 +459,19 @@ ALTER TABLE project_group_runtimes ALTER COLUMN seq ADD GENERATED BY DEFAULT AS 
 -- project_runtimes (TABLE)
 
 CREATE TABLE project_runtimes (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     project_id uuid NOT NULL,
     deployment_id uuid,
     user_id uuid,
-    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    status character varying DEFAULT 'pending' NOT NULL,
     pushed_at timestamp with time zone,
     error_message text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     seq bigint NOT NULL,
     deleted_at timestamp with time zone,
-    CONSTRAINT project_runtimes_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'deployed'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT project_runtimes_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'deployed'::character varying, 'failed'::character varying])::text[]))),
+    UNIQUE (seq)
 );
 
 -- project_runtimes_seq_seq (SEQUENCE)
@@ -475,13 +488,13 @@ ALTER TABLE project_runtimes ALTER COLUMN seq ADD GENERATED BY DEFAULT AS IDENTI
 -- projects (TABLE)
 
 CREATE TABLE projects (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     display_name character varying(200) NOT NULL,
-    description text DEFAULT ''::text NOT NULL,
+    description text DEFAULT '' NOT NULL,
     tags jsonb DEFAULT '[]'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    network character varying DEFAULT 'agflow'::character varying NOT NULL
+    network character varying DEFAULT 'agflow' NOT NULL
 );
 
 -- rate_limit_counters (TABLE)
@@ -489,7 +502,8 @@ CREATE TABLE projects (
 CREATE TABLE rate_limit_counters (
     key text NOT NULL,
     window_start timestamp with time zone DEFAULT date_trunc('minute'::text, now()) NOT NULL,
-    count integer DEFAULT 1 NOT NULL
+    count integer DEFAULT 1 NOT NULL,
+    PRIMARY KEY (key, window_start)
 );
 
 -- role_sections (TABLE)
@@ -500,13 +514,14 @@ CREATE TABLE role_sections (
     display_name text NOT NULL,
     is_native boolean DEFAULT false NOT NULL,
     "position" integer DEFAULT 0 NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    PRIMARY KEY (role_id, name)
 );
 
 -- roles (TABLE)
 
 CREATE TABLE roles (
-    id text NOT NULL,
+    id text NOT NULL PRIMARY KEY,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -514,33 +529,35 @@ CREATE TABLE roles (
 -- scripts (TABLE)
 
 CREATE TABLE scripts (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     name character varying NOT NULL,
-    description text DEFAULT ''::text NOT NULL,
-    content text DEFAULT ''::text NOT NULL,
+    description text DEFAULT '' NOT NULL,
+    content text DEFAULT '' NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     execute_on_types_named uuid,
-    input_variables jsonb DEFAULT '[]'::jsonb NOT NULL
+    input_variables jsonb DEFAULT '[]'::jsonb NOT NULL,
+    UNIQUE (name)
 );
 
 -- secrets (TABLE)
 
 CREATE TABLE secrets (
-    id uuid DEFAULT uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuid_generate_v4() NOT NULL PRIMARY KEY,
     var_name text NOT NULL,
     value_encrypted bytea NOT NULL,
-    scope text DEFAULT 'global'::text NOT NULL,
+    scope text DEFAULT 'global' NOT NULL,
     agent_id uuid,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT secrets_scope_check CHECK ((scope = ANY (ARRAY['global'::text, 'agent'::text])))
+    CONSTRAINT secrets_scope_check CHECK ((scope = ANY (ARRAY['global'::text, 'agent'::text]))),
+    UNIQUE NULLS NOT DISTINCT (var_name, scope, agent_id)
 );
 
 -- service_types (TABLE)
 
 CREATE TABLE service_types (
-    name text NOT NULL,
+    name text NOT NULL PRIMARY KEY,
     display_name text NOT NULL,
     is_native boolean DEFAULT false NOT NULL,
     "position" integer DEFAULT 0 NOT NULL,
@@ -550,10 +567,10 @@ CREATE TABLE service_types (
 -- sessions (TABLE)
 
 CREATE TABLE sessions (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     api_key_id uuid NOT NULL,
     name text,
-    status text DEFAULT 'active'::text NOT NULL,
+    status text DEFAULT 'active' NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     expires_at timestamp with time zone NOT NULL,
     closed_at timestamp with time zone,
@@ -567,25 +584,26 @@ CREATE TABLE sessions (
 -- skills (TABLE)
 
 CREATE TABLE skills (
-    id uuid DEFAULT uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuid_generate_v4() NOT NULL PRIMARY KEY,
     discovery_service_id text NOT NULL,
     skill_id text NOT NULL,
     name text NOT NULL,
-    description text DEFAULT ''::text NOT NULL,
-    content_md text DEFAULT ''::text NOT NULL,
+    description text DEFAULT '' NOT NULL,
+    content_md text DEFAULT '' NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    UNIQUE (discovery_service_id, skill_id)
 );
 
 -- tasks (TABLE)
 
 CREATE TABLE tasks (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     kind character varying(64) NOT NULL,
     project_runtime_id uuid,
     session_id uuid,
     agent_instance_id uuid,
-    status character varying(32) DEFAULT 'pending'::character varying NOT NULL,
+    status character varying(32) DEFAULT 'pending' NOT NULL,
     started_at timestamp with time zone,
     completed_at timestamp with time zone,
     result jsonb,
@@ -601,37 +619,39 @@ CREATE TABLE tasks (
 -- user_identities (TABLE)
 
 CREATE TABLE user_identities (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     user_id uuid NOT NULL,
     provider text NOT NULL,
     subject text NOT NULL,
     email text,
     raw_claims jsonb,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    UNIQUE (provider, subject)
 );
 
 -- user_secrets (TABLE)
 
 CREATE TABLE user_secrets (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     user_id uuid NOT NULL,
     name text NOT NULL,
     ciphertext text NOT NULL,
     iv text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    UNIQUE (user_id, name)
 );
 
 -- users (TABLE)
 
 CREATE TABLE users (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     email text NOT NULL,
-    name text DEFAULT ''::text NOT NULL,
-    avatar_url text DEFAULT ''::text NOT NULL,
-    role text DEFAULT 'user'::text NOT NULL,
+    name text DEFAULT '' NOT NULL,
+    avatar_url text DEFAULT '' NOT NULL,
+    role text DEFAULT 'user' NOT NULL,
     scopes text[] DEFAULT '{}'::text[] NOT NULL,
-    status text DEFAULT 'pending'::text NOT NULL,
+    status text DEFAULT 'pending' NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     approved_at timestamp with time zone,
     approved_by uuid,
@@ -640,303 +660,9 @@ CREATE TABLE users (
     vault_test_ciphertext text,
     vault_test_iv text,
     CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['admin'::text, 'user'::text]))),
-    CONSTRAINT users_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'active'::text, 'disabled'::text])))
+    CONSTRAINT users_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'active'::text, 'disabled'::text]))),
+    UNIQUE (email)
 );
-
--- agent_api_contracts agent_api_contracts_agent_id_slug_key (CONSTRAINT)
-
-ALTER TABLE ONLY agent_api_contracts
-    ADD CONSTRAINT agent_api_contracts_agent_id_slug_key UNIQUE (agent_id, slug);
-
--- agent_api_contracts agent_api_contracts_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY agent_api_contracts
-    ADD CONSTRAINT agent_api_contracts_pkey PRIMARY KEY (id);
-
--- agent_message_delivery agent_message_delivery_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY agent_message_delivery
-    ADD CONSTRAINT agent_message_delivery_pkey PRIMARY KEY (group_name, msg_id);
-
--- agent_messages agent_messages_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY agent_messages
-    ADD CONSTRAINT agent_messages_pkey PRIMARY KEY (msg_id);
-
--- agents_catalog agents_catalog_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY agents_catalog
-    ADD CONSTRAINT agents_catalog_pkey PRIMARY KEY (slug);
-
--- agents_instances agents_instances_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY agents_instances
-    ADD CONSTRAINT agents_instances_pkey PRIMARY KEY (id);
-
--- api_keys api_keys_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY api_keys
-    ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
-
--- api_keys api_keys_prefix_key (CONSTRAINT)
-
-ALTER TABLE ONLY api_keys
-    ADD CONSTRAINT api_keys_prefix_key UNIQUE (prefix);
-
--- deployment_instances deployment_instances_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY deployment_instances
-    ADD CONSTRAINT deployment_instances_pkey PRIMARY KEY (id);
-
--- discovery_services discovery_services_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY discovery_services
-    ADD CONSTRAINT discovery_services_pkey PRIMARY KEY (id);
-
--- dockerfile_builds dockerfile_builds_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY dockerfile_builds
-    ADD CONSTRAINT dockerfile_builds_pkey PRIMARY KEY (id);
-
--- dockerfiles dockerfiles_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY dockerfiles
-    ADD CONSTRAINT dockerfiles_pkey PRIMARY KEY (id);
-
--- group_scripts group_scripts_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY group_scripts
-    ADD CONSTRAINT group_scripts_pkey PRIMARY KEY (id);
-
--- groups groups_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY groups
-    ADD CONSTRAINT groups_pkey PRIMARY KEY (id);
-
--- groups groups_project_id_name_key (CONSTRAINT)
-
-ALTER TABLE ONLY groups
-    ADD CONSTRAINT groups_project_id_name_key UNIQUE (project_id, name);
-
--- hmac_keys hmac_keys_key_id_key (CONSTRAINT)
-
-ALTER TABLE ONLY hmac_keys
-    ADD CONSTRAINT hmac_keys_key_id_key UNIQUE (key_id);
-
--- hmac_keys hmac_keys_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY hmac_keys
-    ADD CONSTRAINT hmac_keys_pkey PRIMARY KEY (id);
-
--- infra_categories infra_categories_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY infra_categories
-    ADD CONSTRAINT infra_categories_pkey PRIMARY KEY (name);
-
--- infra_category_actions infra_category_actions_category_name_key (CONSTRAINT)
-
-ALTER TABLE ONLY infra_category_actions
-    ADD CONSTRAINT infra_category_actions_category_name_key UNIQUE (category, name);
-
--- infra_category_actions infra_category_actions_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY infra_category_actions
-    ADD CONSTRAINT infra_category_actions_pkey PRIMARY KEY (id);
-
--- infra_certificates infra_certificates_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY infra_certificates
-    ADD CONSTRAINT infra_certificates_pkey PRIMARY KEY (id);
-
--- infra_machines_runs infra_machines_runs_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY infra_machines_runs
-    ADD CONSTRAINT infra_machines_runs_pkey PRIMARY KEY (id);
-
--- infra_named_type_actions infra_named_type_actions_named_type_id_category_action_id_key (CONSTRAINT)
-
-ALTER TABLE ONLY infra_named_type_actions
-    ADD CONSTRAINT infra_named_type_actions_named_type_id_category_action_id_key UNIQUE (named_type_id, category_action_id);
-
--- infra_named_type_actions infra_named_type_actions_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY infra_named_type_actions
-    ADD CONSTRAINT infra_named_type_actions_pkey PRIMARY KEY (id);
-
--- infra_named_types infra_named_types_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY infra_named_types
-    ADD CONSTRAINT infra_named_types_pkey PRIMARY KEY (id);
-
--- infra_machines infra_servers_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY infra_machines
-    ADD CONSTRAINT infra_servers_pkey PRIMARY KEY (id);
-
--- instances instances_group_id_instance_name_key (CONSTRAINT)
-
-ALTER TABLE ONLY instances
-    ADD CONSTRAINT instances_group_id_instance_name_key UNIQUE (group_id, instance_name);
-
--- instances instances_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY instances
-    ADD CONSTRAINT instances_pkey PRIMARY KEY (id);
-
--- launched_tasks launched_tasks_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY launched_tasks
-    ADD CONSTRAINT launched_tasks_pkey PRIMARY KEY (id);
-
--- mcp_servers mcp_servers_discovery_service_id_package_id_key (CONSTRAINT)
-
-ALTER TABLE ONLY mcp_servers
-    ADD CONSTRAINT mcp_servers_discovery_service_id_package_id_key UNIQUE (discovery_service_id, package_id);
-
--- mcp_servers mcp_servers_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY mcp_servers
-    ADD CONSTRAINT mcp_servers_pkey PRIMARY KEY (id);
-
--- outbound_hooks outbound_hooks_hook_id_key (CONSTRAINT)
-
-ALTER TABLE ONLY outbound_hooks
-    ADD CONSTRAINT outbound_hooks_hook_id_key UNIQUE (hook_id);
-
--- outbound_hooks outbound_hooks_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY outbound_hooks
-    ADD CONSTRAINT outbound_hooks_pkey PRIMARY KEY (id);
-
--- platform_config platform_config_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY platform_config
-    ADD CONSTRAINT platform_config_pkey PRIMARY KEY (key);
-
--- project_deployments project_deployments_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY project_deployments
-    ADD CONSTRAINT project_deployments_pkey PRIMARY KEY (id);
-
--- project_group_runtimes project_group_runtimes_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY project_group_runtimes
-    ADD CONSTRAINT project_group_runtimes_pkey PRIMARY KEY (id);
-
--- project_group_runtimes project_group_runtimes_project_runtime_id_group_id_key (CONSTRAINT)
-
-ALTER TABLE ONLY project_group_runtimes
-    ADD CONSTRAINT project_group_runtimes_project_runtime_id_group_id_key UNIQUE (project_runtime_id, group_id);
-
--- project_group_runtimes project_group_runtimes_seq_key (CONSTRAINT)
-
-ALTER TABLE ONLY project_group_runtimes
-    ADD CONSTRAINT project_group_runtimes_seq_key UNIQUE (seq);
-
--- project_runtimes project_runtimes_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY project_runtimes
-    ADD CONSTRAINT project_runtimes_pkey PRIMARY KEY (id);
-
--- project_runtimes project_runtimes_seq_key (CONSTRAINT)
-
-ALTER TABLE ONLY project_runtimes
-    ADD CONSTRAINT project_runtimes_seq_key UNIQUE (seq);
-
--- projects projects_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY projects
-    ADD CONSTRAINT projects_pkey PRIMARY KEY (id);
-
--- rate_limit_counters rate_limit_counters_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY rate_limit_counters
-    ADD CONSTRAINT rate_limit_counters_pkey PRIMARY KEY (key, window_start);
-
--- role_sections role_sections_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY role_sections
-    ADD CONSTRAINT role_sections_pkey PRIMARY KEY (role_id, name);
-
--- roles roles_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY roles
-    ADD CONSTRAINT roles_pkey PRIMARY KEY (id);
-
--- scripts scripts_name_key (CONSTRAINT)
-
-ALTER TABLE ONLY scripts
-    ADD CONSTRAINT scripts_name_key UNIQUE (name);
-
--- scripts scripts_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY scripts
-    ADD CONSTRAINT scripts_pkey PRIMARY KEY (id);
-
--- secrets secrets_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY secrets
-    ADD CONSTRAINT secrets_pkey PRIMARY KEY (id);
-
--- secrets secrets_var_name_scope_agent_id_key (CONSTRAINT)
-
-ALTER TABLE ONLY secrets
-    ADD CONSTRAINT secrets_var_name_scope_agent_id_key UNIQUE NULLS NOT DISTINCT (var_name, scope, agent_id);
-
--- service_types service_types_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY service_types
-    ADD CONSTRAINT service_types_pkey PRIMARY KEY (name);
-
--- sessions sessions_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY sessions
-    ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
-
--- skills skills_discovery_service_id_skill_id_key (CONSTRAINT)
-
-ALTER TABLE ONLY skills
-    ADD CONSTRAINT skills_discovery_service_id_skill_id_key UNIQUE (discovery_service_id, skill_id);
-
--- skills skills_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY skills
-    ADD CONSTRAINT skills_pkey PRIMARY KEY (id);
-
--- tasks tasks_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY tasks
-    ADD CONSTRAINT tasks_pkey PRIMARY KEY (id);
-
--- user_identities user_identities_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY user_identities
-    ADD CONSTRAINT user_identities_pkey PRIMARY KEY (id);
-
--- user_identities user_identities_provider_subject_key (CONSTRAINT)
-
-ALTER TABLE ONLY user_identities
-    ADD CONSTRAINT user_identities_provider_subject_key UNIQUE (provider, subject);
-
--- user_secrets user_secrets_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY user_secrets
-    ADD CONSTRAINT user_secrets_pkey PRIMARY KEY (id);
-
--- user_secrets user_secrets_user_id_name_key (CONSTRAINT)
-
-ALTER TABLE ONLY user_secrets
-    ADD CONSTRAINT user_secrets_user_id_name_key UNIQUE (user_id, name);
-
--- users users_email_key (CONSTRAINT)
-
-ALTER TABLE ONLY users
-    ADD CONSTRAINT users_email_key UNIQUE (email);
-
--- users users_pkey (CONSTRAINT)
-
-ALTER TABLE ONLY users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
 
 -- idx_agent_api_contracts_agent (INDEX)
 
@@ -1228,232 +954,232 @@ CREATE TRIGGER trg_tasks_updated_at BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE 
 
 -- agent_message_delivery agent_message_delivery_msg_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY agent_message_delivery
+ALTER TABLE agent_message_delivery
     ADD CONSTRAINT agent_message_delivery_msg_id_fkey FOREIGN KEY (msg_id) REFERENCES agent_messages(msg_id) ON DELETE CASCADE;
 
 -- agent_messages agent_messages_parent_msg_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY agent_messages
+ALTER TABLE agent_messages
     ADD CONSTRAINT agent_messages_parent_msg_id_fkey FOREIGN KEY (parent_msg_id) REFERENCES agent_messages(msg_id);
 
 -- agents_instances agents_instances_agent_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY agents_instances
+ALTER TABLE agents_instances
     ADD CONSTRAINT agents_instances_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES agents_catalog(slug) ON DELETE RESTRICT;
 
 -- agents_instances agents_instances_session_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY agents_instances
+ALTER TABLE agents_instances
     ADD CONSTRAINT agents_instances_session_id_fkey FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE;
 
 -- api_keys api_keys_owner_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY api_keys
+ALTER TABLE api_keys
     ADD CONSTRAINT api_keys_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE;
 
 -- deployment_instances deployment_instances_deployment_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY deployment_instances
+ALTER TABLE deployment_instances
     ADD CONSTRAINT deployment_instances_deployment_id_fkey FOREIGN KEY (deployment_id) REFERENCES project_deployments(id) ON DELETE CASCADE;
 
 -- deployment_instances deployment_instances_instance_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY deployment_instances
+ALTER TABLE deployment_instances
     ADD CONSTRAINT deployment_instances_instance_id_fkey FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE;
 
 -- deployment_instances deployment_instances_machine_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY deployment_instances
+ALTER TABLE deployment_instances
     ADD CONSTRAINT deployment_instances_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES infra_machines(id) ON DELETE SET NULL;
 
 -- dockerfile_builds dockerfile_builds_dockerfile_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY dockerfile_builds
+ALTER TABLE dockerfile_builds
     ADD CONSTRAINT dockerfile_builds_dockerfile_id_fkey FOREIGN KEY (dockerfile_id) REFERENCES dockerfiles(id) ON DELETE CASCADE;
 
 -- group_scripts group_scripts_group_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY group_scripts
+ALTER TABLE group_scripts
     ADD CONSTRAINT group_scripts_group_id_fkey FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE;
 
 -- group_scripts group_scripts_machine_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY group_scripts
+ALTER TABLE group_scripts
     ADD CONSTRAINT group_scripts_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES infra_machines(id) ON DELETE RESTRICT;
 
 -- group_scripts group_scripts_script_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY group_scripts
+ALTER TABLE group_scripts
     ADD CONSTRAINT group_scripts_script_id_fkey FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE;
 
 -- groups groups_machine_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY groups
+ALTER TABLE groups
     ADD CONSTRAINT groups_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES infra_machines(id) ON DELETE SET NULL;
 
 -- groups groups_project_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY groups
+ALTER TABLE groups
     ADD CONSTRAINT groups_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE;
 
 -- infra_category_actions infra_category_actions_category_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_category_actions
+ALTER TABLE infra_category_actions
     ADD CONSTRAINT infra_category_actions_category_fkey FOREIGN KEY (category) REFERENCES infra_categories(name) ON UPDATE CASCADE ON DELETE CASCADE;
 
 -- infra_machines_runs infra_machines_runs_action_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_machines_runs
+ALTER TABLE infra_machines_runs
     ADD CONSTRAINT infra_machines_runs_action_id_fkey FOREIGN KEY (action_id) REFERENCES infra_named_type_actions(id) ON DELETE RESTRICT;
 
 -- infra_machines_runs infra_machines_runs_machine_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_machines_runs
+ALTER TABLE infra_machines_runs
     ADD CONSTRAINT infra_machines_runs_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES infra_machines(id) ON DELETE CASCADE;
 
 -- infra_machines infra_machines_type_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_machines
+ALTER TABLE infra_machines
     ADD CONSTRAINT infra_machines_type_id_fkey FOREIGN KEY (type_id) REFERENCES infra_named_types(id) ON DELETE RESTRICT;
 
 -- infra_machines infra_machines_user_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_machines
+ALTER TABLE infra_machines
     ADD CONSTRAINT infra_machines_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
 
 -- infra_named_type_actions infra_named_type_actions_category_action_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_named_type_actions
+ALTER TABLE infra_named_type_actions
     ADD CONSTRAINT infra_named_type_actions_category_action_id_fkey FOREIGN KEY (category_action_id) REFERENCES infra_category_actions(id) ON DELETE CASCADE;
 
 -- infra_named_type_actions infra_named_type_actions_named_type_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_named_type_actions
+ALTER TABLE infra_named_type_actions
     ADD CONSTRAINT infra_named_type_actions_named_type_id_fkey FOREIGN KEY (named_type_id) REFERENCES infra_named_types(id) ON DELETE CASCADE;
 
 -- infra_named_types infra_named_types_sub_type_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_named_types
+ALTER TABLE infra_named_types
     ADD CONSTRAINT infra_named_types_sub_type_id_fkey FOREIGN KEY (sub_type_id) REFERENCES infra_named_types(id) ON DELETE SET NULL;
 
 -- infra_named_types infra_named_types_type_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_named_types
+ALTER TABLE infra_named_types
     ADD CONSTRAINT infra_named_types_type_id_fkey FOREIGN KEY (type_id) REFERENCES infra_categories(name) ON UPDATE CASCADE ON DELETE RESTRICT;
 
 -- infra_machines infra_servers_certificate_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_machines
+ALTER TABLE infra_machines
     ADD CONSTRAINT infra_servers_certificate_id_fkey FOREIGN KEY (certificate_id) REFERENCES infra_certificates(id) ON DELETE SET NULL;
 
 -- infra_machines infra_servers_parent_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY infra_machines
+ALTER TABLE infra_machines
     ADD CONSTRAINT infra_servers_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES infra_machines(id) ON DELETE SET NULL;
 
 -- instances instances_group_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY instances
+ALTER TABLE instances
     ADD CONSTRAINT instances_group_id_fkey FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE;
 
 -- mcp_servers mcp_servers_discovery_service_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY mcp_servers
+ALTER TABLE mcp_servers
     ADD CONSTRAINT mcp_servers_discovery_service_id_fkey FOREIGN KEY (discovery_service_id) REFERENCES discovery_services(id) ON DELETE CASCADE;
 
 -- outbound_hooks outbound_hooks_task_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY outbound_hooks
+ALTER TABLE outbound_hooks
     ADD CONSTRAINT outbound_hooks_task_id_fkey FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE;
 
 -- project_deployments project_deployments_project_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY project_deployments
+ALTER TABLE project_deployments
     ADD CONSTRAINT project_deployments_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE;
 
 -- project_deployments project_deployments_user_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY project_deployments
+ALTER TABLE project_deployments
     ADD CONSTRAINT project_deployments_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
 
 -- project_group_runtimes project_group_runtimes_group_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY project_group_runtimes
+ALTER TABLE project_group_runtimes
     ADD CONSTRAINT project_group_runtimes_group_id_fkey FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE;
 
 -- project_group_runtimes project_group_runtimes_machine_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY project_group_runtimes
+ALTER TABLE project_group_runtimes
     ADD CONSTRAINT project_group_runtimes_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES infra_machines(id) ON DELETE SET NULL;
 
 -- project_group_runtimes project_group_runtimes_project_runtime_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY project_group_runtimes
+ALTER TABLE project_group_runtimes
     ADD CONSTRAINT project_group_runtimes_project_runtime_id_fkey FOREIGN KEY (project_runtime_id) REFERENCES project_runtimes(id) ON DELETE CASCADE;
 
 -- project_runtimes project_runtimes_deployment_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY project_runtimes
+ALTER TABLE project_runtimes
     ADD CONSTRAINT project_runtimes_deployment_id_fkey FOREIGN KEY (deployment_id) REFERENCES project_deployments(id) ON DELETE SET NULL;
 
 -- project_runtimes project_runtimes_project_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY project_runtimes
+ALTER TABLE project_runtimes
     ADD CONSTRAINT project_runtimes_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE;
 
 -- project_runtimes project_runtimes_user_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY project_runtimes
+ALTER TABLE project_runtimes
     ADD CONSTRAINT project_runtimes_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
 
 -- scripts scripts_execute_on_types_named_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY scripts
+ALTER TABLE scripts
     ADD CONSTRAINT scripts_execute_on_types_named_fkey FOREIGN KEY (execute_on_types_named) REFERENCES infra_named_types(id) ON DELETE SET NULL;
 
 -- sessions sessions_api_key_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY sessions
+ALTER TABLE sessions
     ADD CONSTRAINT sessions_api_key_id_fkey FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE;
 
 -- sessions sessions_project_runtime_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY sessions
+ALTER TABLE sessions
     ADD CONSTRAINT sessions_project_runtime_id_fkey FOREIGN KEY (project_runtime_id) REFERENCES project_runtimes(id) ON DELETE SET NULL;
 
 -- skills skills_discovery_service_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY skills
+ALTER TABLE skills
     ADD CONSTRAINT skills_discovery_service_id_fkey FOREIGN KEY (discovery_service_id) REFERENCES discovery_services(id) ON DELETE CASCADE;
 
 -- tasks tasks_agent_instance_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY tasks
+ALTER TABLE tasks
     ADD CONSTRAINT tasks_agent_instance_id_fkey FOREIGN KEY (agent_instance_id) REFERENCES agents_instances(id) ON DELETE CASCADE;
 
 -- tasks tasks_project_runtime_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY tasks
+ALTER TABLE tasks
     ADD CONSTRAINT tasks_project_runtime_id_fkey FOREIGN KEY (project_runtime_id) REFERENCES project_runtimes(id) ON DELETE CASCADE;
 
 -- tasks tasks_session_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY tasks
+ALTER TABLE tasks
     ADD CONSTRAINT tasks_session_id_fkey FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE;
 
 -- user_identities user_identities_user_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY user_identities
+ALTER TABLE user_identities
     ADD CONSTRAINT user_identities_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
 
 -- user_secrets user_secrets_user_id_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY user_secrets
+ALTER TABLE user_secrets
     ADD CONSTRAINT user_secrets_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
 
 -- users users_approved_by_fkey (FK CONSTRAINT)
 
-ALTER TABLE ONLY users
+ALTER TABLE users
     ADD CONSTRAINT users_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES users(id);
 
 -- Seeds : types de services natifs (catalogue M3 / catalogues services)

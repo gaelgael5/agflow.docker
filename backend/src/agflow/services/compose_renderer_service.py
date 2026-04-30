@@ -30,12 +30,29 @@ from agflow.services import (
     template_files_service,
 )
 
+
+def _to_yaml_filter(value, indent: int = 0) -> str:
+    """Dump a dict/list as YAML at a given indent level. Used by templates to
+    serialize deploy/resources blocks generically without hardcoding fields.
+
+    The trailing newline is always stripped (the caller decides newline handling).
+    Each non-empty output line gets ``indent`` spaces prepended when ``indent > 0``.
+    """
+    text = yaml.dump(value, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    text = text.rstrip("\n")
+    if indent <= 0:
+        return text
+    pad = " " * indent
+    return "\n".join(pad + line for line in text.splitlines())
+
+
 _JINJA_ENV = SandboxedEnvironment(
     undefined=StrictUndefined,
     trim_blocks=False,
     lstrip_blocks=False,
     keep_trailing_newline=True,
 )
+_JINJA_ENV.filters["to_yaml"] = _to_yaml_filter
 
 _log = structlog.get_logger(__name__)
 

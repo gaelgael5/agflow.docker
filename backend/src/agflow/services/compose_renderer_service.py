@@ -27,8 +27,25 @@ from agflow.services import (
     product_catalog_service,
     product_instances_service,
     projects_service,
+    swarm_defaults,
     template_files_service,
 )
+
+
+def _to_yaml_filter(value, indent: int = 0) -> str:
+    """Dump a dict/list as YAML at a given indent level. Used by templates to
+    serialize deploy/resources blocks generically without hardcoding fields.
+
+    The trailing newline is always stripped (the caller decides newline handling).
+    Each non-empty output line gets ``indent`` spaces prepended when ``indent > 0``.
+    """
+    text = yaml.dump(value, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    text = text.rstrip("\n")
+    if indent <= 0:
+        return text
+    pad = " " * indent
+    return "\n".join(pad + line for line in text.splitlines())
+
 
 _JINJA_ENV = SandboxedEnvironment(
     undefined=StrictUndefined,
@@ -36,6 +53,7 @@ _JINJA_ENV = SandboxedEnvironment(
     lstrip_blocks=False,
     keep_trailing_newline=True,
 )
+_JINJA_ENV.filters["to_yaml"] = _to_yaml_filter
 
 _log = structlog.get_logger(__name__)
 
@@ -171,7 +189,6 @@ def _build_group_context(
                 "id": svc_id,
                 "container_name": container,
                 "image": svc.get("image", ""),
-                "restart": "unless-stopped",
                 "ports": list(svc.get("ports") or []),
                 "environment": env,
                 "volumes": [
@@ -188,6 +205,7 @@ def _build_group_context(
                 ],
                 "labels": labels,
                 "networks": [network],
+                "deploy": swarm_defaults.resolve_deploy(svc.get("deploy")),
             })
 
         rendered_instances.append({

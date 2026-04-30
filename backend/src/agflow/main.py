@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio as _asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import structlog
 from fastapi import FastAPI
@@ -69,12 +70,69 @@ from agflow.workers.session_idle_reaper import (
 )
 
 
+async def _check_db_connectivity(log: Any) -> None:
+    """Vérifie que la DB est joignable et existe. Fail fast avec messages clairs.
+
+    Distingue 3 cas d'erreur :
+    - DB absente → message pointant vers install.sh --setup-db (ops)
+    - Auth refusée → message pointant vers le secret database_url
+    - Serveur injoignable → message d'OS error
+
+    Le backend ne crée PAS sa propre DB : c'est la responsabilité ops.
+    """
+    import asyncpg
+
+    from agflow.db.pool import get_pool
+
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        log.info("db.connectivity_ok")
+    except asyncpg.InvalidCatalogNameError as exc:
+        log.error(
+            "db.missing_database",
+            message=(
+                "La base de données cible n'existe pas. Elle doit être créée "
+                "out-of-band par le script ops (install.sh --setup-db) AVANT "
+                "que ce backend ne démarre. Le backend ne crée pas sa propre DB."
+            ),
+            dsn_database=str(exc).split('"')[1] if '"' in str(exc) else "?",
+        )
+        raise
+    except (
+        asyncpg.InvalidPasswordError,
+        asyncpg.InvalidAuthorizationSpecificationError,
+    ) as exc:
+        log.error(
+            "db.auth_failed",
+            message=(
+                "Authentification DB refusée. Vérifier le user/password dans "
+                "le secret database_url (cf. /run/secrets/database_url en Swarm, "
+                "ou DATABASE_URL en .env local)."
+            ),
+            error=str(exc),
+        )
+        raise
+    except OSError as exc:
+        log.error(
+            "db.unreachable",
+            message=(
+                "Impossible de contacter le serveur Postgres. Vérifier le host:port "
+                "dans le secret database_url et que le service postgres tourne."
+            ),
+            error=str(exc),
+        )
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
     log = structlog.get_logger(__name__)
     log.info("app.startup", environment=settings.environment)
+    await _check_db_connectivity(log)
     from pathlib import Path
 
     from agflow.db.migrations import run_migrations

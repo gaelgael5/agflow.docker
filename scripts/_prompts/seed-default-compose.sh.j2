@@ -3,8 +3,7 @@ services:
 {%- for svc in inst.services %}
   {{ svc.container_name }}:
     image: {{ svc.image }}
-    container_name: {{ svc.container_name }}
-    restart: {{ svc.restart }}
+    hostname: {{ svc.container_name }}
     labels:
 {%- for lbl in svc.labels %}
       - {{ lbl }}
@@ -16,7 +15,9 @@ services:
 {%- if svc.ports %}
     ports:
 {%- for port in svc.ports %}
-      - "{{ port }}:{{ port }}"
+      - target: {{ port }}
+        published: {{ port }}
+        mode: host
 {%- endfor %}
 {%- endif %}
 {%- if svc.environment %}
@@ -37,12 +38,16 @@ services:
       - {{ dep }}
 {%- endfor %}
 {%- endif %}
+{%- if svc.deploy %}
+    deploy:
+{{ svc.deploy | to_yaml(6) }}
+{%- endif %}
 {%- endfor %}
 {%- endfor %}
 
 networks:
   {{ network }}:
-    driver: bridge
+    driver: overlay
 {%- if volumes %}
 
 volumes:

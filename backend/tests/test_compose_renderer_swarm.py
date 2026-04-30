@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
+
+import yaml
+from jinja2 import StrictUndefined
+from jinja2.sandbox import SandboxedEnvironment
 
 from agflow.services.compose_renderer_service import (
     _build_group_context,
@@ -106,3 +111,105 @@ def test_build_group_context_deep_merges_recipe_deploy_override() -> None:
     # Defaults non-touches conserves
     assert svc["deploy"]["endpoint_mode"] == "dnsrr"
     assert svc["deploy"]["restart_policy"]["max_attempts"] == 5
+
+
+def _render_template(template_path: Path, context: dict) -> str:
+    env = SandboxedEnvironment(
+        undefined=StrictUndefined,
+        trim_blocks=False,
+        lstrip_blocks=False,
+        keep_trailing_newline=True,
+    )
+    env.filters["to_yaml"] = _to_yaml_filter
+    template = env.from_string(template_path.read_text(encoding="utf-8"))
+    return template.render(**context)
+
+
+def test_seed_default_compose_template_produces_valid_swarm_stack() -> None:
+    """Le template seed-default-compose doit produire un YAML Swarm-stack valide."""
+    template_path = (
+        Path(__file__).parent.parent.parent / "scripts" / "_prompts" / "seed-default-compose.sh.j2"
+    )
+    assert template_path.exists(), f"Template introuvable : {template_path}"
+
+    context = {
+        "group": {"id": "g-1", "name": "g", "slug": "G"},
+        "group_slug": "G",
+        "network": "agflow_proj",
+        "volumes": ["api-data"],
+        "instances": [
+            {
+                "id": "inst-1",
+                "group_id": "g-1",
+                "instance_name": "inst",
+                "catalog_id": "cat-1",
+                "services": [
+                    {
+                        "id": "api",
+                        "container_name": "inst-api",
+                        "image": "nginx:1.27",
+                        "ports": [80],
+                        "environment": {"FOO": "bar"},
+                        "volumes": [
+                            {"name": "data", "mount": "/data", "docker_volume": "api-data"},
+                        ],
+                        "depends_on": [],
+                        "labels": ["agflow.group_id=g-1"],
+                        "networks": ["agflow_proj"],
+                        "deploy": {
+                            "replicas": 2,
+                            "endpoint_mode": "dnsrr",
+                            "placement": {"constraints": ["node.role == manager"]},
+                            "restart_policy": {
+                                "condition": "on-failure",
+                                "delay": "10s",
+                                "max_attempts": 5,
+                            },
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+
+    rendered = _render_template(template_path, context)
+
+    # Parsing YAML : doit etre valide
+    parsed = yaml.safe_load(rendered)
+
+    # Structure attendue
+    assert "services" in parsed
+    assert "inst-api" in parsed["services"]
+    svc = parsed["services"]["inst-api"]
+
+    assert svc["image"] == "nginx:1.27"
+    assert svc["hostname"] == "inst-api"
+
+    # Bloc deploy complet
+    assert svc["deploy"]["replicas"] == 2
+    assert svc["deploy"]["endpoint_mode"] == "dnsrr"
+
+    # Ports en long-form mode: host
+    assert svc["ports"] == [{"target": 80, "published": 80, "mode": "host"}]
+
+    # Network en overlay
+    assert parsed["networks"]["agflow_proj"]["driver"] == "overlay"
+
+    # Volumes declares
+    assert "api-data" in parsed["volumes"]
+
+
+def test_seed_default_compose_template_excludes_legacy_fields() -> None:
+    """Le template ne doit PLUS contenir les directives compose-v1 obsoletes."""
+    template_path = (
+        Path(__file__).parent.parent.parent / "scripts" / "_prompts" / "seed-default-compose.sh.j2"
+    )
+    content = template_path.read_text(encoding="utf-8")
+
+    assert "container_name:" not in content, (
+        "container_name doit etre supprime (Swarm gere les noms)"
+    )
+    assert "restart:" not in content, (
+        "restart top-level doit etre supprime (Swarm utilise deploy.restart_policy)"
+    )
+    assert "driver: bridge" not in content, "driver: bridge doit etre remplace par driver: overlay"

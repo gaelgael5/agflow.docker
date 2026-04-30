@@ -24,3 +24,29 @@ def deep_merge(base: dict, override: dict | None) -> dict:
         else:
             result[k] = copy.deepcopy(v) if isinstance(v, (dict, list)) else v
     return result
+
+
+_DEFAULT_DEPLOY: dict = {
+    "replicas": 1,
+    "endpoint_mode": "dnsrr",  # IPVS LXC workaround
+    "placement": {"constraints": ["node.role == manager"]},
+    "restart_policy": {
+        "condition": "on-failure",
+        "delay": "10s",
+        "max_attempts": 5,
+    },
+    "update_config": {
+        "parallelism": 1,
+        "delay": "10s",
+        "order": "start-first",
+    },
+}
+
+
+def resolve_deploy(recipe_deploy: dict | None) -> dict:
+    """Resolve le bloc deploy final : deep-merge recipe.deploy sur les defaults.
+
+    Retourne un dict toujours complet (jamais None). Si recipe_deploy est None
+    ou vide, retourne une copie defensive des defaults.
+    """
+    return deep_merge(_DEFAULT_DEPLOY, recipe_deploy)

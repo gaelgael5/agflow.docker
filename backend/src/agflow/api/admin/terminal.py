@@ -7,10 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+from pathlib import Path
 
 import asyncssh
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from agflow.utils.swarm_secrets import secret_path
 
 _log = structlog.get_logger(__name__)
 
@@ -27,12 +31,12 @@ async def container_terminal(ws: WebSocket, container_id: str) -> None:
     try:
         # SSH to the Docker host to run docker exec.
         # From inside the backend container, the host is at the Docker gateway.
-        import os
-
         host = os.environ.get("DOCKER_HOST_SSH", "172.20.0.1")
         port = 22
         username = "root"
-        key_path = "/app/.ssh/backend_key"
+        # En Swarm la clé est mountée à /run/secrets/agflow_backend_key.
+        # Sinon (dev / compose actuel) on retombe sur le bind mount /app/.ssh/backend_key.
+        key_file = secret_path("agflow_backend_key") or Path("/app/.ssh/backend_key")
 
         conn_kwargs: dict = {
             "host": host,
@@ -40,8 +44,8 @@ async def container_terminal(ws: WebSocket, container_id: str) -> None:
             "username": username,
             "known_hosts": None,
         }
-        if os.path.exists(key_path):
-            conn_kwargs["client_keys"] = [asyncssh.read_private_key(key_path)]
+        if key_file.exists():
+            conn_kwargs["client_keys"] = [asyncssh.read_private_key(str(key_file))]
 
         async with asyncssh.connect(**conn_kwargs) as conn:
             command = f"docker exec -ti {container_id} /bin/sh"
@@ -93,7 +97,7 @@ async def container_terminal(ws: WebSocket, container_id: str) -> None:
                 asyncio.create_task(ssh_stderr_to_ws()),
             ]
 
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            _done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for t in pending:
                 t.cancel()
 

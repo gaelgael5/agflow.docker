@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
@@ -18,6 +16,7 @@ from agflow.schemas.avatars import (
     ThemeUpdate,
 )
 from agflow.services import ai_providers_service, avatar_service, image_generator
+from agflow.utils.swarm_secrets import get_swarm_secret
 
 router = APIRouter(
     prefix="/api/admin/avatars",
@@ -213,7 +212,7 @@ async def generate_image(
             "image_generation", theme_detail.provider,
         )
     if not api_key:
-        api_key = os.environ.get("OPENAI_API_KEY", "")
+        api_key = get_swarm_secret("openai_api_key", env_fallback="OPENAI_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

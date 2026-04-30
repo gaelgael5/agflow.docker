@@ -5,11 +5,12 @@ Key read from AGFLOW_INFRA_KEY environment variable.
 """
 from __future__ import annotations
 
-import os
 import re
 
 import structlog
 from cryptography.fernet import Fernet, InvalidToken
+
+from agflow.utils.swarm_secrets import get_swarm_secret
 
 _log = structlog.get_logger(__name__)
 
@@ -24,7 +25,7 @@ _fernet: Fernet | None = None
 def _get_fernet() -> Fernet:
     global _fernet
     if _fernet is None:
-        key = os.environ.get("AGFLOW_INFRA_KEY", "")
+        key = get_swarm_secret("agflow_infra_key", env_fallback="AGFLOW_INFRA_KEY")
         if not key:
             _log.warning("crypto_service.no_key", msg="AGFLOW_INFRA_KEY not set, generating ephemeral key")
             key = Fernet.generate_key().decode()

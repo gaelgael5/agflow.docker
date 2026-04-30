@@ -172,3 +172,97 @@ class MachineRunRow(BaseModel):
 class ScriptRunRequest(BaseModel):
     script_url: str = Field(min_length=1)
     args: dict[str, str] = Field(default_factory=dict)
+
+
+# ── Swarm clusters (B0) ──────────────────────────────────────────────────
+
+
+class SwarmClusterRow(BaseModel):
+    """Public representation of a Swarm cluster. Tokens NEVER exposed."""
+
+    id: UUID
+    name: str
+    manager_addr: str
+    node_count: int = 0
+    manager_count: int = 0
+    worker_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class SwarmInitRequest(BaseModel):
+    cluster_name: str = Field(..., min_length=1, max_length=64)
+
+
+class SwarmJoinRequest(BaseModel):
+    cluster_id: UUID
+    role: str = Field(..., pattern="^(manager|worker)$")
+
+
+class SwarmLeaveRequest(BaseModel):
+    force: bool = False
+
+
+# ── Ingestion JSON depuis create-swarm-lxc.sh ────────────────────────────
+
+
+class _Identification(BaseModel):
+    ctid: int
+    hostname: str
+    hostname_raw: str | None = None
+
+
+class _Systeme(BaseModel):
+    distro: str
+    ip: str
+    ip_type: str = Field(..., pattern="^(static|dhcp)$")
+
+
+class _UserBlock(BaseModel):
+    user: str
+    password: str | None = None
+    ssh_key_private_path: str | None = None
+    ssh_key_public_path: str | None = None
+    ssh_key_public: str | None = None
+    groups: list[str] = []
+    sudo_nopasswd: bool = False
+
+
+class _DockerBlock(BaseModel):
+    docker_ok: bool
+    docker_version: str | None = None
+    compose_version: str | None = None
+    hello_world_ok: bool | None = None
+
+
+class _SwarmBlock(BaseModel):
+    swarm_mode: str
+    swarm_ready: bool
+    tun_device_present: bool | None = None
+
+
+class _HostBlock(BaseModel):
+    proxmox_host: str | None = None
+    created_at: str | None = None
+    script_version: str | None = None
+    conf_path: str | None = None
+    conf_backup_path: str | None = None
+
+
+class CreateLxcOutput(BaseModel):
+    """JSON contract returned by create-swarm-lxc.sh (Configurations repo).
+
+    Le champ identification.ctid correspond a la colonne DB lxc_ctid (renommee
+    pour eviter le conflit avec la colonne systeme Postgres `ctid`).
+    """
+
+    status: str = Field(..., pattern="^(ok|partial)$")
+    exit_code: int
+    identification: _Identification
+    ressources: dict | None = None
+    systeme: _Systeme
+    ssh_root: dict | None = None
+    users: list[_UserBlock]
+    docker: _DockerBlock
+    swarm: _SwarmBlock
+    host: _HostBlock | None = None

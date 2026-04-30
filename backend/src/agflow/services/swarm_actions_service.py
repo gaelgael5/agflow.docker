@@ -132,3 +132,96 @@ async def init_cluster(*, machine_id: UUID, cluster_name: str) -> dict[str, Any]
     cluster = await _persist_init_result(machine_id=machine_id, payload=payload)
     _log.info("swarm.init", machine_id=str(machine_id), cluster_id=str(cluster["id"]))
     return cluster
+
+
+async def join_cluster(
+    *, machine_id: UUID, cluster_id: UUID, role: str
+) -> dict[str, Any]:
+    """Joint la machine au cluster existant en role 'manager' ou 'worker'.
+
+    Preconditions : machine.swarm_ready, pas deja membre, cluster existe.
+    Token deciphere uniquement en memoire pour le passer au script ops.
+    """
+    if role not in ("manager", "worker"):
+        raise SwarmActionError(f"Invalid role '{role}' (expected manager|worker)")
+
+    machine = await _get_machine(machine_id)
+    if machine is None:
+        raise SwarmActionError(f"Machine {machine_id} not found")
+    if machine.get("swarm_cluster_id") is not None:
+        raise SwarmActionError(f"Machine {machine_id} is already member of a cluster")
+    if not machine.get("swarm_ready"):
+        raise SwarmActionError(f"Machine {machine_id} is not swarm-ready")
+
+    cluster = await infra_swarm_clusters_service.get_with_tokens(cluster_id)
+    if cluster is None:
+        raise SwarmActionError(f"Cluster {cluster_id} not found")
+
+    tokens = infra_swarm_clusters_service.decrypt_tokens(
+        worker_encrypted=cluster["join_token_worker_encrypted"],
+        manager_encrypted=cluster["join_token_manager_encrypted"],
+    )
+    token = tokens["manager"] if role == "manager" else tokens["worker"]
+
+    args = ["--join", "--manager", str(cluster["manager_addr"]), "--token", token]
+    if role == "manager":
+        args.append("--manager-role")
+    payload = await _exec_swarm_script(machine, args)
+    if payload.get("status") != "ok":
+        raise SwarmActionError(
+            f"Script returned partial status (exit_code={payload.get('exit_code')})"
+        )
+
+    await execute(
+        """
+        UPDATE infra_machines SET
+            swarm_cluster_id = $1,
+            swarm_node_role = $2,
+            swarm_mode = 'active'
+        WHERE id = $3
+        """,
+        cluster_id, role, machine_id,
+    )
+    _log.info("swarm.join", machine_id=str(machine_id), cluster_id=str(cluster_id), role=role)
+    return {
+        "joined": payload["swarm"].get("joined", True),
+        "node_id": payload["swarm"].get("node_id"),
+        "role": role,
+    }
+
+
+async def leave_cluster(*, machine_id: UUID, force: bool = False) -> dict[str, Any]:
+    """Retire la machine de son cluster. Drop le cluster si dernier node."""
+    machine = await _get_machine(machine_id)
+    if machine is None:
+        raise SwarmActionError(f"Machine {machine_id} not found")
+    if machine.get("swarm_cluster_id") is None:
+        raise SwarmActionError(f"Machine {machine_id} is not part of any cluster")
+
+    cluster_id_was = machine["swarm_cluster_id"]
+
+    args = ["--leave"] + (["--force"] if force else [])
+    payload = await _exec_swarm_script(machine, args)
+    if payload.get("status") != "ok":
+        raise SwarmActionError(
+            f"Script returned partial status (exit_code={payload.get('exit_code')})"
+        )
+
+    await execute(
+        """
+        UPDATE infra_machines SET
+            swarm_cluster_id = NULL,
+            swarm_node_role = NULL,
+            swarm_mode = 'inactive'
+        WHERE id = $1
+        """,
+        machine_id,
+    )
+
+    cluster_dropped = False
+    if await infra_swarm_clusters_service.is_last_node(cluster_id_was, machine_id):
+        await infra_swarm_clusters_service.delete(cluster_id_was)
+        cluster_dropped = True
+
+    _log.info("swarm.leave", machine_id=str(machine_id), cluster_dropped=cluster_dropped)
+    return {"left": True, "cluster_dropped": cluster_dropped}

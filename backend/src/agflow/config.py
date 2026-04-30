@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# En production Docker Swarm, les secrets sont mountés sous /run/secrets/.
+# En dev local Windows, ce chemin n'existe pas — on le met à None pour
+# éviter que Pydantic ne crashe au boot.
+_secrets_dir: str | None = "/run/secrets" if os.path.isdir("/run/secrets") else None
 
 
 class Settings(BaseSettings):
@@ -10,6 +17,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        secrets_dir=_secrets_dir,
     )
 
     database_url: str

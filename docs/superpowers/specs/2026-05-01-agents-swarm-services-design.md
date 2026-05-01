@@ -20,9 +20,11 @@ Aujourd'hui `services/container_runner.py` (1100 lignes) lance et pilote les con
 | Stratégie de transition | **Switch direct** — plus de code Docker classique dans `start()` | Pas de dette feature-flag, prod LXC 201 obsolète de toute façon |
 | Cible cluster Swarm | **Single-cluster (socket local)** | YAGNI multi-cluster pour B1, futur chantier si besoin |
 | Réseau agents | **`agflow-internal` external** (à passer côté ops) | Backend + agents partagent le réseau, communication directe |
-| `run_task()` (mode classique) | **Inchangé** — `docker run --rm` via `bash run.sh` | Mode test classique conservé, déféré à un futur B5 |
+| `run_task()` (mode classique) | **Conservé** — `docker run --rm` via `bash run.sh`. Reste appelable via les endpoints du **test dialog admin** (avec toggle UI mode `classic`) | Outil de debug/diag, fichiers inspectables et exécutables à la main |
 | `run_task_swarm()` (mode test Swarm) | **NOUVEAU**, génère stack.yml + deploy.sh + task.json | Symétrique au mode classique, fichiers inspectables |
 | Format fichier test Swarm | **stack.yml compose v3+** (`docker stack deploy`) | Standard Swarm, lisible, intégré aux outils existants |
+| Endpoints API **test dialog** (`api/admin/containers.py:247, 414`) | **Toggle `mode: classic\|swarm`** — l'admin choisit dans l'UI de construction d'agent | Permet debug en classique avant bascule prod |
+| Endpoints API **production** (sessions → agents → work, `api/public/launched.py:90` etc.) | **Swarm exclusivement** — pas de toggle, pas de choix | Pilotage production cohérent avec l'infra Swarm |
 | 1 service = combien d'agents | **1 service = 1 agent** (Mode.Replicated.Replicas=1) | MVP, simplification résolution service → container |
 | `MAX_RUNNING_CONTAINERS` | **Devient `MAX_RUNNING_AGENT_SERVICES`** (compte les services agflow-managed) | Sémantique préservée, comptage adapté |
 | `endpoint_mode` Swarm | **`dnsrr`** systématiquement (workaround IPVS LXC) | Cf. memory `project_swarm_lxc_ipvs_quirks` |
@@ -263,14 +265,38 @@ async def _resolve_to_container_id(maybe_service_id_or_name: str) -> str:
         await docker.close()
 ```
 
-### 5.6 INCHANGÉS
+### 5.6 ADAPTÉS — endpoints test dialog admin (toggle classic|swarm)
+
+`api/admin/containers.py` (lignes ~247 et ~414) — les 2 endpoints de test agent reçoivent un nouveau paramètre `mode: Literal["classic", "swarm"]` :
+
+```python
+class TestRunRequest(BaseModel):
+    ...
+    mode: Literal["classic", "swarm"] = "swarm"  # default Swarm pour aligner sur prod
+
+
+@router.post("/{dockerfile_id}/test")
+async def test_run(dockerfile_id: str, payload: TestRunRequest) -> StreamingResponse:
+    ...
+    runner = container_runner.run_task_swarm if payload.mode == "swarm" else container_runner.run_task
+    async def stream():
+        async for event in runner(dockerfile_id, ...):
+            yield f"{json.dumps(event)}\n"
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
+```
+
+### 5.7 ADAPTÉS — endpoint production launch (Swarm forcé)
+
+`api/public/launched.py:90` (et tous endpoints production qui appellent `run_task()` aujourd'hui) basculent **inconditionnellement** sur `run_task_swarm()`. Pas de paramètre `mode`. La production utilise Swarm point.
+
+### 5.8 INCHANGÉS
 
 - `workers/agent_reaper.py` : utilise `stop()` qui s'occupe de la résolution
 - `workers/docker_reconciler.py` : utilise `list_running()` qui retourne `ContainerInfo`
-- `api/admin/containers.py` : signatures `start()`, `stop()`, `list_running()` préservées
+- `api/admin/containers.py` (autres endpoints) : signatures `start()`, `stop()`, `list_running()` préservées
 - `api/admin/supervision.py` : utilise `list_running()`
 - `services/build_service.py` : build d'images, hors scope (continue avec `aiodocker.images.build()`)
-- `run_task()` : reste tel quel, mode test classique
+- `run_task()` : Python function inchangée (utilisée par le test dialog en mode `classic`)
 
 ## 6. Format `stack.yml` généré pour `run_task_swarm()`
 
@@ -390,14 +416,15 @@ docker stack rm "$STACK_NAME"
 | T5 | Vérif non-régression `agent_reaper` + `docker_reconciler` | 0.5j |
 | T6 | `_generate_tmp_files_swarm()` + snapshot tests (4 fichiers générés) | 1j |
 | T7 | `run_task_swarm()` + tests subprocess mockés | 1j |
-| T8 | Vérifs globales + smoke (lint, suite, boot) + commit propagation template ops | 0.5j |
+| T8 | Endpoints API : toggle test dialog (admin/containers.py) + switch prod launched.py vers run_task_swarm | 0.5j |
+| T9 | Vérifs globales + smoke (lint, suite, boot) + commit | 0.5j |
 
-Total : **~6,5j** estimé.
+Total : **~7j** estimé.
 
 ## 9. Hors scope (rappel)
 
-- `run_task()` mode classique — inchangé, reste sur `docker run --rm` via `bash run.sh`
-- Frontend toggle UI "Mode classique | Mode Swarm" dans le dialog de test — plan séparé
+- `run_task()` Python function — **conservé inchangé**, reste sur `docker run --rm` via `bash run.sh`. Appelé par les endpoints du test dialog en mode `classic` (toggle UI).
+- Frontend toggle UI "Mode classique | Mode Swarm" dans le dialog de construction d'agent — plan séparé (le backend expose le paramètre `mode`, le frontend doit ajouter le toggle)
 - Multi-cluster targeting (cibler swarm2 ou autre) — futur chantier B-multi-cluster
 - Refacto `services/build_service.py` (build d'images) — non concerné, continue avec `aiodocker.images.build()`
 - `MAX_RUNNING_CONTAINERS` → `MAX_RUNNING_AGENT_SERVICES` : on garde le concept mais on compte les services au lieu des containers

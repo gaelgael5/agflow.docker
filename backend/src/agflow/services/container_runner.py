@@ -621,6 +621,111 @@ def build_run_config(
     return name, config
 
 
+# ── B1 : Swarm ServiceSpec builder (mirror de build_run_config) ──────────
+
+
+_DEFAULT_SWARM_NETWORK = "agflow-internal"
+
+
+def build_service_spec(
+    *,
+    dockerfile_id: str,
+    params_json_content: str,
+    content_hash: str,
+    instance_id: str,
+    extra_env: dict[str, str] | None = None,
+    mount_base_id: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Build Swarm ServiceSpec from Dockerfile.json (mirror of build_run_config).
+
+    Returns (service_name, service_spec_dict). Le service_spec_dict est
+    consommable par aiodocker.Docker().services.create(spec).
+
+    Differences vs build_run_config :
+      - Mounts en objects {Source, Target, Type='bind', ReadOnly} au lieu de Binds
+      - Resources dans TaskTemplate.Resources
+      - RestartPolicy.Condition = 'on-failure' (Swarm n'a pas 'unless-stopped')
+      - Mode.Replicated.Replicas = 1 hardcoded
+      - EndpointSpec.Mode = 'dnsrr' hardcoded (IPVS LXC workaround)
+      - Placement.Constraints = ['node.role == manager'] hardcoded
+      - Labels dupliquees container-level + service-level
+    """
+    # Reuse build_run_config to get all the resolved parts
+    name, classic_config = build_run_config(
+        dockerfile_id=dockerfile_id,
+        params_json_content=params_json_content,
+        content_hash=content_hash,
+        instance_id=instance_id,
+        extra_env=extra_env,
+        mount_base_id=mount_base_id,
+    )
+
+    # Convert Binds (Docker classic) -> Mounts (Swarm format)
+    binds = classic_config.get("HostConfig", {}).get("Binds", [])
+    mounts = []
+    for bind in binds:
+        # Format "source:target[:ro]"
+        parts = bind.split(":")
+        if len(parts) < 2:
+            continue
+        source, target = parts[0], parts[1]
+        readonly = len(parts) > 2 and parts[2] == "ro"
+        mounts.append({
+            "Source": source,
+            "Target": target,
+            "Type": "bind",
+            "ReadOnly": readonly,
+        })
+
+    container_spec: dict[str, Any] = {
+        "Image": classic_config["Image"],
+        "Env": classic_config.get("Env", []),
+        "Labels": classic_config.get("Labels", {}),
+        "Mounts": mounts,
+    }
+    if classic_config.get("WorkingDir"):
+        container_spec["Dir"] = classic_config["WorkingDir"]
+    if classic_config.get("StopSignal"):
+        container_spec["StopSignal"] = classic_config["StopSignal"]
+    host_init = classic_config.get("HostConfig", {}).get("Init")
+    if host_init is not None:
+        container_spec["Init"] = bool(host_init)
+
+    resources: dict[str, Any] = {}
+    host_config = classic_config.get("HostConfig", {})
+    limits: dict[str, Any] = {}
+    if host_config.get("Memory"):
+        limits["MemoryBytes"] = host_config["Memory"]
+    if host_config.get("NanoCpus"):
+        limits["NanoCPUs"] = host_config["NanoCpus"]
+    if limits:
+        resources["Limits"] = limits
+
+    task_template: dict[str, Any] = {
+        "ContainerSpec": container_spec,
+        "RestartPolicy": {
+            "Condition": "on-failure",
+            "MaxAttempts": 5,
+            "Delay": 10_000_000_000,  # 10s in nanoseconds
+        },
+        "Placement": {
+            "Constraints": ["node.role == manager"],
+        },
+    }
+    if resources:
+        task_template["Resources"] = resources
+
+    spec: dict[str, Any] = {
+        "Name": name,
+        "TaskTemplate": task_template,
+        "Mode": {"Replicated": {"Replicas": 1}},
+        "Networks": [{"Target": _DEFAULT_SWARM_NETWORK}],
+        "EndpointSpec": {"Mode": "dnsrr"},
+        "Labels": dict(classic_config.get("Labels", {})),
+    }
+    return name, spec
+
+
 # ─────────────────────────────────────────────────────────────
 # Container lifecycle via aiodocker
 # ─────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import contextlib
 import os
 from pathlib import Path
 
+import aiodocker
 import asyncssh
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -17,6 +18,35 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from agflow.utils.swarm_secrets import secret_path
 
 _log = structlog.get_logger(__name__)
+
+
+async def _resolve_to_container_id(maybe_service_id_or_name: str) -> str:
+    """Si l'input est un service Swarm agflow, retourne le container_id du 1er task running.
+    Sinon (404 sur services.inspect), retourne l'input tel quel (cas legacy container).
+    """
+    docker = aiodocker.Docker()
+    try:
+        try:
+            svc = await docker.services.inspect(maybe_service_id_or_name)
+        except aiodocker.exceptions.DockerError as exc:
+            if exc.status == 404:
+                # Pas un service Swarm — on suppose container classique, retourne tel quel
+                return maybe_service_id_or_name
+            raise
+
+        svc_name = (svc.get("Spec") or {}).get("Name", "")
+        tasks = await docker.tasks.list(filters={"service": svc_name})
+        for task in tasks or []:
+            state = (task.get("Status") or {}).get("State")
+            if state == "running":
+                cs = (task.get("Status") or {}).get("ContainerStatus", {}) or {}
+                cid = cs.get("ContainerID")
+                if cid:
+                    return cid
+        raise ValueError(f"Service {maybe_service_id_or_name} has no running task")
+    finally:
+        await docker.close()
+
 
 router = APIRouter(
     prefix="/api/admin",
@@ -48,7 +78,8 @@ async def container_terminal(ws: WebSocket, container_id: str) -> None:
             conn_kwargs["client_keys"] = [asyncssh.read_private_key(str(key_file))]
 
         async with asyncssh.connect(**conn_kwargs) as conn:
-            command = f"docker exec -ti {container_id} /bin/sh"
+            resolved_id = await _resolve_to_container_id(container_id)
+            command = f"docker exec -ti {resolved_id} /bin/sh"
 
             process = await conn.create_process(
                 command,

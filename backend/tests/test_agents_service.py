@@ -11,7 +11,7 @@ from agflow.schemas.agents import (
     AgentSkillBinding,
     AgentUpdate,
 )
-from agflow.services import agents_service
+from agflow.services import agents_service, roles_service
 from tests._db_reset import reset_schema_and_migrate
 
 
@@ -22,9 +22,7 @@ async def db() -> AsyncIterator[None]:
     await execute(
         "INSERT INTO dockerfiles (id, display_name) VALUES ('claude-code', 'Claude Code')"
     )
-    await execute(
-        "INSERT INTO roles (id, display_name) VALUES ('senior-dev', 'Senior Dev')"
-    )
+    await roles_service.create(role_id="senior-dev", display_name="Senior Dev")
     await execute(
         """
         INSERT INTO discovery_services (id, name, base_url)

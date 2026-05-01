@@ -10,7 +10,7 @@ from agflow.schemas.agents import (
     AgentMCPBinding,
     AgentSkillBinding,
 )
-from agflow.services import agents_service, composition_builder
+from agflow.services import agents_service, composition_builder, roles_service
 from tests._db_reset import reset_schema_and_migrate
 
 
@@ -20,22 +20,10 @@ async def db() -> AsyncIterator[None]:
     await execute(
         "INSERT INTO dockerfiles (id, display_name) VALUES ('claude-code', 'Claude Code')"
     )
-    await execute(
-        """
-        INSERT INTO roles (id, display_name, identity_md)
-        VALUES ('senior-dev', 'Senior Dev', 'Tu es un dev senior.')
-        """
-    )
-    # Raw SQL insert bypasses roles_service.create, so we must manually
-    # seed the 3 native sections for the role (otherwise role_documents
-    # FK on (role_id, section) fails).
-    await execute(
-        """
-        INSERT INTO role_sections (role_id, name, display_name, is_native, position)
-        VALUES ('senior-dev', 'roles', 'Rôles', TRUE, 0),
-               ('senior-dev', 'missions', 'Missions', TRUE, 1),
-               ('senior-dev', 'competences', 'Compétences', TRUE, 2)
-        """
+    await roles_service.create(
+        role_id="senior-dev",
+        display_name="Senior Dev",
+        identity_md="Tu es un dev senior.",
     )
     await execute(
         """

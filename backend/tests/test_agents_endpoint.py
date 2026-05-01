@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from agflow.db.pool import close_pool, execute
 from agflow.main import create_app
+from agflow.services import roles_service
 from tests._db_reset import reset_schema_and_migrate
 
 
@@ -16,11 +17,10 @@ async def client() -> AsyncIterator[AsyncClient]:
     await execute(
         "INSERT INTO dockerfiles (id, display_name) VALUES ('claude-code', 'Claude Code')"
     )
-    await execute(
-        """
-        INSERT INTO roles (id, display_name, identity_md)
-        VALUES ('senior-dev', 'Senior Dev', 'Tu es un dev senior.')
-        """
+    await roles_service.create(
+        role_id="senior-dev",
+        display_name="Senior Dev",
+        identity_md="Tu es un dev senior.",
     )
 
     app = create_app()

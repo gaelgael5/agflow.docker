@@ -176,3 +176,88 @@ async def test_start_polls_until_task_running() -> None:
 
     assert info.id == "container-id"
     assert docker.tasks.list.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stop_deletes_service_when_found() -> None:
+    """stop() trouve le service via services.list filters et appelle services.delete."""
+    docker = _make_docker_mock(
+        list_services=[{"ID": "svc-abc", "Spec": {"Name": "agent-claude-xyz789",
+                                                   "Labels": {"agflow.managed": "true"}}}],
+    )
+
+    with patch("agflow.services.container_runner.aiodocker.Docker", return_value=docker):
+        await container_runner.stop("agent-claude-xyz789")
+
+    docker.services.delete.assert_called_once_with("svc-abc")
+
+
+@pytest.mark.asyncio
+async def test_stop_raises_not_found_when_no_service_no_container() -> None:
+    """Si ni service ni container ne match, ContainerNotFoundError."""
+    import aiodocker as _aio
+
+    docker = _make_docker_mock(list_services=[])
+    container_obj = MagicMock()
+    container_obj.show = AsyncMock(side_effect=_aio.exceptions.DockerError(
+        404, {"message": "not found"},
+    ))
+    docker.containers.container = MagicMock(return_value=container_obj)
+
+    with (
+        patch("agflow.services.container_runner.aiodocker.Docker", return_value=docker),
+        pytest.raises(container_runner.ContainerNotFoundError),
+    ):
+        await container_runner.stop("agent-doesnt-exist")
+
+
+@pytest.mark.asyncio
+async def test_list_running_returns_containers_resolved_from_services() -> None:
+    """list_running list les services agflow-managed et résoud chaque container."""
+    docker = _make_docker_mock(
+        list_services=[
+            {"ID": "svc1", "Spec": {"Name": "agent-claude-aaa",
+                                    "Labels": {"agflow.managed": "true",
+                                               "agflow.dockerfile_id": "claude",
+                                               "agflow.instance_id": "aaa"}}},
+        ],
+        tasks_list=[{
+            "ID": "task1",
+            "Status": {"State": "running", "ContainerStatus": {"ContainerID": "cnt1"}},
+        }],
+        container_inspect={
+            "Id": "cnt1",
+            "Name": "/agent-claude-aaa",
+            "Created": "2026-05-01T00:00:00.000000000Z",
+            "Config": {"Image": "agflow-claude:hash", "Labels": {
+                "agflow.managed": "true",
+                "agflow.dockerfile_id": "claude",
+                "agflow.instance_id": "aaa",
+            }},
+            "State": {"Status": "running"},
+        },
+    )
+
+    with patch("agflow.services.container_runner.aiodocker.Docker", return_value=docker):
+        result = await container_runner.list_running()
+
+    assert len(result) == 1
+    assert result[0].id == "cnt1"
+    assert result[0].dockerfile_id == "claude"
+    assert result[0].instance_id == "aaa"
+
+
+@pytest.mark.asyncio
+async def test_list_running_skips_services_with_no_running_task() -> None:
+    """Service sans task running (pending/failed) doit être skipped (pas dans le résultat)."""
+    docker = _make_docker_mock(
+        list_services=[
+            {"ID": "svc1", "Spec": {"Name": "agent-x", "Labels": {"agflow.managed": "true"}}},
+        ],
+        tasks_list=[{"ID": "task1", "Status": {"State": "pending"}}],
+    )
+
+    with patch("agflow.services.container_runner.aiodocker.Docker", return_value=docker):
+        result = await container_runner.list_running()
+
+    assert result == []

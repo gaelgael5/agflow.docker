@@ -764,32 +764,53 @@ def _info_from_container(raw: dict[str, Any]) -> ContainerInfo:
 
 
 async def list_running() -> list[ContainerInfo]:
-    """List all agflow-managed containers (running or stopped)."""
+    """List all running agflow-managed agents (Swarm services + their containers).
+
+    Pour chaque service avec label agflow.managed=true, récupère le 1er task
+    en running et résoud le container réel pour produire un ContainerInfo.
+    Les services sans task running (pending/failed) sont skippés.
+    """
     docker = aiodocker.Docker()
     try:
-        containers = await docker.containers.list(
-            all=True,
+        services = await docker.services.list(
             filters={"label": [f"{_AGFLOW_MANAGED_LABEL}=true"]},
         )
         result: list[ContainerInfo] = []
-        for c in containers:
-            # Show() returns the full inspect payload which has Config.Labels.
-            inspect = await c.show()
+        for svc in services or []:
+            svc_name = (svc.get("Spec") or {}).get("Name", "")
+            if not svc_name:
+                continue
+            try:
+                tasks = await docker.tasks.list(filters={"service": svc_name})
+            except aiodocker.exceptions.DockerError:
+                continue
+            container_id = ""
+            for task in tasks or []:
+                if (task.get("Status") or {}).get("State") == "running":
+                    cs = (task.get("Status") or {}).get("ContainerStatus", {}) or {}
+                    cid = cs.get("ContainerID")
+                    if cid:
+                        container_id = cid
+                        break
+            if not container_id:
+                continue
+            try:
+                container = docker.containers.container(container_id=container_id)
+                inspect = await container.show()
+            except aiodocker.exceptions.DockerError:
+                continue
             cfg = inspect.get("Config") or {}
             state = inspect.get("State") or {}
             labels = cfg.get("Labels") or {}
-            created_at = _parse_docker_ts(inspect.get("Created", ""))
-            result.append(
-                ContainerInfo(
-                    id=inspect.get("Id", ""),
-                    name=(inspect.get("Name") or "").lstrip("/"),
-                    dockerfile_id=labels.get(_AGFLOW_DOCKERFILE_LABEL, ""),
-                    image=cfg.get("Image", ""),
-                    status=state.get("Status", "created"),
-                    created_at=created_at,
-                    instance_id=labels.get(_AGFLOW_INSTANCE_LABEL, ""),
-                )
-            )
+            result.append(ContainerInfo(
+                id=inspect.get("Id", container_id),
+                name=(inspect.get("Name") or svc_name).lstrip("/"),
+                dockerfile_id=labels.get(_AGFLOW_DOCKERFILE_LABEL, ""),
+                image=cfg.get("Image", ""),
+                status=state.get("Status", "running"),
+                created_at=_parse_docker_ts(inspect.get("Created", "")),
+                instance_id=labels.get(_AGFLOW_INSTANCE_LABEL, ""),
+            ))
         return result
     finally:
         await docker.close()
@@ -1170,17 +1191,45 @@ async def run_task(
 
 
 async def stop(container_id: str) -> None:
-    """Stop and remove a container by its Docker id."""
+    """Stop and remove an agent : delete its Swarm service if exists, sinon
+    fallback container delete (rétro-compat pour containers classiques restants).
+
+    Le param 'container_id' peut être un service name (cas Swarm) ou un container
+    id/name (cas legacy). On essaie service en 1er, fallback container ensuite.
+    """
     docker = aiodocker.Docker()
     try:
+        # Try Swarm service first
+        try:
+            services = await docker.services.list(
+                filters={"name": [container_id]},
+            )
+        except aiodocker.exceptions.DockerError:
+            services = []
+
+        for svc in services or []:
+            svc_id = svc.get("ID") or svc.get("Id", "")
+            svc_labels = (svc.get("Spec") or {}).get("Labels", {}) or {}
+            svc_name = (svc.get("Spec") or {}).get("Name", "")
+            # Vérification managed et match exact du nom (le filter "name" peut être prefix)
+            if (svc_labels.get(_AGFLOW_MANAGED_LABEL) == "true"
+                    and (svc_name == container_id or svc_id == container_id)):
+                try:
+                    await docker.services.delete(svc_id)
+                except aiodocker.exceptions.DockerError as exc:
+                    if exc.status not in (404, 409):
+                        raise
+                _log.info("container.stop_swarm", service_id=svc_id, service_name=svc_name)
+                return
+
+        # Fallback : container classique
         try:
             container = docker.containers.container(container_id=container_id)
-            # Confirm it is agflow-managed before touching it.
             inspect = await container.show()
         except aiodocker.exceptions.DockerError as exc:
             if exc.status == 404:
                 raise ContainerNotFoundError(
-                    f"Container '{container_id}' not found"
+                    f"Service or container '{container_id}' not found"
                 ) from exc
             raise
 
@@ -1189,18 +1238,14 @@ async def stop(container_id: str) -> None:
             raise ContainerNotFoundError(
                 f"Container '{container_id}' is not managed by agflow"
             )
-
         with contextlib.suppress(aiodocker.exceptions.DockerError):
             await container.stop(timeout=10)
         try:
             await container.delete(force=True)
         except aiodocker.exceptions.DockerError as exc:
-            # 409 = "removal already in progress" (parallel click / polling
-            # double-trigger). 404 = already gone. Both mean the container is
-            # on its way out, treat as success.
             if exc.status not in (404, 409):
                 raise
-        _log.info("container.stop", container_id=container_id)
+        _log.info("container.stop_legacy", container_id=container_id)
     finally:
         await docker.close()
 

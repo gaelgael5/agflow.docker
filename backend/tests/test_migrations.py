@@ -46,7 +46,7 @@ async def test_consolidated_schema_creates_secrets_with_encrypted_value() -> Non
 
 
 @pytest.mark.asyncio
-async def test_consolidated_schema_creates_roles_and_role_sections_with_fk() -> None:
+async def test_consolidated_schema_creates_roles_and_role_sections() -> None:
     await reset_schema_and_migrate()
 
     tables = await fetch_all(
@@ -59,16 +59,6 @@ async def test_consolidated_schema_creates_roles_and_role_sections_with_fk() -> 
     names = [t["table_name"] for t in tables]
     assert "roles" in names
     assert "role_sections" in names
-
-    fk = await fetch_one(
-        """
-        SELECT confrelid::regclass::text AS ref
-        FROM pg_constraint
-        WHERE conname LIKE 'role_sections_role_id_fkey%'
-        """
-    )
-    assert fk is not None
-    assert "roles" in fk["ref"]
     await close_pool()
 
 

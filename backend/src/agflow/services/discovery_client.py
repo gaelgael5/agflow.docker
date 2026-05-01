@@ -202,6 +202,16 @@ async def search_skills(
     response.raise_for_status()
     data = response.json()
     items = data.get("items", []) if isinstance(data, dict) else data
+    # yoops.org returns a raw array without server-side filtering — match
+    # locally on name/description so callers get only relevant results.
+    if query:
+        q = query.lower()
+        items = [
+            it
+            for it in items
+            if q in (it.get("name", "") or "").lower()
+            or q in (it.get("description", "") or "").lower()
+        ]
     return [_map_skill_item(item) for item in items]
 
 

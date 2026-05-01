@@ -86,11 +86,13 @@ async def test_delete_non_empty_section_blocked(db: None) -> None:
 
 @pytest.mark.asyncio
 async def test_document_in_unknown_section_fails(db: None) -> None:
-    """FK constraint should reject documents targeting a non-existent section."""
-    import asyncpg
+    """role_documents_service.create should reject a non-existent section.
 
+    (role_documents are filesystem-based now, so we validate via the
+    role_sections_service rather than a DB FK constraint.)
+    """
     await roles_service.create(role_id="dev", display_name="Dev")
-    with pytest.raises(asyncpg.ForeignKeyViolationError):
+    with pytest.raises(role_sections_service.SectionNotFoundError):
         await role_documents_service.create(
             role_id="dev",
             section="unknown_section",

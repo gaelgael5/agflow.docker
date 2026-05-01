@@ -158,8 +158,9 @@ async def _detail_from_summary(summary: AgentSummary) -> AgentDetail:
         for b in data.get("mcp_bindings", [])
     ]
     skill_bindings = [
-        AgentSkillBinding(catalog_skill_id=b.get("catalog_skill_id", ""))
+        AgentSkillBinding(skill_id=UUID(b["catalog_skill_id"]))
         for b in data.get("skill_bindings", [])
+        if b.get("catalog_skill_id")
     ]
     image_status = await _compute_image_status(summary.dockerfile_id) if summary.dockerfile_id else "missing"
     return AgentDetail(
@@ -205,7 +206,10 @@ def _payload_to_disk(slug: str, payload: AgentCreate | AgentUpdate, existing: di
         ],
         "skill_bindings": [
             {
-                "catalog_skill_id": b.catalog_skill_id if hasattr(b, "catalog_skill_id") else b.get("catalog_skill_id", ""),
+                "catalog_skill_id": (
+                    str(b.skill_id) if hasattr(b, "skill_id")
+                    else b.get("catalog_skill_id", "")
+                ),
             }
             for b in (payload.skill_bindings or [])
         ],

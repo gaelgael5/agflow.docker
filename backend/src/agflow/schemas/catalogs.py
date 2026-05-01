@@ -99,8 +99,8 @@ class MCPServerSummary(BaseModel):
     short_description: str
     long_description: str
     documentation_url: str
-    parameters: list
-    parameters_schema: list
+    parameters: dict = Field(default_factory=dict)
+    parameters_schema: list = Field(default_factory=list)
     recipes: dict = Field(default_factory=dict)
     category: str = ""
     created_at: datetime

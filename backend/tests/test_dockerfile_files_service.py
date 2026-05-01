@@ -43,13 +43,16 @@ async def test_duplicate_path_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_list_for_dockerfile() -> None:
-    # The fixture auto-seeds the 3 standard files.
+    # The fixture auto-seeds the standard files (3 docker + 3 docs).
     items = await files.list_for_dockerfile("test")
     paths = {i.path for i in items}
     assert paths == {
         "Dockerfile",
         "entrypoint.sh",
         "Dockerfile.json",
+        "description.md",
+        "help.fr.md",
+        "help.en.md",
     }
 
 
@@ -74,9 +77,10 @@ async def test_dockerfile_json_seeded_with_defaults() -> None:
     assert set(parsed.keys()) == {"docker", "Params"}
 
     docker = parsed["docker"]
+    # {slug} is substituted with the dockerfile_id at seed time (here "test").
     assert docker["Container"] == {
-        "Name": "agent-{slug}-{id}",
-        "Image": "agflow-{slug}:{hash}",
+        "Name": "agent-test-{id}",
+        "Image": "agflow-test:{hash}",
     }
     assert docker["Network"] == {"Mode": "bridge"}
     assert docker["Runtime"] == {
@@ -89,9 +93,6 @@ async def test_dockerfile_json_seeded_with_defaults() -> None:
     assert docker["Environments"] == {"ANTHROPIC_API_KEY": "{API_KEY_NAME}"}
     assert docker["Mounts"] == [
         {"source": "{WORKSPACE_PATH}", "target": "/app/workspace", "readonly": False},
-        {"source": "./config", "target": "/app/config", "readonly": True},
-        {"source": "./skills", "target": "/app/skills", "readonly": True},
-        {"source": "./output", "target": "/app/output", "readonly": False},
     ]
 
     assert parsed["Params"] == {

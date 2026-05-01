@@ -164,7 +164,16 @@ async def build_preview(
 
     mcp_json, tools_json = await _build_mcp_section(agent.mcp_bindings)
     skills = await _collect_skills(agent.skill_bindings)
-    env_file, env_errors = await _resolve_env(agent.env_vars)
+    # agent.env_vars is now a nested structure
+    # ({"env_overrides": {...}, "mount_overrides": {...}, "param_overrides": {...}})
+    # — only env_overrides becomes the env_file. The other overrides are
+    # consumed by the runtime layer (containers/swarm), not here.
+    env_overrides = (
+        agent.env_vars.get("env_overrides", {})
+        if isinstance(agent.env_vars, dict)
+        else {}
+    )
+    env_file, env_errors = await _resolve_env(env_overrides)
     validation_errors.extend(env_errors)
 
     if agent.image_status == "missing":

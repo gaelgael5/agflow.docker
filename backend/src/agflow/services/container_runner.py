@@ -133,6 +133,142 @@ def _generate_tmp_files(
     return run_path
 
 
+def _generate_tmp_files_swarm(
+    dockerfile_id: str,
+    service_name: str,
+    config: dict[str, Any],
+    task_payload: dict[str, Any] | None = None,
+) -> str:
+    """Generate .env + stack.yml + deploy.sh + task.json in
+    {AGFLOW_DATA_DIR}/dockerfiles/{dockerfile_id}/.tmp/.
+
+    Mirror de _generate_tmp_files() mais produit du Swarm stack au lieu
+    de docker run command. Les fichiers sont inspectables et runnable
+    by hand par l'admin (philosophie identique).
+
+    Returns le path absolu du deploy.sh généré.
+    """
+    import json as _json
+
+    import yaml as _yaml
+
+    data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+    tmp_dir = os.path.join(data_dir, "dockerfiles", dockerfile_id, ".tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    # .env — variables d'env résolues
+    env_list = config.get("Env", [])
+    env_content = "\n".join(env_list) + "\n"
+    with open(os.path.join(tmp_dir, ".env"), "w", encoding="utf-8") as f:
+        f.write(env_content)
+
+    # task.json — payload brut
+    if task_payload is not None:
+        task_path = os.path.join(tmp_dir, "task.json")
+        with open(task_path, "w", encoding="utf-8") as f:
+            _json.dump(task_payload, f, ensure_ascii=False)
+            f.write("\n")
+
+    # stack.yml — Swarm stack compose v3+
+    host_config = config.get("HostConfig", {})
+    binds = host_config.get("Binds", [])
+    volumes = []
+    for bind in binds:
+        parts = bind.split(":")
+        if len(parts) >= 2:
+            volumes.append({
+                "type": "bind",
+                "source": parts[0],
+                "target": parts[1],
+                "read_only": (len(parts) > 2 and parts[2] == "ro"),
+            })
+
+    deploy_block: dict[str, Any] = {
+        "mode": "replicated",
+        "replicas": 1,
+        "endpoint_mode": "dnsrr",
+        "placement": {"constraints": ["node.role == manager"]},
+        "restart_policy": {"condition": "none"},  # one-shot
+        "labels": [
+            "agflow.managed=true",
+            "agflow.test_mode=swarm",
+            f"agflow.dockerfile_id={dockerfile_id}",
+        ],
+    }
+    resources_limits: dict[str, Any] = {}
+    if host_config.get("Memory"):
+        resources_limits["memory"] = str(host_config["Memory"])
+    if host_config.get("NanoCpus"):
+        resources_limits["cpus"] = str(host_config["NanoCpus"] / 1_000_000_000)
+    if resources_limits:
+        deploy_block["resources"] = {"limits": resources_limits}
+
+    service_def: dict[str, Any] = {
+        "image": config["Image"],
+        "networks": ["agflow-internal"],
+        "deploy": deploy_block,
+    }
+    # Convert env list to dict format for stack.yml
+    if env_list:
+        service_def["environment"] = {}
+        for env_line in env_list:
+            if "=" in env_line:
+                k, v = env_line.split("=", 1)
+                service_def["environment"][k] = v
+    if volumes:
+        service_def["volumes"] = volumes
+    if config.get("WorkingDir"):
+        service_def["working_dir"] = config["WorkingDir"]
+    if host_config.get("Init"):
+        service_def["init"] = True
+
+    stack: dict[str, Any] = {
+        "services": {"agent": service_def},
+        "networks": {"agflow-internal": {"external": True}},
+    }
+
+    stack_path = os.path.join(tmp_dir, "stack.yml")
+    with open(stack_path, "w", encoding="utf-8") as f:
+        _yaml.dump(stack, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+    # deploy.sh — wrapper bash
+    deploy_sh = f"""#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
+STACK_NAME="{service_name.replace('-', '_')}_test"
+
+# Source .env
+set -a; source "$SCRIPT_DIR/.env" 2>/dev/null || true; set +a
+
+# Inject task.json content as env var (Swarm n'aime pas le stdin pipe)
+if [ -f "$SCRIPT_DIR/task.json" ]; then
+    export TASK_JSON_B64="$(base64 -w0 < "$SCRIPT_DIR/task.json")"
+fi
+
+# Deploy stack
+docker stack deploy -c "$SCRIPT_DIR/stack.yml" "$STACK_NAME"
+
+# Stream logs jusqu'a la fin du task
+docker service logs --follow --raw "${{STACK_NAME}}_agent" || true
+
+# Cleanup
+docker stack rm "$STACK_NAME"
+"""
+    deploy_path = os.path.join(tmp_dir, "deploy.sh")
+    with open(deploy_path, "w", encoding="utf-8") as f:
+        f.write(deploy_sh)
+    if os.name != "nt":
+        os.chmod(deploy_path, 0o755)
+
+    _log.info(
+        "container.generate_tmp_swarm",
+        dockerfile_id=dockerfile_id,
+        service_name=service_name,
+        tmp_dir=tmp_dir,
+    )
+    return deploy_path
+
+
 async def _load_platform_secrets() -> dict[str, str]:
     """Load all global platform secrets as a dict for env var injection."""
     from agflow.config import get_settings

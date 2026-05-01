@@ -87,7 +87,7 @@ async def run_task(
         final_status = "error"
         final_exit_code = None
         try:
-            async for event in container_runner.run_task(
+            async for event in container_runner.run_task_swarm(
                 dockerfile_id,
                 params_json_content=params_file.content,
                 content_hash=dockerfile.current_hash,
@@ -131,7 +131,7 @@ async def run_task(
 
 
 async def _record_container(task_id: UUID, container_id: str, container_name: str):
-    """Callback invoked by run_task once the Docker container is created."""
+    """Callback invoked by run_task_swarm once the Docker container is created."""
     await launched_service.set_running(task_id, container_id, container_name)
 
 

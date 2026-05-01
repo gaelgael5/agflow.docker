@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import os
-
 import pytest
-
-os.environ["DATABASE_URL"] = "postgresql://agflow:agflow_dev@192.168.10.68:5432/agflow"
 
 from agflow.db.pool import close_pool, fetch_one, get_pool
 

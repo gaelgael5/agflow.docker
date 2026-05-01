@@ -165,11 +165,10 @@ class MomConsumer:
         self,
         max_idle: timedelta = timedelta(seconds=30),
     ) -> int:
-        interval_str = f"{int(max_idle.total_seconds())} seconds"
         async with self._pool.acquire() as conn:
             result = await conn.execute(
                 _RECLAIM_SQL,
-                interval_str,
+                max_idle,
                 self._group_name,
             )
         count = int(result.split()[-1]) if result else 0

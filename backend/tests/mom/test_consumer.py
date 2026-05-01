@@ -181,10 +181,9 @@ class TestMomConsumer:
 
         api_key_id = uuid4()
         await execute(
-            "INSERT INTO api_keys (id, owner_id, name, prefix, key_hash, scopes) "
-            "VALUES ($1, $2, 'ack-idle', $3, 'hash', $4)",
+            "INSERT INTO api_keys (id, name, prefix, key_hash, scopes) "
+            "VALUES ($1, 'ack-idle', $2, 'hash', $3)",
             api_key_id,
-            uuid4(),
             f"pfx_{str(api_key_id)[:8]}",
             ["read"],
         )
@@ -248,10 +247,9 @@ class TestMomConsumer:
 
         api_key_id = uuid4()
         await execute(
-            "INSERT INTO api_keys (id, owner_id, name, prefix, key_hash, scopes) "
-            "VALUES ($1, $2, 'ack-ws', $3, 'hash', $4)",
+            "INSERT INTO api_keys (id, name, prefix, key_hash, scopes) "
+            "VALUES ($1, 'ack-ws', $2, 'hash', $3)",
             api_key_id,
-            uuid4(),
             f"pfx_{str(api_key_id)[:8]}",
             ["read"],
         )

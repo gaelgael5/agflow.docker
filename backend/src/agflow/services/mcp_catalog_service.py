@@ -46,7 +46,7 @@ def _row(row: dict[str, Any]) -> MCPServerSummary:
         short_description=row["short_description"],
         long_description=row["long_description"],
         documentation_url=row["documentation_url"],
-        parameters=_parse_json(row["parameters"], []),
+        parameters=_parse_json(row["parameters"], {}),
         parameters_schema=_parse_json(row["parameters_schema"], []),
         recipes=_parse_json(row["recipes"], {}),
         category=row.get("category", ""),
@@ -75,7 +75,7 @@ async def install(
     discovery_service_id: str,
     package_id: str,
     recipes: dict | None = None,
-    parameters: list | None = None,
+    parameters: dict | None = None,
     category: str = "",
 ) -> MCPServerSummary:
     """Fetch details from the registry and insert into the local catalog."""
@@ -108,7 +108,7 @@ async def install(
             detail.get("documentation_url", ""),
             json.dumps(detail.get("parameters_schema", [])),
             json.dumps(recipes or {}),
-            json.dumps(parameters or []),
+            json.dumps(parameters or {}),
             category,
         )
     except asyncpg.UniqueViolationError as exc:

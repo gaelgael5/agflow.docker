@@ -133,6 +133,142 @@ def _generate_tmp_files(
     return run_path
 
 
+def _generate_tmp_files_swarm(
+    dockerfile_id: str,
+    service_name: str,
+    config: dict[str, Any],
+    task_payload: dict[str, Any] | None = None,
+) -> str:
+    """Generate .env + stack.yml + deploy.sh + task.json in
+    {AGFLOW_DATA_DIR}/dockerfiles/{dockerfile_id}/.tmp/.
+
+    Mirror de _generate_tmp_files() mais produit du Swarm stack au lieu
+    de docker run command. Les fichiers sont inspectables et runnable
+    by hand par l'admin (philosophie identique).
+
+    Returns le path absolu du deploy.sh généré.
+    """
+    import json as _json
+
+    import yaml as _yaml
+
+    data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+    tmp_dir = os.path.join(data_dir, "dockerfiles", dockerfile_id, ".tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    # .env — variables d'env résolues
+    env_list = config.get("Env", [])
+    env_content = "\n".join(env_list) + "\n"
+    with open(os.path.join(tmp_dir, ".env"), "w", encoding="utf-8") as f:
+        f.write(env_content)
+
+    # task.json — payload brut
+    if task_payload is not None:
+        task_path = os.path.join(tmp_dir, "task.json")
+        with open(task_path, "w", encoding="utf-8") as f:
+            _json.dump(task_payload, f, ensure_ascii=False)
+            f.write("\n")
+
+    # stack.yml — Swarm stack compose v3+
+    host_config = config.get("HostConfig", {})
+    binds = host_config.get("Binds", [])
+    volumes = []
+    for bind in binds:
+        parts = bind.split(":")
+        if len(parts) >= 2:
+            volumes.append({
+                "type": "bind",
+                "source": parts[0],
+                "target": parts[1],
+                "read_only": (len(parts) > 2 and parts[2] == "ro"),
+            })
+
+    deploy_block: dict[str, Any] = {
+        "mode": "replicated",
+        "replicas": 1,
+        "endpoint_mode": "dnsrr",
+        "placement": {"constraints": ["node.role == manager"]},
+        "restart_policy": {"condition": "none"},  # one-shot
+        "labels": [
+            "agflow.managed=true",
+            "agflow.test_mode=swarm",
+            f"agflow.dockerfile_id={dockerfile_id}",
+        ],
+    }
+    resources_limits: dict[str, Any] = {}
+    if host_config.get("Memory"):
+        resources_limits["memory"] = str(host_config["Memory"])
+    if host_config.get("NanoCpus"):
+        resources_limits["cpus"] = str(host_config["NanoCpus"] / 1_000_000_000)
+    if resources_limits:
+        deploy_block["resources"] = {"limits": resources_limits}
+
+    service_def: dict[str, Any] = {
+        "image": config["Image"],
+        "networks": ["agflow-internal"],
+        "deploy": deploy_block,
+    }
+    # Convert env list to dict format for stack.yml
+    if env_list:
+        service_def["environment"] = {}
+        for env_line in env_list:
+            if "=" in env_line:
+                k, v = env_line.split("=", 1)
+                service_def["environment"][k] = v
+    if volumes:
+        service_def["volumes"] = volumes
+    if config.get("WorkingDir"):
+        service_def["working_dir"] = config["WorkingDir"]
+    if host_config.get("Init"):
+        service_def["init"] = True
+
+    stack: dict[str, Any] = {
+        "services": {"agent": service_def},
+        "networks": {"agflow-internal": {"external": True}},
+    }
+
+    stack_path = os.path.join(tmp_dir, "stack.yml")
+    with open(stack_path, "w", encoding="utf-8") as f:
+        _yaml.dump(stack, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+    # deploy.sh — wrapper bash
+    deploy_sh = f"""#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
+STACK_NAME="{service_name.replace('-', '_')}_test"
+
+# Source .env
+set -a; source "$SCRIPT_DIR/.env" 2>/dev/null || true; set +a
+
+# Inject task.json content as env var (Swarm n'aime pas le stdin pipe)
+if [ -f "$SCRIPT_DIR/task.json" ]; then
+    export TASK_JSON_B64="$(base64 -w0 < "$SCRIPT_DIR/task.json")"
+fi
+
+# Deploy stack
+docker stack deploy -c "$SCRIPT_DIR/stack.yml" "$STACK_NAME"
+
+# Stream logs jusqu'a la fin du task
+docker service logs --follow --raw "${{STACK_NAME}}_agent" || true
+
+# Cleanup
+docker stack rm "$STACK_NAME"
+"""
+    deploy_path = os.path.join(tmp_dir, "deploy.sh")
+    with open(deploy_path, "w", encoding="utf-8") as f:
+        f.write(deploy_sh)
+    if os.name != "nt":
+        os.chmod(deploy_path, 0o755)
+
+    _log.info(
+        "container.generate_tmp_swarm",
+        dockerfile_id=dockerfile_id,
+        service_name=service_name,
+        tmp_dir=tmp_dir,
+    )
+    return deploy_path
+
+
 async def _load_platform_secrets() -> dict[str, str]:
     """Load all global platform secrets as a dict for env var injection."""
     from agflow.config import get_settings
@@ -621,6 +757,111 @@ def build_run_config(
     return name, config
 
 
+# ── B1 : Swarm ServiceSpec builder (mirror de build_run_config) ──────────
+
+
+_DEFAULT_SWARM_NETWORK = "agflow-internal"
+
+
+def build_service_spec(
+    *,
+    dockerfile_id: str,
+    params_json_content: str,
+    content_hash: str,
+    instance_id: str,
+    extra_env: dict[str, str] | None = None,
+    mount_base_id: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Build Swarm ServiceSpec from Dockerfile.json (mirror of build_run_config).
+
+    Returns (service_name, service_spec_dict). Le service_spec_dict est
+    consommable par aiodocker.Docker().services.create(spec).
+
+    Differences vs build_run_config :
+      - Mounts en objects {Source, Target, Type='bind', ReadOnly} au lieu de Binds
+      - Resources dans TaskTemplate.Resources
+      - RestartPolicy.Condition = 'on-failure' (Swarm n'a pas 'unless-stopped')
+      - Mode.Replicated.Replicas = 1 hardcoded
+      - EndpointSpec.Mode = 'dnsrr' hardcoded (IPVS LXC workaround)
+      - Placement.Constraints = ['node.role == manager'] hardcoded
+      - Labels dupliquees container-level + service-level
+    """
+    # Reuse build_run_config to get all the resolved parts
+    name, classic_config = build_run_config(
+        dockerfile_id=dockerfile_id,
+        params_json_content=params_json_content,
+        content_hash=content_hash,
+        instance_id=instance_id,
+        extra_env=extra_env,
+        mount_base_id=mount_base_id,
+    )
+
+    # Convert Binds (Docker classic) -> Mounts (Swarm format)
+    binds = classic_config.get("HostConfig", {}).get("Binds", [])
+    mounts = []
+    for bind in binds:
+        # Format "source:target[:ro]"
+        parts = bind.split(":")
+        if len(parts) < 2:
+            continue
+        source, target = parts[0], parts[1]
+        readonly = len(parts) > 2 and parts[2] == "ro"
+        mounts.append({
+            "Source": source,
+            "Target": target,
+            "Type": "bind",
+            "ReadOnly": readonly,
+        })
+
+    container_spec: dict[str, Any] = {
+        "Image": classic_config["Image"],
+        "Env": classic_config.get("Env", []),
+        "Labels": classic_config.get("Labels", {}),
+        "Mounts": mounts,
+    }
+    if classic_config.get("WorkingDir"):
+        container_spec["Dir"] = classic_config["WorkingDir"]
+    if classic_config.get("StopSignal"):
+        container_spec["StopSignal"] = classic_config["StopSignal"]
+    host_init = classic_config.get("HostConfig", {}).get("Init")
+    if host_init is not None:
+        container_spec["Init"] = bool(host_init)
+
+    resources: dict[str, Any] = {}
+    host_config = classic_config.get("HostConfig", {})
+    limits: dict[str, Any] = {}
+    if host_config.get("Memory"):
+        limits["MemoryBytes"] = host_config["Memory"]
+    if host_config.get("NanoCpus"):
+        limits["NanoCPUs"] = host_config["NanoCpus"]
+    if limits:
+        resources["Limits"] = limits
+
+    task_template: dict[str, Any] = {
+        "ContainerSpec": container_spec,
+        "RestartPolicy": {
+            "Condition": "on-failure",
+            "MaxAttempts": 5,
+            "Delay": 10_000_000_000,  # 10s in nanoseconds
+        },
+        "Placement": {
+            "Constraints": ["node.role == manager"],
+        },
+    }
+    if resources:
+        task_template["Resources"] = resources
+
+    spec: dict[str, Any] = {
+        "Name": name,
+        "TaskTemplate": task_template,
+        "Mode": {"Replicated": {"Replicas": 1}},
+        "Networks": [{"Target": _DEFAULT_SWARM_NETWORK}],
+        "EndpointSpec": {"Mode": "dnsrr"},
+        "Labels": dict(classic_config.get("Labels", {})),
+    }
+    return name, spec
+
+
 # ─────────────────────────────────────────────────────────────
 # Container lifecycle via aiodocker
 # ─────────────────────────────────────────────────────────────
@@ -659,32 +900,53 @@ def _info_from_container(raw: dict[str, Any]) -> ContainerInfo:
 
 
 async def list_running() -> list[ContainerInfo]:
-    """List all agflow-managed containers (running or stopped)."""
+    """List all running agflow-managed agents (Swarm services + their containers).
+
+    Pour chaque service avec label agflow.managed=true, récupère le 1er task
+    en running et résoud le container réel pour produire un ContainerInfo.
+    Les services sans task running (pending/failed) sont skippés.
+    """
     docker = aiodocker.Docker()
     try:
-        containers = await docker.containers.list(
-            all=True,
+        services = await docker.services.list(
             filters={"label": [f"{_AGFLOW_MANAGED_LABEL}=true"]},
         )
         result: list[ContainerInfo] = []
-        for c in containers:
-            # Show() returns the full inspect payload which has Config.Labels.
-            inspect = await c.show()
+        for svc in services or []:
+            svc_name = (svc.get("Spec") or {}).get("Name", "")
+            if not svc_name:
+                continue
+            try:
+                tasks = await docker.tasks.list(filters={"service": svc_name})
+            except aiodocker.exceptions.DockerError:
+                continue
+            container_id = ""
+            for task in tasks or []:
+                if (task.get("Status") or {}).get("State") == "running":
+                    cs = (task.get("Status") or {}).get("ContainerStatus", {}) or {}
+                    cid = cs.get("ContainerID")
+                    if cid:
+                        container_id = cid
+                        break
+            if not container_id:
+                continue
+            try:
+                container = docker.containers.container(container_id=container_id)
+                inspect = await container.show()
+            except aiodocker.exceptions.DockerError:
+                continue
             cfg = inspect.get("Config") or {}
             state = inspect.get("State") or {}
             labels = cfg.get("Labels") or {}
-            created_at = _parse_docker_ts(inspect.get("Created", ""))
-            result.append(
-                ContainerInfo(
-                    id=inspect.get("Id", ""),
-                    name=(inspect.get("Name") or "").lstrip("/"),
-                    dockerfile_id=labels.get(_AGFLOW_DOCKERFILE_LABEL, ""),
-                    image=cfg.get("Image", ""),
-                    status=state.get("Status", "created"),
-                    created_at=created_at,
-                    instance_id=labels.get(_AGFLOW_INSTANCE_LABEL, ""),
-                )
-            )
+            result.append(ContainerInfo(
+                id=inspect.get("Id", container_id),
+                name=(inspect.get("Name") or svc_name).lstrip("/"),
+                dockerfile_id=labels.get(_AGFLOW_DOCKERFILE_LABEL, ""),
+                image=cfg.get("Image", ""),
+                status=state.get("Status", "running"),
+                created_at=_parse_docker_ts(inspect.get("Created", "")),
+                instance_id=labels.get(_AGFLOW_INSTANCE_LABEL, ""),
+            ))
         return result
     finally:
         await docker.close()
@@ -697,14 +959,16 @@ async def start(
     content_hash: str,
     user_secrets: dict[str, str] | None = None,
 ) -> ContainerInfo:
-    """Create and start a container for a given dockerfile.
+    """Create a Swarm service for an agent and resolve its container.
 
     Raises:
-        ImageNotBuiltError: the target image does not exist yet.
-        TooManyContainersError: the hard limit of running containers is reached.
-        InvalidParamsError: Dockerfile.json cannot be translated to a config.
+        ImageNotBuiltError: target image doesn't exist on the local daemon.
+        TooManyContainersError: hard limit MAX_RUNNING_CONTAINERS reached.
+        InvalidParamsError: Dockerfile.json cannot be translated.
     """
-    # Enforce concurrency limit before touching docker.
+    import asyncio as _asyncio
+
+    # Concurrency guard
     existing = await list_running()
     alive = [c for c in existing if c.status in ("running", "created", "restarting")]
     if len(alive) >= MAX_RUNNING_CONTAINERS:
@@ -715,57 +979,91 @@ async def start(
 
     instance_id = secrets.token_hex(3)
     platform_secrets = await _load_platform_secrets()
-    # Merge: platform secrets + user secrets (user wins)
     all_secrets = {**platform_secrets, **(user_secrets or {})}
-    name, config = build_run_config(
+    name, spec = build_service_spec(
         dockerfile_id=dockerfile_id,
         params_json_content=params_json_content,
         content_hash=content_hash,
         instance_id=instance_id,
         extra_env=all_secrets,
     )
+    classic_image = spec["TaskTemplate"]["ContainerSpec"]["Image"]
 
-    # Pre-create auto-prefixed mount directories so the default workspace/
-    # output/... mounts "just work" without the user having to mkdir first.
+    # Pre-create auto-prefixed mount dirs (same as before)
     _ensure_mount_paths_from_config(
-        dockerfile_id, params_json_content, instance_id, content_hash
+        dockerfile_id, params_json_content, instance_id, content_hash,
     )
 
-    # Generate .tmp/ files (run.sh + .env) before launching
-    _generate_tmp_files(dockerfile_id, name, config)
+    # Generate .tmp/ classic files for diagnostic (run.sh always generated for debug)
+    _, classic_config = build_run_config(
+        dockerfile_id=dockerfile_id,
+        params_json_content=params_json_content,
+        content_hash=content_hash,
+        instance_id=instance_id,
+        extra_env=all_secrets,
+    )
+    _generate_tmp_files(dockerfile_id, name, classic_config)
 
     docker = aiodocker.Docker()
     try:
+        # Preflight : image must exist
         try:
-            await docker.images.inspect(config["Image"])
+            await docker.images.inspect(classic_image)
         except aiodocker.exceptions.DockerError as exc:
             if exc.status == 404:
                 raise ImageNotBuiltError(
-                    f"Image '{config['Image']}' not found — build the dockerfile first."
+                    f"Image '{classic_image}' not found — build the dockerfile first."
                 ) from exc
             raise
 
-        container = await docker.containers.create(config=config, name=name)
-        await container.start()
-        inspect = await container.show()
+        # Create the Swarm service
+        service_create_resp = await docker.services.create(spec)
+        service_id = service_create_resp.get("ID") or service_create_resp.get("Id", "")
 
+        # Poll tasks until at least one is running (timeout ~30s)
+        container_id = ""
+        for _attempt in range(30):
+            tasks = await docker.tasks.list(filters={"service": name})
+            for task in tasks:
+                state = task.get("Status", {}).get("State", "")
+                if state == "running":
+                    cs = task.get("Status", {}).get("ContainerStatus", {}) or {}
+                    container_id = cs.get("ContainerID", "")
+                    if container_id:
+                        break
+            if container_id:
+                break
+            await _asyncio.sleep(1)
+
+        if not container_id:
+            # Service was created but no container came up. Cleanup + error.
+            with contextlib.suppress(Exception):
+                await docker.services.delete(service_id)
+            raise ContainerRunnerError(
+                f"Service '{name}' created but no running container after 30s"
+            )
+
+        # Inspect the container to produce ContainerInfo
+        container = docker.containers.container(container_id=container_id)
+        inspect = await container.show()
         cfg = inspect.get("Config") or {}
         state = inspect.get("State") or {}
         labels = cfg.get("Labels") or {}
         info = ContainerInfo(
-            id=inspect.get("Id", ""),
-            name=(inspect.get("Name") or "").lstrip("/"),
+            id=inspect.get("Id", container_id),
+            name=(inspect.get("Name") or name).lstrip("/"),
             dockerfile_id=labels.get(_AGFLOW_DOCKERFILE_LABEL, dockerfile_id),
-            image=cfg.get("Image", config["Image"]),
+            image=cfg.get("Image", classic_image),
             status=state.get("Status", "running"),
             created_at=_parse_docker_ts(inspect.get("Created", "")),
             instance_id=labels.get(_AGFLOW_INSTANCE_LABEL, instance_id),
         )
         _log.info(
-            "container.start",
+            "container.start_swarm",
             dockerfile_id=dockerfile_id,
+            service_id=service_id,
+            service_name=name,
             container_id=info.id,
-            name=info.name,
         )
         return info
     finally:
@@ -1028,18 +1326,173 @@ async def run_task(
                 _log.warning("run_task.clear_container.failed", error=str(_exc))
 
 
+async def run_task_swarm(
+    dockerfile_id: str,
+    *,
+    params_json_content: str,
+    content_hash: str,
+    task_payload: dict[str, Any],
+    timeout_seconds: int = 600,
+    user_secrets: dict[str, str] | None = None,
+    on_container_started: Any | None = None,
+    cleanup: bool = False,
+    session_id: str | None = None,
+    agent_instance_id: str | None = None,
+    mount_base_id: str | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """One-shot task execution in Swarm mode (mirror de run_task()).
+
+    Génère .tmp/{stack.yml, deploy.sh, task.json}, puis subprocess
+    `bash deploy.sh` qui :
+      1. docker stack deploy -c stack.yml STACK_NAME
+      2. docker service logs --follow STACK_NAME_agent (stream stdout)
+      3. docker stack rm STACK_NAME (cleanup)
+
+    Yield des events {"type": "log", "data": "..."} pour chaque ligne
+    parsable JSON, plus un final {"type": "done", "status": "success"
+    | "failure", "exit_code": N}.
+    """
+    import asyncio as _asyncio
+    import json as _json
+    import secrets as _secrets
+
+    # Concurrency guard (même limite que start())
+    existing = await list_running()
+    alive = [c for c in existing if c.status in ("running", "created", "restarting")]
+    if len(alive) >= MAX_RUNNING_CONTAINERS:
+        raise TooManyContainersError(
+            f"Maximum of {MAX_RUNNING_CONTAINERS} running containers reached."
+        )
+
+    session_id = session_id or _secrets.token_hex(6)
+    instance_id = secrets.token_hex(3)
+    platform_secrets = await _load_platform_secrets()
+    all_secrets = {**platform_secrets, **(user_secrets or {})}
+
+    name, _spec = build_service_spec(
+        dockerfile_id=dockerfile_id,
+        params_json_content=params_json_content,
+        content_hash=content_hash,
+        instance_id=instance_id,
+        extra_env=all_secrets,
+        mount_base_id=mount_base_id,
+    )
+    # On a besoin de classic_config pour _generate_tmp_files_swarm (mounts/env source)
+    _, classic_config = build_run_config(
+        dockerfile_id=dockerfile_id,
+        params_json_content=params_json_content,
+        content_hash=content_hash,
+        instance_id=instance_id,
+        extra_env=all_secrets,
+        mount_base_id=mount_base_id,
+    )
+    _ensure_mount_paths_from_config(
+        dockerfile_id, params_json_content, instance_id, content_hash,
+    )
+
+    deploy_path = _generate_tmp_files_swarm(
+        dockerfile_id=dockerfile_id,
+        service_name=name,
+        config=classic_config,
+        task_payload=task_payload,
+    )
+
+    if agent_instance_id is not None:
+        try:
+            from uuid import UUID as _UUID
+
+            from agflow.services.agents_instances_service import (
+                set_last_container as _set_lc,
+            )
+            await _set_lc(instance_id=_UUID(str(agent_instance_id)), container_name=name)
+        except Exception as _exc:
+            _log.warning("run_task_swarm.set_container.failed", error=str(_exc))
+
+    # Lance bash deploy.sh comme subprocess
+    proc = await _asyncio.create_subprocess_exec(
+        "bash", deploy_path,
+        stdout=_asyncio.subprocess.PIPE,
+        stderr=_asyncio.subprocess.PIPE,
+    )
+
+    try:
+        # Stream stdout ligne par ligne, parser JSON quand possible
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            decoded = line.decode("utf-8", errors="replace").rstrip("\n")
+            if not decoded:
+                continue
+            # Tente parser JSON ; sinon yield comme log brut
+            try:
+                event = _json.loads(decoded)
+                if isinstance(event, dict):
+                    yield event
+                    continue
+            except _json.JSONDecodeError:
+                pass
+            yield {"type": "log", "data": decoded}
+
+        exit_code = await proc.wait()
+        status = "success" if exit_code == 0 else "failure"
+        yield {"type": "done", "status": status, "exit_code": exit_code}
+
+        _log.info(
+            "container.run_task_swarm.done",
+            dockerfile_id=dockerfile_id,
+            service_name=name,
+            session_id=session_id,
+            exit_code=exit_code,
+        )
+    finally:
+        if cleanup:
+            import shutil as _shutil
+            tmp_dir = os.path.dirname(deploy_path)
+            with contextlib.suppress(Exception):
+                _shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 async def stop(container_id: str) -> None:
-    """Stop and remove a container by its Docker id."""
+    """Stop and remove an agent : delete its Swarm service if exists, sinon
+    fallback container delete (rétro-compat pour containers classiques restants).
+
+    Le param 'container_id' peut être un service name (cas Swarm) ou un container
+    id/name (cas legacy). On essaie service en 1er, fallback container ensuite.
+    """
     docker = aiodocker.Docker()
     try:
+        # Try Swarm service first
+        try:
+            services = await docker.services.list(
+                filters={"name": [container_id]},
+            )
+        except aiodocker.exceptions.DockerError:
+            services = []
+
+        for svc in services or []:
+            svc_id = svc.get("ID") or svc.get("Id", "")
+            svc_labels = (svc.get("Spec") or {}).get("Labels", {}) or {}
+            svc_name = (svc.get("Spec") or {}).get("Name", "")
+            # Vérification managed et match exact du nom (le filter "name" peut être prefix)
+            if (svc_labels.get(_AGFLOW_MANAGED_LABEL) == "true"
+                    and (svc_name == container_id or svc_id == container_id)):
+                try:
+                    await docker.services.delete(svc_id)
+                except aiodocker.exceptions.DockerError as exc:
+                    if exc.status not in (404, 409):
+                        raise
+                _log.info("container.stop_swarm", service_id=svc_id, service_name=svc_name)
+                return
+
+        # Fallback : container classique
         try:
             container = docker.containers.container(container_id=container_id)
-            # Confirm it is agflow-managed before touching it.
             inspect = await container.show()
         except aiodocker.exceptions.DockerError as exc:
             if exc.status == 404:
                 raise ContainerNotFoundError(
-                    f"Container '{container_id}' not found"
+                    f"Service or container '{container_id}' not found"
                 ) from exc
             raise
 
@@ -1048,18 +1501,14 @@ async def stop(container_id: str) -> None:
             raise ContainerNotFoundError(
                 f"Container '{container_id}' is not managed by agflow"
             )
-
         with contextlib.suppress(aiodocker.exceptions.DockerError):
             await container.stop(timeout=10)
         try:
             await container.delete(force=True)
         except aiodocker.exceptions.DockerError as exc:
-            # 409 = "removal already in progress" (parallel click / polling
-            # double-trigger). 404 = already gone. Both mean the container is
-            # on its way out, treat as success.
             if exc.status not in (404, 409):
                 raise
-        _log.info("container.stop", container_id=container_id)
+        _log.info("container.stop_legacy", container_id=container_id)
     finally:
         await docker.close()
 

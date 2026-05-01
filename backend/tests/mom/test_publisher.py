@@ -119,10 +119,9 @@ class TestMomPublisher:
         # Setup : api_key + session + agent_catalog + instance réels
         api_key_id = uuid4()
         await execute(
-            "INSERT INTO api_keys (id, owner_id, name, prefix, key_hash, scopes) "
-            "VALUES ($1, $2, 'test-pub', $3, 'hash', $4)",
+            "INSERT INTO api_keys (id, name, prefix, key_hash, scopes) "
+            "VALUES ($1, 'test-pub', $2, 'hash', $3)",
             api_key_id,
-            uuid4(),
             f"pfx_{str(api_key_id)[:8]}",
             ["read"],
         )
@@ -172,10 +171,9 @@ class TestMomPublisher:
     ) -> None:
         api_key_id = uuid4()
         await execute(
-            "INSERT INTO api_keys (id, owner_id, name, prefix, key_hash, scopes) "
-            "VALUES ($1, $2, 'test-pub-out', $3, 'hash', $4)",
+            "INSERT INTO api_keys (id, name, prefix, key_hash, scopes) "
+            "VALUES ($1, 'test-pub-out', $2, 'hash', $3)",
             api_key_id,
-            uuid4(),
             f"pfx_{str(api_key_id)[:8]}",
             ["read"],
         )

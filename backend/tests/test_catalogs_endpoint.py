@@ -1,36 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from agflow.db.migrations import run_migrations
-from agflow.db.pool import close_pool, execute
+from agflow.db.pool import close_pool
 from agflow.main import create_app
 from agflow.schemas.catalogs import ProbeResult
-
-_MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+from tests._db_reset import reset_schema_and_migrate
 
 
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
-    for t in [
-        "skills",
-        "mcp_servers",
-        "discovery_services",
-        "dockerfile_builds",
-        "dockerfile_files",
-        "dockerfiles",
-        "role_documents",
-        "roles",
-        "secrets",
-        "schema_migrations",
-    ]:
-        await execute(f"DROP TABLE IF EXISTS {t} CASCADE")
-    await run_migrations(_MIGRATIONS_DIR)
+    await reset_schema_and_migrate()
 
     app = create_app()
     async with AsyncClient(

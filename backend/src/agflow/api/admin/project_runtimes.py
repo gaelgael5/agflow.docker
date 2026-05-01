@@ -154,16 +154,13 @@ async def runtime_delete(runtime_id: UUID):
             ssh = None
         if ssh:
             remote = (detail.remote_path or "").strip()
-            # 1. Stop + remove containers owned by this runtime
+            # 1. Best-effort container cleanup. With Swarm, the project_runtime
+            # owns a stack and containers are tied to services — but we don't
+            # tear the stack down here (a project_runtime aggregates several
+            # group_runtimes; full stack rm happens only when the parent
+            # project_runtime is deleted). We rely on the runtime_id label to
+            # surface any stragglers.
             try:
-                if remote:
-                    await ssh_executor.exec_command(
-                        **ssh,
-                        command=(
-                            f"cd {remote} && docker compose down --volumes --remove-orphans "
-                            f"2>/dev/null || true"
-                        ),
-                    )
                 await ssh_executor.exec_command(
                     **ssh,
                     command=(

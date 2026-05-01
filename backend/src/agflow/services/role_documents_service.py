@@ -52,8 +52,11 @@ def _file_to_summary(role_id: str, section: str, filename: str) -> DocumentSumma
         ctime = os.path.getctime(full_path)
     except OSError:
         mtime = ctime = 0
+    # The doc ID is derived from the bare logical name (without the `_`
+    # protected suffix) so it stays stable across protected toggles.
+    bare = name.rstrip("_") or name
     return DocumentSummary(
-        id=_doc_id(role_id, section, name),
+        id=_doc_id(role_id, section, bare),
         role_id=role_id,
         section=section,
         parent_path="",
@@ -73,14 +76,25 @@ async def create(
     content_md: str = "",
     protected: bool = False,
 ) -> DocumentSummary:
-    path = os.path.join(_role_dir(role_id), section, f"{name}.md")
+    # Validate section exists for this role (no DB FK since role_documents
+    # are filesystem-based).
+    from agflow.services import role_sections_service
+
+    await role_sections_service.get(role_id, section)
+
+    # The `protected` flag is encoded as a trailing `_` in the filename so
+    # update/delete can detect it without a DB column.
+    effective_name = f"{name}_" if protected and not name.endswith("_") else name
+    path = os.path.join(_role_dir(role_id), section, f"{effective_name}.md")
     if os.path.isfile(path):
         raise DuplicateDocumentError(
-            f"Document '{name}' already exists in {section} for role '{role_id}'"
+            f"Document '{effective_name}' already exists in {section} for role '{role_id}'"
         )
-    role_files_service.write_document(role_id, section, name, content_md)
-    _log.info("role_documents.create", role_id=role_id, section=section, name=name)
-    return _file_to_summary(role_id, section, f"{name}.md")
+    role_files_service.write_document(role_id, section, effective_name, content_md)
+    _log.info(
+        "role_documents.create", role_id=role_id, section=section, name=effective_name
+    )
+    return _file_to_summary(role_id, section, f"{effective_name}.md")
 
 
 async def get_by_id(doc_id: UUID) -> DocumentSummary:
@@ -100,7 +114,11 @@ async def get_by_id(doc_id: UUID) -> DocumentSummary:
                 if not filename.endswith(".md"):
                     continue
                 name = filename[:-3]
-                if _doc_id(role_id, section, name) == doc_id:
+                # The doc ID is derived from the bare logical name, so a
+                # caller's "doc.id" stays valid after a protected toggle that
+                # adds/removes the trailing `_` suffix.
+                bare = name.rstrip("_") or name
+                if _doc_id(role_id, section, bare) == doc_id:
                     return _file_to_summary(role_id, section, filename)
     raise DocumentNotFoundError(f"Document {doc_id} not found")
 
@@ -144,6 +162,22 @@ async def update(
             current.role_id, current.section, current.name, name
         )
         effective_name = name
+
+    # protected flag = trailing `_` in filename. Rename to add/remove suffix.
+    if protected is not None:
+        is_currently_protected = effective_name.endswith("_")
+        if protected and not is_currently_protected:
+            new_name = f"{effective_name}_"
+            role_files_service.rename_document(
+                current.role_id, current.section, effective_name, new_name
+            )
+            effective_name = new_name
+        elif not protected and is_currently_protected:
+            new_name = effective_name.rstrip("_") or effective_name
+            role_files_service.rename_document(
+                current.role_id, current.section, effective_name, new_name
+            )
+            effective_name = new_name
 
     if content_md is not None:
         role_files_service.write_document(

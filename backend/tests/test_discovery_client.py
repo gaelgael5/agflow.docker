@@ -11,7 +11,7 @@ os.environ.setdefault("ADMIN_EMAIL", "a@b.c")
 os.environ.setdefault("ADMIN_PASSWORD_HASH", "x")
 os.environ.setdefault("SECRETS_MASTER_KEY", "x")
 
-from agflow.services import discovery_client  # noqa: E402
+from agflow.services import discovery_client
 
 
 def _mock_transport(handler):
@@ -53,8 +53,8 @@ async def test_search_mcp_returns_items() -> None:
     Client maps those to MCPSearchItem shape."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path.endswith("/services")
-        assert request.url.params.get("search") == "filesystem"
+        assert request.url.path.endswith("/search_mcp")
+        assert request.url.params.get("q") == "filesystem"
         return httpx.Response(
             200,
             json={
@@ -122,7 +122,7 @@ async def test_search_skills_filters_client_side() -> None:
     so the client fetches and filters locally by matching the query."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path.endswith("/skills")
+        assert request.url.path.endswith("/search_skills")
         return httpx.Response(
             200,
             json=[

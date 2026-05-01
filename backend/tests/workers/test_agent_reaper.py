@@ -27,10 +27,9 @@ async def pool():
 async def api_key_id(pool) -> UUID:
     kid = uuid4()
     await execute(
-        "INSERT INTO api_keys (id, owner_id, name, prefix, key_hash, scopes) "
-        "VALUES ($1, $2, 'test-agent-reaper', $3, 'hash', $4)",
+        "INSERT INTO api_keys (id, name, prefix, key_hash, scopes) "
+        "VALUES ($1, 'test-agent-reaper', $2, 'hash', $3)",
         kid,
-        uuid4(),
         f"pfx_{str(kid)[:8]}",
         ["read"],
     )

@@ -12,7 +12,7 @@ os.environ.setdefault("ADMIN_EMAIL", "a@b.c")
 os.environ.setdefault("ADMIN_PASSWORD_HASH", "x")
 os.environ.setdefault("SECRETS_MASTER_KEY", "x")
 
-from agflow.services.llm_key_tester import check_key  # noqa: E402
+from agflow.services.llm_key_tester import check_key
 
 
 class _FakeAsyncClient:
@@ -21,7 +21,7 @@ class _FakeAsyncClient:
     def __init__(self, response: httpx.Response) -> None:
         self._response = response
 
-    async def __aenter__(self) -> "_FakeAsyncClient":
+    async def __aenter__(self) -> _FakeAsyncClient:
         return self
 
     async def __aexit__(self, *args: object) -> None:

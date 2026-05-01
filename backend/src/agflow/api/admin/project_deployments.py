@@ -27,6 +27,7 @@ from agflow.services import (
     scripts_service,
     secrets_service,
     ssh_executor,
+    swarm_deploy_steps,
     users_service,
 )
 
@@ -643,13 +644,14 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
                 "error": str(exc),
             })
             continue
-        steps: list[tuple[str, str, str | None]] = [
-            ("mkdir", f"mkdir -p {remote_dir}", None),
-            ("write_compose", f"cat > {remote_dir}/docker-compose.yml", compose_content),
-            ("write_env", f"cat > {remote_dir}/.env", env_text),
-            *login_steps,
-            ("compose_up", f"cd {remote_dir} && docker compose up -d", None),
-        ]
+        stack_name = f"agflow-proj-{project_slug}-{project_runtime_seq}"
+        steps = swarm_deploy_steps.build_deploy_steps(
+            remote_dir=remote_dir,
+            compose_content=compose_content,
+            env_content=env_text,
+            stack_name=stack_name,
+            extra_steps_before_deploy=login_steps,
+        )
 
         ssh_kwargs = {
             "host": creds["host"], "port": creds["port"],

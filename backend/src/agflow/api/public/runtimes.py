@@ -32,6 +32,7 @@ from agflow.services import (
     projects_service,
     secrets_service,
     ssh_executor,
+    swarm_deploy_steps,
 )
 
 _log = structlog.get_logger(__name__)
@@ -203,18 +204,22 @@ async def create_runtime(
     }
 
     remote_dir = f"~/agflow.docker/runtimes/{runtime_id}"
+    # Swarm overlay networks must be created `--attachable` so the runtime's
+    # services can join an existing per-user network. `--driver overlay` is
+    # required since `docker stack deploy` services use overlay networking.
     ensure_network_cmd = (
         f"docker network inspect {network_name} >/dev/null 2>&1 "
-        f"|| docker network create {network_name}"
+        f"|| docker network create --driver overlay --attachable {network_name}"
     )
 
-    steps: list[tuple[str, str, str | None]] = [
-        ("ensure_network", ensure_network_cmd, None),
-        ("mkdir", f"mkdir -p {remote_dir}", None),
-        ("write_compose", f"cat > {remote_dir}/docker-compose.yml", compose_yaml),
-        ("write_env", f"cat > {remote_dir}/.env", env_text),
-        ("compose_up", f"cd {remote_dir} && docker compose up -d", None),
-    ]
+    stack_name = f"agflow-runtime-{runtime_id}"
+    steps = swarm_deploy_steps.build_deploy_steps(
+        remote_dir=remote_dir,
+        compose_content=compose_yaml,
+        env_content=env_text,
+        stack_name=stack_name,
+        extra_steps_before_deploy=[("ensure_network", ensure_network_cmd, None)],
+    )
 
     failed_step: str | None = None
     last_stderr = ""
@@ -355,13 +360,17 @@ async def delete_runtime(
     ctx = AuthContext.from_api_key(api_key)
     await _assert_runtime_owned(runtime_id, ctx)
 
-    # Best-effort `docker compose down` on the user's machine for this runtime.
+    # Best-effort `docker stack rm` on the user's machine for this runtime.
+    # The deploy step pushed a Swarm stack named `agflow-runtime-{runtime_id}`,
+    # so we tear it down by name. Stack rm is idempotent — `|| true` keeps
+    # the delete flow going if the stack was already removed.
+    stack_name = swarm_deploy_steps.slug_stack_name(f"agflow-runtime-{runtime_id}")
     rows = await fetch_all(
         """
-        SELECT DISTINCT machine_id, remote_path
+        SELECT DISTINCT machine_id
         FROM project_group_runtimes
         WHERE project_runtime_id = $1 AND deleted_at IS NULL
-          AND machine_id IS NOT NULL AND remote_path != ''
+          AND machine_id IS NOT NULL
         """,
         runtime_id,
     )
@@ -386,7 +395,7 @@ async def delete_runtime(
                 host=creds["host"], port=creds["port"],
                 username=creds["username"], password=creds["password"],
                 private_key=private_key, passphrase=passphrase,
-                command=f"cd {r['remote_path']} && docker compose down -v --remove-orphans || true",
+                command=f"docker stack rm {stack_name} || true",
             )
         except Exception as exc:
             _log.warning(

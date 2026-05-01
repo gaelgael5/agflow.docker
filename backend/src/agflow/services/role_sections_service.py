@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import asyncpg
 import structlog
 
@@ -122,15 +124,17 @@ async def delete(role_id: str, name: str) -> None:
         raise ProtectedSectionError(
             f"Native section '{name}' cannot be deleted"
         )
-    count_row = await fetch_one(
-        "SELECT COUNT(*) AS c FROM role_documents "
-        "WHERE role_id = $1 AND section = $2",
-        role_id,
-        name,
-    )
-    if count_row is not None and count_row["c"] > 0:
+    # role_documents are now filesystem-based (under AGFLOW_DATA_DIR/roles/<id>/<section>/),
+    # so we count .md files in the section directory instead of querying the
+    # old role_documents table.
+    base = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+    section_dir = os.path.join(base, "roles", role_id, name)
+    doc_count = 0
+    if os.path.isdir(section_dir):
+        doc_count = sum(1 for f in os.listdir(section_dir) if f.endswith(".md"))
+    if doc_count > 0:
         raise SectionNotEmptyError(
-            f"Section '{name}' still has {count_row['c']} document(s)"
+            f"Section '{name}' still has {doc_count} document(s)"
         )
     result = await execute(
         "DELETE FROM role_sections WHERE role_id = $1 AND name = $2",

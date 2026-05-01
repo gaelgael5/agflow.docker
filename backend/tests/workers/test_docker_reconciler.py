@@ -27,10 +27,9 @@ async def pool():
 async def seeded(pool):
     kid = uuid4()
     await execute(
-        "INSERT INTO api_keys (id, owner_id, name, prefix, key_hash, scopes) "
-        "VALUES ($1, $2, 'reconcile', $3, 'hash', $4)",
+        "INSERT INTO api_keys (id, name, prefix, key_hash, scopes) "
+        "VALUES ($1, 'reconcile', $2, 'hash', $3)",
         kid,
-        uuid4(),
         f"pfx_{str(kid)[:8]}",
         ["read"],
     )

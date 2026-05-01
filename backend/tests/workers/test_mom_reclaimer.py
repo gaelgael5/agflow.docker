@@ -17,6 +17,16 @@ async def pool():
     await close_pool()
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _cleanup_test_messages(pool):
+    await execute(
+        "DELETE FROM agent_message_delivery WHERE msg_id IN "
+        "(SELECT msg_id FROM agent_messages WHERE instance_id = 'i-reclaim')"
+    )
+    await execute("DELETE FROM agent_messages WHERE instance_id = 'i-reclaim'")
+    yield
+
+
 @pytest.mark.asyncio
 async def test_reclaim_once_returns_counts_per_group(pool) -> None:
     counts = await reclaim_once()

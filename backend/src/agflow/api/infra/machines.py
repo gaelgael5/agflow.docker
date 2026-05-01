@@ -14,6 +14,9 @@ from agflow.schemas.infra import (
     MachineSummary,
     MachineUpdate,
     ScriptRunRequest,
+    SwarmInitRequest,
+    SwarmJoinRequest,
+    SwarmLeaveRequest,
 )
 from agflow.services import (
     infra_certificates_service,
@@ -22,6 +25,7 @@ from agflow.services import (
     infra_named_type_actions_service,
     infra_named_types_service,
     ssh_executor,
+    swarm_actions_service,
 )
 
 _log = structlog.get_logger(__name__)
@@ -726,3 +730,48 @@ async def _handle_add_node(
     except Exception as exc:
         await ws.send_json({"type": "stderr", "data": f"✗ Création machine échouée: {exc}\n"})
         _log.error("add_node.machine_create_failed", error=str(exc))
+
+
+# ── B0 : Swarm actions ─────────────────────────────────────────────────
+
+
+@router.post(
+    "/{machine_id}/actions/swarm_init",
+    summary="Initialize a new Swarm cluster on this machine",
+)
+async def action_swarm_init(machine_id: UUID, payload: SwarmInitRequest):
+    try:
+        return await swarm_actions_service.init_cluster(
+            machine_id=machine_id,
+            cluster_name=payload.cluster_name,
+        )
+    except swarm_actions_service.SwarmActionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{machine_id}/actions/swarm_join",
+    summary="Join an existing Swarm cluster",
+)
+async def action_swarm_join(machine_id: UUID, payload: SwarmJoinRequest):
+    try:
+        return await swarm_actions_service.join_cluster(
+            machine_id=machine_id,
+            cluster_id=payload.cluster_id,
+            role=payload.role,
+        )
+    except swarm_actions_service.SwarmActionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{machine_id}/actions/swarm_leave",
+    summary="Leave the Swarm cluster (drops cluster if last node)",
+)
+async def action_swarm_leave(machine_id: UUID, payload: SwarmLeaveRequest):
+    try:
+        return await swarm_actions_service.leave_cluster(
+            machine_id=machine_id, force=payload.force,
+        )
+    except swarm_actions_service.SwarmActionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

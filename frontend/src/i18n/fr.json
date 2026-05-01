@@ -346,7 +346,12 @@
       "error": "Erreur",
       "task_failed": "❌ L'agent a échoué (code de sortie {{exit_code}}). Vérifie que la clé API est configurée et que l'entrypoint ne masque pas les erreurs (2>/dev/null).",
       "task_success": "✅ Tâche terminée avec succès",
-      "container_exit_error": "⚠️ Le container a terminé avec le code {{exit_code}}"
+      "container_exit_error": "⚠️ Le container a terminé avec le code {{exit_code}}",
+      "mode_label": "Runtime de lancement",
+      "mode_classic": "Classique",
+      "mode_swarm": "Swarm",
+      "mode_help_classic": "Lance le container en mode docker run direct (debug local — pas de Swarm requis).",
+      "mode_help_swarm": "Lance le container comme service Swarm jetable via stack.yml + docker stack deploy (mode prod, identique à l'API publique)."
     },
     "import": {
       "confirm_title": "Importer ce zip ?",

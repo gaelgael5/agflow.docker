@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import asyncpg
@@ -9,6 +10,30 @@ from agflow.config import get_settings
 
 _pool: asyncpg.Pool | None = None
 _log = structlog.get_logger(__name__)
+
+
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    """Register codecs that should apply to every connection.
+
+    asyncpg returns jsonb/json as text by default — register decoders so we
+    get Python dicts directly from SELECT. We don't register an encoder
+    because callers already json.dumps() before binding (and pass through
+    `$N::jsonb` casts), so an encoder would double-encode.
+    """
+    await conn.set_type_codec(
+        "jsonb",
+        encoder=lambda v: v if isinstance(v, str) else json.dumps(v),
+        decoder=json.loads,
+        schema="pg_catalog",
+        format="text",
+    )
+    await conn.set_type_codec(
+        "json",
+        encoder=lambda v: v if isinstance(v, str) else json.dumps(v),
+        decoder=json.loads,
+        schema="pg_catalog",
+        format="text",
+    )
 
 
 async def get_pool() -> asyncpg.Pool:
@@ -21,6 +46,7 @@ async def get_pool() -> asyncpg.Pool:
             min_size=1,
             max_size=10,
             command_timeout=30,
+            init=_init_connection,
         )
     return _pool
 

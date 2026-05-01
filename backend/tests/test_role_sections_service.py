@@ -1,41 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 
-from agflow.db.migrations import run_migrations
-from agflow.db.pool import close_pool, execute
+from agflow.db.pool import close_pool
 from agflow.services import (
     role_documents_service,
     role_sections_service,
     roles_service,
 )
-
-_MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+from tests._db_reset import reset_schema_and_migrate
 
 
 @pytest.fixture
 async def db() -> AsyncIterator[None]:
-    for t in [
-        "agent_skills",
-        "agent_mcp_servers",
-        "agents",
-        "skills",
-        "mcp_servers",
-        "discovery_services",
-        "dockerfile_builds",
-        "dockerfile_files",
-        "dockerfiles",
-        "role_documents",
-        "role_sections",
-        "roles",
-        "secrets",
-        "schema_migrations",
-    ]:
-        await execute(f"DROP TABLE IF EXISTS {t} CASCADE")
-    await run_migrations(_MIGRATIONS_DIR)
+    await reset_schema_and_migrate()
     yield
     await close_pool()
 
@@ -106,11 +86,13 @@ async def test_delete_non_empty_section_blocked(db: None) -> None:
 
 @pytest.mark.asyncio
 async def test_document_in_unknown_section_fails(db: None) -> None:
-    """FK constraint should reject documents targeting a non-existent section."""
-    import asyncpg
+    """role_documents_service.create should reject a non-existent section.
 
+    (role_documents are filesystem-based now, so we validate via the
+    role_sections_service rather than a DB FK constraint.)
+    """
     await roles_service.create(role_id="dev", display_name="Dev")
-    with pytest.raises(asyncpg.ForeignKeyViolationError):
+    with pytest.raises(role_sections_service.SectionNotFoundError):
         await role_documents_service.create(
             role_id="dev",
             section="unknown_section",

@@ -17,7 +17,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
 
 -- set_updated_at() (FUNCTION)
 
-CREATE FUNCTION set_updated_at() RETURNS trigger
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN

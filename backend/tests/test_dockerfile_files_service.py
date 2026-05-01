@@ -2,31 +2,20 @@ from __future__ import annotations
 
 import os
 import uuid
-from pathlib import Path
 
 import pytest
 
-os.environ["DATABASE_URL"] = "postgresql://agflow:agflow_dev@192.168.10.68:5432/agflow"
 os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
-from agflow.db.migrations import run_migrations  # noqa: E402
-from agflow.db.pool import close_pool, execute  # noqa: E402
-from agflow.services import dockerfile_files_service as files  # noqa: E402
-from agflow.services import dockerfiles_service  # noqa: E402
-
-_MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+from agflow.db.pool import close_pool
+from agflow.services import dockerfile_files_service as files
+from agflow.services import dockerfiles_service
+from tests._db_reset import reset_schema_and_migrate
 
 
 @pytest.fixture(autouse=True)
 async def _clean():
-    await execute("DROP TABLE IF EXISTS dockerfile_builds CASCADE")
-    await execute("DROP TABLE IF EXISTS dockerfile_files CASCADE")
-    await execute("DROP TABLE IF EXISTS dockerfiles CASCADE")
-    await execute("DROP TABLE IF EXISTS role_documents CASCADE")
-    await execute("DROP TABLE IF EXISTS roles CASCADE")
-    await execute("DROP TABLE IF EXISTS secrets CASCADE")
-    await execute("DROP TABLE IF EXISTS schema_migrations CASCADE")
-    await run_migrations(_MIGRATIONS_DIR)
+    await reset_schema_and_migrate()
     await dockerfiles_service.create(dockerfile_id="test", display_name="Test")
     yield
     await close_pool()
@@ -54,13 +43,16 @@ async def test_duplicate_path_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_list_for_dockerfile() -> None:
-    # The fixture auto-seeds the 3 standard files.
+    # The fixture auto-seeds the standard files (3 docker + 3 docs).
     items = await files.list_for_dockerfile("test")
     paths = {i.path for i in items}
     assert paths == {
         "Dockerfile",
         "entrypoint.sh",
         "Dockerfile.json",
+        "description.md",
+        "help.fr.md",
+        "help.en.md",
     }
 
 
@@ -85,9 +77,10 @@ async def test_dockerfile_json_seeded_with_defaults() -> None:
     assert set(parsed.keys()) == {"docker", "Params"}
 
     docker = parsed["docker"]
+    # {slug} is substituted with the dockerfile_id at seed time (here "test").
     assert docker["Container"] == {
-        "Name": "agent-{slug}-{id}",
-        "Image": "agflow-{slug}:{hash}",
+        "Name": "agent-test-{id}",
+        "Image": "agflow-test:{hash}",
     }
     assert docker["Network"] == {"Mode": "bridge"}
     assert docker["Runtime"] == {
@@ -100,9 +93,6 @@ async def test_dockerfile_json_seeded_with_defaults() -> None:
     assert docker["Environments"] == {"ANTHROPIC_API_KEY": "{API_KEY_NAME}"}
     assert docker["Mounts"] == [
         {"source": "{WORKSPACE_PATH}", "target": "/app/workspace", "readonly": False},
-        {"source": "./config", "target": "/app/config", "readonly": True},
-        {"source": "./skills", "target": "/app/skills", "readonly": True},
-        {"source": "./output", "target": "/app/output", "readonly": False},
     ]
 
     assert parsed["Params"] == {

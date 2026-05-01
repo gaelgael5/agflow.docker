@@ -1,41 +1,24 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-os.environ["DATABASE_URL"] = "postgresql://agflow:agflow_dev@192.168.10.68:5432/agflow"
 os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
-from agflow.db.migrations import run_migrations  # noqa: E402
-from agflow.db.pool import close_pool, execute  # noqa: E402
-from agflow.services import (  # noqa: E402
+from agflow.db.pool import close_pool
+from agflow.services import (
     discovery_services_service,
     mcp_catalog_service,
     skills_catalog_service,
 )
-
-_MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+from tests._db_reset import reset_schema_and_migrate
 
 
 @pytest.fixture(autouse=True)
 async def _clean():
-    for t in [
-        "skills",
-        "mcp_servers",
-        "discovery_services",
-        "dockerfile_builds",
-        "dockerfile_files",
-        "dockerfiles",
-        "role_documents",
-        "roles",
-        "secrets",
-        "schema_migrations",
-    ]:
-        await execute(f"DROP TABLE IF EXISTS {t} CASCADE")
-    await run_migrations(_MIGRATIONS_DIR)
+    await reset_schema_and_migrate()
     await discovery_services_service.create(
         service_id="yoops", name="yoops", base_url="https://x"
     )

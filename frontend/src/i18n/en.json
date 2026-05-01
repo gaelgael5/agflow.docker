@@ -346,7 +346,12 @@
       "error": "Error",
       "task_failed": "❌ Agent failed (exit code {{exit_code}}). Check that the API key is configured and that the entrypoint doesn't hide errors (2>/dev/null).",
       "task_success": "✅ Task completed successfully",
-      "container_exit_error": "⚠️ Container exited with code {{exit_code}}"
+      "container_exit_error": "⚠️ Container exited with code {{exit_code}}",
+      "mode_label": "Launch runtime",
+      "mode_classic": "Classic",
+      "mode_swarm": "Swarm",
+      "mode_help_classic": "Run the container via direct docker run (local debug — no Swarm required).",
+      "mode_help_swarm": "Run the container as a one-shot Swarm service via stack.yml + docker stack deploy (prod mode, matches the public API)."
     },
     "import": {
       "confirm_title": "Import this zip?",

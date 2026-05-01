@@ -44,6 +44,23 @@ interface TaskEvent {
 }
 
 const STORAGE_KEY_PREFIX = "agflow.chat.position.";
+const STORAGE_KEY_MODE = "agflow.chat.mode";
+
+type RuntimeMode = "classic" | "swarm";
+
+function isRuntimeMode(value: unknown): value is RuntimeMode {
+  return value === "classic" || value === "swarm";
+}
+
+function loadMode(): RuntimeMode {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_MODE);
+    if (isRuntimeMode(saved)) return saved;
+  } catch {
+    /* ignore */
+  }
+  return "swarm";
+}
 
 function randomId(): string {
   return Math.random().toString(36).slice(2, 11);
@@ -87,6 +104,7 @@ export function ChatWindow({
     }
     return { w: 520, h: 600 };
   });
+  const [mode, setMode] = useState<RuntimeMode>(() => loadMode());
   const [zIndex, setZIndex] = useState(() => bringToFront());
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -114,6 +132,16 @@ export function ChatWindow({
       /* ignore */
     }
   }, [position, size, dockerfileId]);
+
+  // Persist the runtime mode globally (the user generally tests one way or
+  // the other — no need for per-dockerfile preference).
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_MODE, mode);
+    } catch {
+      /* ignore */
+    }
+  }, [mode]);
 
   // Auto-scroll to bottom when new messages arrive.
   useEffect(() => {
@@ -244,6 +272,7 @@ export function ChatWindow({
           body: JSON.stringify({
             instruction: text,
             session_id: sessionId,
+            mode,
             ...(secrets && Object.keys(secrets).length > 0
               ? { secrets }
               : {}),
@@ -448,16 +477,44 @@ export function ChatWindow({
               : t("dockerfiles.chat_window.idle")}
           </span>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={handleClose}
-          className="h-6 w-6 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800"
-          aria-label={t("dockerfiles.chat_window.close")}
-        >
-          <X className="w-3.5 h-3.5" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <div
+            className="inline-flex rounded border border-zinc-700 overflow-hidden text-[10px]"
+            role="radiogroup"
+            aria-label={t("dockerfiles.chat_window.mode_label")}
+          >
+            {(["classic", "swarm"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                onClick={() => setMode(m)}
+                disabled={streaming}
+                title={t(`dockerfiles.chat_window.mode_help_${m}`)}
+                className={cn(
+                  "px-2 py-0.5 transition-colors",
+                  mode === m
+                    ? "bg-zinc-100 text-zinc-900 font-semibold"
+                    : "text-zinc-300 hover:bg-zinc-800",
+                  streaming && "cursor-not-allowed opacity-50",
+                )}
+              >
+                {t(`dockerfiles.chat_window.mode_${m}`)}
+              </button>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={handleClose}
+            className="h-6 w-6 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800"
+            aria-label={t("dockerfiles.chat_window.close")}
+          >
+            <X className="w-3.5 h-3.5" />
+          </Button>
+        </div>
       </div>
 
       {/* Empty launch keys banner */}

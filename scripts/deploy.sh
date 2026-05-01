@@ -48,23 +48,35 @@ ssh pve "pct exec ${CTID} -- bash -c '
 '"
 
 echo "==> Pushing into CT ${CTID} and extracting..."
-# IMPORTANT : on purge les sous-dossiers tracés AVANT l'extract pour eviter
-# que des fichiers obsolètes (renommés/supprimés en local) trainent côté CT.
-# Symptôme historique : la consolidation 86 → 1 migrations laissait les
-# anciennes migrations (002_*, 003_*, ...) dans backend/migrations/ et le
-# backend les rejouait au boot → UndefinedColumnError, crashloop.
-#
-# data/ N'EST PAS dans la liste : aucun risque de corrompre les données.
-# Seuls les dossiers que le tarball recree intégralement sont purgés.
+# IMPORTANT — préservations côté CT :
+# 1. .env : peut avoir été patché côté CT (AUTH_MODE, secrets etc.). On le
+#    sauvegarde avant l'extract et on le restaure après ; le .env du tarball
+#    sert uniquement de bootstrap pour un CT vierge.
+# 2. data/ N'EST PAS dans le tarball : aucun risque de corrompre les données.
+# 3. Sous-dossiers tracés (backend/src, backend/migrations, frontend/src) :
+#    purgés AVANT l'extract pour éviter que des fichiers obsolètes
+#    (renommés/supprimés en local) trainent côté CT. Symptôme historique :
+#    la consolidation 86 → 1 migrations laissait les anciennes migrations
+#    (002_*, 003_*, ...) → UndefinedColumnError au boot, crashloop.
 ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz && \
          pct exec ${CTID} -- bash -c '
            mkdir -p ${REPO_DIR_ON_CT}
            mkdir -p ${REPO_DIR_ON_CT}/data
+           # Sauvegarde le .env CT s il existe
+           ENV_PRESERVE=
+           if [ -f ${REPO_DIR_ON_CT}/.env ]; then
+             ENV_PRESERVE=/tmp/agflow-env-preserve.txt
+             cp ${REPO_DIR_ON_CT}/.env "$ENV_PRESERVE"
+           fi
            # Purge les répertoires entièrement tracés avant l extract.
            rm -rf ${REPO_DIR_ON_CT}/backend/src \
                   ${REPO_DIR_ON_CT}/backend/migrations \
                   ${REPO_DIR_ON_CT}/frontend/src
            cd ${REPO_DIR_ON_CT} && tar xzf /tmp/agflow-deploy.tar.gz
+           # Restaure le .env CT (le bootstrap du tarball ne ecrase plus)
+           if [ -n "$ENV_PRESERVE" ] && [ -f "$ENV_PRESERVE" ]; then
+             mv "$ENV_PRESERVE" ${REPO_DIR_ON_CT}/.env
+           fi
          '"
 
 if [ "$REBUILD" -eq 1 ]; then

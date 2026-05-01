@@ -802,14 +802,16 @@ async def start(
     content_hash: str,
     user_secrets: dict[str, str] | None = None,
 ) -> ContainerInfo:
-    """Create and start a container for a given dockerfile.
+    """Create a Swarm service for an agent and resolve its container.
 
     Raises:
-        ImageNotBuiltError: the target image does not exist yet.
-        TooManyContainersError: the hard limit of running containers is reached.
-        InvalidParamsError: Dockerfile.json cannot be translated to a config.
+        ImageNotBuiltError: target image doesn't exist on the local daemon.
+        TooManyContainersError: hard limit MAX_RUNNING_CONTAINERS reached.
+        InvalidParamsError: Dockerfile.json cannot be translated.
     """
-    # Enforce concurrency limit before touching docker.
+    import asyncio as _asyncio
+
+    # Concurrency guard
     existing = await list_running()
     alive = [c for c in existing if c.status in ("running", "created", "restarting")]
     if len(alive) >= MAX_RUNNING_CONTAINERS:
@@ -820,57 +822,91 @@ async def start(
 
     instance_id = secrets.token_hex(3)
     platform_secrets = await _load_platform_secrets()
-    # Merge: platform secrets + user secrets (user wins)
     all_secrets = {**platform_secrets, **(user_secrets or {})}
-    name, config = build_run_config(
+    name, spec = build_service_spec(
         dockerfile_id=dockerfile_id,
         params_json_content=params_json_content,
         content_hash=content_hash,
         instance_id=instance_id,
         extra_env=all_secrets,
     )
+    classic_image = spec["TaskTemplate"]["ContainerSpec"]["Image"]
 
-    # Pre-create auto-prefixed mount directories so the default workspace/
-    # output/... mounts "just work" without the user having to mkdir first.
+    # Pre-create auto-prefixed mount dirs (same as before)
     _ensure_mount_paths_from_config(
-        dockerfile_id, params_json_content, instance_id, content_hash
+        dockerfile_id, params_json_content, instance_id, content_hash,
     )
 
-    # Generate .tmp/ files (run.sh + .env) before launching
-    _generate_tmp_files(dockerfile_id, name, config)
+    # Generate .tmp/ classic files for diagnostic (run.sh always generated for debug)
+    _, classic_config = build_run_config(
+        dockerfile_id=dockerfile_id,
+        params_json_content=params_json_content,
+        content_hash=content_hash,
+        instance_id=instance_id,
+        extra_env=all_secrets,
+    )
+    _generate_tmp_files(dockerfile_id, name, classic_config)
 
     docker = aiodocker.Docker()
     try:
+        # Preflight : image must exist
         try:
-            await docker.images.inspect(config["Image"])
+            await docker.images.inspect(classic_image)
         except aiodocker.exceptions.DockerError as exc:
             if exc.status == 404:
                 raise ImageNotBuiltError(
-                    f"Image '{config['Image']}' not found — build the dockerfile first."
+                    f"Image '{classic_image}' not found — build the dockerfile first."
                 ) from exc
             raise
 
-        container = await docker.containers.create(config=config, name=name)
-        await container.start()
-        inspect = await container.show()
+        # Create the Swarm service
+        service_create_resp = await docker.services.create(spec)
+        service_id = service_create_resp.get("ID") or service_create_resp.get("Id", "")
 
+        # Poll tasks until at least one is running (timeout ~30s)
+        container_id = ""
+        for _attempt in range(30):
+            tasks = await docker.tasks.list(filters={"service": name})
+            for task in tasks:
+                state = task.get("Status", {}).get("State", "")
+                if state == "running":
+                    cs = task.get("Status", {}).get("ContainerStatus", {}) or {}
+                    container_id = cs.get("ContainerID", "")
+                    if container_id:
+                        break
+            if container_id:
+                break
+            await _asyncio.sleep(1)
+
+        if not container_id:
+            # Service was created but no container came up. Cleanup + error.
+            with contextlib.suppress(Exception):
+                await docker.services.delete(service_id)
+            raise ContainerRunnerError(
+                f"Service '{name}' created but no running container after 30s"
+            )
+
+        # Inspect the container to produce ContainerInfo
+        container = docker.containers.container(container_id=container_id)
+        inspect = await container.show()
         cfg = inspect.get("Config") or {}
         state = inspect.get("State") or {}
         labels = cfg.get("Labels") or {}
         info = ContainerInfo(
-            id=inspect.get("Id", ""),
-            name=(inspect.get("Name") or "").lstrip("/"),
+            id=inspect.get("Id", container_id),
+            name=(inspect.get("Name") or name).lstrip("/"),
             dockerfile_id=labels.get(_AGFLOW_DOCKERFILE_LABEL, dockerfile_id),
-            image=cfg.get("Image", config["Image"]),
+            image=cfg.get("Image", classic_image),
             status=state.get("Status", "running"),
             created_at=_parse_docker_ts(inspect.get("Created", "")),
             instance_id=labels.get(_AGFLOW_INSTANCE_LABEL, instance_id),
         )
         _log.info(
-            "container.start",
+            "container.start_swarm",
             dockerfile_id=dockerfile_id,
+            service_id=service_id,
+            service_name=name,
             container_id=info.id,
-            name=info.name,
         )
         return info
     finally:

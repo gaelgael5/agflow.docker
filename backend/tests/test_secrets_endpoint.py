@@ -1,24 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from agflow.db.migrations import run_migrations
-from agflow.db.pool import close_pool, execute
+from agflow.db.pool import close_pool
 from agflow.main import create_app
-
-_MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+from tests._db_reset import reset_schema_and_migrate
 
 
 @pytest.fixture
 async def async_client() -> AsyncIterator[AsyncClient]:
-    # Reset DB via the shared pool (same event loop as the tests)
-    await execute("DROP TABLE IF EXISTS secrets CASCADE")
-    await execute("DROP TABLE IF EXISTS schema_migrations CASCADE")
-    await run_migrations(_MIGRATIONS_DIR)
+    await reset_schema_and_migrate()
 
     app = create_app()
     transport = ASGITransport(app=app)

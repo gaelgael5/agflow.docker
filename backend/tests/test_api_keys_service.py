@@ -1,27 +1,20 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pytest
 
 os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 os.environ.setdefault("API_KEY_SALT", "test-salt-for-hmac-32chars-ok!!")
 
-from agflow.db.migrations import run_migrations
-from agflow.db.pool import close_pool, execute
+from agflow.db.pool import close_pool
 from agflow.services import api_keys_service, users_service
-
-_MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+from tests._db_reset import reset_schema_and_migrate
 
 
 @pytest.fixture(autouse=True)
 async def _clean():
-    await execute("DROP TABLE IF EXISTS api_keys CASCADE")
-    await execute("DROP TABLE IF EXISTS user_identities CASCADE")
-    await execute("DROP TABLE IF EXISTS users CASCADE")
-    await execute("DROP TABLE IF EXISTS schema_migrations CASCADE")
-    await run_migrations(_MIGRATIONS_DIR)
+    await reset_schema_and_migrate()
     await users_service.create(email="admin@test.com", role="admin", status="active")
     yield
     await close_pool()

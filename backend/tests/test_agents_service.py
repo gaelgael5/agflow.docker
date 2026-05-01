@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 
-from agflow.db.migrations import run_migrations
 from agflow.db.pool import close_pool, execute, fetch_one
 from agflow.schemas.agents import (
     AgentCreate,
@@ -14,29 +12,12 @@ from agflow.schemas.agents import (
     AgentUpdate,
 )
 from agflow.services import agents_service
-
-_MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+from tests._db_reset import reset_schema_and_migrate
 
 
 @pytest.fixture
 async def db() -> AsyncIterator[None]:
-    for t in [
-        "agent_skills",
-        "agent_mcp_servers",
-        "agents",
-        "skills",
-        "mcp_servers",
-        "discovery_services",
-        "dockerfile_builds",
-        "dockerfile_files",
-        "dockerfiles",
-        "role_documents",
-        "roles",
-        "secrets",
-        "schema_migrations",
-    ]:
-        await execute(f"DROP TABLE IF EXISTS {t} CASCADE")
-    await run_migrations(_MIGRATIONS_DIR)
+    await reset_schema_and_migrate()
     # Seed minimal fixtures for FK references
     await execute(
         "INSERT INTO dockerfiles (id, display_name) VALUES ('claude-code', 'Claude Code')"

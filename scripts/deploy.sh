@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Deploy agflow.docker to LXC 201 (192.168.10.158)
+# Deploy agflow.docker to LXC 201 (192.168.10.154)
 #
 # Prereqs :
 #   - ssh alias `pve` in ~/.ssh/config
@@ -48,13 +48,22 @@ ssh pve "pct exec ${CTID} -- bash -c '
 '"
 
 echo "==> Pushing into CT ${CTID} and extracting..."
+# IMPORTANT : on purge les sous-dossiers tracés AVANT l'extract pour eviter
+# que des fichiers obsolètes (renommés/supprimés en local) trainent côté CT.
+# Symptôme historique : la consolidation 86 → 1 migrations laissait les
+# anciennes migrations (002_*, 003_*, ...) dans backend/migrations/ et le
+# backend les rejouait au boot → UndefinedColumnError, crashloop.
+#
+# data/ N'EST PAS dans la liste : aucun risque de corrompre les données.
+# Seuls les dossiers que le tarball recree intégralement sont purgés.
 ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz && \
          pct exec ${CTID} -- bash -c '
            mkdir -p ${REPO_DIR_ON_CT}
            mkdir -p ${REPO_DIR_ON_CT}/data
-           # Extract on top — tarball contains only code (backend/, frontend/,
-           # .env, compose, Caddyfile). data/ is NOT in the tarball so it stays
-           # untouched. No rm -rf, no mv — zero risk of corrupting data/.
+           # Purge les répertoires entièrement tracés avant l extract.
+           rm -rf ${REPO_DIR_ON_CT}/backend/src \
+                  ${REPO_DIR_ON_CT}/backend/migrations \
+                  ${REPO_DIR_ON_CT}/frontend/src
            cd ${REPO_DIR_ON_CT} && tar xzf /tmp/agflow-deploy.tar.gz
          '"
 
@@ -69,5 +78,5 @@ ssh pve "pct exec ${CTID} -- bash -c 'cd ${REPO_DIR_ON_CT} && docker compose -f 
 
 echo ""
 echo "==> Deployed. Smoke test:"
-echo "    curl http://192.168.10.158/health"
-echo "    curl http://192.168.10.158/api/admin/auth/login -X POST -H 'Content-Type: application/json' -d '{\"email\":\"<admin_email>\",\"password\":\"<admin_password>\"}'"
+echo "    curl http://192.168.10.154/health"
+echo "    curl http://192.168.10.154/api/admin/auth/login -X POST -H 'Content-Type: application/json' -d '{\"email\":\"<admin_email>\",\"password\":\"<admin_password>\"}'"

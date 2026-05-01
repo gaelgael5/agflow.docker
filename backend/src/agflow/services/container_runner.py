@@ -1326,6 +1326,133 @@ async def run_task(
                 _log.warning("run_task.clear_container.failed", error=str(_exc))
 
 
+async def run_task_swarm(
+    dockerfile_id: str,
+    *,
+    params_json_content: str,
+    content_hash: str,
+    task_payload: dict[str, Any],
+    timeout_seconds: int = 600,
+    user_secrets: dict[str, str] | None = None,
+    on_container_started: Any | None = None,
+    cleanup: bool = False,
+    session_id: str | None = None,
+    agent_instance_id: str | None = None,
+    mount_base_id: str | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """One-shot task execution in Swarm mode (mirror de run_task()).
+
+    Génère .tmp/{stack.yml, deploy.sh, task.json}, puis subprocess
+    `bash deploy.sh` qui :
+      1. docker stack deploy -c stack.yml STACK_NAME
+      2. docker service logs --follow STACK_NAME_agent (stream stdout)
+      3. docker stack rm STACK_NAME (cleanup)
+
+    Yield des events {"type": "log", "data": "..."} pour chaque ligne
+    parsable JSON, plus un final {"type": "done", "status": "success"
+    | "failure", "exit_code": N}.
+    """
+    import asyncio as _asyncio
+    import json as _json
+    import secrets as _secrets
+
+    # Concurrency guard (même limite que start())
+    existing = await list_running()
+    alive = [c for c in existing if c.status in ("running", "created", "restarting")]
+    if len(alive) >= MAX_RUNNING_CONTAINERS:
+        raise TooManyContainersError(
+            f"Maximum of {MAX_RUNNING_CONTAINERS} running containers reached."
+        )
+
+    session_id = session_id or _secrets.token_hex(6)
+    instance_id = secrets.token_hex(3)
+    platform_secrets = await _load_platform_secrets()
+    all_secrets = {**platform_secrets, **(user_secrets or {})}
+
+    name, _spec = build_service_spec(
+        dockerfile_id=dockerfile_id,
+        params_json_content=params_json_content,
+        content_hash=content_hash,
+        instance_id=instance_id,
+        extra_env=all_secrets,
+        mount_base_id=mount_base_id,
+    )
+    # On a besoin de classic_config pour _generate_tmp_files_swarm (mounts/env source)
+    _, classic_config = build_run_config(
+        dockerfile_id=dockerfile_id,
+        params_json_content=params_json_content,
+        content_hash=content_hash,
+        instance_id=instance_id,
+        extra_env=all_secrets,
+        mount_base_id=mount_base_id,
+    )
+    _ensure_mount_paths_from_config(
+        dockerfile_id, params_json_content, instance_id, content_hash,
+    )
+
+    deploy_path = _generate_tmp_files_swarm(
+        dockerfile_id=dockerfile_id,
+        service_name=name,
+        config=classic_config,
+        task_payload=task_payload,
+    )
+
+    if agent_instance_id is not None:
+        try:
+            from uuid import UUID as _UUID
+
+            from agflow.services.agents_instances_service import (
+                set_last_container as _set_lc,
+            )
+            await _set_lc(instance_id=_UUID(str(agent_instance_id)), container_name=name)
+        except Exception as _exc:
+            _log.warning("run_task_swarm.set_container.failed", error=str(_exc))
+
+    # Lance bash deploy.sh comme subprocess
+    proc = await _asyncio.create_subprocess_exec(
+        "bash", deploy_path,
+        stdout=_asyncio.subprocess.PIPE,
+        stderr=_asyncio.subprocess.PIPE,
+    )
+
+    try:
+        # Stream stdout ligne par ligne, parser JSON quand possible
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            decoded = line.decode("utf-8", errors="replace").rstrip("\n")
+            if not decoded:
+                continue
+            # Tente parser JSON ; sinon yield comme log brut
+            try:
+                event = _json.loads(decoded)
+                if isinstance(event, dict):
+                    yield event
+                    continue
+            except _json.JSONDecodeError:
+                pass
+            yield {"type": "log", "data": decoded}
+
+        exit_code = await proc.wait()
+        status = "success" if exit_code == 0 else "failure"
+        yield {"type": "done", "status": status, "exit_code": exit_code}
+
+        _log.info(
+            "container.run_task_swarm.done",
+            dockerfile_id=dockerfile_id,
+            service_name=name,
+            session_id=session_id,
+            exit_code=exit_code,
+        )
+    finally:
+        if cleanup:
+            import shutil as _shutil
+            tmp_dir = os.path.dirname(deploy_path)
+            with contextlib.suppress(Exception):
+                _shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 async def stop(container_id: str) -> None:
     """Stop and remove an agent : delete its Swarm service if exists, sinon
     fallback container delete (rétro-compat pour containers classiques restants).

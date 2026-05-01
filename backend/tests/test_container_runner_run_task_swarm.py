@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -115,3 +116,89 @@ def test_generate_tmp_files_swarm_deploy_sh_is_executable(tmp_data_dir: Path) ->
     # Sur Unix, vérifie le mode exécutable. Sur Windows, skipped.
     if os.name != "nt":
         assert os.access(deploy_path, os.X_OK)
+
+
+@pytest.mark.asyncio
+async def test_run_task_swarm_yields_done_event_on_success(tmp_data_dir: Path) -> None:
+    """run_task_swarm doit yield au moins un event 'done' avec status."""
+    from agflow.services import container_runner
+
+    # Mock subprocess pour simuler bash deploy.sh qui ouvre, stream, ferme
+    fake_proc = MagicMock()
+    fake_proc.returncode = 0
+    fake_proc.stdout.readline = AsyncMock(side_effect=[
+        b'{"type":"log","data":"hello"}\n',
+        b"",  # EOF
+    ])
+    fake_proc.wait = AsyncMock(return_value=0)
+    fake_proc.communicate = AsyncMock(return_value=(b"", b""))
+
+    params = """
+    {
+      "docker": {
+        "Container": {"Name": "agent-claude-{id}", "Image": "agflow-claude:{hash}"},
+        "Network": {"Mode": "agflow-internal"},
+        "Runtime": {"Init": true, "WorkingDir": "/app"},
+        "Resources": {"Memory": "1g"},
+        "Environments": {},
+        "Mounts": []
+      },
+      "Params": {}
+    }
+    """
+
+    with (
+        patch("agflow.services.container_runner._load_platform_secrets",
+              AsyncMock(return_value={})),
+        patch("agflow.services.container_runner.list_running",
+              AsyncMock(return_value=[])),
+        patch("agflow.services.container_runner._ensure_mount_paths_from_config"),
+        patch("asyncio.create_subprocess_exec",
+              AsyncMock(return_value=fake_proc)),
+    ):
+        events = []
+        async for ev in container_runner.run_task_swarm(
+            dockerfile_id="claude",
+            params_json_content=params,
+            content_hash="abc",
+            task_payload={"text": "hello"},
+            cleanup=True,
+        ):
+            events.append(ev)
+
+    # Au moins un event 'done' avec status success/failure
+    done_events = [e for e in events if e.get("type") == "done"]
+    assert len(done_events) == 1
+    assert done_events[0]["status"] == "success"
+    assert done_events[0]["exit_code"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_task_swarm_rejects_when_max_services_reached(tmp_data_dir: Path) -> None:
+    """Concurrency guard : MAX_RUNNING_CONTAINERS encore enforced."""
+    from agflow.services import container_runner
+
+    fake_alive = [
+        container_runner.ContainerInfo(
+            id=f"c{i}", name=f"n{i}", dockerfile_id="x", image="i",
+            status="running", created_at="2026-01-01T00:00:00", instance_id="i",
+        )
+        for i in range(container_runner.MAX_RUNNING_CONTAINERS)
+    ]
+    with (
+        patch("agflow.services.container_runner.list_running",
+              AsyncMock(return_value=fake_alive)),
+        pytest.raises(container_runner.TooManyContainersError),
+    ):
+        params = """
+        {"docker": {"Container": {"Name": "x", "Image": "y"},
+         "Network": {}, "Runtime": {}, "Resources": {},
+         "Environments": {}, "Mounts": []}, "Params": {}}
+        """
+        async for _ in container_runner.run_task_swarm(
+            dockerfile_id="claude",
+            params_json_content=params,
+            content_hash="abc",
+            task_payload={},
+        ):
+            pass

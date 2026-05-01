@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -24,6 +25,7 @@ class TaskRequest(BaseModel):
     model: str = Field(default="", max_length=100)
     secrets: dict[str, str] = Field(default_factory=dict)
     session_id: str = Field(default="", max_length=100)
+    mode: Literal["classic", "swarm"] = "swarm"
 
 router = APIRouter(
     prefix="/api/admin",
@@ -244,7 +246,12 @@ async def run_task(
 
     async def _stream():
         try:
-            async for event in container_runner.run_task(
+            runner = (
+                container_runner.run_task_swarm
+                if payload.mode == "swarm"
+                else container_runner.run_task
+            )
+            async for event in runner(
                 dockerfile_id,
                 params_json_content=params_file.content,
                 content_hash=dockerfile.current_hash,
@@ -411,7 +418,12 @@ async def run_agent_task(
 
     async def _stream():
         try:
-            async for event in container_runner.run_task(
+            runner = (
+                container_runner.run_task_swarm
+                if payload.mode == "swarm"
+                else container_runner.run_task
+            )
+            async for event in runner(
                 dockerfile_id,
                 params_json_content=resolved_params_content,
                 content_hash=dockerfile.current_hash,

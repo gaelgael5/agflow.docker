@@ -283,6 +283,7 @@
     "no_dockerfiles": "Aucun dockerfile — crée ton premier",
     "select_dockerfile": "Sélectionne un dockerfile",
     "no_files": "Aucun fichier",
+    "drop_hint": "Déposer pour ajouter / écraser",
     "current_hash": "Hash courant",
     "status": {
       "never_built": "🔴 Jamais compilé",

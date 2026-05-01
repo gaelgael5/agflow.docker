@@ -22,9 +22,9 @@ async def pool():
 async def api_key_id(pool) -> UUID:
     kid = uuid4()
     await execute(
-        "INSERT INTO api_keys (id, owner_id, name, prefix, key_hash, scopes) "
-        "VALUES ($1, $2, 'test-expiry', $3, 'hash', $4)",
-        kid, uuid4(), f"pfx_{str(kid)[:8]}", ["read"],
+        "INSERT INTO api_keys (id, name, prefix, key_hash, scopes) "
+        "VALUES ($1, 'test-expiry', $2, 'hash', $3)",
+        kid, f"pfx_{str(kid)[:8]}", ["read"],
     )
     yield kid
     await execute("DELETE FROM api_keys WHERE id = $1", kid)

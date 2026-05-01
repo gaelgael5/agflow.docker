@@ -6,12 +6,11 @@ from pathlib import Path
 
 import pytest
 
-os.environ["DATABASE_URL"] = "postgresql://agflow:agflow_dev@192.168.10.68:5432/agflow"
-os.environ["SECRETS_MASTER_KEY"] = "test-master-key-phrase-32chars-ok"
+os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
-from agflow.db.migrations import run_migrations  # noqa: E402
-from agflow.db.pool import close_pool, execute, fetch_one  # noqa: E402
-from agflow.services import secrets_service  # noqa: E402
+from agflow.db.migrations import run_migrations
+from agflow.db.pool import close_pool, execute, fetch_one
+from agflow.services import secrets_service
 
 _MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
 

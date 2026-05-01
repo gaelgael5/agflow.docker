@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import time
-
-import pytest
+from datetime import UTC
 
 from agflow.auth.api_key import (
     NO_EXPIRY,
@@ -49,9 +47,9 @@ def test_hmac_rejects_tampered_key() -> None:
 
 
 def test_expiry_encoding() -> None:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    future = datetime(2027, 6, 15, tzinfo=timezone.utc)
+    future = datetime(2027, 6, 15, tzinfo=UTC)
     key, _, _ = generate_api_key(SALT, expires_at=future)
     parsed = parse_api_key(key)
     assert parsed is not None
@@ -60,9 +58,9 @@ def test_expiry_encoding() -> None:
 
 
 def test_expired_key_detected() -> None:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    past = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    past = datetime(2020, 1, 1, tzinfo=UTC)
     key, _, _ = generate_api_key(SALT, expires_at=past)
     parsed = parse_api_key(key)
     assert parsed is not None

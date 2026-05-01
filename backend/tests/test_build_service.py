@@ -8,7 +8,7 @@ os.environ.setdefault("ADMIN_EMAIL", "a@b.c")
 os.environ.setdefault("ADMIN_PASSWORD_HASH", "x")
 os.environ.setdefault("SECRETS_MASTER_KEY", "x")
 
-from agflow.services.build_service import compute_hash, image_tag_for  # noqa: E402
+from agflow.services.build_service import compute_hash, image_tag_for
 
 
 def _file(path: str, content: str) -> dict:

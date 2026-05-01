@@ -11,8 +11,8 @@ os.environ.setdefault("ADMIN_EMAIL", "a@b.c")
 os.environ.setdefault("ADMIN_PASSWORD_HASH", "x")
 os.environ.setdefault("SECRETS_MASTER_KEY", "x")
 
-from agflow.schemas.roles import DocumentSummary, RoleSummary  # noqa: E402
-from agflow.services import prompt_generator  # noqa: E402
+from agflow.schemas.roles import DocumentSummary, RoleSummary
+from agflow.services import prompt_generator
 
 
 def _make_role() -> RoleSummary:
@@ -122,6 +122,5 @@ async def test_generate_prompts_raises_if_no_anthropic_key() -> None:
     with patch(
         "agflow.services.prompt_generator.secrets_service.resolve_env",
         new=_raise_missing,
-    ):
-        with pytest.raises(prompt_generator.MissingAnthropicKeyError):
-            await prompt_generator.generate_prompts(role, documents)
+    ), pytest.raises(prompt_generator.MissingAnthropicKeyError):
+        await prompt_generator.generate_prompts(role, documents)

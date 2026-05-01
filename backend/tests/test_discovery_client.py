@@ -11,7 +11,7 @@ os.environ.setdefault("ADMIN_EMAIL", "a@b.c")
 os.environ.setdefault("ADMIN_PASSWORD_HASH", "x")
 os.environ.setdefault("SECRETS_MASTER_KEY", "x")
 
-from agflow.services import discovery_client  # noqa: E402
+from agflow.services import discovery_client
 
 
 def _mock_transport(handler):

@@ -6,13 +6,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-os.environ["DATABASE_URL"] = "postgresql://agflow:agflow_dev@192.168.10.68:5432/agflow"
 os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
-from agflow.db.migrations import run_migrations  # noqa: E402
-from agflow.db.pool import close_pool, execute  # noqa: E402
-from agflow.schemas.catalogs import ProbeResult  # noqa: E402
-from agflow.services import discovery_services_service as svc  # noqa: E402
+from agflow.db.migrations import run_migrations
+from agflow.db.pool import close_pool, execute
+from agflow.schemas.catalogs import ProbeResult
+from agflow.services import discovery_services_service as svc
 
 _MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
 

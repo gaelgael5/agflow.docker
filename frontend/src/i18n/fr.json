@@ -283,6 +283,7 @@
     "no_dockerfiles": "Aucun dockerfile — crée ton premier",
     "select_dockerfile": "Sélectionne un dockerfile",
     "no_files": "Aucun fichier",
+    "drop_hint": "Déposer pour ajouter / écraser",
     "current_hash": "Hash courant",
     "status": {
       "never_built": "🔴 Jamais compilé",
@@ -889,7 +890,8 @@
   "topbar": {
     "export": "Exporter les données",
     "export_tooltip": "Télécharger une archive ZIP du volume data/",
-    "export_error": "Échec de l'export. Réessayez."
+    "export_error": "Échec de l'export. Réessayez.",
+    "apps_menu": "Applications"
   },
   "contracts": {
     "tab_title": "Contrats API",

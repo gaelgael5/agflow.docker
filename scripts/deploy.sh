@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Deploy agflow.docker to LXC 201 (192.168.10.158)
+# Deploy agflow.docker to LXC 201 (192.168.10.154)
 #
 # Prereqs :
 #   - ssh alias `pve` in ~/.ssh/config
@@ -48,14 +48,38 @@ ssh pve "pct exec ${CTID} -- bash -c '
 '"
 
 echo "==> Pushing into CT ${CTID} and extracting..."
+# IMPORTANT — préservations côté CT :
+# 1. .env : peut avoir été patché côté CT (AUTH_MODE, secrets etc.). On le
+#    sauvegarde avant l'extract et on le restaure après ; le .env du tarball
+#    sert uniquement de bootstrap pour un CT vierge.
+# 2. data/ N'EST PAS dans le tarball : aucun risque de corrompre les données.
+# 3. Sous-dossiers tracés (backend/src, backend/migrations, frontend/src) :
+#    purgés AVANT l'extract pour éviter que des fichiers obsolètes
+#    (renommés/supprimés en local) trainent côté CT. Symptôme historique :
+#    la consolidation 86 → 1 migrations laissait les anciennes migrations
+#    (002_*, 003_*, ...) → UndefinedColumnError au boot, crashloop.
+# Note : le `\$ENV_PRESERVE` est échappé pour rester littéral et être
+# évalué par le shell distant — `${CTID}` et `${REPO_DIR_ON_CT}` sont
+# au contraire interpolés volontairement côté local.
 ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz && \
          pct exec ${CTID} -- bash -c '
            mkdir -p ${REPO_DIR_ON_CT}
            mkdir -p ${REPO_DIR_ON_CT}/data
-           # Extract on top — tarball contains only code (backend/, frontend/,
-           # .env, compose, Caddyfile). data/ is NOT in the tarball so it stays
-           # untouched. No rm -rf, no mv — zero risk of corrupting data/.
+           # Sauvegarde le .env CT s il existe
+           ENV_PRESERVE=
+           if [ -f ${REPO_DIR_ON_CT}/.env ]; then
+             ENV_PRESERVE=/tmp/agflow-env-preserve.txt
+             cp ${REPO_DIR_ON_CT}/.env \"\$ENV_PRESERVE\"
+           fi
+           # Purge les répertoires entièrement tracés avant l extract.
+           rm -rf ${REPO_DIR_ON_CT}/backend/src \
+                  ${REPO_DIR_ON_CT}/backend/migrations \
+                  ${REPO_DIR_ON_CT}/frontend/src
            cd ${REPO_DIR_ON_CT} && tar xzf /tmp/agflow-deploy.tar.gz
+           # Restaure le .env CT (le bootstrap du tarball ne ecrase plus)
+           if [ -n \"\$ENV_PRESERVE\" ] && [ -f \"\$ENV_PRESERVE\" ]; then
+             mv \"\$ENV_PRESERVE\" ${REPO_DIR_ON_CT}/.env
+           fi
          '"
 
 if [ "$REBUILD" -eq 1 ]; then
@@ -69,5 +93,5 @@ ssh pve "pct exec ${CTID} -- bash -c 'cd ${REPO_DIR_ON_CT} && docker compose -f 
 
 echo ""
 echo "==> Deployed. Smoke test:"
-echo "    curl http://192.168.10.158/health"
-echo "    curl http://192.168.10.158/api/admin/auth/login -X POST -H 'Content-Type: application/json' -d '{\"email\":\"<admin_email>\",\"password\":\"<admin_password>\"}'"
+echo "    curl http://192.168.10.154/health"
+echo "    curl http://192.168.10.154/api/admin/auth/login -X POST -H 'Content-Type: application/json' -d '{\"email\":\"<admin_email>\",\"password\":\"<admin_password>\"}'"

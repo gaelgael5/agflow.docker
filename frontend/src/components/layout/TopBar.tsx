@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { AppsMenu } from "@/components/layout/AppsMenu";
 
 interface Props {
   onOpenSidebar?: () => void;
@@ -182,6 +183,7 @@ export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive, assi
         >
           <Bell className="w-4 h-4" />
         </button>
+        <AppsMenu />
         <div className="hidden sm:block w-px h-5 bg-border mx-1" />
         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-[11px] font-semibold shrink-0">
           GB

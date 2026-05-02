@@ -107,6 +107,8 @@ export function DockerfilesPage() {
   const [showAddFileDialog, setShowAddFileDialog] = useState(false);
   const [addFilePrefix, setAddFilePrefix] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(220);
+  const [dropActive, setDropActive] = useState(false);
+  const [dropping, setDropping] = useState(false);
   const [deleteFolderPath, setDeleteFolderPath] = useState<string | null>(null);
   const [showParamsDialog, setShowParamsDialog] = useState(false);
   const [showDeleteDockerfileConfirm, setShowDeleteDockerfileConfirm] =
@@ -220,6 +222,37 @@ export function DockerfilesPage() {
     setSelectedId(null);
     setSelectedFileId(null);
     setDraftContent(null);
+  }
+
+  async function handleFilesDrop(droppedFiles: File[]) {
+    if (!selectedId || droppedFiles.length === 0) return;
+    setDropping(true);
+    setActionErrors([]);
+    const errors: string[] = [];
+    for (const file of droppedFiles) {
+      try {
+        const content = await file.text();
+        // Cherche dans allFiles (liste DB complète) — `files` exclut les
+        // HIDDEN_FILES comme Dockerfile.json, qui restent quand même
+        // présents côté backend et déclenchent un 409 si on retombe sur
+        // createFile.
+        const existing = allFiles.find((f) => f.path === file.name);
+        if (existing) {
+          await dockerfilesApi.updateFile(selectedId, existing.id, content);
+        } else {
+          await dockerfilesApi.createFile(selectedId, {
+            path: file.name,
+            content,
+          });
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push(`${file.name}: ${message}`);
+      }
+    }
+    if (errors.length > 0) setActionErrors(errors);
+    await qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
+    setDropping(false);
   }
 
   async function handleAddFile(values: Record<string, string>) {
@@ -751,7 +784,40 @@ export function DockerfilesPage() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-2">
+              <div
+                className={cn(
+                  "flex-1 overflow-y-auto p-2 transition-colors relative",
+                  dropActive &&
+                    "bg-primary/10 outline-2 outline-dashed outline-primary -outline-offset-4",
+                  dropping && "opacity-60 pointer-events-none",
+                )}
+                onDragOver={(e) => {
+                  if (!e.dataTransfer.types.includes("Files")) return;
+                  e.preventDefault();
+                  if (!dropActive) setDropActive(true);
+                }}
+                onDragLeave={(e) => {
+                  // Only clear when the leave is for the wrapper itself, not
+                  // a child — relatedTarget is the new element under cursor.
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                    setDropActive(false);
+                  }
+                }}
+                onDrop={(e) => {
+                  if (!e.dataTransfer.types.includes("Files")) return;
+                  e.preventDefault();
+                  setDropActive(false);
+                  const dropped = Array.from(e.dataTransfer.files);
+                  if (dropped.length > 0) void handleFilesDrop(dropped);
+                }}
+              >
+                {dropActive && (
+                  <div className="absolute inset-2 flex items-center justify-center pointer-events-none z-10">
+                    <span className="text-[12px] font-semibold text-primary bg-background/90 px-3 py-1 rounded shadow">
+                      {t("dockerfiles.drop_hint")}
+                    </span>
+                  </div>
+                )}
                 {files.length === 0 ? (
                   <p className="text-muted-foreground text-[12px] italic px-2 py-2">
                     {t("dockerfiles.no_files")}

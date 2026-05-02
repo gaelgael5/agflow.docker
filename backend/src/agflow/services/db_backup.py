@@ -39,11 +39,36 @@ _RESTORE_CMD = (
 )
 
 
+def _demux_docker_frames(buf: bytes) -> tuple[bytes, bytes]:
+    """Split le buffer multiplexed Docker en (stdout, leftover).
+
+    Format de chaque frame : 1 byte stream_id (1=stdout, 2=stderr) + 3 bytes
+    padding + 4 bytes big-endian length + payload. On accumule un buffer
+    car un message WS peut contenir plusieurs frames OU une frame partielle.
+    Retourne le payload stdout extrait et le reliquat à reprocesser au tour
+    suivant.
+    """
+    out = bytearray()
+    pos = 0
+    while pos + 8 <= len(buf):
+        stream_id = buf[pos]
+        size = int.from_bytes(buf[pos + 4 : pos + 8], "big")
+        if pos + 8 + size > len(buf):
+            break  # frame incomplete — wait for more bytes
+        payload = buf[pos + 8 : pos + 8 + size]
+        if stream_id == 1:  # stdout uniquement
+            out.extend(payload)
+        pos += 8 + size
+    return bytes(out), buf[pos:]
+
+
 async def stream_dump() -> AsyncIterator[bytes]:
     """Stream le pg_dump gzippé du container postgres.
 
     Yields des chunks bytes qui peuvent être pipés directement dans
-    une StreamingResponse FastAPI.
+    une StreamingResponse FastAPI. Le protocole Docker exec sans TTY
+    encapsule chaque chunk dans un header 8 bytes (stream_id + length),
+    qu'on dépacke pour ne yielder que le stdout brut.
     """
     docker = aiodocker.Docker()
     try:
@@ -54,21 +79,20 @@ async def stream_dump() -> AsyncIterator[bytes]:
             stderr=False,
         )
         ws = await exec_obj.start(detach=False)
+        leftover = b""
         try:
             while True:
                 msg = await ws.receive()
                 if msg.type.name in ("CLOSED", "CLOSING", "ERROR"):
                     break
-                if msg.data:
-                    # Multiplexed protocol : si pas de TTY, le 1er byte
-                    # est le stream id (1=stdout, 2=stderr) suivi de 7
-                    # bytes de header puis le payload. aiohttp donne déjà
-                    # le payload nu pour `receive_bytes()`, mais
-                    # `receive()` peut retourner du raw. On prend tel quel.
-                    yield msg.data
+                if not msg.data:
+                    continue
+                buf = leftover + msg.data
+                payload, leftover = _demux_docker_frames(buf)
+                if payload:
+                    yield payload
         finally:
             await ws.close()
-        # Vérifier exit code
         info = await exec_obj.inspect()
         exit_code = info.get("ExitCode", 0)
         if exit_code != 0:

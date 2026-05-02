@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from agflow.api.admin.agents import router as admin_agents_router
 from agflow.api.admin.ai_providers import router as admin_ai_providers_router
 from agflow.api.admin.api_keys import router as admin_api_keys_router
+from agflow.api.admin.apps import router as admin_apps_router
 from agflow.api.admin.auth import router as admin_auth_router
 from agflow.api.admin.avatars import router as admin_avatars_router
 from agflow.api.admin.containers import router as admin_containers_router
@@ -311,6 +312,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_generations_router)
     app.include_router(admin_users_router)
     app.include_router(admin_api_keys_router)
+    app.include_router(admin_apps_router)
     app.include_router(infra_categories_router)
     app.include_router(infra_named_types_router)
     app.include_router(infra_named_type_actions_router)

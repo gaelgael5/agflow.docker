@@ -232,7 +232,11 @@ export function DockerfilesPage() {
     for (const file of droppedFiles) {
       try {
         const content = await file.text();
-        const existing = files.find((f) => f.path === file.name);
+        // Cherche dans allFiles (liste DB complète) — `files` exclut les
+        // HIDDEN_FILES comme Dockerfile.json, qui restent quand même
+        // présents côté backend et déclenchent un 409 si on retombe sur
+        // createFile.
+        const existing = allFiles.find((f) => f.path === file.name);
         if (existing) {
           await dockerfilesApi.updateFile(selectedId, existing.id, content);
         } else {

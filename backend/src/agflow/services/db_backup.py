@@ -39,36 +39,14 @@ _RESTORE_CMD = (
 )
 
 
-def _demux_docker_frames(buf: bytes) -> tuple[bytes, bytes]:
-    """Split le buffer multiplexed Docker en (stdout, leftover).
-
-    Format de chaque frame : 1 byte stream_id (1=stdout, 2=stderr) + 3 bytes
-    padding + 4 bytes big-endian length + payload. On accumule un buffer
-    car un message WS peut contenir plusieurs frames OU une frame partielle.
-    Retourne le payload stdout extrait et le reliquat à reprocesser au tour
-    suivant.
-    """
-    out = bytearray()
-    pos = 0
-    while pos + 8 <= len(buf):
-        stream_id = buf[pos]
-        size = int.from_bytes(buf[pos + 4 : pos + 8], "big")
-        if pos + 8 + size > len(buf):
-            break  # frame incomplete — wait for more bytes
-        payload = buf[pos + 8 : pos + 8 + size]
-        if stream_id == 1:  # stdout uniquement
-            out.extend(payload)
-        pos += 8 + size
-    return bytes(out), buf[pos:]
-
-
 async def stream_dump() -> AsyncIterator[bytes]:
     """Stream le pg_dump gzippé du container postgres.
 
-    Yields des chunks bytes qui peuvent être pipés directement dans
-    une StreamingResponse FastAPI. Le protocole Docker exec sans TTY
-    encapsule chaque chunk dans un header 8 bytes (stream_id + length),
-    qu'on dépacke pour ne yielder que le stdout brut.
+    Yields des chunks bytes pipés directement dans une StreamingResponse
+    FastAPI. aiodocker.exec.start(detach=False) retourne un Stream
+    asynchrone dont read_out() rend des Message {data, stream}, déjà
+    démultiplexées par stream_id (1=stdout, 2=stderr) — on ne keep que
+    stdout, le pg_dump | gzip envoie ses bytes binaires sur stdout pur.
     """
     docker = aiodocker.Docker()
     try:
@@ -78,21 +56,14 @@ async def stream_dump() -> AsyncIterator[bytes]:
             stdout=True,
             stderr=False,
         )
-        ws = await exec_obj.start(detach=False)
-        leftover = b""
-        try:
+        async with exec_obj.start(detach=False) as stream:
             while True:
-                msg = await ws.receive()
-                if msg.type.name in ("CLOSED", "CLOSING", "ERROR"):
+                msg = await stream.read_out()
+                if msg is None:
                     break
-                if not msg.data:
-                    continue
-                buf = leftover + msg.data
-                payload, leftover = _demux_docker_frames(buf)
-                if payload:
-                    yield payload
-        finally:
-            await ws.close()
+                # msg.stream : 1 = stdout, 2 = stderr
+                if msg.stream == 1 and msg.data:
+                    yield msg.data
         info = await exec_obj.inspect()
         exit_code = info.get("ExitCode", 0)
         if exit_code != 0:
@@ -119,28 +90,23 @@ async def restore_dump(stream_in: AsyncIterator[bytes]) -> dict:
             stdout=True,
             stderr=True,
         )
-        ws = await exec_obj.start(detach=False)
         output_chunks: list[bytes] = []
-        try:
-            # Push le contenu en stdin
+        async with exec_obj.start(detach=False) as stream:
+            # Push le contenu gzippé en stdin
             async for chunk in stream_in:
                 if chunk:
-                    await ws.send_bytes(chunk)
-            # Signaler EOF
-            await ws.close()
-            # Lire ce que psql a écrit (juste pour le retour)
+                    await stream.write_in(chunk)
+            # Signaler EOF côté stdin
+            await stream.close()
+            # Lire le tail du output (stdout/stderr de psql)
             while True:
-                msg = await ws.receive()
-                if msg.type.name in ("CLOSED", "CLOSING", "ERROR"):
+                msg = await stream.read_out()
+                if msg is None:
                     break
                 if msg.data:
                     output_chunks.append(msg.data)
                     if sum(len(c) for c in output_chunks) > 64 * 1024:
-                        # Garde la fin uniquement
                         output_chunks = output_chunks[-50:]
-        except Exception:
-            # ws probablement déjà closed côté send_bytes EOF
-            pass
         info = await exec_obj.inspect()
         exit_code = info.get("ExitCode") or 0
         tail = b"".join(output_chunks).decode("utf-8", errors="replace")[-2000:]

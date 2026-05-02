@@ -58,6 +58,9 @@ echo "==> Pushing into CT ${CTID} and extracting..."
 #    (renommés/supprimés en local) trainent côté CT. Symptôme historique :
 #    la consolidation 86 → 1 migrations laissait les anciennes migrations
 #    (002_*, 003_*, ...) → UndefinedColumnError au boot, crashloop.
+# Note : le `\$ENV_PRESERVE` est échappé pour rester littéral et être
+# évalué par le shell distant — `${CTID}` et `${REPO_DIR_ON_CT}` sont
+# au contraire interpolés volontairement côté local.
 ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz && \
          pct exec ${CTID} -- bash -c '
            mkdir -p ${REPO_DIR_ON_CT}
@@ -66,7 +69,7 @@ ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz &&
            ENV_PRESERVE=
            if [ -f ${REPO_DIR_ON_CT}/.env ]; then
              ENV_PRESERVE=/tmp/agflow-env-preserve.txt
-             cp ${REPO_DIR_ON_CT}/.env "$ENV_PRESERVE"
+             cp ${REPO_DIR_ON_CT}/.env \"\$ENV_PRESERVE\"
            fi
            # Purge les répertoires entièrement tracés avant l extract.
            rm -rf ${REPO_DIR_ON_CT}/backend/src \
@@ -74,8 +77,8 @@ ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz &&
                   ${REPO_DIR_ON_CT}/frontend/src
            cd ${REPO_DIR_ON_CT} && tar xzf /tmp/agflow-deploy.tar.gz
            # Restaure le .env CT (le bootstrap du tarball ne ecrase plus)
-           if [ -n "$ENV_PRESERVE" ] && [ -f "$ENV_PRESERVE" ]; then
-             mv "$ENV_PRESERVE" ${REPO_DIR_ON_CT}/.env
+           if [ -n \"\$ENV_PRESERVE\" ] && [ -f \"\$ENV_PRESERVE\" ]; then
+             mv \"\$ENV_PRESERVE\" ${REPO_DIR_ON_CT}/.env
            fi
          '"
 

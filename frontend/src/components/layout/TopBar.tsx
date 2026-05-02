@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Bell, BotMessageSquare, ChevronRight, Download, Loader2, Menu, Search } from "lucide-react";
+import { Bell, BotMessageSquare, ChevronRight, Database, Download, Loader2, Menu, Search } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { AppsMenu } from "@/components/layout/AppsMenu";
+import { DbBackupDialog } from "@/components/layout/DbBackupDialog";
 
 interface Props {
   onOpenSidebar?: () => void;
@@ -76,6 +77,7 @@ export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive, assi
   const location = useLocation();
   const { isAdmin } = useAuth();
   const [exporting, setExporting] = useState(false);
+  const [showDbDialog, setShowDbDialog] = useState(false);
   const crumb = resolveCrumbs(location.pathname, t);
 
   const handleExport = async () => {
@@ -132,23 +134,34 @@ export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive, assi
       </div>
       <div className="flex items-center gap-2">
         {isAdmin && (
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={exporting}
-            className={cn(
-              "hidden sm:flex w-8 h-8 rounded-md hover:bg-secondary items-center justify-center text-muted-foreground transition-colors",
-              exporting && "opacity-50 cursor-wait",
-            )}
-            aria-label={t("topbar.export")}
-            title={t("topbar.export_tooltip")}
-          >
-            {exporting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Download className="w-4 h-4" />
-            )}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={exporting}
+              className={cn(
+                "hidden sm:flex w-8 h-8 rounded-md hover:bg-secondary items-center justify-center text-muted-foreground transition-colors",
+                exporting && "opacity-50 cursor-wait",
+              )}
+              aria-label={t("topbar.export")}
+              title={t("topbar.export_tooltip")}
+            >
+              {exporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDbDialog(true)}
+              className="hidden sm:flex w-8 h-8 rounded-md hover:bg-secondary items-center justify-center text-muted-foreground transition-colors"
+              aria-label={t("topbar.db_backup")}
+              title={t("topbar.db_backup_tooltip")}
+            >
+              <Database className="w-4 h-4" />
+            </button>
+          </>
         )}
         <button
           type="button"
@@ -189,6 +202,7 @@ export function TopBar({ onOpenSidebar, onToggleAssistant, assistantActive, assi
           GB
         </div>
       </div>
+      <DbBackupDialog open={showDbDialog} onOpenChange={setShowDbDialog} />
     </header>
   );
 }

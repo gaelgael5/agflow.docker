@@ -891,7 +891,26 @@
     "export": "Export data",
     "export_tooltip": "Download a ZIP archive of the data/ volume",
     "export_error": "Export failed. Try again.",
-    "apps_menu": "Applications"
+    "apps_menu": "Applications",
+    "db_backup": "DB backup",
+    "db_backup_tooltip": "Export / import the Postgres database"
+  },
+  "db_backup": {
+    "title": "Database backup",
+    "subtitle": "Export and import a full Postgres dump (sql.gz).",
+    "export_title": "Export",
+    "export_desc": "Download a full database dump (gzipped pg_dump). Keep it before any risky operation.",
+    "export_button": "Download dump",
+    "export_success": "Dump downloaded: {{filename}}",
+    "export_error": "Export failed. Check backend logs.",
+    "import_title": "Import (DESTRUCTIVE)",
+    "import_desc": "Restore the database from a previous dump. All current tables will be DROPPED and recreated. No undo.",
+    "import_pick_file": "Pick a .sql.gz file",
+    "import_confirm": "Confirm restore (overwrites the database)",
+    "import_success": "Restore done. Reload the page.",
+    "import_error": "Import failed: {{detail}}",
+    "cancel": "Cancel",
+    "close": "Close"
   },
   "contracts": {
     "tab_title": "API Contracts",

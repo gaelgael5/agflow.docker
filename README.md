@@ -40,8 +40,93 @@ Sur l'hôte Proxmox, créer et configurer le LXC (Docker-ready, SSH, réseau DHC
 bash <(wget -qO- https://raw.githubusercontent.com/Configurations/Proxmox/main/LXC/create-lxc.sh) 203 agflow-docker --docker
 ```
 
-Remplacer `202` par le CTID souhaité et `agflow-docker` par le nom du container.  
+Remplacer `203` par le CTID souhaité et `agflow-docker` par le nom du container.  
 Le flag `--docker` installe Docker automatiquement dans le LXC.
+
+
+
+## 🔐 1. Configurer l’accès SSH à GitHub
+
+### 1.1 Générer une clé SSH
+
+Sur la machine cible :
+
+```bash
+
+pct enter 203
+
+ssh-keygen -t ed25519 -C "deploy-roles"
+```
+
+Appuyer sur Entrée pour accepter le chemin par défaut :
+```bash
+~/.ssh/id_ed25519
+```
+
+Passphrase :
+- laisser vide pour un serveur (déploiement automatique)
+- ou en définir une pour plus de sécurité
+
+Démarrer l’agent SSH et charger la clé
+```bash
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+
+cat ~/.ssh/id_ed25519.pub
+
+```
+
+
+
+1 - Ajouter la clé dans GitHub
+2 - Aller sur GitHub
+3 - Settings
+4 - (SSH and GPG keys)[https://github.com/settings/keys]
+5 - New SSH key
+6 - Name : deploy-roles
+7 - Coller la clé publique
+8 - Cliquer sur Add SSH key
+
+
+Tester la connexion
+```bash
+ssh -T git@github.com
+```
+
+Cloner le repository
+```bash
+git clone --branch feat/mom-bus git@github.com:gaelgael5/agflow.docker.git
+cd agflow.docker
+```
+
+Créer et configurer le fichier `.env`
+```bash
+cp .env.example .env
+nano .env
+```
+
+Renseigner au minimum ces valeurs :
+
+| Variable | Valeur |
+|---|---|
+| `DATABASE_URL` | `postgresql://agflow:agflow_dev@postgres:5432/agflow` |
+| `JWT_SECRET` | `openssl rand -hex 32` |
+| `ADMIN_EMAIL` | ex: `admin@agflow.local` |
+| `ADMIN_PASSWORD_HASH` | `python3 -c "import bcrypt; print(bcrypt.hashpw(b'TONPASSWORD', bcrypt.gensalt()).decode())"` |
+| `HARPOCRATE_KEY` | token `hrpv_1_*` fourni par le coffre |
+| `HARPOCRATE_URL` | `https://vault.yoops.org` |
+
+Lancer la stack
+```bash
+bash deploy.sh
+```
+
+Affiche les logs
+```bash
+docker compose -f docker-compose.dev.yml logs --tail=50 backend
+docker compose -f docker-compose-dev.yml logs --tail=50 frontend
+```
+
 
 ---
 
@@ -69,28 +154,6 @@ Auth locale (sans Keycloak) :
 
 ```env
 
-POSTGRES_USER=harpocrate
-POSTGRES_PASSWORD=GAgyAUFete1g58sR1Y0KxusQlED7v8h
-POSTGRES_DB=harpocrate
-
-HARPOCRATE_KEYCLOAK_URL=https://security.yourdomain.org
-HARPOCRATE_KEYCLOAK_REALM=yoops
-HARPOCRATE_KEYCLOAK_CLIENT_ID=
-HARPOCRATE_HMAC_KEY=
-HARPOCRATE_PUBLIC_URL=https://vault.yourdomain.org
-HARPOCRATE_LOG_LEVEL=INFO
-
-# Auth locale activee
-HARPOCRATE_ADMIN_LOCAL_ENABLED=true
-HARPOCRATE_ADMIN_LOCAL_USERNAME=admin
-HARPOCRATE_ADMIN_LOCAL_PASSWORD=mot-de-passe-fort-2026
-HARPOCRATE_ADMIN_LOCAL_EMAIL=gaelgael5@gmail.com
-HARPOCRATE_ADMIN_LOCAL_DISPLAY_NAME=Local Admin
-
-# Mode dev (bandeau visuel permanent)
-# HARPOCRATE_DEV_MODE=true
-# HARPOCRATE_DEV_MODE_LABEL=DEV - LXC 202
-
 ```
 
 ---
@@ -109,40 +172,6 @@ https://your ip :8443/
 
 
 ---
-
-## Configuration Keycloak (OIDC)
-
-L'application utilise un **client public PKCE** — pas de client secret (le code tourne dans le navigateur).
-
-### 1. Créer le client
-
-Dans **Clients → Create client** :
-
-| Champ | Valeur |
-|---|---|
-| Client type | OpenID Connect |
-| Client ID | `harpocrate-vault` |
-| Client authentication | **OFF** (client public) |
-| Standard flow | ON |
-| Direct access grants | OFF |
-
-Onglet **Settings** du client :
-
-| Champ | Valeur |
-|---|---|
-| Valid redirect URIs | `https://vault.yoops.org/oauth-callback` |
-| Valid post logout redirect URIs | `https://vault.yoops.org/` |
-| Web origins | `https://vault.yoops.org` |
-
-### 2. Créer le rôle realm admin
-
-**Realm roles → Create role** : `harpocrate-admin`
-
-Assigner ce rôle aux utilisateurs qui doivent avoir accès aux écrans d'administration (**User → Role mapping → Assign role → Filter by realm roles → `harpocrate-admin`**).
-
-### 3. Vérifier les client scopes
-
-Dans le client, onglet **Client scopes** : s'assurer que `email` et `profile` sont présents dans les scopes assignés (c'est le cas par défaut).
 
 ### 4. Configurer `.env`
 

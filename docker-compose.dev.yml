@@ -1,4 +1,10 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: agflow-redis
+    restart: unless-stopped
+    networks: [agflow]
+
   postgres:
     image: postgres:16-alpine
     container_name: agflow-postgres
@@ -42,6 +48,7 @@ services:
       - ./apps.json:/app/apps.json:ro
     depends_on:
       postgres: { condition: service_healthy }
+      redis: { condition: service_started }
     networks: [agflow]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

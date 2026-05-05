@@ -154,10 +154,11 @@ async def generate(deployment_id: UUID, user_secrets: dict[str, str] | None = No
     # Load platform secrets from vault
     try:
         all_secrets = await secrets_service.list_all()
-        vault: dict[str, str] = {}
-        for s in all_secrets:
-            revealed = await secrets_service.reveal(s.id)
-            vault[s.var_name] = revealed.value
+        vault: dict[str, str] = (
+            await secrets_service.resolve_env([s.name for s in all_secrets])
+            if all_secrets
+            else {}
+        )
     except Exception:
         vault = {}
 

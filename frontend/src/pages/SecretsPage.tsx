@@ -10,7 +10,6 @@ import { EnvVarStatus } from "@/components/EnvVarStatus";
 import type { EnvVarStatus as EnvVarStatusT } from "@/lib/secretsApi";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -28,10 +27,10 @@ export function SecretsPage() {
   const { secrets, isLoading, createMutation, updateMutation, deleteMutation } = useSecrets();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ name: string } | null>(null);
 
   const envStatus = useEnvVarStatuses(
-    (secrets ?? []).map((s) => s.var_name),
+    (secrets ?? []).map((s) => s.name),
   );
 
   async function handleCreate(payload: SecretCreate) {
@@ -51,7 +50,7 @@ export function SecretsPage() {
   }
 
   function handleDelete(secret: SecretSummary) {
-    setDeleteTarget({ id: secret.id, name: secret.var_name });
+    setDeleteTarget({ name: secret.name });
   }
 
   return (
@@ -100,8 +99,6 @@ export function SecretsPage() {
               <TableRow>
                 <TableHead>{t("secrets.col_name")}</TableHead>
                 <TableHead>{t("secrets.col_value")}</TableHead>
-                <TableHead className="hidden md:table-cell">{t("secrets.col_scope")}</TableHead>
-                <TableHead className="hidden md:table-cell">{t("secrets.col_used_by")}</TableHead>
                 <TableHead className="text-right">
                   {t("secrets.col_actions")}
                 </TableHead>
@@ -110,12 +107,12 @@ export function SecretsPage() {
             <TableBody>
               {secrets?.map((secret) => (
                 <SecretRow
-                  key={secret.id}
+                  key={secret.name}
                   secret={secret}
-                  status={envStatus.data?.[secret.var_name]}
+                  status={envStatus.data?.[secret.name]}
                   onDelete={() => handleDelete(secret)}
                   onUpdate={async (value) => {
-                    await updateMutation.mutateAsync({ id: secret.id, payload: { value } });
+                    await updateMutation.mutateAsync({ name: secret.name, payload: { value } });
                   }}
                   t={t}
                 />
@@ -132,7 +129,7 @@ export function SecretsPage() {
         description={t("secrets.confirm_delete_message", { name: deleteTarget?.name ?? "" })}
         destructive
         onConfirm={async () => {
-          if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id);
+          if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.name);
         }}
       />
     </PageShell>
@@ -162,7 +159,7 @@ function SecretRow({
   async function handleReveal() {
     setLoading(true);
     try {
-      const res = await secretsApi.reveal(secret.id);
+      const res = await secretsApi.reveal(secret.name);
       setRevealed(res.value);
     } finally {
       setLoading(false);
@@ -185,13 +182,13 @@ function SecretRow({
     <TableRow>
       <TableCell>
         <div className="flex items-center gap-1.5">
-          <EnvVarStatus name={secret.var_name} status={status} />
+          <EnvVarStatus name={secret.name} status={status} />
           <Button
             variant="ghost"
             size="icon"
             className="h-6 w-6 shrink-0"
             title={t("secrets.copy_key")}
-            onClick={() => { void navigator.clipboard.writeText(secret.var_name); toast.success(`${secret.var_name} copié`); }}
+            onClick={() => { void navigator.clipboard.writeText(secret.name); toast.success(`${secret.name} copié`); }}
           >
             <Copy className="w-3 h-3 text-muted-foreground" />
           </Button>
@@ -252,14 +249,6 @@ function SecretRow({
             )}
           </div>
         )}
-      </TableCell>
-      <TableCell className="hidden md:table-cell">
-        <Badge variant="secondary">
-          {secret.scope === "global" ? t("secrets.scope_global") : t("secrets.scope_agent")}
-        </Badge>
-      </TableCell>
-      <TableCell className="hidden md:table-cell text-muted-foreground text-[12px]">
-        {secret.used_by.length === 0 ? t("secrets.none_used_by") : secret.used_by.join(", ")}
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">

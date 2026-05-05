@@ -1,47 +1,36 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Literal
-from uuid import UUID
-
 from pydantic import BaseModel, Field, field_validator
 
-Scope = Literal["global", "agent"]
+
+class SecretSummary(BaseModel):
+    name: str
+    is_placeholder: bool = False
+    description: str | None = None
+    tags: list[str] = []
 
 
 class SecretCreate(BaseModel):
-    var_name: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=128)
     value: str = Field(min_length=1)
-    scope: Scope = "global"
 
-    @field_validator("var_name")
+    @field_validator("name")
     @classmethod
     def _upper_snake_case(cls, v: str) -> str:
         v = v.strip()
         if not v.replace("_", "").isalnum():
             raise ValueError(
-                "var_name must contain only alphanumeric characters and underscores"
+                "name must contain only alphanumeric characters and underscores"
             )
         return v.upper()
 
 
 class SecretUpdate(BaseModel):
-    value: str | None = Field(default=None, min_length=1)
-    scope: Scope | None = None
-
-
-class SecretSummary(BaseModel):
-    id: UUID
-    var_name: str
-    scope: Scope
-    created_at: datetime
-    updated_at: datetime
-    used_by: list[str] = Field(default_factory=list)
+    value: str = Field(min_length=1)
 
 
 class SecretReveal(BaseModel):
-    id: UUID
-    var_name: str
+    name: str
     value: str
 
 

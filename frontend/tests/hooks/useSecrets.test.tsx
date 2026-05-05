@@ -31,12 +31,10 @@ describe("useSecrets", () => {
   it("loads secrets via secretsApi.list", async () => {
     vi.mocked(secretsApi.list).mockResolvedValueOnce([
       {
-        id: "1",
-        var_name: "ANTHROPIC_API_KEY",
-        scope: "global",
-        created_at: "2026-04-10",
-        updated_at: "2026-04-10",
-        used_by: [],
+        name: "ANTHROPIC_API_KEY",
+        is_placeholder: false,
+        description: null,
+        tags: [],
       },
     ]);
 
@@ -45,18 +43,16 @@ describe("useSecrets", () => {
     await waitFor(() => {
       expect(result.current.secrets).toHaveLength(1);
     });
-    expect(result.current.secrets?.[0]?.var_name).toBe("ANTHROPIC_API_KEY");
+    expect(result.current.secrets?.[0]?.name).toBe("ANTHROPIC_API_KEY");
   });
 
   it("creates a secret via mutation", async () => {
     vi.mocked(secretsApi.list).mockResolvedValue([]);
     vi.mocked(secretsApi.create).mockResolvedValueOnce({
-      id: "2",
-      var_name: "OPENAI_API_KEY",
-      scope: "global",
-      created_at: "2026-04-10",
-      updated_at: "2026-04-10",
-      used_by: [],
+      name: "OPENAI_API_KEY",
+      is_placeholder: false,
+      description: null,
+      tags: [],
     });
 
     const { result } = renderHook(() => useSecrets(), { wrapper });
@@ -64,12 +60,12 @@ describe("useSecrets", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await result.current.createMutation.mutateAsync({
-      var_name: "OPENAI_API_KEY",
+      name: "OPENAI_API_KEY",
       value: "sk-openai",
     });
 
     expect(secretsApi.create).toHaveBeenCalledWith({
-      var_name: "OPENAI_API_KEY",
+      name: "OPENAI_API_KEY",
       value: "sk-openai",
     });
   });

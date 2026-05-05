@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 from typing import Literal
-from uuid import UUID
 
-import asyncpg
 import structlog
 
-from agflow.config import get_settings
-from agflow.db.pool import fetch_all, fetch_one, get_pool
-from agflow.schemas.secrets import Scope, SecretReveal, SecretSummary
+from agflow.schemas.secrets import SecretReveal, SecretSummary
+from agflow.services import vault_client
 
 _log = structlog.get_logger(__name__)
 
@@ -21,155 +18,90 @@ class DuplicateSecretError(Exception):
     pass
 
 
-async def create(
-    var_name: str,
-    value: str,
-    scope: Scope = "global",
-    agent_id: UUID | None = None,
-) -> SecretSummary:
-    master = get_settings().secrets_master_key
-    try:
-        row = await fetch_one(
-            """
-            INSERT INTO secrets (var_name, value_encrypted, scope, agent_id)
-            VALUES ($1, pgp_sym_encrypt($2, $3), $4, $5)
-            RETURNING id, var_name, scope, created_at, updated_at
-            """,
-            var_name,
-            value,
-            master,
-            scope,
-            agent_id,
-        )
-    except asyncpg.UniqueViolationError as exc:
-        raise DuplicateSecretError(
-            f"Secret '{var_name}' already exists in scope '{scope}'"
-        ) from exc
-    assert row is not None
-    _log.info("secrets.create", var_name=var_name, scope=scope)
-    return SecretSummary(**row, used_by=[])
-
-
 async def list_all() -> list[SecretSummary]:
-    rows = await fetch_all(
-        """
-        SELECT id, var_name, scope, created_at, updated_at
-        FROM secrets
-        ORDER BY var_name ASC
-        """
-    )
-    return [SecretSummary(**r, used_by=[]) for r in rows]
+    infos = await vault_client.list_secrets(limit=200)
+    return [
+        SecretSummary(
+            name=s.name,
+            is_placeholder=s.is_placeholder,
+            description=s.description,
+            tags=s.tags,
+        )
+        for s in infos
+    ]
 
 
-async def get_by_id(secret_id: UUID) -> SecretSummary:
-    row = await fetch_one(
-        "SELECT id, var_name, scope, created_at, updated_at FROM secrets WHERE id = $1",
-        secret_id,
-    )
-    if row is None:
-        raise SecretNotFoundError(f"Secret {secret_id} not found")
-    return SecretSummary(**row, used_by=[])
+async def reveal(name: str) -> SecretReveal:
+    from harpocrate.exceptions import SecretNotFound
+
+    try:
+        value = await vault_client.get_secret(name)
+    except SecretNotFound as exc:
+        raise SecretNotFoundError(f"Secret '{name}' not found") from exc
+    _log.info("secrets.reveal", name=name)
+    return SecretReveal(name=name, value=value)
 
 
-async def reveal(secret_id: UUID) -> SecretReveal:
-    master = get_settings().secrets_master_key
-    row = await fetch_one(
-        """
-        SELECT id, var_name, pgp_sym_decrypt(value_encrypted, $2) AS value
-        FROM secrets
-        WHERE id = $1
-        """,
-        secret_id,
-        master,
-    )
-    if row is None:
-        raise SecretNotFoundError(f"Secret {secret_id} not found")
-    _log.info("secrets.reveal", secret_id=str(secret_id), var_name=row["var_name"])
-    return SecretReveal(id=row["id"], var_name=row["var_name"], value=row["value"])
+async def create(name: str, value: str) -> SecretSummary:
+    from harpocrate.exceptions import VaultHttpError
+
+    try:
+        await vault_client.create_secret(name, value)
+    except VaultHttpError as exc:
+        if exc.status_code == 409:
+            raise DuplicateSecretError(f"Secret '{name}' already exists") from exc
+        raise
+    _log.info("secrets.create", name=name)
+    return SecretSummary(name=name)
 
 
-async def update(
-    secret_id: UUID,
-    value: str | None = None,
-    scope: Scope | None = None,
-) -> SecretSummary:
-    master = get_settings().secrets_master_key
-    sets: list[str] = []
-    args: list[object] = []
-    idx = 1
-    if value is not None:
-        sets.append(f"value_encrypted = pgp_sym_encrypt(${idx}, ${idx + 1})")
-        args.extend([value, master])
-        idx += 2
-    if scope is not None:
-        sets.append(f"scope = ${idx}")
-        args.append(scope)
-        idx += 1
-    if not sets:
-        return await get_by_id(secret_id)
-    sets.append("updated_at = NOW()")
-    args.append(secret_id)
-    query = f"""
-        UPDATE secrets SET {", ".join(sets)}
-        WHERE id = ${idx}
-        RETURNING id, var_name, scope, created_at, updated_at
-    """
-    row = await fetch_one(query, *args)
-    if row is None:
-        raise SecretNotFoundError(f"Secret {secret_id} not found")
-    _log.info("secrets.update", secret_id=str(secret_id))
-    return SecretSummary(**row, used_by=[])
+async def update(name: str, value: str) -> None:
+    from harpocrate.exceptions import SecretNotFound
+
+    try:
+        await vault_client.update_secret(name, value)
+    except SecretNotFound as exc:
+        raise SecretNotFoundError(f"Secret '{name}' not found") from exc
+    _log.info("secrets.update", name=name)
 
 
-async def delete(secret_id: UUID) -> None:
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        result = await conn.execute("DELETE FROM secrets WHERE id = $1", secret_id)
-    if result == "DELETE 0":
-        raise SecretNotFoundError(f"Secret {secret_id} not found")
-    _log.info("secrets.delete", secret_id=str(secret_id))
+async def delete(name: str) -> None:
+    from harpocrate.exceptions import SecretNotFound
+
+    try:
+        await vault_client.delete_secret(name)
+    except SecretNotFound as exc:
+        raise SecretNotFoundError(f"Secret '{name}' not found") from exc
+    _log.info("secrets.delete", name=name)
 
 
 async def resolve_env(var_names: list[str]) -> dict[str, str]:
-    """Resolve alias names to their plaintext values. Raises if any are missing."""
-    master = get_settings().secrets_master_key
-    rows = await fetch_all(
-        """
-        SELECT var_name, pgp_sym_decrypt(value_encrypted, $2) AS value
-        FROM secrets
-        WHERE var_name = ANY($1::text[]) AND scope = 'global'
-        """,
-        var_names,
-        master,
-    )
-    resolved = {r["var_name"]: r["value"] for r in rows}
-    missing = [n for n in var_names if n not in resolved]
+    """Résout les noms de secrets en valeurs déchiffrées. Lève si l'un manque."""
+    from harpocrate.exceptions import SecretNotFound
+
+    result: dict[str, str] = {}
+    missing: list[str] = []
+    for name in var_names:
+        try:
+            result[name] = await vault_client.get_secret(name)
+        except SecretNotFound:
+            missing.append(name)
     if missing:
         raise SecretNotFoundError(f"Missing secrets: {', '.join(missing)}")
-    return resolved
+    return result
 
 
 async def resolve_status(
     var_names: list[str],
 ) -> dict[str, Literal["ok", "empty", "missing"]]:
-    """Return status for each requested variable (for visual indicators 🔴🟠🟢)."""
-    master = get_settings().secrets_master_key
-    rows = await fetch_all(
-        """
-        SELECT var_name, pgp_sym_decrypt(value_encrypted, $2) AS value
-        FROM secrets
-        WHERE var_name = ANY($1::text[]) AND scope = 'global'
-        """,
-        var_names,
-        master,
-    )
-    present = {r["var_name"]: r["value"] for r in rows}
+    """Retourne le statut de chaque variable (pour indicateurs visuels 🔴🟠🟢)."""
+    from harpocrate.exceptions import SecretNotFound
+
     result: dict[str, Literal["ok", "empty", "missing"]] = {}
     for name in var_names:
-        if name not in present:
+        try:
+            value = await vault_client.get_secret(name)
+            result[name] = "ok" if value.strip() else "empty"
+        except SecretNotFound:
             result[name] = "missing"
-        elif not present[name].strip():
-            result[name] = "empty"
-        else:
-            result[name] = "ok"
     return result

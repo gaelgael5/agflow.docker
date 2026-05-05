@@ -24,8 +24,7 @@ describe("RevealButton", () => {
 
   it("reveals the value after clicking", async () => {
     vi.mocked(secretsApi.reveal).mockResolvedValueOnce({
-      id: "abc",
-      var_name: "TEST",
+      name: "abc",
       value: "my-secret-value",
     });
 
@@ -38,8 +37,7 @@ describe("RevealButton", () => {
 
   it("re-masks after clicking Hide", async () => {
     vi.mocked(secretsApi.reveal).mockResolvedValueOnce({
-      id: "abc",
-      var_name: "TEST",
+      name: "abc",
       value: "my-secret-value",
     });
 

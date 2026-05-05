@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     jwt_secret: str
     admin_email: str
     admin_password_hash: str
-    secrets_master_key: str
+    harpocrate_key: str = ""
+    harpocrate_url: str = ""
 
     google_client_id: str = ""
     google_client_secret: str = ""

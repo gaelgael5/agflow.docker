@@ -3,12 +3,11 @@ import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import type { Scope, SecretCreate } from "@/lib/secretsApi";
+import type { SecretCreate } from "@/lib/secretsApi";
 
 interface Props {
   mode: "create" | "edit";
   initialName?: string;
-  initialScope?: Scope;
   onSubmit: (payload: SecretCreate) => Promise<void> | void;
   onCancel: () => void;
 }
@@ -16,21 +15,19 @@ interface Props {
 export function SecretForm({
   mode,
   initialName = "",
-  initialScope = "global",
   onSubmit,
   onCancel,
 }: Props) {
   const { t } = useTranslation();
   const [name, setName] = useState(initialName);
   const [value, setValue] = useState("");
-  const [scope] = useState<Scope>(initialScope);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await onSubmit({ var_name: name, value, scope });
+      await onSubmit({ name, value });
     } finally {
       setSubmitting(false);
     }

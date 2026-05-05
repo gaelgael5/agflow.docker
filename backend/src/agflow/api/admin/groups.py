@@ -105,7 +105,7 @@ async def preview_group(group_id: UUID):
     platform_keys: set[str] = set()
     try:
         from agflow.services import secrets_service
-        platform_keys = {s.var_name for s in await secrets_service.list_all()}
+        platform_keys = {s.name for s in await secrets_service.list_all()}
     except Exception:
         pass
 

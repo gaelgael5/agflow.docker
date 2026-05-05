@@ -540,19 +540,7 @@ CREATE TABLE scripts (
     UNIQUE (name)
 );
 
--- secrets (TABLE)
 
-CREATE TABLE secrets (
-    id uuid DEFAULT uuid_generate_v4() NOT NULL PRIMARY KEY,
-    var_name text NOT NULL,
-    value_encrypted bytea NOT NULL,
-    scope text DEFAULT 'global' NOT NULL,
-    agent_id uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT secrets_scope_check CHECK ((scope = ANY (ARRAY['global'::text, 'agent'::text]))),
-    UNIQUE NULLS NOT DISTINCT (var_name, scope, agent_id)
-);
 
 -- service_types (TABLE)
 
@@ -844,9 +832,7 @@ CREATE INDEX idx_role_sections_role_pos ON role_sections USING btree (role_id, "
 
 CREATE INDEX idx_scripts_execute_on_types_named ON scripts USING btree (execute_on_types_named) WHERE (execute_on_types_named IS NOT NULL);
 
--- idx_secrets_var_name (INDEX)
 
-CREATE INDEX idx_secrets_var_name ON secrets USING btree (var_name);
 
 -- idx_sessions_api_key (INDEX)
 

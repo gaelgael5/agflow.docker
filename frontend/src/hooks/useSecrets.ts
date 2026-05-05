@@ -22,13 +22,13 @@ export function useSecrets() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: SecretUpdate }) =>
-      secretsApi.update(id, payload),
+    mutationFn: ({ name, payload }: { name: string; payload: SecretUpdate }) =>
+      secretsApi.update(name, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: SECRETS_KEY }),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => secretsApi.remove(id),
+    mutationFn: (name: string) => secretsApi.remove(name),
     onSuccess: () => qc.invalidateQueries({ queryKey: SECRETS_KEY }),
   });
 

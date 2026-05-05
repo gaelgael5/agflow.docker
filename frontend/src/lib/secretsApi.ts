@@ -1,21 +1,17 @@
 import { api } from "./api";
 
-export type Scope = "global" | "agent";
 export type EnvVarStatus = "missing" | "empty" | "ok";
 export type EnvVarStatusMap = Record<string, EnvVarStatus>;
 
 export interface SecretSummary {
-  id: string;
-  var_name: string;
-  scope: Scope;
-  created_at: string;
-  updated_at: string;
-  used_by: string[];
+  name: string;
+  is_placeholder: boolean;
+  description: string | null;
+  tags: string[];
 }
 
 export interface SecretReveal {
-  id: string;
-  var_name: string;
+  name: string;
   value: string;
 }
 
@@ -26,14 +22,12 @@ export interface SecretTestResult {
 }
 
 export interface SecretCreate {
-  var_name: string;
+  name: string;
   value: string;
-  scope?: Scope;
 }
 
 export interface SecretUpdate {
-  value?: string;
-  scope?: Scope;
+  value: string;
 }
 
 export const secretsApi = {
@@ -45,19 +39,19 @@ export const secretsApi = {
     const res = await api.post<SecretSummary>("/admin/secrets", payload);
     return res.data;
   },
-  async update(id: string, payload: SecretUpdate): Promise<SecretSummary> {
-    const res = await api.put<SecretSummary>(`/admin/secrets/${id}`, payload);
+  async update(name: string, payload: SecretUpdate): Promise<SecretSummary> {
+    const res = await api.put<SecretSummary>(`/admin/secrets/${name}`, payload);
     return res.data;
   },
-  async remove(id: string): Promise<void> {
-    await api.delete(`/admin/secrets/${id}`);
+  async remove(name: string): Promise<void> {
+    await api.delete(`/admin/secrets/${name}`);
   },
-  async reveal(id: string): Promise<SecretReveal> {
-    const res = await api.get<SecretReveal>(`/admin/secrets/${id}/reveal`);
+  async reveal(name: string): Promise<SecretReveal> {
+    const res = await api.get<SecretReveal>(`/admin/secrets/${name}/reveal`);
     return res.data;
   },
-  async test(id: string): Promise<SecretTestResult> {
-    const res = await api.post<SecretTestResult>(`/admin/secrets/${id}/test`);
+  async test(name: string): Promise<SecretTestResult> {
+    const res = await api.post<SecretTestResult>(`/admin/secrets/${name}/test`);
     return res.data;
   },
   async resolveStatus(varNames: string[]): Promise<EnvVarStatusMap> {

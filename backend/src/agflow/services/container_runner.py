@@ -270,20 +270,13 @@ docker stack rm "$STACK_NAME"
 
 
 async def _load_platform_secrets() -> dict[str, str]:
-    """Load all global platform secrets as a dict for env var injection."""
-    from agflow.config import get_settings
-    from agflow.db.pool import fetch_all
+    """Load all platform secrets as a dict for env var injection."""
+    from agflow.services import secrets_service
 
-    master = get_settings().secrets_master_key
-    rows = await fetch_all(
-        """
-        SELECT var_name, pgp_sym_decrypt(value_encrypted, $1) AS value
-        FROM secrets
-        WHERE scope = 'global'
-        """,
-        master,
-    )
-    return {r["var_name"]: r["value"] for r in rows}
+    summaries = await secrets_service.list_all()
+    if not summaries:
+        return {}
+    return await secrets_service.resolve_env([s.name for s in summaries])
 
 
 class ContainerRunnerError(Exception):

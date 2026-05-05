@@ -39,12 +39,10 @@ describe("SecretsPage", () => {
   it("renders the list of secrets", async () => {
     vi.mocked(secretsApi.list).mockResolvedValueOnce([
       {
-        id: "1",
-        var_name: "ANTHROPIC_API_KEY",
-        scope: "global",
-        created_at: "2026-04-10T12:00:00Z",
-        updated_at: "2026-04-10T12:00:00Z",
-        used_by: [],
+        name: "ANTHROPIC_API_KEY",
+        is_placeholder: false,
+        description: null,
+        tags: [],
       },
     ]);
 

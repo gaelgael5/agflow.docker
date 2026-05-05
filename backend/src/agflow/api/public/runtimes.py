@@ -183,10 +183,10 @@ async def create_runtime(
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc)) from exc
 
     # 4. Build .env (user_secrets > platform secrets > empty).
-    platform_secrets: dict[str, str] = {}
-    for s in await secrets_service.list_all():
-        revealed = await secrets_service.reveal(s.id)
-        platform_secrets[s.var_name] = revealed.value
+    all_s = await secrets_service.list_all()
+    platform_secrets: dict[str, str] = (
+        await secrets_service.resolve_env([s.name for s in all_s]) if all_s else {}
+    )
     env_text = _build_env_text(env_var_names, body.user_secrets, platform_secrets)
 
     # 5. SSH ensure-network + push compose.

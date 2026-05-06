@@ -9,12 +9,7 @@ COPY pyproject.toml ./
 COPY vendor ./vendor
 COPY src ./src
 RUN uv pip install --system --no-cache ./vendor/*.whl \
-    && python3 -c "
-import re, pathlib
-f = pathlib.Path('pyproject.toml')
-t = re.sub(r'\n\[tool\.uv\.sources\]\n.*?(?=\n\[)', '\n', f.read_text(), flags=re.DOTALL)
-f.write_text(t)
-" \
+    && sed -i '/^\[tool\.uv\.sources\]/d; /^harpocrate = { path/d' pyproject.toml \
     && uv pip install --system --no-cache .
 
 FROM python:3.12-slim

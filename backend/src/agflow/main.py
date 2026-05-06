@@ -41,7 +41,6 @@ from agflow.api.admin.templates import router as admin_templates_router
 from agflow.api.admin.terminal import router as admin_terminal_router
 from agflow.api.admin.user_secrets import router as admin_user_secrets_router
 from agflow.api.admin.users import router as admin_users_router
-from agflow.api.admin.vault import router as admin_vault_router
 from agflow.api.health import router as health_router
 from agflow.api.infra.categories import router as infra_categories_router
 from agflow.api.infra.certificates import router as infra_certificates_router
@@ -259,10 +258,6 @@ def create_app() -> FastAPI:
                 "description": "Skills catalog — install and manage skill packs from discovery registries.",
             },
             {
-                "name": "admin-vault",
-                "description": "User vault — client-side encrypted secret storage with passphrase-based key derivation.",
-            },
-            {
                 "name": "admin-user-secrets",
                 "description": "User secrets — per-user encrypted credentials stored in the vault.",
             },
@@ -319,7 +314,6 @@ def create_app() -> FastAPI:
     app.include_router(infra_machines_router)
     app.include_router(infra_swarm_clusters_router)
     app.include_router(infra_certificates_router)
-    app.include_router(admin_vault_router)
     app.include_router(admin_user_secrets_router)
     app.include_router(public_dockerfiles_router)
     app.include_router(public_files_router)

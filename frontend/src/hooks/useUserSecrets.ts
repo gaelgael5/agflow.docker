@@ -1,43 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  userSecretsApi,
-  type UserSecretCreate,
-  type UserSecretSummary,
-  type UserSecretUpdate,
-} from "@/lib/userSecretsApi";
+import { userSecretsApi } from "@/lib/userSecretsApi";
 
-const SECRETS_KEY = ["user-secrets"] as const;
+const KEY = ["user-secrets"] as const;
 
 export function useUserSecrets() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: SECRETS_KEY });
+  const invalidate = () => qc.invalidateQueries({ queryKey: KEY });
 
-  const listQuery = useQuery<UserSecretSummary[]>({
-    queryKey: SECRETS_KEY,
-    queryFn: () => userSecretsApi.list(),
-  });
+  const listQuery = useQuery({ queryKey: KEY, queryFn: userSecretsApi.list });
 
   const createMutation = useMutation({
-    mutationFn: (payload: UserSecretCreate) => userSecretsApi.create(payload),
+    mutationFn: userSecretsApi.create,
     onSuccess: invalidate,
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: UserSecretUpdate }) =>
-      userSecretsApi.update(id, payload),
+    mutationFn: ({ name, value }: { name: string; value: string }) =>
+      userSecretsApi.update(name, value),
     onSuccess: invalidate,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => userSecretsApi.remove(id),
+    mutationFn: userSecretsApi.remove,
     onSuccess: invalidate,
   });
 
-  return {
-    secrets: listQuery.data,
-    isLoading: listQuery.isLoading,
-    createMutation,
-    updateMutation,
-    deleteMutation,
-  };
+  return { listQuery, createMutation, updateMutation, deleteMutation };
 }

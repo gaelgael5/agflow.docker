@@ -8,46 +8,41 @@ Voir [docs/architecture.md](docs/architecture.md) pour la stack complète et
 
 ## License
 
-**agflow.docker** is distributed under the
-[PolyForm Noncommercial License 1.0.0](./LICENSE).
+**agflow.docker** is distributed under the [PolyForm Noncommercial License 1.0.0](./LICENSE).
 
-You may freely use, modify, and share the source code for
-**non-commercial purposes** (personal use, research, education, evaluation).
+You may freely use, modify, and share the source code for **non-commercial purposes** (personal use, research, education, evaluation).
 
-**Commercial use** (SaaS, hosted services, resale, integration in paid
-products, production use by for-profit entities) requires a separate
+**Commercial use** (SaaS, hosted services, resale, integration in paid products, production use by for-profit entities) requires a separate
 commercial license.
 
-See [COMMERCIAL-LICENSE.md](./COMMERCIAL-LICENSE.md) for details and to
-request a commercial license.
+See [COMMERCIAL-LICENSE.md](./COMMERCIAL-LICENSE.md) for details and to request a commercial license.
 
 Copyright (c) 2026 gaelgael5 &lt;llm.beard.family@gmail.com&gt;. All rights
 reserved.
 
-# Pour tester en mode dev
+---
+
+## 1 - Pour tester en mode dev
 
 L'installation se fait en trois étapes exécutées sur l'**hôte Proxmox**, puis dans le **container LXC**.
 
----
-
-### Étape 1 — Créer le container LXC
+### 1. Créer le container LXC
 
 Sur l'hôte Proxmox, créer et configurer le LXC (Docker-ready, SSH, réseau DHCP).
 
 > `bash <(wget -qO- URL)` est requis ici (pas `bash -c "$(wget ...)"`) car le script reçoit des arguments positionnels (`$1` = CTID, `$2` = nom).
 
 ```bash
-bash <(wget -qO- https://raw.githubusercontent.com/Configurations/Proxmox/main/LXC/create-lxc.sh) 203 agflow-docker --docker
+ bash <(wget -qO- https://raw.githubusercontent.com/Configurations/Proxmox/main/LXC/create-lxc.sh) 203 agflow-docker --docker
 ```
 
 Remplacer `203` par le CTID souhaité et `agflow-docker` par le nom du container.  
 Le flag `--docker` installe Docker automatiquement dans le LXC.
 
 
+### 🔐 2. Configurer l’accès SSH à GitHub
 
-## 🔐 1. Configurer l’accès SSH à GitHub
-
-### 1.1 Générer une clé SSH
+#### 2.1 Générer une clé SSH
 
 Sur la machine cible :
 
@@ -76,7 +71,7 @@ cat ~/.ssh/id_ed25519.pub
 
 ```
 
-
+#### 2.2 paramétrer github
 
 1 - Ajouter la clé dans GitHub
 2 - Aller sur GitHub
@@ -99,6 +94,10 @@ git clone --branch feat/mom-bus git@github.com:gaelgael5/agflow.docker.git
 cd agflow.docker
 ```
 
+
+
+## 3. Paramétrage
+
 Créer et configurer le fichier `.env`
 ```bash
 cp .env.example .env
@@ -109,12 +108,15 @@ Renseigner au minimum ces valeurs :
 
 | Variable | Valeur |
 |---|---|
-| `DATABASE_URL` | `postgresql://agflow:agflow_dev@postgres:5432/agflow` |
+| `DATABASE_URL` | `postgresql://<agflow_user>:<your_password>@postgres:5432/<agflow_db>` |
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `ADMIN_EMAIL` | ex: `admin@agflow.local` |
 | `ADMIN_PASSWORD_HASH` | `python3 -c "import bcrypt; print(bcrypt.hashpw(b'TONPASSWORD', bcrypt.gensalt()).decode())"` |
 | `HARPOCRATE_KEY` | token `hrpv_1_*` fourni par le coffre |
 | `HARPOCRATE_URL` | `https://vault.yoops.org` |
+
+
+## 4. Lancement
 
 Lancer la stack
 ```bash
@@ -125,90 +127,6 @@ Affiche les logs
 ```bash
 docker compose -f docker-compose.dev.yml logs --tail=50 backend
 docker compose -f docker-compose-dev.yml logs --tail=50 frontend
-```
-
-
----
-
-### Étape 2 — Initialiser la stack
-
-Télécharge `docker-compose.yml`, `.env.example` et `refresh.sh` dans `/opt/harpocrate`, puis crée un `.env` prêt à éditer :
-
-```bash
-pct exec 202 -- bash -c "$(wget -qLO - https://raw.githubusercontent.com/gaelgael5/harpocrate/refs/heads/main/scripts/setup.sh)"
-```
-
----
-
-### Étape 3 — Configurer `.env`
-
-Se connecter au container et éditer le fichier :
-
-```bash
-pct exec 202 -- bash
-nano /opt/harpocrate/.env
-```
-
-
-Auth locale (sans Keycloak) :
-
-```env
-
-```
-
----
-
-### Étape 5 — Lancer la stack
-
-```bash
-pct exec 202 -- bash -c "cd /opt/harpocrate && ./refresh.sh"
-```
-
-La stack démarre, les images sont pullées depuis GHCR, les migrations DB sont appliquées au premier boot.
-
-```bash
-https://your ip :8443/
-```
-
-
----
-
-### 4. Configurer `.env`
-
-```env
-HARPOCRATE_KEYCLOAK_URL=https://security.yoops.org
-HARPOCRATE_KEYCLOAK_REALM=yoops
-HARPOCRATE_KEYCLOAK_CLIENT_ID=harpocrate-vault
-HARPOCRATE_PUBLIC_URL=https://vault.yoops.org
-```
-
-### 5. Vérifier l'intégration
-
-```bash
-curl https://vault-api.yoops.org/v1/config/keycloak
-```
-
-Réponse attendue :
-```json
-{
-  "realm": "yoops",
-  "client_id": "harpocrate-vault",
-  "issuer": "https://security.yoops.org/realms/yoops"
-}
-```
-
----
-
-## Mise à jour
-
-```bash
-pct exec 202 -- bash -c "cd /opt/harpocrate && ./refresh.sh"
-```
-
-Pour épingler une version spécifique :
-
-```bash
-pct exec 202 -- bash -c "cd /opt/harpocrate && TAG=v1.2.0 ./refresh.sh"
 ```
 
 ---
@@ -229,9 +147,85 @@ cd frontend && npm run dev
 ```bash
 
 # voir les logs du frontend
-docker compose -f /opt/harpocrate/docker-compose.yml logs -f frontend
-
+docker compose -f /opt/agflow.docker/docker-compose.dev.yml logs -f frontend
 # voir les logs du backend
-docker compose -f /opt/harpocrate/docker-compose.yml logs -f backend
+docker compose -f /opt/agflow.docker/docker-compose.dev.yml logs -f backend
 
+```
+
+---
+
+## Configurer le client Keycloak
+
+### 1. Accéder à la console Keycloak
+
+Va sur `https://security.yoops.org/admin/` → realm **yoops** → **Clients** → **Create client**
+
+```env
+HARPOCRATE_KEYCLOAK_URL=https://security.yoops.org
+HARPOCRATE_KEYCLOAK_REALM=yoops
+HARPOCRATE_KEYCLOAK_CLIENT_ID=harpocrate-vault
+HARPOCRATE_KEYCLOAK_CLIENT_SECRET=
+HARPOCRATE_PUBLIC_URL=https://vault.yoops.org
+```
+
+### 2. Onglet "General Settings"
+
+| Champ | Valeur |
+|---|---|
+| Client type | `OpenID Connect` |
+| Client ID | `agflow-docker` |
+| Name | `agflow-docker` (optionnel) |
+
+→ **Next**
+
+### 3. Onglet "Capability config"
+
+| Champ | Valeur |
+|---|---|
+| Client authentication | **ON** (indispensable pour avoir un secret) |
+| Authorization | OFF |
+| Standard flow | **ON** |
+| Direct access grants | OFF |
+
+→ **Next**
+
+### 4. Onglet "Login settings"
+
+| Champ | Valeur |
+|---|---|
+| Root URL | `http://agflow-docker.home.lan` |
+| Home URL | `http://agflow-docker.home.lan` |
+| Valid redirect URIs | `http://agflow-docker.home.lan/*` |
+| Valid post logout redirect URIs | `http://agflow-docker.home.lan/*` |
+| Web origins | `http://agflow-docker.home.lan` |
+
+→ **Save**
+
+### 5. Récupérer le secret
+
+Onglet **Credentials** → copie le **Client secret** → mets-le dans `.env` :
+
+```env
+KEYCLOAK_CLIENT_SECRET=<le secret généré par Keycloak>
+```
+
+### 6. Rôles (optionnel)
+
+Onglet **Roles** → crée les rôles : `admin`, `operator`, `viewer`
+
+Le backend lit `resource_access.agflow-docker.roles` dans le token JWT pour attribuer le rôle agflow.
+
+### 7. Tester
+
+```bash
+docker compose -f docker-compose.dev.yml restart backend
+curl http://agflow-docker.home.lan/api/admin/auth/mode
+# → {"mode":"keycloak"}
+```
+
+
+#### Étape 3 — Initialiser la stack
+```bash
+pct exec 202 -- bash -c "$(wget -qLO - https://raw.githubusercontent.com/gaelgael5/harpocrate/refs/heads/main/scripts/setup.sh)"
 ```

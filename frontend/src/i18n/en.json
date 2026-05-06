@@ -93,7 +93,9 @@
     "refresh": "Refresh",
     "none": "None",
     "close": "Close",
-    "edit": "Edit"
+    "edit": "Edit",
+    "save": "Save",
+    "loading": "Loading…"
   },
   "sidebar": {
     "section_platform": "Platform",
@@ -694,21 +696,6 @@
     "containers.chat:write": "Send tasks via chat",
     "keys:manage": "Manage own API keys (always active)"
   },
-  "vault": {
-    "setup_title": "Create your vault passphrase",
-    "setup_warning": "This passphrase is not stored anywhere. If you forget it, your secrets will be permanently lost.",
-    "setup_passphrase": "Passphrase",
-    "setup_confirm": "Confirm passphrase",
-    "setup_submit": "Create vault",
-    "setup_mismatch": "Passphrases do not match",
-    "setup_min_length": "8 characters minimum",
-    "setup_error_generic": "An error occurred",
-    "unlock_title": "Unlock your vault",
-    "unlock_subtitle": "Enter your passphrase to access your secrets",
-    "unlock_passphrase": "Passphrase",
-    "unlock_submit": "Unlock",
-    "unlock_error": "Incorrect passphrase"
-  },
   "my_secrets": {
     "page_title": "My secrets",
     "page_subtitle": "Your secrets are end-to-end encrypted. Only your passphrase can decrypt them.",
@@ -736,7 +723,9 @@
     "decrypt_error": "Decryption error",
     "empty": "No secrets — add your first API key",
     "vault_status_error": "Could not load vault status",
-    "retry": "Retry"
+    "retry": "Retry",
+    "field_description": "Description (optional)",
+    "reveal_error": "Failed to reveal secret value"
   },
   "target": {
     "select_button": "Select target",

@@ -6,9 +6,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml ./
-COPY secrets ./secrets
+COPY vendor ./vendor
 COPY src ./src
-RUN uv pip install --system --no-cache .
+RUN uv pip install --system --no-cache ./vendor/*.whl && uv pip install --system --no-cache .
 
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1

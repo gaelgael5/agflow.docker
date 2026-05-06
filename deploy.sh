@@ -43,9 +43,13 @@ docker build -t agflow-frontend:latest frontend/
 echo "Arrêt/cleanup du projet docker compose (incl. orphelins)..."
 docker compose -f docker-compose.dev.yml down --remove-orphans || true
 
-# --- 5) Relance ---
+# --- 5) Pull images registry (postgres, redis, caddy, pgweb) si absentes ---
+echo "Pull images registry..."
+docker compose -f docker-compose.dev.yml pull postgres redis caddy pgweb || true
+
+# --- 6) Relance ---
 echo "Démarrage docker compose..."
-docker compose -f docker-compose.dev.yml up -d --remove-orphans --pull missing
+docker compose -f docker-compose.dev.yml up -d --remove-orphans --pull never
 
 echo "OK. Services actifs:"
 docker compose -f docker-compose.dev.yml ps

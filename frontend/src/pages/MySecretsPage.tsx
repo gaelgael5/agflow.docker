@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useUserSecrets } from "@/hooks/useUserSecrets";
 import { userSecretsApi } from "@/lib/userSecretsApi";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 
 function AddDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
@@ -66,7 +66,6 @@ function EditDialog({ name, open, onClose }: { name: string; open: boolean; onCl
 
 export function MySecretsPage() {
   const { t } = useTranslation();
-  const { toast } = useToast();
   const { listQuery, deleteMutation } = useUserSecrets();
   const [addOpen, setAddOpen] = useState(false);
   const [editName, setEditName] = useState<string | null>(null);
@@ -79,13 +78,13 @@ export function MySecretsPage() {
     try {
       const data = await userSecretsApi.reveal(name);
       setRevealed(r => ({ ...r, [name]: data.value }));
-    } catch { toast({ variant: "destructive", description: t("my_secrets.reveal_error") }); }
+    } catch { toast.error(t("my_secrets.reveal_error")); }
     finally { setRevealing(null); }
   };
 
   const handleCopy = (value: string) => {
     navigator.clipboard.writeText(value);
-    toast({ description: t("my_secrets.copy_success") });
+    toast.success(t("my_secrets.copy_success"));
   };
 
   const secrets = listQuery.data ?? [];
@@ -126,7 +125,7 @@ export function MySecretsPage() {
                       {revealed[s.name] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </Button>
                     {revealed[s.name] && (
-                      <Button size="icon" variant="ghost" onClick={() => handleCopy(revealed[s.name])}>
+                      <Button size="icon" variant="ghost" onClick={() => handleCopy(revealed[s.name]!)}>
                         <Copy className="w-4 h-4" />
                       </Button>
                     )}

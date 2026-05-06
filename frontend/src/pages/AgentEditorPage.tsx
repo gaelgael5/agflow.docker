@@ -158,7 +158,7 @@ export function AgentEditorPage() {
   const qc = useQueryClient();
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === "new";
-  const { state: vaultState, decryptSecret } = useVault();
+  const { state: vaultState } = useVault();
 
   const { agent, isLoading: agentLoading, updateMutation } = useAgent(
     isNew ? undefined : id,
@@ -222,12 +222,14 @@ export function AgentEditorPage() {
   });
 
   async function decryptUserSecrets(): Promise<Record<string, string>> {
-    if (vaultState !== "unlocked") return {};
     try {
       const list = await userSecretsApi.list();
       const result: Record<string, string> = {};
       for (const s of list) {
-        try { result[s.name] = decryptSecret(s.ciphertext, s.iv); } catch { /* skip */ }
+        try {
+          const revealed = await userSecretsApi.reveal(s.name);
+          result[s.name] = revealed.value;
+        } catch { /* skip */ }
       }
       return result;
     } catch {

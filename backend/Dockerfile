@@ -8,7 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 COPY pyproject.toml ./
 COPY vendor ./vendor
 COPY src ./src
-RUN uv pip install --system --no-cache ./vendor/*.whl && uv pip install --system --no-cache .
+RUN uv pip install --system --no-cache ./vendor/*.whl \
+    && python3 -c "
+import re, pathlib
+f = pathlib.Path('pyproject.toml')
+t = re.sub(r'\n\[tool\.uv\.sources\]\n.*?(?=\n\[)', '\n', f.read_text(), flags=re.DOTALL)
+f.write_text(t)
+" \
+    && uv pip install --system --no-cache .
 
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1

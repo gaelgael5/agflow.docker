@@ -647,7 +647,7 @@ CREATE TABLE users (
     vault_salt text,
     vault_test_ciphertext text,
     vault_test_iv text,
-    CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['admin'::text, 'user'::text]))),
+    CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['admin'::text, 'user'::text, 'operator'::text, 'viewer'::text]))),
     CONSTRAINT users_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'active'::text, 'disabled'::text]))),
     UNIQUE (email)
 );

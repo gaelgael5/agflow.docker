@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from agflow.auth.dependencies import require_admin
+from agflow.auth.dependencies import require_viewer
 from agflow.schemas.user_secrets import VaultChangePassphrase, VaultSetup, VaultStatus
 from agflow.services import user_secrets_service, users_service
 
 router = APIRouter(
     prefix="/api/admin/vault",
     tags=["admin-vault"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_viewer)],
 )
 
 
-async def _get_user_id(admin_email: str = Depends(require_admin)) -> object:
+async def _get_user_id(admin_email: str = Depends(require_viewer)) -> object:
     user = await users_service.get_by_email(admin_email)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")

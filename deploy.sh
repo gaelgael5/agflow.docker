@@ -45,7 +45,7 @@ docker compose -f docker-compose.dev.yml down --remove-orphans || true
 
 # --- 5) Relance ---
 echo "Démarrage docker compose..."
-docker compose -f docker-compose.dev.yml up -d --remove-orphans --pull never
+docker compose -f docker-compose.dev.yml up -d --remove-orphans --pull missing
 
 echo "OK. Services actifs:"
 docker compose -f docker-compose.dev.yml ps

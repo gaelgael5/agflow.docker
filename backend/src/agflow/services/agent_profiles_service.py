@@ -1,23 +1,22 @@
-"""Agent profiles — stored in agent.json on disk."""
 from __future__ import annotations
 
-import uuid
-from datetime import UTC, datetime
-from typing import Any
 from uuid import UUID
 
+import asyncpg
 import structlog
 
+from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.schemas.agents import AgentProfileSummary
-from agflow.services import agent_files_service
 
 _log = structlog.get_logger(__name__)
 
-_PROFILE_NS = uuid.UUID("c3d4e5f6-a7b8-9012-cdef-123456789012")
+_COLS = (
+    "ap.id, a.id AS agent_id, ap.agent_slug, ap.name, ap.description, "
+    "ap.document_ids, ap.template_slug, ap.template_culture, ap.output_dir, "
+    "ap.created_at, ap.updated_at"
+)
 
-
-def _profile_id(agent_slug: str, profile_name: str) -> UUID:
-    return uuid.uuid5(_PROFILE_NS, f"{agent_slug}:{profile_name}")
+_JOIN = "FROM agent_profiles ap JOIN agents a ON a.slug = ap.agent_slug"
 
 
 class ProfileNotFoundError(Exception):
@@ -28,50 +27,37 @@ class DuplicateProfileError(Exception):
     pass
 
 
-def _to_summary(slug: str, profile: dict[str, Any]) -> AgentProfileSummary:
-    name = profile.get("name", "")
-    now = datetime.now(tz=UTC)
-    raw_docs = profile.get("documents", [])
-    doc_ids: list[UUID] = []
-    for d in raw_docs:
-        try:
-            doc_ids.append(UUID(str(d)))
-        except (ValueError, AttributeError):
-            pass
+def _row(row: dict) -> AgentProfileSummary:
     return AgentProfileSummary(
-        id=_profile_id(slug, name),
-        agent_id=agent_files_service.agent_id_from_slug(slug),
-        name=name,
-        description=profile.get("description", ""),
-        document_ids=doc_ids,
-        template_slug=profile.get("template_slug", ""),
-        template_culture=profile.get("template_culture", ""),
-        output_dir=profile.get("output_dir", "workspace/docs/missions"),
-        created_at=now,
-        updated_at=now,
+        id=row["id"],
+        agent_id=row["agent_id"],
+        name=row["name"],
+        description=row["description"],
+        document_ids=list(row["document_ids"] or []),
+        template_slug=row["template_slug"],
+        template_culture=row["template_culture"],
+        output_dir=row["output_dir"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
     )
 
 
-def _find_agent_slug(agent_id: UUID) -> str:
-    for slug in agent_files_service.list_agent_slugs():
-        if agent_files_service.agent_id_from_slug(slug) == agent_id:
-            return slug
-    raise ProfileNotFoundError(f"Agent {agent_id} not found")
-
-
 async def list_for_agent(agent_id: UUID) -> list[AgentProfileSummary]:
-    slug = _find_agent_slug(agent_id)
-    data = agent_files_service.read_agent(slug)
-    return [_to_summary(slug, p) for p in data.get("profiles", [])]
+    rows = await fetch_all(
+        f"SELECT {_COLS} {_JOIN} WHERE a.id = $1 ORDER BY ap.name ASC",
+        agent_id,
+    )
+    return [_row(r) for r in rows]
 
 
 async def get_by_id(profile_id: UUID) -> AgentProfileSummary:
-    for slug in agent_files_service.list_agent_slugs():
-        data = agent_files_service.read_agent(slug)
-        for p in data.get("profiles", []):
-            if _profile_id(slug, p.get("name", "")) == profile_id:
-                return _to_summary(slug, p)
-    raise ProfileNotFoundError(f"Profile {profile_id} not found")
+    row = await fetch_one(
+        f"SELECT {_COLS} {_JOIN} WHERE ap.id = $1",
+        profile_id,
+    )
+    if row is None:
+        raise ProfileNotFoundError(f"Profile {profile_id} not found")
+    return _row(row)
 
 
 async def create(
@@ -79,22 +65,36 @@ async def create(
     name: str,
     description: str = "",
     document_ids: list[UUID] | None = None,
+    template_slug: str = "",
+    template_culture: str = "",
+    output_dir: str = "workspace/docs/missions",
 ) -> AgentProfileSummary:
-    slug = _find_agent_slug(agent_id)
-    data = agent_files_service.read_agent(slug)
-    profiles = data.get("profiles", [])
-    if any(p.get("name") == name for p in profiles):
-        raise DuplicateProfileError(f"Profile '{name}' already exists")
-    profile = {
-        "name": name,
-        "description": description,
-        "documents": [str(d) for d in (document_ids or [])],
-    }
-    profiles.append(profile)
-    data["profiles"] = profiles
-    agent_files_service.write_agent(slug, data)
-    _log.info("agent_profiles.create", slug=slug, name=name)
-    return _to_summary(slug, profile)
+    slug_row = await fetch_one("SELECT slug FROM agents WHERE id = $1", agent_id)
+    if slug_row is None:
+        raise ProfileNotFoundError(f"Agent {agent_id} not found")
+    agent_slug = slug_row["slug"]
+    doc_ids: list[UUID] = document_ids or []
+    try:
+        row = await fetch_one(
+            """
+            INSERT INTO agent_profiles (agent_slug, name, description, document_ids,
+                template_slug, template_culture, output_dir)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, $8::uuid AS agent_id, agent_slug, name, description,
+                document_ids, template_slug, template_culture, output_dir,
+                created_at, updated_at
+            """,
+            agent_slug, name, description, doc_ids,
+            template_slug, template_culture, output_dir,
+            agent_id,
+        )
+    except asyncpg.UniqueViolationError as exc:
+        raise DuplicateProfileError(
+            f"Profile '{name}' already exists for this agent"
+        ) from exc
+    assert row is not None
+    _log.info("agent_profiles.create", agent_slug=agent_slug, name=name)
+    return _row(row)
 
 
 async def update(
@@ -106,49 +106,56 @@ async def update(
     template_culture: str | None = None,
     output_dir: str | None = None,
 ) -> AgentProfileSummary:
-    for slug in agent_files_service.list_agent_slugs():
-        data = agent_files_service.read_agent(slug)
-        for i, p in enumerate(data.get("profiles", [])):
-            if _profile_id(slug, p.get("name", "")) == profile_id:
-                if name is not None:
-                    p["name"] = name
-                if description is not None:
-                    p["description"] = description
-                if document_ids is not None:
-                    p["documents"] = [str(d) for d in document_ids]
-                if template_slug is not None:
-                    p["template_slug"] = template_slug
-                if template_culture is not None:
-                    p["template_culture"] = template_culture
-                if output_dir is not None:
-                    p["output_dir"] = output_dir
-                data["profiles"][i] = p
-                agent_files_service.write_agent(slug, data)
-                _log.info("agent_profiles.update", profile_id=str(profile_id))
-                return _to_summary(slug, p)
-    raise ProfileNotFoundError(f"Profile {profile_id} not found")
+    sets: list[str] = []
+    params: list = [profile_id]
+    if name is not None:
+        params.append(name)
+        sets.append(f"name = ${len(params)}")
+    if description is not None:
+        params.append(description)
+        sets.append(f"description = ${len(params)}")
+    if document_ids is not None:
+        params.append(document_ids)
+        sets.append(f"document_ids = ${len(params)}")
+    if template_slug is not None:
+        params.append(template_slug)
+        sets.append(f"template_slug = ${len(params)}")
+    if template_culture is not None:
+        params.append(template_culture)
+        sets.append(f"template_culture = ${len(params)}")
+    if output_dir is not None:
+        params.append(output_dir)
+        sets.append(f"output_dir = ${len(params)}")
+    if not sets:
+        return await get_by_id(profile_id)
+    set_clause = ", ".join(sets)
+    row = await fetch_one(
+        f"""
+        UPDATE agent_profiles SET {set_clause}
+        WHERE id = $1
+        RETURNING id, agent_slug, name, description, document_ids,
+            template_slug, template_culture, output_dir, created_at, updated_at
+        """,
+        *params,
+    )
+    if row is None:
+        raise ProfileNotFoundError(f"Profile {profile_id} not found")
+    agent_row = await fetch_one("SELECT id FROM agents WHERE slug = $1", row["agent_slug"])
+    return _row({**dict(row), "agent_id": agent_row["id"] if agent_row else None})
 
 
 async def delete(profile_id: UUID) -> None:
-    for slug in agent_files_service.list_agent_slugs():
-        data = agent_files_service.read_agent(slug)
-        profiles = data.get("profiles", [])
-        for i, p in enumerate(profiles):
-            if _profile_id(slug, p.get("name", "")) == profile_id:
-                profiles.pop(i)
-                data["profiles"] = profiles
-                agent_files_service.write_agent(slug, data)
-                _log.info("agent_profiles.delete", profile_id=str(profile_id))
-                return
-    raise ProfileNotFoundError(f"Profile {profile_id} not found")
+    result = await execute("DELETE FROM agent_profiles WHERE id = $1", profile_id)
+    if result == "DELETE 0":
+        raise ProfileNotFoundError(f"Profile {profile_id} not found")
+    _log.info("agent_profiles.delete", profile_id=str(profile_id))
 
 
-async def resolve_documents(
-    document_ids: list[UUID],
-) -> tuple[list[dict], list[UUID]]:
+async def resolve_documents(document_ids: list[UUID]) -> tuple[list[dict], list[UUID]]:
     if not document_ids:
         return [], []
     from agflow.services import role_documents_service
+
     found = []
     missing = []
     for uid in document_ids:

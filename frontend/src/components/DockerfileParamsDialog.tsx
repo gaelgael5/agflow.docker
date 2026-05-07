@@ -26,6 +26,8 @@ import {
   type FileSummary,
   type MountCheckResult,
 } from "@/lib/dockerfilesApi";
+import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
+import type { EnvVarStatus } from "@/lib/secretsApi";
 
 interface KVEntry {
   key: string;
@@ -90,6 +92,20 @@ function validateEnvKey(key: string): string | null {
     return `"${key}" n'est pas un nom de variable valide`;
   }
   return null;
+}
+
+// Detect old-style ${VAR} that doesn't use the new vault:// or env:// formalism
+const INVALID_REF_RE = /\$\{(?!vault:\/\/|env:\/\/)([^}]*)\}/;
+const VAULT_REF_RE = /^\$\{vault:\/\/[^:}]+:([^}]+)\}$/;
+const ENV_REF_RE = /^\$\{env:\/\/([^}]+)\}$/;
+
+function validateEnvValue(value: string): string | null {
+  if (!value || !INVALID_REF_RE.test(value)) return null;
+  return "invalid_ref";
+}
+
+function extractRefName(value: string): string | null {
+  return value.match(VAULT_REF_RE)?.[1] ?? value.match(ENV_REF_RE)?.[1] ?? null;
 }
 
 function mountMissingExplanation(
@@ -502,6 +518,12 @@ export function DockerfileParamsDialog({
   const [tab, setTab] = useState("container");
   const [mountChecks, setMountChecks] = useState<MountCheckResult[]>([]);
 
+  const envRefNames = useMemo(() =>
+    state.environments.flatMap((e) => { const n = extractRefName(e.value); return n ? [n] : []; }),
+    [state.environments],
+  );
+  const envStatusQuery = useEnvVarStatuses(envRefNames);
+
   useEffect(() => {
     if (!open || !file) return;
     const { state: parsed, parseError: err } = parseContent(
@@ -615,6 +637,12 @@ export function DockerfileParamsDialog({
       const err = validateEnvKey(e.key.trim());
       if (err) {
         return t("dockerfiles.params.error_invalid_key_in", {
+          section: t("dockerfiles.params.tab_environments"),
+          key: e.key.trim(),
+        });
+      }
+      if (validateEnvValue(e.value)) {
+        return t("dockerfiles.params.error_invalid_value_in", {
           section: t("dockerfiles.params.tab_environments"),
           key: e.key.trim(),
         });
@@ -935,12 +963,15 @@ export function DockerfileParamsDialog({
                 onRemove={(idx) => removeKV("environments", idx)}
                 onAdd={() => addKV("environments")}
                 keyPlaceholder="ANTHROPIC_API_KEY"
-                valuePlaceholder="{API_KEY_NAME}"
+                valuePlaceholder="${env://ANTHROPIC_API_KEY}"
                 emptyLabel={t("dockerfiles.params.environments_empty")}
                 addLabel={t("dockerfiles.params.environments_add")}
                 removeLabel={t("dockerfiles.params.remove")}
                 validateKey={validateEnvKey}
                 keyErrorHint={t("dockerfiles.params.env_key_error")}
+                validateValue={validateEnvValue}
+                valueErrorHint={t("dockerfiles.params.env_value_error")}
+                valueStatusMap={envStatusQuery.data}
                 excludedKeys={state.excluded.environments}
                 onToggleExclude={(key) => {
                   const list = state.excluded.environments;
@@ -1221,6 +1252,12 @@ export function DockerfileParamsDialog({
   );
 }
 
+const STATUS_DOT: Record<EnvVarStatus, string> = {
+  missing: "bg-red-500",
+  empty: "bg-amber-500",
+  ok: "bg-emerald-500",
+};
+
 interface KVTableProps {
   entries: KVEntry[];
   onUpdate: (idx: number, patch: Partial<KVEntry>) => void;
@@ -1233,6 +1270,9 @@ interface KVTableProps {
   removeLabel: string;
   validateKey?: (key: string) => string | null;
   keyErrorHint?: string;
+  validateValue?: (value: string) => string | null;
+  valueErrorHint?: string;
+  valueStatusMap?: Record<string, EnvVarStatus>;
   excludedKeys?: string[];
   onToggleExclude?: (key: string) => void;
 }
@@ -1249,6 +1289,9 @@ function KVTable({
   removeLabel,
   validateKey,
   keyErrorHint,
+  validateValue,
+  valueErrorHint,
+  valueStatusMap,
   excludedKeys,
   onToggleExclude,
 }: KVTableProps) {
@@ -1266,8 +1309,10 @@ function KVTable({
         <span className="sr-only">{removeLabel}</span>
       </div>
       {entries.map((entry, idx) => {
-        const keyError =
-          validateKey && entry.key.length > 0 ? validateKey(entry.key) : null;
+        const keyError = validateKey && entry.key.length > 0 ? validateKey(entry.key) : null;
+        const valueError = validateValue && entry.value.length > 0 ? validateValue(entry.value) : null;
+        const refName = extractRefName(entry.value);
+        const refStatus = refName && valueStatusMap ? valueStatusMap[refName] : undefined;
         const isExcluded = excludedKeys?.includes(entry.key) ?? false;
         return (
           <div key={idx} className={isExcluded ? "opacity-40" : ""}>
@@ -1288,16 +1333,28 @@ function KVTable({
                 aria-invalid={keyError ? true : undefined}
                 className={cn(
                   "font-mono text-[12px]",
-                  keyError &&
-                    "border-destructive focus-visible:ring-destructive/30 focus-visible:border-destructive",
+                  keyError && "border-destructive focus-visible:ring-destructive/30 focus-visible:border-destructive",
                 )}
               />
-              <Input
-                value={entry.value}
-                onChange={(e) => onUpdate(idx, { value: e.target.value })}
-                placeholder={valuePlaceholder}
-                className="font-mono text-[12px]"
-              />
+              <div className="relative">
+                <Input
+                  value={entry.value}
+                  onChange={(e) => onUpdate(idx, { value: e.target.value })}
+                  placeholder={valuePlaceholder}
+                  aria-invalid={valueError ? true : undefined}
+                  className={cn(
+                    "font-mono text-[12px]",
+                    refStatus && "pr-6",
+                    valueError && "border-destructive focus-visible:ring-destructive/30 focus-visible:border-destructive",
+                  )}
+                />
+                {refStatus && (
+                  <span
+                    className={cn("absolute right-2 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full", STATUS_DOT[refStatus])}
+                    title={refName ?? undefined}
+                  />
+                )}
+              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -1311,6 +1368,11 @@ function KVTable({
             {keyError && (
               <p className="text-[11px] text-destructive mt-1 ml-1">
                 {keyErrorHint ?? keyError}
+              </p>
+            )}
+            {valueError && (
+              <p className="text-[11px] text-destructive mt-1 ml-1">
+                {valueErrorHint ?? valueError}
               </p>
             )}
           </div>

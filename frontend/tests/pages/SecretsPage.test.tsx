@@ -10,13 +10,24 @@ import "@/lib/i18n";
 vi.mock("@/lib/secretsApi", () => ({
   secretsApi: {
     list: vi.fn(),
-    create: vi.fn(),
+    createVault: vi.fn(),
+    createEnv: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
     reveal: vi.fn(),
-    test: vi.fn(),
+    resolveStatus: vi.fn(),
   },
 }));
+
+const MOCK_SECRET = {
+  id: "00000000-0000-0000-0000-000000000001",
+  key: "${env://ANTHROPIC_API_KEY}",
+  type: "env" as const,
+  name: "ANTHROPIC_API_KEY",
+  has_value: true,
+  created_at: "2025-01-01T00:00:00Z",
+  updated_at: "2025-01-01T00:00:00Z",
+};
 
 function renderPage() {
   const client = new QueryClient({
@@ -37,21 +48,14 @@ describe("SecretsPage", () => {
   });
 
   it("renders the list of secrets", async () => {
-    vi.mocked(secretsApi.list).mockResolvedValueOnce([
-      {
-        name: "ANTHROPIC_API_KEY",
-        is_placeholder: false,
-        description: null,
-        tags: [],
-      },
-    ]);
+    vi.mocked(secretsApi.list).mockResolvedValueOnce([MOCK_SECRET]);
 
     renderPage();
 
     expect(await screen.findByText("ANTHROPIC_API_KEY")).toBeInTheDocument();
   });
 
-  it("opens the form when Add is clicked", async () => {
+  it("opens vault form when 'Ajouter un secret' is clicked", async () => {
     vi.mocked(secretsApi.list).mockResolvedValueOnce([]);
 
     renderPage();
@@ -63,6 +67,21 @@ describe("SecretsPage", () => {
     await userEvent.click(
       screen.getByRole("button", { name: /Ajouter un secret/ }),
     );
-    expect(screen.getByText(/Nouveau secret/)).toBeInTheDocument();
+    expect(screen.getByText(/Nouveau secret \(coffre/)).toBeInTheDocument();
+  });
+
+  it("opens env form when 'Ajouter une variable' is clicked", async () => {
+    vi.mocked(secretsApi.list).mockResolvedValueOnce([]);
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Chargement/)).not.toBeInTheDocument(),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Ajouter une variable/ }),
+    );
+    expect(screen.getByText(/Nouvelle variable/)).toBeInTheDocument();
   });
 });

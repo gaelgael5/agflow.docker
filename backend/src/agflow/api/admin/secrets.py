@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from agflow.auth.dependencies import require_admin
-from agflow.schemas.secrets import (
-    SecretCreate,
-    SecretReveal,
-    SecretSummary,
-    SecretTestResult,
-    SecretUpdate,
+from agflow.schemas.platform_secrets import (
+    PlatformSecretCreateEnv,
+    PlatformSecretCreateVault,
+    PlatformSecretReveal,
+    PlatformSecretSummary,
+    PlatformSecretUpdate,
 )
-from agflow.services import secrets_service
-from agflow.services.llm_key_tester import check_key
+from agflow.services import platform_secrets_service
+from agflow.services.platform_secrets_service import (
+    DuplicatePlatformSecretError,
+    PlatformSecretNotFoundError,
+)
 
 router = APIRouter(
     prefix="/api/admin/secrets",
@@ -20,91 +25,63 @@ router = APIRouter(
 )
 
 
-@router.get(
-    "",
-    response_model=list[SecretSummary],
-    summary="List all secrets",
-    description="Returns all secrets with their metadata. Values are never returned in clear text; use /reveal to retrieve a decrypted value.",
-)
-async def list_secrets() -> list[SecretSummary]:
-    return await secrets_service.list_all()
+@router.get("", response_model=list[PlatformSecretSummary])
+async def list_secrets() -> list[PlatformSecretSummary]:
+    return await platform_secrets_service.list_all()
 
 
-@router.post(
-    "",
-    response_model=SecretSummary,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a secret",
-    description="Stores a new encrypted secret. Returns 201 on success, 409 if the name already exists.",
-)
-async def create_secret(payload: SecretCreate) -> SecretSummary:
+@router.post("/vault", response_model=PlatformSecretSummary, status_code=status.HTTP_201_CREATED)
+async def create_vault_secret(payload: PlatformSecretCreateVault) -> PlatformSecretSummary:
     try:
-        return await secrets_service.create(name=payload.name, value=payload.value)
-    except secrets_service.DuplicateSecretError as exc:
+        return await platform_secrets_service.create_vault(payload.name, payload.value)
+    except DuplicatePlatformSecretError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-@router.get(
-    "/resolve-status",
-    summary="Resolve secret status for a list of names",
-    description="Accepts a comma-separated list of secret names and returns a mapping of each name to its status: missing, empty, or ok.",
-)
+@router.post("/env", response_model=PlatformSecretSummary, status_code=status.HTTP_201_CREATED)
+async def create_env_secret(payload: PlatformSecretCreateEnv) -> PlatformSecretSummary:
+    try:
+        return await platform_secrets_service.create_env(payload.name, payload.value)
+    except DuplicatePlatformSecretError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.get("/resolve-status")
 async def resolve_status(
-    var_names: str = Query(..., description="Comma-separated list of secret names"),
+    var_names: str = Query(..., description="Comma-separated list of variable names"),
 ) -> dict[str, str]:
     names = [n.strip().upper() for n in var_names.split(",") if n.strip()]
-    return await secrets_service.resolve_status(names)
+    all_secrets = await platform_secrets_service.resolve_all()
+    result: dict[str, str] = {}
+    for name in names:
+        if name not in all_secrets:
+            result[name] = "missing"
+        elif not all_secrets[name]:
+            result[name] = "empty"
+        else:
+            result[name] = "ok"
+    return result
 
 
-@router.put(
-    "/{name}",
-    response_model=SecretSummary,
-    summary="Update a secret",
-    description="Updates the value of an existing secret. Returns the updated SecretSummary, or 404 if not found.",
-)
-async def update_secret(name: str, payload: SecretUpdate) -> SecretSummary:
+@router.put("/{secret_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def update_secret(secret_id: UUID, payload: PlatformSecretUpdate) -> None:
     try:
-        await secrets_service.update(name, value=payload.value)
-        return SecretSummary(name=name)
-    except secrets_service.SecretNotFoundError as exc:
+        await platform_secrets_service.update(secret_id, payload.value)
+    except PlatformSecretNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.delete(
-    "/{name}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a secret",
-    description="Permanently deletes the secret. Returns 204 on success, 404 if not found.",
-)
-async def delete_secret(name: str) -> None:
+@router.delete("/{secret_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_secret(secret_id: UUID) -> None:
     try:
-        await secrets_service.delete(name)
-    except secrets_service.SecretNotFoundError as exc:
+        await platform_secrets_service.delete(secret_id)
+    except PlatformSecretNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.get(
-    "/{name}/reveal",
-    response_model=SecretReveal,
-    summary="Reveal a secret's decrypted value",
-    description="Returns the decrypted value of the secret. Returns 404 if the secret does not exist.",
-)
-async def reveal_secret(name: str) -> SecretReveal:
+@router.get("/{secret_id}/reveal", response_model=PlatformSecretReveal)
+async def reveal_secret(secret_id: UUID) -> PlatformSecretReveal:
     try:
-        return await secrets_service.reveal(name)
-    except secrets_service.SecretNotFoundError as exc:
+        return await platform_secrets_service.reveal(secret_id)
+    except PlatformSecretNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-
-@router.post(
-    "/{name}/test",
-    response_model=SecretTestResult,
-    summary="Test a secret (LLM key validation)",
-    description="Reveals the secret's value and submits it to the LLM key tester. Returns 404 if the secret does not exist.",
-)
-async def test_secret(name: str) -> SecretTestResult:
-    try:
-        revealed = await secrets_service.reveal(name)
-    except secrets_service.SecretNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return await check_key(var_name=revealed.name, value=revealed.value)

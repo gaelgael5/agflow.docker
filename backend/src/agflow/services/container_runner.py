@@ -269,12 +269,8 @@ docker stack rm "$STACK_NAME"
 
 async def _load_platform_secrets() -> dict[str, str]:
     """Load all platform secrets as a dict for env var injection."""
-    from agflow.services import secrets_service
-
-    summaries = await secrets_service.list_all()
-    if not summaries:
-        return {}
-    return await secrets_service.resolve_env([s.name for s in summaries])
+    from agflow.services import platform_secrets_service
+    return await platform_secrets_service.resolve_all()
 
 
 class ContainerRunnerError(Exception):

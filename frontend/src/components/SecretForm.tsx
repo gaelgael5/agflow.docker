@@ -3,12 +3,10 @@ import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import type { SecretCreate } from "@/lib/secretsApi";
-
 interface Props {
   mode: "create" | "edit";
   initialName?: string;
-  onSubmit: (payload: SecretCreate) => Promise<void> | void;
+  onSubmit: (payload: { name: string; value: string }) => Promise<void> | void;
   onCancel: () => void;
 }
 

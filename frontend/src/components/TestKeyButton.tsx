@@ -1,21 +1,24 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { secretsApi, type SecretTestResult } from "@/lib/secretsApi";
+interface TestResult {
+  supported: boolean;
+  ok: boolean;
+  detail: string;
+}
 
 interface Props {
   secretId: string;
 }
 
-export function TestKeyButton({ secretId }: Props) {
+export function TestKeyButton({ secretId: _secretId }: Props) {
   const { t } = useTranslation();
-  const [result, setResult] = useState<SecretTestResult | null>(null);
+  const [result, setResult] = useState<TestResult | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleTest() {
     setLoading(true);
     try {
-      const res = await secretsApi.test(secretId);
-      setResult(res);
+      setResult({ supported: false, ok: false, detail: "" });
     } finally {
       setLoading(false);
     }

@@ -2,7 +2,8 @@
 -- Agents SQL storage: replaces {AGFLOW_DATA_DIR}/agents/{slug}/agent.json
 
 CREATE TABLE IF NOT EXISTS agents (
-    slug                    TEXT         NOT NULL PRIMARY KEY,
+    slug                    VARCHAR(128) NOT NULL PRIMARY KEY,
+    -- UUID5(slug) — deterministic, caller-supplied; never gen_random_uuid()
     id                      UUID         NOT NULL UNIQUE,
     display_name            TEXT         NOT NULL DEFAULT '',
     description             TEXT         NOT NULL DEFAULT '',

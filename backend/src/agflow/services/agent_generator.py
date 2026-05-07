@@ -10,7 +10,6 @@ import httpx
 import structlog
 
 from agflow.services import (
-    agent_files_service,
     agents_service,
     dockerfile_files_service,
     mcp_catalog_service,
@@ -413,10 +412,8 @@ async def generate(
         except (json.JSONDecodeError, AttributeError):
             pass
 
-    # Read overrides from agent.json
-    agent_data = agent_files_service.read_agent(slug)
-    env_overrides = agent_data.get("env_overrides", {})
-    param_overrides = agent_data.get("param_overrides", {})
+    env_overrides = agent.env_vars.get("env_overrides", {})
+    param_overrides = agent.env_vars.get("param_overrides", {})
 
     # Build resolved params (apply overrides, then use as template vars)
     resolved_params: dict[str, str] = {}
@@ -654,8 +651,8 @@ async def generate(
         instance_id = _secrets.token_hex(3)
 
         patched_content = _apply_overrides(params_file.content, env_overrides,
-            agent_data.get("mount_overrides", {}),
-            agent_data.get("param_overrides", {}))
+            agent.env_vars.get("mount_overrides", {}),
+            agent.env_vars.get("param_overrides", {}))
 
         try:
             patched = json.loads(patched_content)

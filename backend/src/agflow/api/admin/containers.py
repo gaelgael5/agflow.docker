@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from agflow.auth.dependencies import require_operator as require_admin
 from agflow.schemas.containers import ContainerInfo
 from agflow.services import (
-    agent_files_service,
+    agents_service,
     build_service,
     container_runner,
     dockerfile_files_service,
@@ -301,14 +301,15 @@ async def run_agent_task(
     import os
 
     data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
-    agent_data = agent_files_service.read_agent(agent_slug)
-    if not agent_data:
+    try:
+        agent = await agents_service.get_by_slug(agent_slug)
+    except agents_service.AgentNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent '{agent_slug}' not found",
-        )
+        ) from exc
 
-    dockerfile_id = agent_data.get("dockerfile_id", "")
+    dockerfile_id = agent.dockerfile_id
     if not dockerfile_id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -329,11 +330,10 @@ async def run_agent_task(
         )
 
     # Read generated prompt — use first generation's filename, fallback to legacy
-    generations = agent_data.get("generations", [])
-    if generations:
-        prompt_filename = generations[0].get("prompt_filename", "prompt.md")
+    if agent.generations:
+        prompt_filename = agent.generations[0].prompt_filename
     else:
-        prompt_filename = agent_data.get("prompt_filename", "prompt.md")
+        prompt_filename = agent.prompt_filename
     prompt_path = os.path.join(
         data_dir, "agents", agent_slug, "generated", prompt_filename
     )
@@ -379,7 +379,7 @@ async def run_agent_task(
     docker_block = params_json.get("docker", {})
 
     # Merge agent env overrides
-    env_overrides = agent_data.get("env_overrides", {})
+    env_overrides = agent.env_vars.get("env_overrides", {})
     if env_overrides:
         envs = docker_block.get("Environments", {})
         for key, override in env_overrides.items():
@@ -390,7 +390,7 @@ async def run_agent_task(
         docker_block["Environments"] = envs
 
     # Merge agent mount overrides
-    mount_overrides = agent_data.get("mount_overrides", {})
+    mount_overrides = agent.env_vars.get("mount_overrides", {})
     if mount_overrides:
         mounts = docker_block.get("Mounts", [])
         mounts = [

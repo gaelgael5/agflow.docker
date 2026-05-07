@@ -206,6 +206,13 @@ async def get_by_id(agent_id: UUID) -> AgentDetail:
     return await _detail_from_row(row)
 
 
+async def get_by_slug(slug: str) -> AgentDetail:
+    row = await fetch_one(f"SELECT {_COLS} FROM agents WHERE slug = $1", slug)
+    if row is None:
+        raise AgentNotFoundError(f"Agent '{slug}' not found")
+    return await _detail_from_row(row)
+
+
 async def update(agent_id: UUID, payload: AgentUpdate) -> AgentDetail:
     mcp_json, skill_json = _bindings_json(payload)
     gen_json = json.dumps([g.model_dump(mode="json") for g in (payload.generations or [])])

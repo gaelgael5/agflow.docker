@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from agflow.db.pool import close_pool, execute, fetch_one
+from agflow.db.pool import close_pool, execute, fetch_all, fetch_one
 from agflow.schemas.agents import (
     AgentCreate,
     AgentMCPBinding,
@@ -13,6 +13,42 @@ from agflow.schemas.agents import (
 )
 from agflow.services import agents_service, roles_service
 from tests._db_reset import reset_schema_and_migrate
+
+# ── Migration smoke tests ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_migration_creates_agents_table() -> None:
+    await reset_schema_and_migrate()
+    try:
+        rows = await fetch_all(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'agents' ORDER BY column_name"
+        )
+        columns = {r["column_name"] for r in rows}
+        assert "slug" in columns
+        assert "id" in columns
+        assert "mcp_bindings" in columns
+        assert "generations" in columns
+        assert "is_assistant" in columns
+    finally:
+        await close_pool()
+
+
+@pytest.mark.asyncio
+async def test_migration_creates_agent_profiles_table() -> None:
+    await reset_schema_and_migrate()
+    try:
+        rows = await fetch_all(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'agent_profiles' ORDER BY column_name"
+        )
+        columns = {r["column_name"] for r in rows}
+        assert "id" in columns
+        assert "agent_slug" in columns
+        assert "document_ids" in columns
+    finally:
+        await close_pool()
 
 
 @pytest.fixture

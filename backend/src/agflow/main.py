@@ -164,6 +164,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from agflow.services import ai_providers_service
 
     ai_providers_service.seed_defaults()
+    # Détection du runtime container (Docker standalone/Swarm, containerd…)
+    from agflow.container import init_facade
+    from agflow.db.pool import get_pool as _get_pool
+
+    try:
+        _pool = await _get_pool()
+        _runtime_mode = await init_facade(_pool)
+        log.info("container.runtime_ready", mode=_runtime_mode.value)
+    except Exception as exc:
+        log.warning("container.runtime_detection_failed", error=str(exc))
+
     # Supervision : reconciliation Docker ↔ DB au démarrage (best-effort)
     try:
         await run_docker_reconciliation()

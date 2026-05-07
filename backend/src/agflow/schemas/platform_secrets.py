@@ -25,7 +25,7 @@ class PlatformSecretReveal(BaseModel):
 
 class PlatformSecretCreateVault(BaseModel):
     name: str = Field(min_length=1, max_length=128)
-    value: str = Field(min_length=1)
+    value: str = Field(default="")
 
     @field_validator("name")
     @classmethod

@@ -64,7 +64,7 @@ export function SecretsPage() {
         subtitle={t("secrets.page_subtitle")}
         actions={
           <div className="flex gap-2">
-            <Button onClick={() => openForm("vault")} disabled={formMode !== null} variant="default">
+            <Button onClick={() => openForm("vault")} disabled={formMode !== null} variant="outline">
               {t("secrets.add_vault_button")}
             </Button>
             <Button onClick={() => openForm("env")} disabled={formMode !== null} variant="outline">
@@ -208,6 +208,16 @@ function SecretFormCard({
             <div className="space-y-1.5">
               <Label>{t("secrets.form_preview_label")}</Label>
               <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  title={t("secrets.copy_key")}
+                  onClick={() => { void navigator.clipboard.writeText(name.trim().toUpperCase()); toast.success(t("secrets.key_copied")); }}
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
                 <code className="flex-1 text-[12px] font-mono bg-muted px-2 py-1.5 rounded border truncate">
                   {preview}
                 </code>
@@ -226,14 +236,20 @@ function SecretFormCard({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="secret-value">{t("secrets.form_value_label")}</Label>
+            <Label htmlFor="secret-value">
+              {t("secrets.form_value_label")}
+              {type === "vault" && (
+                <span className="ml-1.5 text-[11px] text-muted-foreground font-normal">
+                  {t("secrets.form_value_optional")}
+                </span>
+              )}
+            </Label>
             <Input
               id="secret-value"
               type="password"
               placeholder={t("secrets.form_value_placeholder")}
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              required={type === "vault"}
             />
           </div>
 

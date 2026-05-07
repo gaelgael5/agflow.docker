@@ -50,7 +50,7 @@ def _row_to_summary(row: dict) -> PlatformSecretSummary:
             key=key,
             type="vault",
             name=_parse_vault_name(key),
-            has_value=True,
+            has_value=row["default_value"] == "set",
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -76,17 +76,20 @@ async def list_all() -> list[PlatformSecretSummary]:
 async def create_vault(name: str, value: str) -> PlatformSecretSummary:
     import asyncpg
     key = _vault_key(name)
+    sentinel = "set" if value else None
     try:
         row = await fetch_one(
-            "INSERT INTO platform_secrets (key) VALUES ($1) "
+            "INSERT INTO platform_secrets (key, default_value) VALUES ($1, $2) "
             "RETURNING id, key, default_value, created_at, updated_at",
             key,
+            sentinel,
         )
     except asyncpg.UniqueViolationError as exc:
         raise DuplicatePlatformSecretError(f"'{name}' existe déjà") from exc
     assert row is not None
-    await vault_client.create_secret(name, value)
-    _log.info("platform_secrets.create_vault", name=name)
+    if value:
+        await vault_client.create_secret(name, value)
+    _log.info("platform_secrets.create_vault", name=name, has_value=bool(value))
     return _row_to_summary(row)
 
 
@@ -116,6 +119,10 @@ async def update(secret_id: UUID, value: str) -> None:
     key: str = row["key"]
     if key.startswith("${vault://"):
         await vault_client.update_secret(_parse_vault_name(key), value)
+        await execute(
+            "UPDATE platform_secrets SET default_value = 'set' WHERE id = $1",
+            secret_id,
+        )
     else:
         await execute(
             "UPDATE platform_secrets SET default_value = $2 WHERE id = $1",
@@ -163,6 +170,8 @@ async def resolve_all() -> dict[str, str]:
         key: str = row["key"]
         if key.startswith("${vault://"):
             name = _parse_vault_name(key)
+            if row["default_value"] != "set":
+                continue
             try:
                 result[name] = await vault_client.get_secret(name)
             except Exception:

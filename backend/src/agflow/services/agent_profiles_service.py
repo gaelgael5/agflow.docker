@@ -80,13 +80,14 @@ async def create(
             INSERT INTO agent_profiles (agent_slug, name, description, document_ids,
                 template_slug, template_culture, output_dir)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, $8::uuid AS agent_id, agent_slug, name, description,
-                document_ids, template_slug, template_culture, output_dir,
+            RETURNING id,
+                (SELECT a.id FROM agents a WHERE a.slug = agent_profiles.agent_slug) AS agent_id,
+                agent_slug, name, description, document_ids,
+                template_slug, template_culture, output_dir,
                 created_at, updated_at
             """,
             agent_slug, name, description, doc_ids,
             template_slug, template_culture, output_dir,
-            agent_id,
         )
     except asyncpg.UniqueViolationError as exc:
         raise DuplicateProfileError(
@@ -133,15 +134,16 @@ async def update(
         f"""
         UPDATE agent_profiles SET {set_clause}
         WHERE id = $1
-        RETURNING id, agent_slug, name, description, document_ids,
+        RETURNING id,
+            (SELECT a.id FROM agents a WHERE a.slug = agent_profiles.agent_slug) AS agent_id,
+            agent_slug, name, description, document_ids,
             template_slug, template_culture, output_dir, created_at, updated_at
         """,
         *params,
     )
     if row is None:
         raise ProfileNotFoundError(f"Profile {profile_id} not found")
-    agent_row = await fetch_one("SELECT id FROM agents WHERE slug = $1", row["agent_slug"])
-    return _row({**dict(row), "agent_id": agent_row["id"] if agent_row else None})
+    return _row(dict(row))
 
 
 async def delete(profile_id: UUID) -> None:
@@ -172,6 +174,7 @@ async def resolve_documents(document_ids: list[UUID]) -> tuple[list[dict], list[
                 "created_at": doc.created_at,
                 "updated_at": doc.updated_at,
             })
-        except Exception:
+        except Exception as exc:
+            _log.warning("agent_profiles.resolve_documents.error", doc_id=str(uid), error=str(exc))
             missing.append(uid)
     return found, missing

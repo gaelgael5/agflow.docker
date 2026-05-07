@@ -102,3 +102,23 @@ async def test_delete_agent_cascades_profiles() -> None:
     await agent_profiles_service.create(agent_id, "P1")
     await agents_service.delete(agent_id)
     assert await agents_service.list_all() == []
+
+
+@pytest.mark.asyncio
+async def test_create_agent_not_found_raises() -> None:
+    with pytest.raises(ProfileNotFoundError):
+        await agent_profiles_service.create(uuid.uuid4(), "Profile")
+
+
+@pytest.mark.asyncio
+async def test_update_not_found_raises() -> None:
+    with pytest.raises(ProfileNotFoundError):
+        await agent_profiles_service.update(uuid.uuid4(), name="X")
+
+
+@pytest.mark.asyncio
+async def test_update_no_op_returns_unchanged() -> None:
+    agent_id = await _make_agent("agent-noop")
+    profile = await agent_profiles_service.create(agent_id, "Stable")
+    result = await agent_profiles_service.update(profile.id)
+    assert result.name == "Stable"

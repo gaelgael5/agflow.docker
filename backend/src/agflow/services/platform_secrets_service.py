@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from uuid import UUID
 
 import structlog
@@ -180,3 +181,18 @@ async def resolve_all() -> dict[str, str]:
             name = _parse_env_name(key)
             result[name] = row["default_value"] or ""
     return result
+
+
+_VAULT_REF_RE = re.compile(r"\$\{vault://[^:}]+:([^}]+)\}")
+_ENV_REF_RE = re.compile(r"\$\{env://([^}]+)\}")
+
+
+def resolve_platform_refs(text: str, secrets: dict[str, str]) -> str:
+    """Résout ${vault://KEY:NAME} et ${env://NAME} dans text.
+
+    secrets = résultat de resolve_all() : {nom_variable: valeur}.
+    Les références inconnues sont remplacées par une chaîne vide.
+    """
+    text = _VAULT_REF_RE.sub(lambda m: secrets.get(m.group(1), ""), text)
+    text = _ENV_REF_RE.sub(lambda m: secrets.get(m.group(1), ""), text)
+    return text

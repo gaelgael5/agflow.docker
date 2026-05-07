@@ -298,6 +298,11 @@ function SecretRow({
     }
   }
 
+  function startEditing() {
+    setEditValue(revealed ?? "");
+    setEditing(true);
+  }
+
   async function handleSaveEdit() {
     setLoading(true);
     try {
@@ -335,6 +340,7 @@ function SecretRow({
         {editing ? (
           <div className="flex items-center gap-1.5">
             <Input
+              type="password"
               className="h-7 text-[12px] font-mono w-48"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
@@ -356,11 +362,12 @@ function SecretRow({
             <code className="text-[12px]">
               {revealed !== null ? (revealed || t("secrets.value_empty")) : t("secrets.value_masked")}
             </code>
-            {revealed === null ? (
+            {revealed === null && (
               <Button variant="ghost" size="sm" className="h-6 text-[12px]" onClick={() => void handleReveal()} disabled={loading}>
                 {t("secrets.reveal")}
               </Button>
-            ) : (
+            )}
+            {revealed !== null && (
               <>
                 <Button
                   variant="ghost"
@@ -371,20 +378,20 @@ function SecretRow({
                 >
                   <Copy className="w-2.5 h-2.5" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5"
-                  title={t("secrets.edit_value")}
-                  onClick={() => { setEditValue(revealed); setEditing(true); }}
-                >
-                  <Pencil className="w-2.5 h-2.5" />
-                </Button>
                 <Button variant="ghost" size="sm" className="h-6 text-[12px]" onClick={() => setRevealed(null)}>
                   {t("secrets.hide")}
                 </Button>
               </>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5"
+              title={t("secrets.edit_value")}
+              onClick={startEditing}
+            >
+              <Pencil className="w-2.5 h-2.5" />
+            </Button>
           </div>
         )}
       </TableCell>

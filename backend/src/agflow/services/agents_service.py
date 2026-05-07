@@ -8,7 +8,7 @@ from uuid import UUID
 import asyncpg
 import structlog
 
-from agflow.db.pool import execute, fetch_all, fetch_one
+from agflow.db.pool import execute, fetch_all, fetch_one, get_pool
 from agflow.schemas.agents import (
     AgentCreate,
     AgentDetail,
@@ -116,7 +116,7 @@ async def _detail_from_row(row: dict[str, Any]) -> AgentDetail:
         if b.get("catalog_mcp_id")
     ]
     skill_bindings = [
-        AgentSkillBinding(skill_id=UUID(b["catalog_skill_id"]))
+        AgentSkillBinding(skill_id=UUID(b["catalog_skill_id"]), position=b.get("position", 0))
         for b in (row["skill_bindings"] or [])
         if b.get("catalog_skill_id")
     ]
@@ -148,7 +148,7 @@ def _bindings_json(payload: AgentCreate | AgentUpdate) -> tuple[str, str]:
         for b in (payload.mcp_bindings or [])
     ])
     skill = json.dumps([
-        {"catalog_skill_id": str(b.skill_id)}
+        {"catalog_skill_id": str(b.skill_id), "position": b.position}
         for b in (payload.skill_bindings or [])
     ])
     return mcp, skill
@@ -275,13 +275,16 @@ async def get_assistant() -> AgentSummary | None:
 
 
 async def set_assistant(agent_id: UUID) -> None:
-    await execute(
-        "UPDATE agents SET is_assistant = FALSE WHERE is_assistant = TRUE AND id != $1",
-        agent_id,
-    )
-    result = await execute("UPDATE agents SET is_assistant = TRUE WHERE id = $1", agent_id)
-    if result == "UPDATE 0":
-        raise AgentNotFoundError(f"Agent {agent_id} not found")
+    pool = await get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        exists = await conn.fetchval("SELECT 1 FROM agents WHERE id = $1", agent_id)
+        if not exists:
+            raise AgentNotFoundError(f"Agent {agent_id} not found")
+        await conn.execute(
+            "UPDATE agents SET is_assistant = FALSE WHERE is_assistant = TRUE AND id != $1",
+            agent_id,
+        )
+        await conn.execute("UPDATE agents SET is_assistant = TRUE WHERE id = $1", agent_id)
     _log.info("agents.set_assistant", agent_id=str(agent_id))
 
 

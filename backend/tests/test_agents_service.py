@@ -225,3 +225,22 @@ async def test_env_overrides_stored_and_retrieved() -> None:
     )
     detail = await agents_service.create(payload)
     assert detail.env_vars["env_overrides"]["MY_VAR"] == "hello"
+
+
+@pytest.mark.asyncio
+async def test_skill_binding_position_preserved() -> None:
+    skill_id = uuid.uuid4()
+    payload = AgentCreate(
+        slug="agent-skill-pos",
+        display_name="Skill Pos",
+        dockerfile_id="df",
+        skill_bindings=[AgentSkillBinding(skill_id=skill_id, position=3)],
+    )
+    detail = await agents_service.create(payload)
+    assert detail.skill_bindings[0].position == 3
+
+
+@pytest.mark.asyncio
+async def test_set_assistant_not_found_raises() -> None:
+    with pytest.raises(AgentNotFoundError):
+        await agents_service.set_assistant(uuid.uuid4())

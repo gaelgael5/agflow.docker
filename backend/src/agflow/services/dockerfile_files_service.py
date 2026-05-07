@@ -1,25 +1,20 @@
 from __future__ import annotations
 
 import json
-import os
-import uuid
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 import structlog
 
+from agflow.db.pool import get_pool
 from agflow.schemas.dockerfiles import FileSummary
+from agflow.storage import StorageSDK
 
 _log = structlog.get_logger(__name__)
 
-# Deterministic UUID5 namespace for file IDs — fixed forever.
-_FILE_NS = uuid.UUID("a8f4c3b2-e7d6-4a1f-b5c9-0123456789ab")
+_DOCKERFILES_ROOT = "Dockerfiles"
 
-# Standard files auto-seeded on dockerfile creation. They cannot be deleted,
-# only edited. Mirrors the Module 1 spec requirement that every dockerfile
-# must provide a Dockerfile, an entrypoint.sh and a Dockerfile.json (default
-# parameters with agflow templating {KEY} + shell templating ${VAR}).
+# Standard files auto-seeded on dockerfile creation.
 _DOCKERFILE_JSON_DEFAULT = """{
   "docker": {
     "Container": {
@@ -139,89 +134,14 @@ STANDARD_FILE_CONTENTS: dict[str, str] = {
     "help.en.md": _HELP_EN_DEFAULT,
 }
 
-# All files auto-seeded on dockerfile creation.
 STANDARD_FILES: tuple[str, ...] = tuple(STANDARD_FILE_CONTENTS.keys())
 
-# Subset that cannot be deleted. Dockerfile.json is hidden from the UI but
-# still protected so the parameters file cannot be wiped out via a stray
-# API call.
 PROTECTED_FILES: tuple[str, ...] = (
     "Dockerfile",
     "entrypoint.sh",
     "Dockerfile.json",
     "description.md",
 )
-
-
-class FileNotFoundError(Exception):
-    pass
-
-
-class DuplicateFileError(Exception):
-    pass
-
-
-class ProtectedFileError(Exception):
-    """Raised when attempting to delete a standard (non-deletable) file."""
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _file_id(dockerfile_id: str, path: str) -> uuid.UUID:
-    """Deterministic UUID5 derived from (dockerfile_id, path)."""
-    return uuid.uuid5(_FILE_NS, f"{dockerfile_id}:{path}")
-
-
-def _data_dir() -> str:
-    return os.environ.get("AGFLOW_DATA_DIR", "/app/data")
-
-
-def _slug_dir(dockerfile_id: str) -> str:
-    return os.path.join(_data_dir(), "dockerfiles", dockerfile_id)
-
-
-def _file_summary(dockerfile_id: str, path: str, full_path: str) -> FileSummary:
-    stat = os.stat(full_path)
-    with open(full_path, encoding="utf-8") as fh:
-        content = fh.read()
-    return FileSummary(
-        id=_file_id(dockerfile_id, path),
-        dockerfile_id=dockerfile_id,
-        path=path,
-        content=content,
-        type="file",
-        size=stat.st_size,
-        created_at=datetime.fromtimestamp(stat.st_ctime, tz=UTC),
-        updated_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
-    )
-
-
-def _dir_summary(dockerfile_id: str, path: str, full_path: str) -> FileSummary:
-    stat = os.stat(full_path)
-    return FileSummary(
-        id=_file_id(dockerfile_id, path),
-        dockerfile_id=dockerfile_id,
-        path=path,
-        content="",
-        type="dir",
-        size=0,
-        created_at=datetime.fromtimestamp(stat.st_ctime, tz=UTC),
-        updated_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
-    )
-
-
-def read_target(dockerfile_id: str) -> dict | None:
-    """Read the Target block from Dockerfile.json, or None if absent."""
-    json_path = os.path.join(_slug_dir(dockerfile_id), "Dockerfile.json")
-    if not os.path.isfile(json_path):
-        return None
-    with open(json_path, encoding="utf-8") as f:
-        data = json.loads(f.read())
-    return data.get("Target")
-
 
 DEFAULT_GENERATION_CONFIG: dict[str, Any] = {
     "base_dir": "workspace",
@@ -241,82 +161,211 @@ DEFAULT_GENERATION_CONFIG: dict[str, Any] = {
 }
 
 
-def read_generation_config(dockerfile_id: str) -> dict[str, Any]:
-    """Read the Generation block from Dockerfile.json, with defaults.
+class FileNotFoundError(Exception):
+    pass
 
-    If base_dir / prompt_ref_prefix are not explicitly set in the Generation
-    block, they are derived from docker.Runtime.WorkingDir:
-        -w /app/workspace  → base_dir="workspace", ref_prefix="@workspace"
-        -w /.vibes          → base_dir=".vibes",     ref_prefix="@"
-    """
-    json_path = os.path.join(_slug_dir(dockerfile_id), "Dockerfile.json")
-    if not os.path.isfile(json_path):
-        return {**DEFAULT_GENERATION_CONFIG, "paths": {**DEFAULT_GENERATION_CONFIG["paths"]}}
 
-    with open(json_path, encoding="utf-8") as f:
-        data = json.loads(f.read())
+class DuplicateFileError(Exception):
+    pass
 
-    gen = data.get("Generation") or {}
 
-    result = {**DEFAULT_GENERATION_CONFIG, **gen}
-    result["paths"] = {**DEFAULT_GENERATION_CONFIG["paths"], **gen.get("paths", {})}
-
-    # Auto-derive base_dir from WorkingDir if not explicitly set
-    # -w /vibes → base_dir="vibes", ref_prefix="@"
-    # -w /app/workspace → base_dir="workspace", ref_prefix="@workspace" (default)
-    if "base_dir" not in gen:
-        workdir = (data.get("docker", {}).get("Runtime", {}).get("WorkingDir", "") or "").strip().rstrip("/")
-        if workdir:
-            # /vibes → vibes, /app/workspace → workspace
-            base = workdir.split("/")[-1]
-            if base and base != DEFAULT_GENERATION_CONFIG["base_dir"]:
-                result["base_dir"] = base
-                result["prompt_ref_prefix"] = "@"
-
-    return result
+class ProtectedFileError(Exception):
+    pass
 
 
 # ---------------------------------------------------------------------------
-# Public API  (async signatures preserved for caller compatibility)
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+async def _storage() -> StorageSDK:
+    return StorageSDK(await get_pool())
+
+
+async def _root_id(s: StorageSDK) -> UUID:
+    """Résout (ou crée) le dossier racine 'Dockerfiles'."""
+    node_id = await s.resolve_node(_DOCKERFILES_ROOT)
+    if node_id is None:
+        node_id = await s.create_folder(_DOCKERFILES_ROOT)
+    return node_id
+
+
+async def _dockerfile_folder_id(
+    s: StorageSDK, dockerfile_id: str, *, create: bool = True
+) -> UUID | None:
+    """Résout (ou crée) le dossier du dockerfile sous 'Dockerfiles'."""
+    root = await _root_id(s)
+    node_id = await s.resolve_node(dockerfile_id, root)
+    if node_id is None and create:
+        node_id = await s.create_folder(dockerfile_id, root)
+    return node_id
+
+
+async def _resolve_file_folder(
+    s: StorageSDK, folder_id: UUID, path: str, *, create_parents: bool = False
+) -> tuple[UUID, str]:
+    """Retourne (parent_folder_id, filename) pour un chemin relatif.
+
+    Si le chemin contient des segments intermédiaires (ex: config/app.toml),
+    crée les dossiers parents si create_parents=True.
+    """
+    parts = path.split("/")
+    filename = parts[-1]
+    parent_id = folder_id
+    for segment in parts[:-1]:
+        if create_parents:
+            parent_id = await s.create_folder(segment, parent_id)
+        else:
+            found = await s.resolve_node(segment, parent_id)
+            if not found:
+                raise FileNotFoundError(f"Directory '{segment}' not found in path '{path}'")
+            parent_id = found
+    return parent_id, filename
+
+
+async def _list_recursive(
+    s: StorageSDK,
+    folder_id: UUID,
+    dockerfile_id: str,
+    prefix: str = "",
+    *,
+    include_dirs: bool = False,
+) -> list[FileSummary]:
+    """Liste récursive des enfants d'un dossier en reconstruisant les chemins."""
+    results: list[FileSummary] = []
+    children = await s.list_folder(folder_id)
+    for child in children:
+        rel_path = f"{prefix}/{child['name']}" if prefix else child["name"]
+        if child["kind"] == 0:
+            if include_dirs:
+                results.append(FileSummary(
+                    id=child["id"],
+                    dockerfile_id=dockerfile_id,
+                    path=rel_path,
+                    content="",
+                    type="dir",
+                    size=0,
+                    created_at=child["created_at"],
+                    updated_at=child["updated_at"],
+                ))
+            results.extend(
+                await _list_recursive(s, child["id"], dockerfile_id, rel_path, include_dirs=include_dirs)
+            )
+        else:
+            node = await s.read_node(child["id"])
+            results.append(FileSummary(
+                id=child["id"],
+                dockerfile_id=dockerfile_id,
+                path=rel_path,
+                content=node["content"] or "" if node else "",
+                type="file",
+                size=child["size"] or 0,
+                created_at=child["created_at"],
+                updated_at=child["updated_at"],
+            ))
+    return results
+
+
+async def _node_to_summary(
+    s: StorageSDK, node_id: UUID, dockerfile_id: str, df_folder_id: UUID
+) -> FileSummary:
+    """Construit un FileSummary depuis un node_id en reconstruisant le chemin."""
+    node = await s.read_node(node_id)
+    if not node:
+        raise FileNotFoundError(f"File {node_id} not found")
+
+    parts = [node["name"]]
+    parent_id = node["parent_id"]
+    while parent_id and parent_id != df_folder_id:
+        parent = await s.read_node(parent_id)
+        if not parent:
+            break
+        parts.insert(0, parent["name"])
+        parent_id = parent["parent_id"]
+
+    return FileSummary(
+        id=node_id,
+        dockerfile_id=dockerfile_id,
+        path="/".join(parts),
+        content=node["content"] or "" if node["kind"] != 0 else "",
+        type="dir" if node["kind"] == 0 else "file",
+        size=node["size"] or 0,
+        created_at=node["created_at"],
+        updated_at=node["updated_at"],
+    )
+
+
+async def _find_file(file_id: UUID) -> tuple[FileSummary, UUID]:
+    """Retourne (FileSummary, dockerfile_folder_id) pour un file_id."""
+    s = await _storage()
+    node = await s.read_node(file_id)
+    if not node:
+        raise FileNotFoundError(f"File {file_id} not found")
+
+    root = await _root_id(s)
+
+    # Remonte l'arbre pour trouver le dossier dockerfile (enfant direct de root)
+    current_id = file_id
+    current = node
+    while current["parent_id"] and current["parent_id"] != root:
+        parent = await s.read_node(current["parent_id"])
+        if not parent:
+            raise FileNotFoundError(f"File {file_id} not found (broken tree)")
+        current_id = current["parent_id"]
+        current = parent
+
+    # current est maintenant le dossier dockerfile
+    df_folder_id: UUID = current_id  # type: ignore[assignment]
+    dockerfile_id: str = current["name"]
+
+    summary = await _node_to_summary(s, file_id, dockerfile_id, df_folder_id)
+    return summary, df_folder_id
+
+
+# ---------------------------------------------------------------------------
+# Public API
 # ---------------------------------------------------------------------------
 
 
 async def seed_standard_files(dockerfile_id: str) -> list[FileSummary]:
-    """Create the directory + standard files with their default content.
+    """Crée le dossier + les fichiers standard avec leur contenu par défaut.
 
-    Idempotent — skips files that already exist on disk.
+    Idempotent — ignore les fichiers déjà présents dans le storage SDK.
     """
-    slug_dir = _slug_dir(dockerfile_id)
-    os.makedirs(slug_dir, exist_ok=True)
+    s = await _storage()
+    folder_id = await _dockerfile_folder_id(s, dockerfile_id, create=True)
+    assert folder_id is not None
     created: list[FileSummary] = []
-    for path, default_content in STANDARD_FILE_CONTENTS.items():
-        full_path = os.path.join(slug_dir, path)
-        if os.path.exists(full_path):
+    for filename, default_content in STANDARD_FILE_CONTENTS.items():
+        existing = await s.resolve_node(filename, folder_id)
+        if existing:
             continue
         content = default_content.replace("{slug}", dockerfile_id)
-        with open(full_path, "w", encoding="utf-8") as fh:
-            fh.write(content)
-        created.append(_file_summary(dockerfile_id, path, full_path))
-        _log.info("dockerfile_files.seed", dockerfile_id=dockerfile_id, path=path)
+        node_id = await s.write_document(folder_id, filename, content)
+        node = await s.read_node(node_id)
+        assert node is not None
+        created.append(FileSummary(
+            id=node_id,
+            dockerfile_id=dockerfile_id,
+            path=filename,
+            content=content,
+            type="file",
+            size=node["size"] or 0,
+            created_at=node["created_at"],
+            updated_at=node["updated_at"],
+        ))
+        _log.info("dockerfile_files.seed", dockerfile_id=dockerfile_id, path=filename)
     return created
 
 
 async def list_for_dockerfile(
     dockerfile_id: str, *, include_dirs: bool = False
 ) -> list[FileSummary]:
-    from agflow.services.fs_walker import walk_tree
-
-    slug_dir = _slug_dir(dockerfile_id)
-    results: list[FileSummary] = []
-    for entry in walk_tree(slug_dir):
-        if entry.type == "dir":
-            if include_dirs:
-                results.append(
-                    _dir_summary(dockerfile_id, entry.path, entry.full_path)
-                )
-            continue
-        results.append(_file_summary(dockerfile_id, entry.path, entry.full_path))
-    return results
+    s = await _storage()
+    folder_id = await _dockerfile_folder_id(s, dockerfile_id, create=False)
+    if folder_id is None:
+        return []
+    return await _list_recursive(s, folder_id, dockerfile_id, include_dirs=include_dirs)
 
 
 async def create(
@@ -324,157 +373,142 @@ async def create(
     path: str,
     content: str = "",
 ) -> FileSummary:
-    slug_dir = _slug_dir(dockerfile_id)
-    os.makedirs(slug_dir, exist_ok=True)
-    full_path = os.path.join(slug_dir, path)
-    if os.path.exists(full_path):
-        raise DuplicateFileError(
-            f"File '{path}' already exists in dockerfile '{dockerfile_id}'"
-        )
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-    with open(full_path, "w", encoding="utf-8") as fh:
-        fh.write(content)
+    s = await _storage()
+    folder_id = await _dockerfile_folder_id(s, dockerfile_id, create=True)
+    assert folder_id is not None
+    parent_id, filename = await _resolve_file_folder(s, folder_id, path, create_parents=True)
+    existing = await s.resolve_node(filename, parent_id)
+    if existing:
+        raise DuplicateFileError(f"File '{path}' already exists in dockerfile '{dockerfile_id}'")
+    node_id = await s.write_document(parent_id, filename, content)
+    node = await s.read_node(node_id)
+    assert node is not None
     _log.info("dockerfile_files.create", dockerfile_id=dockerfile_id, path=path)
-    return _file_summary(dockerfile_id, path, full_path)
+    return FileSummary(
+        id=node_id,
+        dockerfile_id=dockerfile_id,
+        path=path,
+        content=content,
+        type="file",
+        size=node["size"] or 0,
+        created_at=node["created_at"],
+        updated_at=node["updated_at"],
+    )
 
 
 async def get_by_id(file_id: UUID) -> FileSummary:
-    """Scan all dockerfile dirs to find the file with this deterministic UUID5."""
-    base = os.path.join(_data_dir(), "dockerfiles")
-    if not os.path.isdir(base):
-        raise FileNotFoundError(f"File {file_id} not found")
-    for slug in sorted(os.listdir(base)):
-        slug_path = os.path.join(base, slug)
-        if not os.path.isdir(slug_path):
-            continue
-        for dirpath, dirnames, filenames in os.walk(slug_path):
-            dirnames[:] = [d for d in dirnames if not d.startswith(".") or d == ".tmp"]
-            for filename in filenames:
-                full_path = os.path.join(dirpath, filename)
-                rel_path = os.path.relpath(full_path, slug_path).replace("\\", "/")
-                if _file_id(slug, rel_path) == file_id:
-                    return _file_summary(slug, rel_path, full_path)
-    raise FileNotFoundError(f"File {file_id} not found")
+    summary, _ = await _find_file(file_id)
+    return summary
 
 
 async def update(file_id: UUID, content: str | None = None) -> FileSummary:
     if content is None:
         return await get_by_id(file_id)
-    existing = await get_by_id(file_id)
-    full_path = os.path.join(_slug_dir(existing.dockerfile_id), existing.path)
-    with open(full_path, "w", encoding="utf-8") as fh:
-        fh.write(content)
+    summary, df_folder_id = await _find_file(file_id)
+    s = await _storage()
+    parent_id, filename = await _resolve_file_folder(s, df_folder_id, summary.path)
+    await s.write_document(parent_id, filename, content)
     _log.info("dockerfile_files.update", file_id=str(file_id))
-    return _file_summary(existing.dockerfile_id, existing.path, full_path)
+    return FileSummary(
+        id=file_id,
+        dockerfile_id=summary.dockerfile_id,
+        path=summary.path,
+        content=content,
+        type="file",
+        size=len(content.encode("utf-8")),
+        created_at=summary.created_at,
+        updated_at=summary.updated_at,
+    )
 
 
 async def delete(file_id: UUID) -> None:
-    existing = await get_by_id(file_id)
-    if existing.path in PROTECTED_FILES:
-        raise ProtectedFileError(
-            f"File '{existing.path}' is protected and cannot be deleted"
-        )
-    slug_dir = _slug_dir(existing.dockerfile_id)
-    full_path = os.path.join(slug_dir, existing.path)
-    os.unlink(full_path)
-    parent = os.path.dirname(full_path)
-    while parent != slug_dir and os.path.isdir(parent) and not os.listdir(parent):
-        os.rmdir(parent)
-        parent = os.path.dirname(parent)
+    summary, _ = await _find_file(file_id)
+    if summary.path in PROTECTED_FILES:
+        raise ProtectedFileError(f"File '{summary.path}' is protected and cannot be deleted")
+    s = await _storage()
+    await s.delete_node(file_id)
     _log.info("dockerfile_files.delete", file_id=str(file_id))
 
 
 async def delete_dir(dockerfile_id: str, rel_path: str) -> None:
-    """Recursively delete a directory inside the dockerfile's data dir.
-
-    Used by the file explorer to drop dirs that have no registered files (e.g.
-    empty mount targets like ``config/``). Refuses any path that escapes the
-    dockerfile's slug dir.
-    """
-    import shutil
-
-    slug_dir = os.path.realpath(_slug_dir(dockerfile_id))
-    norm_rel = rel_path.strip().strip("/").replace("\\", "/")
-    if not norm_rel:
+    norm = rel_path.strip().strip("/").replace("\\", "/")
+    if not norm:
         raise FileNotFoundError("Empty directory path")
-    target = os.path.realpath(os.path.join(slug_dir, norm_rel))
-    if not target.startswith(slug_dir + os.sep):
-        raise FileNotFoundError(f"Path '{rel_path}' is outside the dockerfile dir")
-    if not os.path.isdir(target):
+    s = await _storage()
+    folder_id = await _dockerfile_folder_id(s, dockerfile_id, create=False)
+    if folder_id is None:
+        raise FileNotFoundError(f"Dockerfile '{dockerfile_id}' has no storage folder")
+    parent_id, dirname = await _resolve_file_folder(s, folder_id, norm)
+    dir_id = await s.resolve_node(dirname, parent_id)
+    if dir_id is None:
         raise FileNotFoundError(f"Directory '{rel_path}' not found")
-    shutil.rmtree(target)
-    _log.info("dockerfile_files.delete_dir", dockerfile_id=dockerfile_id, path=norm_rel)
+    await s.delete_node(dir_id)
+    _log.info("dockerfile_files.delete_dir", dockerfile_id=dockerfile_id, path=norm)
 
 
 async def replace_all(
     dockerfile_id: str,
     files_map: dict[str, str],
 ) -> list[FileSummary]:
-    """Wipe all existing files of a dockerfile and write the given set.
+    """Remplace tous les fichiers d'un dockerfile par le contenu fourni.
 
-    Used by the zip import feature. Bypasses the PROTECTED_FILES check on
-    purpose — protected files are still being REPLACED with fresh content
-    coming from the import, not removed.
+    Supprime le dossier existant et recrée tout depuis zéro.
     """
-    slug_dir = _slug_dir(dockerfile_id)
-    if os.path.isdir(slug_dir):
-        import shutil
-
-        shutil.rmtree(slug_dir)
-    os.makedirs(slug_dir, exist_ok=True)
+    s = await _storage()
+    root = await _root_id(s)
+    existing_folder = await s.resolve_node(dockerfile_id, root)
+    if existing_folder:
+        await s.delete_node(existing_folder)
+    folder_id = await s.create_folder(dockerfile_id, root)
     for path, content in files_map.items():
-        full_path = os.path.join(slug_dir, path)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        with open(full_path, "w", encoding="utf-8") as fh:
-            fh.write(content)
-    _log.info(
-        "dockerfile_files.replace_all",
-        dockerfile_id=dockerfile_id,
-        file_count=len(files_map),
-    )
+        parent_id, filename = await _resolve_file_folder(s, folder_id, path, create_parents=True)
+        await s.write_document(parent_id, filename, content)
+    _log.info("dockerfile_files.replace_all", dockerfile_id=dockerfile_id, file_count=len(files_map))
     return await list_for_dockerfile(dockerfile_id)
 
 
-# ---------------------------------------------------------------------------
-# One-time migration: DB → filesystem
-# ---------------------------------------------------------------------------
+async def read_target(dockerfile_id: str) -> dict | None:
+    """Lit le bloc Target de Dockerfile.json."""
+    s = await _storage()
+    folder_id = await _dockerfile_folder_id(s, dockerfile_id, create=False)
+    if folder_id is None:
+        return None
+    doc = await s.read_document(folder_id, "Dockerfile.json")
+    if not doc or not doc["content"]:
+        return None
+    try:
+        return json.loads(doc["content"]).get("Target")
+    except (json.JSONDecodeError, AttributeError):
+        return None
 
 
-async def migrate_db_to_disk() -> None:
-    """One-time migration: read all files from the legacy DB table and write
-    them to disk. Idempotent — skips files that already exist on disk.
-    """
-    from agflow.db.pool import fetch_all  # imported lazily — may not be available
+async def read_generation_config(dockerfile_id: str) -> dict[str, Any]:
+    """Lit le bloc Generation de Dockerfile.json avec les valeurs par défaut."""
+    s = await _storage()
+    folder_id = await _dockerfile_folder_id(s, dockerfile_id, create=False)
+
+    if folder_id is None:
+        return {**DEFAULT_GENERATION_CONFIG, "paths": {**DEFAULT_GENERATION_CONFIG["paths"]}}
+
+    doc = await s.read_document(folder_id, "Dockerfile.json")
+    if not doc or not doc["content"]:
+        return {**DEFAULT_GENERATION_CONFIG, "paths": {**DEFAULT_GENERATION_CONFIG["paths"]}}
 
     try:
-        rows = await fetch_all(
-            "SELECT dockerfile_id, path, content FROM dockerfile_files"
-        )
-    except Exception as exc:
-        _log.warning(
-            "dockerfile_files.migrate_db_to_disk.skip",
-            reason=str(exc),
-        )
-        return
+        data = json.loads(doc["content"])
+    except json.JSONDecodeError:
+        return {**DEFAULT_GENERATION_CONFIG, "paths": {**DEFAULT_GENERATION_CONFIG["paths"]}}
 
-    migrated = 0
-    skipped = 0
-    for row in rows:
-        dockerfile_id: str = row["dockerfile_id"]
-        path: str = row["path"]
-        content: str = row["content"] or ""
-        slug_dir = _slug_dir(dockerfile_id)
-        os.makedirs(slug_dir, exist_ok=True)
-        full_path = os.path.join(slug_dir, path)
-        if os.path.exists(full_path):
-            skipped += 1
-            continue
-        with open(full_path, "w", encoding="utf-8") as fh:
-            fh.write(content)
-        migrated += 1
+    gen = data.get("Generation") or {}
+    result = {**DEFAULT_GENERATION_CONFIG, **gen}
+    result["paths"] = {**DEFAULT_GENERATION_CONFIG["paths"], **gen.get("paths", {})}
 
-    _log.info(
-        "dockerfile_files.migrate_db_to_disk.done",
-        migrated=migrated,
-        skipped=skipped,
-    )
+    if "base_dir" not in gen:
+        workdir = (data.get("docker", {}).get("Runtime", {}).get("WorkingDir", "") or "").strip().rstrip("/")
+        if workdir:
+            base = workdir.split("/")[-1]
+            if base and base != DEFAULT_GENERATION_CONFIG["base_dir"]:
+                result["base_dir"] = base
+                result["prompt_ref_prefix"] = "@"
+
+    return result

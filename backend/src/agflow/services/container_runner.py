@@ -65,9 +65,8 @@ def _generate_tmp_files(
     """
     import json as _json
 
-    from agflow.services.dockerfile_files_service import _slug_dir
-
-    tmp_dir = os.path.join(_slug_dir(dockerfile_id), ".tmp")
+    _data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+    tmp_dir = os.path.join(_data_dir, "dockerfiles", dockerfile_id, ".tmp")
     os.makedirs(tmp_dir, exist_ok=True)
 
     # .env — all resolved env vars

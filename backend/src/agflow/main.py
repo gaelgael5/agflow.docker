@@ -146,10 +146,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    # Migrate content to disk BEFORE SQL migrations drop the columns
     await role_files_service.migrate_db_to_disk()
     await agent_files_service.migrate_db_to_disk()
-    await dockerfile_files_service.migrate_db_to_disk()
     await run_migrations(migrations_dir)
     await users_service.seed_admin(settings.admin_email)
     for df in await dockerfiles_service.list_all():

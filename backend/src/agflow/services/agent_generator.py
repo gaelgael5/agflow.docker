@@ -151,7 +151,7 @@ async def generate(
     os.makedirs(generated_dir, exist_ok=True)
 
     # Load generation config (paths, ref_prefix) from Dockerfile.json
-    gen_config = dockerfile_files_service.read_generation_config(agent.dockerfile_id)
+    gen_config = await dockerfile_files_service.read_generation_config(agent.dockerfile_id)
     gen_paths = gen_config["paths"]
     ref_prefix = gen_config["prompt_ref_prefix"]
 
@@ -451,7 +451,7 @@ async def generate(
     _write(out_dir, gen_paths["env"], "\n".join(env_lines) + "\n")
 
     # ── MCP installation files ──────────────────────────────────────────
-    target = dockerfile_files_service.read_target(agent.dockerfile_id)
+    target = await dockerfile_files_service.read_target(agent.dockerfile_id)
     cmd_lines: list[str] = []
     config_blocks: dict[str, list[str]] = {}
     resolved_mcps: list[dict[str, Any]] = []

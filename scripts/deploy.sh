@@ -31,7 +31,7 @@ fi
 
 echo "==> Packaging deploy context (.env + compose + Caddyfile + apps.json + backend + frontend)..."
 tar czf /tmp/agflow-deploy.tar.gz \
-    .env docker-compose.prod.yml Caddyfile apps.json \
+    .env docker-compose.dev.yml Caddyfile apps.json \
     backend/Dockerfile backend/pyproject.toml backend/src backend/migrations \
     frontend/Dockerfile frontend/nginx.conf frontend/package.json frontend/package-lock.json \
     frontend/tsconfig.json frontend/tsconfig.node.json frontend/vite.config.ts \
@@ -44,7 +44,7 @@ scp /tmp/agflow-deploy.tar.gz pve:/tmp/
 echo "==> Stopping backend/frontend before code update..."
 ssh pve "pct exec ${CTID} -- bash -c '
   cd ${REPO_DIR_ON_CT} 2>/dev/null && \
-  docker compose -f docker-compose.prod.yml stop backend frontend 2>/dev/null || true
+  docker compose -f docker-compose.dev.yml stop backend frontend 2>/dev/null || true
 '"
 
 echo "==> Pushing into CT ${CTID} and extracting..."
@@ -95,7 +95,7 @@ if [ "$REBUILD" -eq 1 ]; then
 fi
 
 echo "==> Starting stack on CT ${CTID}..."
-ssh pve "pct exec ${CTID} -- bash -c 'cd ${REPO_DIR_ON_CT} && docker compose -f docker-compose.prod.yml up -d && sleep 3 && docker compose -f docker-compose.prod.yml ps'"
+ssh pve "pct exec ${CTID} -- bash -c 'cd ${REPO_DIR_ON_CT} && docker compose -f docker-compose.dev.yml up -d && sleep 3 && docker compose -f docker-compose.dev.yml ps'"
 
 echo ""
 echo "==> Deployed. Smoke test:"

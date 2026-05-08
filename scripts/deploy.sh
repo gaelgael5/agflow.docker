@@ -14,7 +14,7 @@
 set -euo pipefail
 
 CTID="${CTID:-201}"
-REPO_DIR_ON_CT="/root/agflow.docker"
+REPO_DIR_ON_CT="/opt/agflow.docker"
 REBUILD=0
 
 if [[ "${1:-}" == "--rebuild" ]]; then

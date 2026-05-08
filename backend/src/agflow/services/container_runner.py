@@ -681,7 +681,7 @@ def build_run_config(
 
     network_mode = full_resolve(
         str(network.get("Mode", "bridge")), vars_map, extra_env
-    ) or "bridge"
+    ).strip() or "bridge"
 
     memory_bytes = parse_memory_bytes(str(resources.get("Memory", "")))
     nano_cpus = parse_nano_cpus(str(resources.get("Cpus", "")))

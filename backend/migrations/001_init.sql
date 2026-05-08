@@ -540,19 +540,7 @@ CREATE TABLE scripts (
     UNIQUE (name)
 );
 
--- secrets (TABLE)
 
-CREATE TABLE secrets (
-    id uuid DEFAULT uuid_generate_v4() NOT NULL PRIMARY KEY,
-    var_name text NOT NULL,
-    value_encrypted bytea NOT NULL,
-    scope text DEFAULT 'global' NOT NULL,
-    agent_id uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT secrets_scope_check CHECK ((scope = ANY (ARRAY['global'::text, 'agent'::text]))),
-    UNIQUE NULLS NOT DISTINCT (var_name, scope, agent_id)
-);
 
 -- service_types (TABLE)
 
@@ -629,19 +617,6 @@ CREATE TABLE user_identities (
     UNIQUE (provider, subject)
 );
 
--- user_secrets (TABLE)
-
-CREATE TABLE user_secrets (
-    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
-    user_id uuid NOT NULL,
-    name text NOT NULL,
-    ciphertext text NOT NULL,
-    iv text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    UNIQUE (user_id, name)
-);
-
 -- users (TABLE)
 
 CREATE TABLE users (
@@ -656,10 +631,7 @@ CREATE TABLE users (
     approved_at timestamp with time zone,
     approved_by uuid,
     last_login timestamp with time zone,
-    vault_salt text,
-    vault_test_ciphertext text,
-    vault_test_iv text,
-    CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['admin'::text, 'user'::text]))),
+    CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['admin'::text, 'user'::text, 'operator'::text, 'viewer'::text]))),
     CONSTRAINT users_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'active'::text, 'disabled'::text]))),
     UNIQUE (email)
 );
@@ -844,9 +816,7 @@ CREATE INDEX idx_role_sections_role_pos ON role_sections USING btree (role_id, "
 
 CREATE INDEX idx_scripts_execute_on_types_named ON scripts USING btree (execute_on_types_named) WHERE (execute_on_types_named IS NOT NULL);
 
--- idx_secrets_var_name (INDEX)
 
-CREATE INDEX idx_secrets_var_name ON secrets USING btree (var_name);
 
 -- idx_sessions_api_key (INDEX)
 
@@ -879,10 +849,6 @@ CREATE INDEX idx_user_identities_lookup ON user_identities USING btree (provider
 -- idx_user_identities_user (INDEX)
 
 CREATE INDEX idx_user_identities_user ON user_identities USING btree (user_id);
-
--- idx_user_secrets_user (INDEX)
-
-CREATE INDEX idx_user_secrets_user ON user_secrets USING btree (user_id);
 
 -- idx_users_email (INDEX)
 
@@ -1171,11 +1137,6 @@ ALTER TABLE tasks
 
 ALTER TABLE user_identities
     ADD CONSTRAINT user_identities_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-
--- user_secrets user_secrets_user_id_fkey (FK CONSTRAINT)
-
-ALTER TABLE user_secrets
-    ADD CONSTRAINT user_secrets_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
 
 -- users users_approved_by_fkey (FK CONSTRAINT)
 

@@ -41,7 +41,6 @@ from agflow.api.admin.templates import router as admin_templates_router
 from agflow.api.admin.terminal import router as admin_terminal_router
 from agflow.api.admin.user_secrets import router as admin_user_secrets_router
 from agflow.api.admin.users import router as admin_users_router
-from agflow.api.admin.vault import router as admin_vault_router
 from agflow.api.health import router as health_router
 from agflow.api.infra.categories import router as infra_categories_router
 from agflow.api.infra.certificates import router as infra_certificates_router
@@ -139,7 +138,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     from agflow.db.migrations import run_migrations
     from agflow.services import (
-        agent_files_service,
         dockerfile_files_service,
         dockerfiles_service,
         role_files_service,
@@ -147,10 +145,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-    # Migrate content to disk BEFORE SQL migrations drop the columns
     await role_files_service.migrate_db_to_disk()
-    await agent_files_service.migrate_db_to_disk()
-    await dockerfile_files_service.migrate_db_to_disk()
     await run_migrations(migrations_dir)
     await users_service.seed_admin(settings.admin_email)
     for df in await dockerfiles_service.list_all():
@@ -167,6 +162,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from agflow.services import ai_providers_service
 
     ai_providers_service.seed_defaults()
+    # Détection du runtime container (Docker standalone/Swarm, containerd…)
+    from agflow.container import init_facade
+    from agflow.db.pool import get_pool as _get_pool
+
+    try:
+        _pool = await _get_pool()
+        _runtime_mode = await init_facade(_pool)
+        log.info("container.runtime_ready", mode=_runtime_mode.value)
+    except Exception as exc:
+        log.warning("container.runtime_detection_failed", error=str(exc))
+
     # Supervision : reconciliation Docker ↔ DB au démarrage (best-effort)
     try:
         await run_docker_reconciliation()
@@ -259,10 +265,6 @@ def create_app() -> FastAPI:
                 "description": "Skills catalog — install and manage skill packs from discovery registries.",
             },
             {
-                "name": "admin-vault",
-                "description": "User vault — client-side encrypted secret storage with passphrase-based key derivation.",
-            },
-            {
                 "name": "admin-user-secrets",
                 "description": "User secrets — per-user encrypted credentials stored in the vault.",
             },
@@ -319,7 +321,6 @@ def create_app() -> FastAPI:
     app.include_router(infra_machines_router)
     app.include_router(infra_swarm_clusters_router)
     app.include_router(infra_certificates_router)
-    app.include_router(admin_vault_router)
     app.include_router(admin_user_secrets_router)
     app.include_router(public_dockerfiles_router)
     app.include_router(public_files_router)

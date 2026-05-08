@@ -1,63 +1,23 @@
 import { api } from "./api";
 
-export interface VaultStatus {
-  initialized: boolean;
-  salt: string | null;
-  test_ciphertext: string | null;
-  test_iv: string | null;
-}
-
-export interface VaultSetup {
-  salt: string;
-  test_ciphertext: string;
-  test_iv: string;
-}
-
 export interface UserSecretSummary {
-  id: string;
-  user_id: string;
   name: string;
-  ciphertext: string;
-  iv: string;
-  created_at: string;
-  updated_at: string;
+  description?: string | null;
 }
 
-export interface UserSecretCreate {
+export interface UserSecretReveal {
   name: string;
-  ciphertext: string;
-  iv: string;
+  value: string;
 }
-
-export interface UserSecretUpdate {
-  ciphertext: string;
-  iv: string;
-}
-
-export const vaultApi = {
-  async getStatus(): Promise<VaultStatus> {
-    const res = await api.get<VaultStatus>("/admin/vault/status");
-    return res.data;
-  },
-  async setup(payload: VaultSetup): Promise<void> {
-    await api.post("/admin/vault/setup", payload);
-  },
-};
 
 export const userSecretsApi = {
-  async list(): Promise<UserSecretSummary[]> {
-    const res = await api.get<UserSecretSummary[]>("/admin/user-secrets");
-    return res.data;
-  },
-  async create(payload: UserSecretCreate): Promise<UserSecretSummary> {
-    const res = await api.post<UserSecretSummary>("/admin/user-secrets", payload);
-    return res.data;
-  },
-  async update(id: string, payload: UserSecretUpdate): Promise<UserSecretSummary> {
-    const res = await api.put<UserSecretSummary>(`/admin/user-secrets/${id}`, payload);
-    return res.data;
-  },
-  async remove(id: string): Promise<void> {
-    await api.delete(`/admin/user-secrets/${id}`);
-  },
+  list: () => api.get<UserSecretSummary[]>("/admin/user-secrets").then(r => r.data),
+  create: (payload: { name: string; value: string; description?: string }) =>
+    api.post<UserSecretSummary>("/admin/user-secrets", payload).then(r => r.data),
+  reveal: (name: string) =>
+    api.get<UserSecretReveal>(`/admin/user-secrets/${name}/reveal`).then(r => r.data),
+  update: (name: string, value: string) =>
+    api.put<UserSecretSummary>(`/admin/user-secrets/${name}`, { value }).then(r => r.data),
+  remove: (name: string) =>
+    api.delete(`/admin/user-secrets/${name}`),
 };

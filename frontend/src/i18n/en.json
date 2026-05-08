@@ -93,7 +93,9 @@
     "refresh": "Refresh",
     "none": "None",
     "close": "Close",
-    "edit": "Edit"
+    "edit": "Edit",
+    "save": "Save",
+    "loading": "Loading…"
   },
   "sidebar": {
     "section_platform": "Platform",
@@ -183,6 +185,7 @@
     "test_unsupported": "Test not available for this variable type",
     "error_duplicate": "This variable name already exists",
     "error_generic": "An error occurred",
+    "error_update": "Failed to update the secret",
     "loading": "Loading…"
   },
   "roles": {
@@ -694,21 +697,6 @@
     "containers.chat:write": "Send tasks via chat",
     "keys:manage": "Manage own API keys (always active)"
   },
-  "vault": {
-    "setup_title": "Create your vault passphrase",
-    "setup_warning": "This passphrase is not stored anywhere. If you forget it, your secrets will be permanently lost.",
-    "setup_passphrase": "Passphrase",
-    "setup_confirm": "Confirm passphrase",
-    "setup_submit": "Create vault",
-    "setup_mismatch": "Passphrases do not match",
-    "setup_min_length": "8 characters minimum",
-    "setup_error_generic": "An error occurred",
-    "unlock_title": "Unlock your vault",
-    "unlock_subtitle": "Enter your passphrase to access your secrets",
-    "unlock_passphrase": "Passphrase",
-    "unlock_submit": "Unlock",
-    "unlock_error": "Incorrect passphrase"
-  },
   "my_secrets": {
     "page_title": "My secrets",
     "page_subtitle": "Your secrets are end-to-end encrypted. Only your passphrase can decrypt them.",
@@ -736,7 +724,9 @@
     "decrypt_error": "Decryption error",
     "empty": "No secrets — add your first API key",
     "vault_status_error": "Could not load vault status",
-    "retry": "Retry"
+    "retry": "Retry",
+    "field_description": "Description (optional)",
+    "reveal_error": "Failed to reveal secret value"
   },
   "target": {
     "select_button": "Select target",
@@ -891,7 +881,26 @@
     "export": "Export data",
     "export_tooltip": "Download a ZIP archive of the data/ volume",
     "export_error": "Export failed. Try again.",
-    "apps_menu": "Applications"
+    "apps_menu": "Applications",
+    "db_backup": "DB backup",
+    "db_backup_tooltip": "Export / import the Postgres database"
+  },
+  "db_backup": {
+    "title": "Database backup",
+    "subtitle": "Export and import a full Postgres dump (sql.gz).",
+    "export_title": "Export",
+    "export_desc": "Download a full database dump (gzipped pg_dump). Keep it before any risky operation.",
+    "export_button": "Download dump",
+    "export_success": "Dump downloaded: {{filename}}",
+    "export_error": "Export failed. Check backend logs.",
+    "import_title": "Import (DESTRUCTIVE)",
+    "import_desc": "Restore the database from a previous dump. All current tables will be DROPPED and recreated. No undo.",
+    "import_pick_file": "Pick a .sql.gz file",
+    "import_confirm": "Confirm restore (overwrites the database)",
+    "import_success": "Restore done. Reload the page.",
+    "import_error": "Import failed: {{detail}}",
+    "cancel": "Cancel",
+    "close": "Close"
   },
   "contracts": {
     "tab_title": "API Contracts",

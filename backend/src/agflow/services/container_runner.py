@@ -9,7 +9,6 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
-import aiodocker
 import structlog
 
 from agflow.mom.adapters.generic import GenericAdapter
@@ -65,9 +64,8 @@ def _generate_tmp_files(
     """
     import json as _json
 
-    from agflow.services.dockerfile_files_service import _slug_dir
-
-    tmp_dir = os.path.join(_slug_dir(dockerfile_id), ".tmp")
+    _data_dir = os.environ.get("AGFLOW_DATA_DIR", "/app/data")
+    tmp_dir = os.path.join(_data_dir, "dockerfiles", dockerfile_id, ".tmp")
     os.makedirs(tmp_dir, exist_ok=True)
 
     # .env — all resolved env vars
@@ -270,20 +268,9 @@ docker stack rm "$STACK_NAME"
 
 
 async def _load_platform_secrets() -> dict[str, str]:
-    """Load all global platform secrets as a dict for env var injection."""
-    from agflow.config import get_settings
-    from agflow.db.pool import fetch_all
-
-    master = get_settings().secrets_master_key
-    rows = await fetch_all(
-        """
-        SELECT var_name, pgp_sym_decrypt(value_encrypted, $1) AS value
-        FROM secrets
-        WHERE scope = 'global'
-        """,
-        master,
-    )
-    return {r["var_name"]: r["value"] for r in rows}
+    """Load all platform secrets as a dict for env var injection."""
+    from agflow.services import platform_secrets_service
+    return await platform_secrets_service.resolve_all()
 
 
 class ContainerRunnerError(Exception):
@@ -900,56 +887,8 @@ def _info_from_container(raw: dict[str, Any]) -> ContainerInfo:
 
 
 async def list_running() -> list[ContainerInfo]:
-    """List all running agflow-managed agents (Swarm services + their containers).
-
-    Pour chaque service avec label agflow.managed=true, récupère le 1er task
-    en running et résoud le container réel pour produire un ContainerInfo.
-    Les services sans task running (pending/failed) sont skippés.
-    """
-    docker = aiodocker.Docker()
-    try:
-        services = await docker.services.list(
-            filters={"label": [f"{_AGFLOW_MANAGED_LABEL}=true"]},
-        )
-        result: list[ContainerInfo] = []
-        for svc in services or []:
-            svc_name = (svc.get("Spec") or {}).get("Name", "")
-            if not svc_name:
-                continue
-            try:
-                tasks = await docker.tasks.list(filters={"service": svc_name})
-            except aiodocker.exceptions.DockerError:
-                continue
-            container_id = ""
-            for task in tasks or []:
-                if (task.get("Status") or {}).get("State") == "running":
-                    cs = (task.get("Status") or {}).get("ContainerStatus", {}) or {}
-                    cid = cs.get("ContainerID")
-                    if cid:
-                        container_id = cid
-                        break
-            if not container_id:
-                continue
-            try:
-                container = docker.containers.container(container_id=container_id)
-                inspect = await container.show()
-            except aiodocker.exceptions.DockerError:
-                continue
-            cfg = inspect.get("Config") or {}
-            state = inspect.get("State") or {}
-            labels = cfg.get("Labels") or {}
-            result.append(ContainerInfo(
-                id=inspect.get("Id", container_id),
-                name=(inspect.get("Name") or svc_name).lstrip("/"),
-                dockerfile_id=labels.get(_AGFLOW_DOCKERFILE_LABEL, ""),
-                image=cfg.get("Image", ""),
-                status=state.get("Status", "running"),
-                created_at=_parse_docker_ts(inspect.get("Created", "")),
-                instance_id=labels.get(_AGFLOW_INSTANCE_LABEL, ""),
-            ))
-        return result
-    finally:
-        await docker.close()
+    from agflow.container.facade import get_facade
+    return await get_facade().list_running()
 
 
 async def start(
@@ -959,115 +898,13 @@ async def start(
     content_hash: str,
     user_secrets: dict[str, str] | None = None,
 ) -> ContainerInfo:
-    """Create a Swarm service for an agent and resolve its container.
-
-    Raises:
-        ImageNotBuiltError: target image doesn't exist on the local daemon.
-        TooManyContainersError: hard limit MAX_RUNNING_CONTAINERS reached.
-        InvalidParamsError: Dockerfile.json cannot be translated.
-    """
-    import asyncio as _asyncio
-
-    # Concurrency guard
-    existing = await list_running()
-    alive = [c for c in existing if c.status in ("running", "created", "restarting")]
-    if len(alive) >= MAX_RUNNING_CONTAINERS:
-        raise TooManyContainersError(
-            f"Maximum of {MAX_RUNNING_CONTAINERS} running containers reached. "
-            f"Stop one before launching another."
-        )
-
-    instance_id = secrets.token_hex(3)
-    platform_secrets = await _load_platform_secrets()
-    all_secrets = {**platform_secrets, **(user_secrets or {})}
-    name, spec = build_service_spec(
-        dockerfile_id=dockerfile_id,
+    from agflow.container.facade import get_facade
+    return await get_facade().launch(
+        dockerfile_id,
         params_json_content=params_json_content,
         content_hash=content_hash,
-        instance_id=instance_id,
-        extra_env=all_secrets,
+        user_secrets=user_secrets,
     )
-    classic_image = spec["TaskTemplate"]["ContainerSpec"]["Image"]
-
-    # Pre-create auto-prefixed mount dirs (same as before)
-    _ensure_mount_paths_from_config(
-        dockerfile_id, params_json_content, instance_id, content_hash,
-    )
-
-    # Generate .tmp/ classic files for diagnostic (run.sh always generated for debug)
-    _, classic_config = build_run_config(
-        dockerfile_id=dockerfile_id,
-        params_json_content=params_json_content,
-        content_hash=content_hash,
-        instance_id=instance_id,
-        extra_env=all_secrets,
-    )
-    _generate_tmp_files(dockerfile_id, name, classic_config)
-
-    docker = aiodocker.Docker()
-    try:
-        # Preflight : image must exist
-        try:
-            await docker.images.inspect(classic_image)
-        except aiodocker.exceptions.DockerError as exc:
-            if exc.status == 404:
-                raise ImageNotBuiltError(
-                    f"Image '{classic_image}' not found — build the dockerfile first."
-                ) from exc
-            raise
-
-        # Create the Swarm service
-        service_create_resp = await docker.services.create(spec)
-        service_id = service_create_resp.get("ID") or service_create_resp.get("Id", "")
-
-        # Poll tasks until at least one is running (timeout ~30s)
-        container_id = ""
-        for _attempt in range(30):
-            tasks = await docker.tasks.list(filters={"service": name})
-            for task in tasks:
-                state = task.get("Status", {}).get("State", "")
-                if state == "running":
-                    cs = task.get("Status", {}).get("ContainerStatus", {}) or {}
-                    container_id = cs.get("ContainerID", "")
-                    if container_id:
-                        break
-            if container_id:
-                break
-            await _asyncio.sleep(1)
-
-        if not container_id:
-            # Service was created but no container came up. Cleanup + error.
-            with contextlib.suppress(Exception):
-                await docker.services.delete(service_id)
-            raise ContainerRunnerError(
-                f"Service '{name}' created but no running container after 30s"
-            )
-
-        # Inspect the container to produce ContainerInfo
-        container = docker.containers.container(container_id=container_id)
-        inspect = await container.show()
-        cfg = inspect.get("Config") or {}
-        state = inspect.get("State") or {}
-        labels = cfg.get("Labels") or {}
-        info = ContainerInfo(
-            id=inspect.get("Id", container_id),
-            name=(inspect.get("Name") or name).lstrip("/"),
-            dockerfile_id=labels.get(_AGFLOW_DOCKERFILE_LABEL, dockerfile_id),
-            image=cfg.get("Image", classic_image),
-            status=state.get("Status", "running"),
-            created_at=_parse_docker_ts(inspect.get("Created", "")),
-            instance_id=labels.get(_AGFLOW_INSTANCE_LABEL, instance_id),
-        )
-        _log.info(
-            "container.start_swarm",
-            dockerfile_id=dockerfile_id,
-            service_id=service_id,
-            service_name=name,
-            container_id=info.id,
-        )
-        return info
-    finally:
-        await docker.close()
 
 
 async def run_task(
@@ -1454,63 +1291,8 @@ async def run_task_swarm(
 
 
 async def stop(container_id: str) -> None:
-    """Stop and remove an agent : delete its Swarm service if exists, sinon
-    fallback container delete (rétro-compat pour containers classiques restants).
-
-    Le param 'container_id' peut être un service name (cas Swarm) ou un container
-    id/name (cas legacy). On essaie service en 1er, fallback container ensuite.
-    """
-    docker = aiodocker.Docker()
-    try:
-        # Try Swarm service first
-        try:
-            services = await docker.services.list(
-                filters={"name": [container_id]},
-            )
-        except aiodocker.exceptions.DockerError:
-            services = []
-
-        for svc in services or []:
-            svc_id = svc.get("ID") or svc.get("Id", "")
-            svc_labels = (svc.get("Spec") or {}).get("Labels", {}) or {}
-            svc_name = (svc.get("Spec") or {}).get("Name", "")
-            # Vérification managed et match exact du nom (le filter "name" peut être prefix)
-            if (svc_labels.get(_AGFLOW_MANAGED_LABEL) == "true"
-                    and (svc_name == container_id or svc_id == container_id)):
-                try:
-                    await docker.services.delete(svc_id)
-                except aiodocker.exceptions.DockerError as exc:
-                    if exc.status not in (404, 409):
-                        raise
-                _log.info("container.stop_swarm", service_id=svc_id, service_name=svc_name)
-                return
-
-        # Fallback : container classique
-        try:
-            container = docker.containers.container(container_id=container_id)
-            inspect = await container.show()
-        except aiodocker.exceptions.DockerError as exc:
-            if exc.status == 404:
-                raise ContainerNotFoundError(
-                    f"Service or container '{container_id}' not found"
-                ) from exc
-            raise
-
-        labels = (inspect.get("Config") or {}).get("Labels") or {}
-        if labels.get(_AGFLOW_MANAGED_LABEL) != "true":
-            raise ContainerNotFoundError(
-                f"Container '{container_id}' is not managed by agflow"
-            )
-        with contextlib.suppress(aiodocker.exceptions.DockerError):
-            await container.stop(timeout=10)
-        try:
-            await container.delete(force=True)
-        except aiodocker.exceptions.DockerError as exc:
-            if exc.status not in (404, 409):
-                raise
-        _log.info("container.stop_legacy", container_id=container_id)
-    finally:
-        await docker.close()
+    from agflow.container.facade import get_facade
+    await get_facade().stop(container_id)
 
 
 async def publish_instruction_via_mom(

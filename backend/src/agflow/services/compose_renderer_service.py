@@ -24,11 +24,12 @@ from jinja2.sandbox import SandboxedEnvironment
 from agflow.db.pool import fetch_all, fetch_one
 from agflow.services import (
     groups_service,
+    platform_secrets_service,
     product_catalog_service,
     product_instances_service,
     projects_service,
     swarm_defaults,
-    template_files_service,
+    template_storage_service,
 )
 
 
@@ -307,12 +308,10 @@ async def render_group_compose(
     deployment_data: dict[str, Any],
     group_id: UUID,
 ) -> str:
-    """Render the docker-compose YAML for a single group using its Jinja template.
+    """Render le docker-compose YAML d'un groupe via son template Jinja2.
 
-    The group must have ``compose_template_slug`` set and the referenced template
-    must contain at least one ``*.sh.j2`` file. The Jinja context is the group's
-    block from ``deployment_data`` (keys: group, group_slug, network, instances,
-    volumes).
+    Les références ${vault://} et ${env://} dans le rendu sont résolues
+    via platform_secrets_service avant retour.
     """
     groups = deployment_data.get("groups", []) if isinstance(deployment_data, dict) else []
     block = next((g for g in groups if g.get("group", {}).get("id") == str(group_id)), None)
@@ -333,27 +332,29 @@ async def render_group_compose(
             f"template via the group editor."
         )
 
-    files = template_files_service.list_files(slug)
+    files = await template_storage_service.list_files(slug)
     sh_files = [f["filename"] for f in files if f["filename"].endswith(".sh.j2")]
     if not sh_files:
         raise ComposeRenderError(
-            f"Template {slug!r} has no *.sh.j2 file — create one in "
-            f"/templates/{slug} (kind=sh)."
+            f"Template {slug!r} has no *.sh.j2 file — create one in the template editor."
         )
     filename = sh_files[0]
 
     try:
-        content = template_files_service.read_file(slug, filename)
-    except FileNotFoundError as exc:
+        content = await template_storage_service.read_file(slug, filename)
+    except template_storage_service.TemplateFileNotFoundError as exc:
         raise ComposeRenderError(str(exc)) from exc
 
     try:
         template = _JINJA_ENV.from_string(content or "")
-        return template.render(**block)
+        rendered = template.render(**block)
     except TemplateError as exc:
         raise ComposeRenderError(
             f"Jinja2 rendering failed for template {slug!r}/{filename!r}: {exc}"
         ) from exc
+
+    platform_secrets = await platform_secrets_service.resolve_all()
+    return platform_secrets_service.resolve_platform_refs(rendered, platform_secrets)
 
 
 # ── SaaS runtime renderer (multi-replica + shared user network) ───────────────

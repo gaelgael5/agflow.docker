@@ -29,9 +29,9 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-echo "==> Packaging deploy context (.env + compose + Caddyfile + backend + frontend)..."
+echo "==> Packaging deploy context (.env + compose + Caddyfile + apps.json + backend + frontend)..."
 tar czf /tmp/agflow-deploy.tar.gz \
-    .env docker-compose.prod.yml Caddyfile \
+    .env docker-compose.prod.yml Caddyfile apps.json \
     backend/Dockerfile backend/pyproject.toml backend/src backend/migrations \
     frontend/Dockerfile frontend/nginx.conf frontend/package.json frontend/package-lock.json \
     frontend/tsconfig.json frontend/tsconfig.node.json frontend/vite.config.ts \
@@ -75,6 +75,12 @@ ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz &&
            rm -rf ${REPO_DIR_ON_CT}/backend/src \
                   ${REPO_DIR_ON_CT}/backend/migrations \
                   ${REPO_DIR_ON_CT}/frontend/src
+           # apps.json doit etre un FICHIER (le mount Docker le voit comme dir
+           # si le source manque au premier up). Si c est un dir vide, vire-le
+           # pour que le tar extract puisse y poser le fichier.
+           if [ -d ${REPO_DIR_ON_CT}/apps.json ]; then
+             rm -rf ${REPO_DIR_ON_CT}/apps.json
+           fi
            cd ${REPO_DIR_ON_CT} && tar xzf /tmp/agflow-deploy.tar.gz
            # Restaure le .env CT (le bootstrap du tarball ne ecrase plus)
            if [ -n \"\$ENV_PRESERVE\" ] && [ -f \"\$ENV_PRESERVE\" ]; then

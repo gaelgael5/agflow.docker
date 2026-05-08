@@ -10,12 +10,13 @@ import httpx
 import structlog
 
 from agflow.services import (
-    agent_files_service,
     agents_service,
     dockerfile_files_service,
     mcp_catalog_service,
+    platform_secrets_service,
     role_documents_service,
     roles_service,
+    template_storage_service,
 )
 from agflow.services.container_runner import resolve_templates
 
@@ -145,19 +146,21 @@ async def generate(
       - skills/         — skill files
     """
     agent = await agents_service.get_by_id(agent_id)
+    platform_secrets = await platform_secrets_service.resolve_all()
     slug = agent.slug
 
     generated_dir = os.path.join(_agents_dir(), slug, "generated")
     os.makedirs(generated_dir, exist_ok=True)
 
     # Load generation config (paths, ref_prefix) from Dockerfile.json
-    gen_config = dockerfile_files_service.read_generation_config(agent.dockerfile_id)
+    gen_config = await dockerfile_files_service.read_generation_config(agent.dockerfile_id)
     gen_paths = gen_config["paths"]
     ref_prefix = gen_config["prompt_ref_prefix"]
 
     # out_dir = generated/ (root for .env, prompt.md, run.sh, mcp.json)
     out_dir = generated_dir
     os.makedirs(out_dir, exist_ok=True)
+    generation_alerts: list[dict[str, str]] = []
 
     import shutil
 
@@ -292,25 +295,32 @@ async def generate(
             # Render profile with template or fallback
             rendered = ""
             if profile.template_slug and profile.template_culture:
-                tpl_path = os.path.join(
-                    _data_dir(), "templates", profile.template_slug,
-                    f"{profile.template_culture}.md.j2",
-                )
-                if os.path.isfile(tpl_path):
-                    with open(tpl_path, encoding="utf-8") as f:
-                        tpl_content = f.read()
+                try:
+                    tpl_content = await template_storage_service.read_file(
+                        profile.template_slug, f"{profile.template_culture}.md.j2"
+                    )
                     env = Environment(
                         trim_blocks=True, lstrip_blocks=True,
                         keep_trailing_newline=True, autoescape=False,
                     )
                     template = env.from_string(tpl_content)
-                    rendered = template.render(
+                    raw = template.render(
                         role=role, profile=profile, agent=agent,
                         load_section=_make_loader(sections),
                     )
+                    rendered = platform_secrets_service.resolve_platform_refs(raw, platform_secrets)
                     _log.info("agent_generator.profile_rendered",
                               profile=profile.name,
                               template=f"{profile.template_slug}/{profile.template_culture}.md.j2")
+                except template_storage_service.TemplateFileNotFoundError:
+                    generation_alerts.append({
+                        "level": "error",
+                        "variable": "profile_template",
+                        "message": (
+                            f"Template profil '{profile.template_slug}/"
+                            f"{profile.template_culture}.md.j2' introuvable"
+                        ),
+                    })
 
             if not rendered:
                 parts = []
@@ -334,19 +344,25 @@ async def generate(
         _prompt_template = None
         _prompt_loader = None
         if gen_block.template_slug and gen_block.template_culture:
-            tpl_path = os.path.join(
-                _data_dir(), "templates", gen_block.template_slug,
-                f"{gen_block.template_culture}.md.j2",
-            )
-            if os.path.isfile(tpl_path):
-                with open(tpl_path, encoding="utf-8") as f:
-                    tpl_content = f.read()
+            try:
+                tpl_content = await template_storage_service.read_file(
+                    gen_block.template_slug, f"{gen_block.template_culture}.md.j2"
+                )
                 env = Environment(
                     trim_blocks=True, lstrip_blocks=True,
                     keep_trailing_newline=True, autoescape=False,
                 )
                 _prompt_template = env.from_string(tpl_content)
                 _prompt_loader = _make_loader(all_sections)
+            except template_storage_service.TemplateFileNotFoundError:
+                generation_alerts.append({
+                    "level": "error",
+                    "variable": "generation",
+                    "message": (
+                        f"Template prompt '{gen_block.template_slug}/"
+                        f"{gen_block.template_culture}.md.j2' introuvable"
+                    ),
+                })
 
         if _prompt_template is not None:
             prompt_md = _prompt_template.render(
@@ -354,6 +370,7 @@ async def generate(
                 missions=generated_profiles, api_contracts=contract_context,
                 ref_prefix=ref_prefix, paths=gen_paths,
             )
+            prompt_md = platform_secrets_service.resolve_platform_refs(prompt_md, platform_secrets)
         else:
             prompt_md = f"# {role.display_name}\n\n{role.identity_md}"
             if generated_profiles:
@@ -395,10 +412,8 @@ async def generate(
         except (json.JSONDecodeError, AttributeError):
             pass
 
-    # Read overrides from agent.json
-    agent_data = agent_files_service.read_agent(slug)
-    env_overrides = agent_data.get("env_overrides", {})
-    param_overrides = agent_data.get("param_overrides", {})
+    env_overrides = agent.env_vars.get("env_overrides", {})
+    param_overrides = agent.env_vars.get("param_overrides", {})
 
     # Build resolved params (apply overrides, then use as template vars)
     resolved_params: dict[str, str] = {}
@@ -451,7 +466,7 @@ async def generate(
     _write(out_dir, gen_paths["env"], "\n".join(env_lines) + "\n")
 
     # ── MCP installation files ──────────────────────────────────────────
-    target = dockerfile_files_service.read_target(agent.dockerfile_id)
+    target = await dockerfile_files_service.read_target(agent.dockerfile_id)
     cmd_lines: list[str] = []
     config_blocks: dict[str, list[str]] = {}
     resolved_mcps: list[dict[str, Any]] = []
@@ -521,25 +536,23 @@ async def generate(
     mcp_tpl_slug = getattr(agent, "mcp_template_slug", "")
     mcp_tpl_culture = getattr(agent, "mcp_template_culture", "")
     mcp_config_fn = getattr(agent, "mcp_config_filename", "config.toml")
-    generation_alerts: list[dict[str, str]] = []
 
     if mcp_tpl_slug and mcp_tpl_culture:
-        tpl_path = os.path.join(
-            _data_dir(), "templates", mcp_tpl_slug, f"{mcp_tpl_culture}.md.j2",
-        )
-        if os.path.isfile(tpl_path):
-            with open(tpl_path, encoding="utf-8") as f:
-                tpl_content = f.read()
+        try:
+            tpl_content = await template_storage_service.read_file(
+                mcp_tpl_slug, f"{mcp_tpl_culture}.md.j2"
+            )
             env = Environment(
                 trim_blocks=True, lstrip_blocks=True,
                 keep_trailing_newline=True, autoescape=False,
             )
             mcp_template = env.from_string(tpl_content)
-            mcp_content = mcp_template.render(
+            raw_mcp = mcp_template.render(
                 agent=agent,
                 mcp_servers=resolved_mcps,
                 config_blocks=config_blocks,
             )
+            mcp_content = platform_secrets_service.resolve_platform_refs(raw_mcp, platform_secrets)
             mcp_out_path = os.path.join(out_dir, mcp_config_fn)
             os.makedirs(os.path.dirname(mcp_out_path), exist_ok=True)
             with open(mcp_out_path, "w", encoding="utf-8") as fh:
@@ -550,18 +563,12 @@ async def generate(
             with open(mount_path, "w", encoding="utf-8") as fh:
                 fh.write(mcp_content)
             _log.info("agent_generator.mcp_config_template", path=mount_path)
-        else:
+        except template_storage_service.TemplateFileNotFoundError:
             generation_alerts.append({
                 "level": "error",
                 "variable": "mcp_template",
                 "message": f"Template MCP '{mcp_tpl_slug}/{mcp_tpl_culture}.md.j2' introuvable",
             })
-    elif mcp_tpl_slug and not mcp_tpl_culture:
-        generation_alerts.append({
-            "level": "error",
-            "variable": "mcp_template",
-            "message": f"Template MCP '{mcp_tpl_slug}' sélectionné mais culture non renseignée",
-        })
     else:
         for config_path, blocks in config_blocks.items():
             filename = os.path.basename(config_path)
@@ -601,38 +608,28 @@ async def generate(
     skills_config_fn = getattr(agent, "skills_config_filename", "skills.md")
 
     if skills_tpl_slug and skills_tpl_culture:
-        tpl_path = os.path.join(
-            _data_dir(), "templates", skills_tpl_slug, f"{skills_tpl_culture}.md.j2",
-        )
-        if os.path.isfile(tpl_path):
-            with open(tpl_path, encoding="utf-8") as f:
-                tpl_content = f.read()
+        try:
+            tpl_content = await template_storage_service.read_file(
+                skills_tpl_slug, f"{skills_tpl_culture}.md.j2"
+            )
             env = Environment(
                 trim_blocks=True, lstrip_blocks=True,
                 keep_trailing_newline=True, autoescape=False,
             )
             skills_template = env.from_string(tpl_content)
-            skills_content = skills_template.render(
-                agent=agent,
-                skills=resolved_skills,
-            )
+            raw_skills = skills_template.render(agent=agent, skills=resolved_skills)
+            skills_content = platform_secrets_service.resolve_platform_refs(raw_skills, platform_secrets)
             skills_out_path = os.path.join(out_dir, skills_config_fn)
             os.makedirs(os.path.dirname(skills_out_path), exist_ok=True)
             with open(skills_out_path, "w", encoding="utf-8") as fh:
                 fh.write(skills_content)
             _log.info("agent_generator.skills_config_template", path=skills_out_path)
-        else:
+        except template_storage_service.TemplateFileNotFoundError:
             generation_alerts.append({
                 "level": "error",
                 "variable": "skills_template",
                 "message": f"Template Skills '{skills_tpl_slug}/{skills_tpl_culture}.md.j2' introuvable",
             })
-    elif skills_tpl_slug and not skills_tpl_culture:
-        generation_alerts.append({
-            "level": "error",
-            "variable": "skills_template",
-            "message": f"Template Skills '{skills_tpl_slug}' sélectionné mais culture non renseignée",
-        })
 
     # Build run.sh from Dockerfile.json with agent overrides applied
     files = await dockerfile_files_service.list_for_dockerfile(agent.dockerfile_id)
@@ -654,8 +651,8 @@ async def generate(
         instance_id = _secrets.token_hex(3)
 
         patched_content = _apply_overrides(params_file.content, env_overrides,
-            agent_data.get("mount_overrides", {}),
-            agent_data.get("param_overrides", {}))
+            agent.env_vars.get("mount_overrides", {}),
+            agent.env_vars.get("param_overrides", {}))
 
         try:
             patched = json.loads(patched_content)

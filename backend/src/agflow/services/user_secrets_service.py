@@ -1,204 +1,86 @@
 from __future__ import annotations
 
-from typing import Any
-from uuid import UUID
+import hashlib
 
-import asyncpg
-import structlog
-
-from agflow.db.pool import execute, fetch_all, fetch_one, get_pool
-from agflow.schemas.user_secrets import UserSecretSummary, VaultStatus
-
-_log = structlog.get_logger(__name__)
+from agflow.services import vault_client
+from agflow.schemas.user_secrets import UserSecretSummary, UserSecretReveal
 
 
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
+class DuplicateSecretError(Exception): ...
 
 
-class VaultAlreadyInitializedError(Exception):
-    pass
+class SecretNotFoundError(Exception): ...
 
 
-class VaultNotInitializedError(Exception):
-    pass
+def _prefix(email: str) -> str:
+    h = hashlib.sha256(email.lower().encode()).hexdigest()[:32]
+    return f"users/{h}"
 
 
-class SecretNotFoundError(Exception):
-    pass
+def _full_name(email: str, name: str) -> str:
+    return f"{_prefix(email)}/{name}"
 
 
-class DuplicateSecretError(Exception):
-    pass
+def _strip_prefix(full_name: str, prefix: str) -> str:
+    return full_name[len(prefix) + 1:]
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _row_to_secret(row: dict[str, Any]) -> UserSecretSummary:
-    return UserSecretSummary(
-        id=row["id"],
-        user_id=row["user_id"],
-        name=row["name"],
-        ciphertext=row["ciphertext"],
-        iv=row["iv"],
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-    )
-
-
-# ---------------------------------------------------------------------------
-# Vault management
-# ---------------------------------------------------------------------------
-
-
-async def get_vault_status(user_id: UUID) -> VaultStatus:
-    row = await fetch_one(
-        "SELECT vault_salt, vault_test_ciphertext, vault_test_iv FROM users WHERE id = $1",
-        user_id,
-    )
-    if row is None:
-        return VaultStatus(initialized=False)
-    return VaultStatus(
-        initialized=row["vault_salt"] is not None,
-        salt=row["vault_salt"],
-        test_ciphertext=row["vault_test_ciphertext"],
-        test_iv=row["vault_test_iv"],
-    )
-
-
-async def setup_vault(
-    user_id: UUID,
-    salt: str,
-    test_ciphertext: str,
-    test_iv: str,
-) -> None:
-    row = await fetch_one(
-        "SELECT vault_salt FROM users WHERE id = $1",
-        user_id,
-    )
-    if row is not None and row["vault_salt"] is not None:
-        raise VaultAlreadyInitializedError(f"Vault already initialized for user {user_id}")
-    await execute(
-        """
-        UPDATE users
-        SET vault_salt = $2, vault_test_ciphertext = $3, vault_test_iv = $4
-        WHERE id = $1
-        """,
-        user_id,
-        salt,
-        test_ciphertext,
-        test_iv,
-    )
-    _log.info("vault.setup", user_id=str(user_id))
-
-
-async def change_vault_passphrase(
-    user_id: UUID,
-    salt: str,
-    test_ciphertext: str,
-    test_iv: str,
-    re_encrypted: list[dict[str, Any]],
-) -> None:
-    pool = await get_pool()
-    async with pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                """
-                UPDATE users
-                SET vault_salt = $2, vault_test_ciphertext = $3, vault_test_iv = $4
-                WHERE id = $1
-                """,
-                user_id,
-                salt,
-                test_ciphertext,
-                test_iv,
-            )
-            for item in re_encrypted:
-                await conn.execute(
-                    """
-                    UPDATE user_secrets
-                    SET ciphertext = $2, iv = $3, updated_at = NOW()
-                    WHERE id = $1 AND user_id = $4
-                    """,
-                    item["id"],
-                    item["ciphertext"],
-                    item["iv"],
-                    user_id,
-                )
-    _log.info("vault.change_passphrase", user_id=str(user_id), count=len(re_encrypted))
-
-
-# ---------------------------------------------------------------------------
-# Secret CRUD
-# ---------------------------------------------------------------------------
-
-
-async def list_secrets(user_id: UUID) -> list[UserSecretSummary]:
-    rows = await fetch_all(
-        "SELECT id, user_id, name, ciphertext, iv, created_at, updated_at FROM user_secrets WHERE user_id = $1 ORDER BY name ASC",
-        user_id,
-    )
-    return [_row_to_secret(r) for r in rows]
-
-
-async def create_secret(
-    user_id: UUID,
-    name: str,
-    ciphertext: str,
-    iv: str,
-) -> UserSecretSummary:
+async def list_secrets(email: str) -> list[UserSecretSummary]:
+    from harpocrate.exceptions import VaultHttpError
     try:
-        row = await fetch_one(
-            """
-            INSERT INTO user_secrets (user_id, name, ciphertext, iv)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, user_id, name, ciphertext, iv, created_at, updated_at
-            """,
-            user_id,
-            name,
-            ciphertext,
-            iv,
-        )
-    except asyncpg.UniqueViolationError as exc:
-        raise DuplicateSecretError(f"Secret '{name}' already exists for user {user_id}") from exc
-    assert row is not None
-    _log.info("secret.create", user_id=str(user_id), name=name)
-    return _row_to_secret(row)
+        secrets = await vault_client.list_secrets()
+    except VaultHttpError:
+        return []
+    prefix = _prefix(email)
+    return [
+        UserSecretSummary(name=_strip_prefix(s.name, prefix), description=getattr(s, "description", None))
+        for s in secrets
+        if s.name.startswith(prefix + "/")
+    ]
 
 
-async def update_secret(
-    secret_id: UUID,
-    user_id: UUID,
-    ciphertext: str,
-    iv: str,
-) -> UserSecretSummary:
-    row = await fetch_one(
-        """
-        UPDATE user_secrets
-        SET ciphertext = $3, iv = $4, updated_at = NOW()
-        WHERE id = $1 AND user_id = $2
-        RETURNING id, user_id, name, ciphertext, iv, created_at, updated_at
-        """,
-        secret_id,
-        user_id,
-        ciphertext,
-        iv,
-    )
-    if row is None:
-        raise SecretNotFoundError(f"Secret {secret_id} not found for user {user_id}")
-    _log.info("secret.update", secret_id=str(secret_id), user_id=str(user_id))
-    return _row_to_secret(row)
+async def create_secret(email: str, name: str, value: str, description: str | None = None) -> UserSecretSummary:
+    from harpocrate.exceptions import VaultHttpError
+    full_name = _full_name(email, name)
+    try:
+        await vault_client.create_secret(full_name, value, description)
+    except VaultHttpError as exc:
+        if exc.status_code == 409:
+            raise DuplicateSecretError(f"Secret '{name}' already exists") from exc
+        raise
+    return UserSecretSummary(name=name, description=description)
 
 
-async def delete_secret(secret_id: UUID, user_id: UUID) -> None:
-    result = await execute(
-        "DELETE FROM user_secrets WHERE id = $1 AND user_id = $2",
-        secret_id,
-        user_id,
-    )
-    if result == "DELETE 0":
-        raise SecretNotFoundError(f"Secret {secret_id} not found for user {user_id}")
-    _log.info("secret.delete", secret_id=str(secret_id), user_id=str(user_id))
+async def reveal_secret(email: str, name: str) -> UserSecretReveal:
+    from harpocrate.exceptions import VaultHttpError
+    full_name = _full_name(email, name)
+    try:
+        value = await vault_client.get_secret(full_name)
+    except VaultHttpError as exc:
+        if exc.status_code == 404:
+            raise SecretNotFoundError(f"Secret '{name}' not found") from exc
+        raise
+    return UserSecretReveal(name=name, value=value)
+
+
+async def update_secret(email: str, name: str, value: str) -> UserSecretSummary:
+    from harpocrate.exceptions import VaultHttpError
+    full_name = _full_name(email, name)
+    try:
+        await vault_client.update_secret(full_name, value)
+    except VaultHttpError as exc:
+        if exc.status_code == 404:
+            raise SecretNotFoundError(f"Secret '{name}' not found") from exc
+        raise
+    return UserSecretSummary(name=name)
+
+
+async def delete_secret(email: str, name: str) -> None:
+    from harpocrate.exceptions import VaultHttpError
+    full_name = _full_name(email, name)
+    try:
+        await vault_client.delete_secret(full_name)
+    except VaultHttpError as exc:
+        if exc.status_code == 404:
+            raise SecretNotFoundError(f"Secret '{name}' not found") from exc
+        raise

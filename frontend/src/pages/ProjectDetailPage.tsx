@@ -377,7 +377,6 @@ export function ProjectDetailPage() {
         <DeployDialog
           projectId={projectId!}
           groups={groups}
-          vault={vault}
           onClose={() => setShowDeploy(false)}
           t={t}
         />
@@ -398,10 +397,9 @@ export function ProjectDetailPage() {
 
 /* ── Deploy Dialog ────────────────────────────────────── */
 
-function DeployDialog({ projectId, groups, vault: vaultCtx, onClose, t }: {
+function DeployDialog({ projectId, groups, onClose, t }: {
   projectId: string;
   groups: GroupSummary[];
-  vault: ReturnType<typeof useVault>;
   onClose: () => void;
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
@@ -428,22 +426,21 @@ function DeployDialog({ projectId, groups, vault: vaultCtx, onClose, t }: {
   async function handleGenerate() {
     setGenerating(true);
     try {
-      // Decrypt user secrets if vault is open
+      // Reveal user secrets from Harpocrate
       const userSecrets: Record<string, string> = {};
-      if (vaultCtx.state === "unlocked") {
-        try {
-          const { userSecretsApi } = await import("@/lib/userSecretsApi");
-          const secrets = await userSecretsApi.list();
-          for (const s of secrets) {
-            try {
-              userSecrets[s.name] = vaultCtx.decryptSecret(s.ciphertext, s.iv);
-            } catch {
-              // Can't decrypt — skip
-            }
+      try {
+        const { userSecretsApi } = await import("@/lib/userSecretsApi");
+        const secrets = await userSecretsApi.list();
+        for (const s of secrets) {
+          try {
+            const revealed = await userSecretsApi.reveal(s.name);
+            userSecrets[s.name] = revealed.value;
+          } catch {
+            // Skip secrets that fail to reveal
           }
-        } catch {
-          // No user secrets or vault error
         }
+      } catch {
+        // No user secrets or API error
       }
 
       const dep = await deploymentsApi.create(projectId, groupServers);

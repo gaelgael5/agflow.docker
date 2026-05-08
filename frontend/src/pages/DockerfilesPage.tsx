@@ -82,7 +82,7 @@ export function DockerfilesPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { state: vaultState, decryptSecret } = useVault();
+  const { state: vaultState } = useVault();
   const {
     dockerfiles,
     isLoading,
@@ -426,15 +426,15 @@ export function DockerfilesPage() {
   }
 
   async function decryptUserSecrets(): Promise<Record<string, string>> {
-    if (vaultState !== "unlocked") return {};
     try {
       const secrets = await userSecretsApi.list();
       const result: Record<string, string> = {};
       for (const s of secrets) {
         try {
-          result[s.name] = decryptSecret(s.ciphertext, s.iv);
+          const revealed = await userSecretsApi.reveal(s.name);
+          result[s.name] = revealed.value;
         } catch {
-          // Skip secrets that fail to decrypt
+          // Skip secrets that fail to reveal
         }
       }
       return result;

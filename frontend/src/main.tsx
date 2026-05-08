@@ -7,7 +7,20 @@ import App from "./App";
 import "./index.css";
 import "./lib/i18n";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Ne jamais retenter les erreurs 4xx (auth, forbidden, not found)
+      retry: (failureCount, error) => {
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status !== undefined && status >= 400 && status < 500) return false;
+        return failureCount < 2;
+      },
+      // Stopper le polling dès qu'une query est en erreur
+      refetchIntervalInBackground: false,
+    },
+  },
+});
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

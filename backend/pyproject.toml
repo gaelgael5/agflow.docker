@@ -34,7 +34,11 @@ dependencies = [
     "anthropic>=0.40",
     "jinja2>=3.1",
     "stream-zip>=0.0.83",
+    "harpocrate",
 ]
+
+[tool.uv.sources]
+harpocrate = { path = "secrets", editable = true }
 
 [dependency-groups]
 dev = [

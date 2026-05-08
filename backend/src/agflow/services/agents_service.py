@@ -1,30 +1,28 @@
-"""Agents service — fully filesystem-based.
-
-Each agent lives at {AGFLOW_DATA_DIR}/agents/{slug}/agent.json.
-UUIDs are deterministic: UUID5(slug).
-"""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import json
+import uuid
 from typing import Any
 from uuid import UUID
 
+import asyncpg
 import structlog
 
+from agflow.db.pool import execute, fetch_all, fetch_one, get_pool
 from agflow.schemas.agents import (
     AgentCreate,
     AgentDetail,
     AgentGeneration,
-    AgentGenerationProfile,
     AgentMCPBinding,
     AgentSkillBinding,
     AgentSummary,
     AgentUpdate,
     ImageStatus,
 )
-from agflow.services import agent_files_service, build_service
 
 _log = structlog.get_logger(__name__)
+
+_AGENT_NS = uuid.UUID("b2c3d4e5-f6a7-8901-bcde-f12345678901")
 
 
 class AgentNotFoundError(Exception):
@@ -39,100 +37,59 @@ class InvalidReferenceError(Exception):
     pass
 
 
-def _slug_to_id(slug: str) -> UUID:
-    return agent_files_service.agent_id_from_slug(slug)
+def _slug_to_uuid(slug: str) -> UUID:
+    return uuid.uuid5(_AGENT_NS, slug)
 
 
-def _parse_generations(data: dict[str, Any]) -> list[AgentGeneration]:
-    """Parse generations from agent.json, with backward compat for old format."""
-    raw = data.get("generations")
-    if raw and isinstance(raw, list):
-        return [
-            AgentGeneration(
-                role_id=g.get("role_id", ""),
-                template_slug=g.get("template_slug", ""),
-                template_culture=g.get("template_culture", ""),
-                prompt_filename=g.get("prompt_filename", "prompt.md"),
-                profiles=[
-                    AgentGenerationProfile(**p) for p in g.get("profiles", [])
-                ],
-            )
-            for g in raw
-        ]
-    # Backward compat: migrate old flat format to generations[]
-    role_id = data.get("role_id", "")
-    if not role_id:
-        return []
-    profiles = [
-        AgentGenerationProfile(
-            name=p.get("name", ""),
-            description=p.get("description", ""),
-            documents=[str(d) for d in p.get("documents", [])],
-            template_slug=p.get("template_slug", ""),
-            template_culture=p.get("template_culture", ""),
-            output_dir=p.get("output_dir", "workspace/missions"),
-        )
-        for p in data.get("profiles", [])
-    ]
-    return [
-        AgentGeneration(
-            role_id=role_id,
-            template_slug=data.get("prompt_template_slug", ""),
-            template_culture=data.get("prompt_template_culture", ""),
-            prompt_filename=data.get("prompt_filename", "prompt.md"),
-            profiles=profiles,
-        )
-    ]
+_COLS = (
+    "slug, id, display_name, description, dockerfile_id, role_id, "
+    "env_overrides, mount_overrides, param_overrides, "
+    "timeout_seconds, workspace_path, network_mode, "
+    "graceful_shutdown_secs, force_kill_delay_secs, is_assistant, "
+    "mcp_template_slug, mcp_template_culture, mcp_config_filename, "
+    "skills_template_slug, skills_template_culture, skills_config_filename, "
+    "prompt_template_slug, prompt_template_culture, prompt_filename, "
+    "mcp_bindings, skill_bindings, generations, "
+    "created_at, updated_at"
+)
 
 
-def _summary_from_disk(slug: str) -> AgentSummary:
-    data = agent_files_service.read_agent(slug)
-    if not data:
-        raise AgentNotFoundError(f"Agent '{slug}' not found on disk")
-    import os
-    agent_dir = os.path.join(
-        os.environ.get("AGFLOW_DATA_DIR", "/app/data"), "agents", slug
-    )
-    try:
-        mtime = os.path.getmtime(os.path.join(agent_dir, "agent.json"))
-        ctime = os.path.getctime(os.path.join(agent_dir, "agent.json"))
-    except OSError:
-        mtime = ctime = 0
+def _row_to_summary(row: dict[str, Any]) -> AgentSummary:
     return AgentSummary(
-        id=_slug_to_id(slug),
-        slug=slug,
-        display_name=data.get("display_name", slug),
-        description=data.get("description", ""),
-        dockerfile_id=data.get("dockerfile_id", ""),
-        role_id=data.get("role_id", ""),
+        id=row["id"],
+        slug=row["slug"],
+        display_name=row["display_name"],
+        description=row["description"],
+        dockerfile_id=row["dockerfile_id"],
+        role_id=row["role_id"],
         env_vars={
-            "env_overrides": data.get("env_overrides", {}),
-            "mount_overrides": data.get("mount_overrides", {}),
-            "param_overrides": data.get("param_overrides", {}),
+            "env_overrides": dict(row["env_overrides"] or {}),
+            "mount_overrides": dict(row["mount_overrides"] or {}),
+            "param_overrides": dict(row["param_overrides"] or {}),
         },
-        timeout_seconds=data.get("timeout_seconds", 600),
-        workspace_path=data.get("workspace_path", ""),
-        network_mode=data.get("network_mode", "bridge"),
-        graceful_shutdown_secs=data.get("graceful_shutdown_secs", 30),
-        force_kill_delay_secs=data.get("force_kill_delay_secs", 10),
-        is_assistant=data.get("is_assistant", False),
-        mcp_template_slug=data.get("mcp_template_slug", ""),
-        mcp_template_culture=data.get("mcp_template_culture", ""),
-        mcp_config_filename=data.get("mcp_config_filename", "config.toml"),
-        skills_template_slug=data.get("skills_template_slug", ""),
-        skills_template_culture=data.get("skills_template_culture", ""),
-        skills_config_filename=data.get("skills_config_filename", "skills.md"),
-        prompt_template_slug=data.get("prompt_template_slug", ""),
-        prompt_template_culture=data.get("prompt_template_culture", ""),
-        prompt_filename=data.get("prompt_filename", "prompt.md"),
-        generations=_parse_generations(data),
-        created_at=datetime.fromtimestamp(ctime, tz=UTC),
-        updated_at=datetime.fromtimestamp(mtime, tz=UTC),
+        timeout_seconds=row["timeout_seconds"],
+        workspace_path=row["workspace_path"],
+        network_mode=row["network_mode"],
+        graceful_shutdown_secs=row["graceful_shutdown_secs"],
+        force_kill_delay_secs=row["force_kill_delay_secs"],
+        is_assistant=row["is_assistant"],
+        mcp_template_slug=row["mcp_template_slug"],
+        mcp_template_culture=row["mcp_template_culture"],
+        mcp_config_filename=row["mcp_config_filename"],
+        skills_template_slug=row["skills_template_slug"],
+        skills_template_culture=row["skills_template_culture"],
+        skills_config_filename=row["skills_config_filename"],
+        prompt_template_slug=row["prompt_template_slug"],
+        prompt_template_culture=row["prompt_template_culture"],
+        prompt_filename=row["prompt_filename"],
+        generations=[AgentGeneration(**g) for g in (row["generations"] or [])],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
     )
 
 
 async def _compute_image_status(dockerfile_id: str) -> ImageStatus:
-    from agflow.services import dockerfile_files_service
+    from agflow.services import build_service, dockerfile_files_service
 
     latest = await build_service.get_latest_build(dockerfile_id)
     if latest is None or latest["status"] != "success":
@@ -147,22 +104,27 @@ async def _compute_image_status(dockerfile_id: str) -> ImageStatus:
     return "fresh"
 
 
-async def _detail_from_summary(summary: AgentSummary) -> AgentDetail:
-    data = agent_files_service.read_agent(summary.slug)
+async def _detail_from_row(row: dict[str, Any]) -> AgentDetail:
+    summary = _row_to_summary(row)
     mcp_bindings = [
         AgentMCPBinding(
-            mcp_server_id=b.get("catalog_mcp_id", ""),
+            mcp_server_id=UUID(b["catalog_mcp_id"]),
             parameters_override=b.get("config_overrides", {}),
             position=b.get("position", 0),
         )
-        for b in data.get("mcp_bindings", [])
+        for b in (row["mcp_bindings"] or [])
+        if b.get("catalog_mcp_id")
     ]
     skill_bindings = [
-        AgentSkillBinding(skill_id=UUID(b["catalog_skill_id"]))
-        for b in data.get("skill_bindings", [])
+        AgentSkillBinding(skill_id=UUID(b["catalog_skill_id"]), position=b.get("position", 0))
+        for b in (row["skill_bindings"] or [])
         if b.get("catalog_skill_id")
     ]
-    image_status = await _compute_image_status(summary.dockerfile_id) if summary.dockerfile_id else "missing"
+    image_status = (
+        await _compute_image_status(summary.dockerfile_id)
+        if summary.dockerfile_id
+        else "missing"
+    )
     return AgentDetail(
         **summary.model_dump(),
         mcp_bindings=mcp_bindings,
@@ -171,105 +133,129 @@ async def _detail_from_summary(summary: AgentSummary) -> AgentDetail:
     )
 
 
-def _payload_to_disk(slug: str, payload: AgentCreate | AgentUpdate, existing: dict | None = None) -> dict[str, Any]:
-    return {
-        "slug": slug,
-        "display_name": payload.display_name,
-        "description": payload.description,
-        "dockerfile_id": payload.dockerfile_id,
-        "role_id": payload.role_id,
-        "env_overrides": payload.env_vars.get("env_overrides", {}) if isinstance(payload.env_vars, dict) else {},
-        "mount_overrides": payload.env_vars.get("mount_overrides", {}) if isinstance(payload.env_vars, dict) else {},
-        "param_overrides": payload.env_vars.get("param_overrides", {}) if isinstance(payload.env_vars, dict) else {},
-        "timeout_seconds": payload.timeout_seconds,
-        "workspace_path": payload.workspace_path,
-        "network_mode": payload.network_mode,
-        "graceful_shutdown_secs": payload.graceful_shutdown_secs,
-        "force_kill_delay_secs": payload.force_kill_delay_secs,
-        "is_assistant": existing.get("is_assistant", False) if existing else False,
-        "mcp_template_slug": payload.mcp_template_slug if hasattr(payload, "mcp_template_slug") and payload.mcp_template_slug is not None else (existing.get("mcp_template_slug", "") if existing else ""),
-        "mcp_template_culture": payload.mcp_template_culture if hasattr(payload, "mcp_template_culture") and payload.mcp_template_culture is not None else (existing.get("mcp_template_culture", "") if existing else ""),
-        "mcp_config_filename": payload.mcp_config_filename if hasattr(payload, "mcp_config_filename") and payload.mcp_config_filename is not None else (existing.get("mcp_config_filename", "config.toml") if existing else "config.toml"),
-        "skills_template_slug": payload.skills_template_slug if hasattr(payload, "skills_template_slug") and payload.skills_template_slug is not None else (existing.get("skills_template_slug", "") if existing else ""),
-        "skills_template_culture": payload.skills_template_culture if hasattr(payload, "skills_template_culture") and payload.skills_template_culture is not None else (existing.get("skills_template_culture", "") if existing else ""),
-        "skills_config_filename": payload.skills_config_filename if hasattr(payload, "skills_config_filename") and payload.skills_config_filename is not None else (existing.get("skills_config_filename", "skills.md") if existing else "skills.md"),
-        "prompt_template_slug": payload.prompt_template_slug if hasattr(payload, "prompt_template_slug") and payload.prompt_template_slug is not None else (existing.get("prompt_template_slug", "") if existing else ""),
-        "prompt_template_culture": payload.prompt_template_culture if hasattr(payload, "prompt_template_culture") and payload.prompt_template_culture is not None else (existing.get("prompt_template_culture", "") if existing else ""),
-        "prompt_filename": payload.prompt_filename if hasattr(payload, "prompt_filename") and payload.prompt_filename is not None else (existing.get("prompt_filename", "prompt.md") if existing else "prompt.md"),
-        "mcp_bindings": [
-            {
-                "catalog_mcp_id": b.mcp_server_id if hasattr(b, "mcp_server_id") else b.get("mcp_server_id", ""),
-                "config_overrides": b.parameters_override if hasattr(b, "parameters_override") else b.get("parameters_override", {}),
-                "position": b.position if hasattr(b, "position") else b.get("position", 0),
-            }
-            for b in (payload.mcp_bindings or [])
-        ],
-        "skill_bindings": [
-            {
-                "catalog_skill_id": (
-                    str(b.skill_id) if hasattr(b, "skill_id")
-                    else b.get("catalog_skill_id", "")
-                ),
-            }
-            for b in (payload.skill_bindings or [])
-        ],
-        "profiles": existing.get("profiles", []) if existing else [],
-        "generations": [
-            {
-                "role_id": g.role_id,
-                "template_slug": g.template_slug,
-                "template_culture": g.template_culture,
-                "prompt_filename": g.prompt_filename,
-                "profiles": [p.model_dump() for p in g.profiles],
-            }
-            for g in (payload.generations or [])
-        ] if hasattr(payload, "generations") and payload.generations else (existing.get("generations", []) if existing else []),
-    }
+def _env(payload: AgentCreate | AgentUpdate, key: str) -> str:
+    env = payload.env_vars if isinstance(payload.env_vars, dict) else {}
+    return json.dumps(env.get(key, {}))
+
+
+def _bindings_json(payload: AgentCreate | AgentUpdate) -> tuple[str, str]:
+    mcp = json.dumps([
+        {
+            "catalog_mcp_id": str(b.mcp_server_id),
+            "config_overrides": b.parameters_override,
+            "position": b.position,
+        }
+        for b in (payload.mcp_bindings or [])
+    ])
+    skill = json.dumps([
+        {"catalog_skill_id": str(b.skill_id), "position": b.position}
+        for b in (payload.skill_bindings or [])
+    ])
+    return mcp, skill
 
 
 async def create(payload: AgentCreate) -> AgentDetail:
-    existing_slugs = agent_files_service.list_agent_slugs()
-    if payload.slug in existing_slugs:
-        raise DuplicateAgentError(f"Agent slug '{payload.slug}' already exists")
-    data = _payload_to_disk(payload.slug, payload)
-    agent_files_service.write_agent(payload.slug, data)
-    summary = _summary_from_disk(payload.slug)
+    agent_id = _slug_to_uuid(payload.slug)
+    mcp_json, skill_json = _bindings_json(payload)
+    gen_json = json.dumps([g.model_dump(mode="json") for g in (payload.generations or [])])
+    try:
+        row = await fetch_one(
+            f"""
+            INSERT INTO agents (
+                slug, id, display_name, description, dockerfile_id, role_id,
+                env_overrides, mount_overrides, param_overrides,
+                timeout_seconds, workspace_path, network_mode,
+                graceful_shutdown_secs, force_kill_delay_secs,
+                mcp_template_slug, mcp_template_culture, mcp_config_filename,
+                skills_template_slug, skills_template_culture, skills_config_filename,
+                prompt_template_slug, prompt_template_culture, prompt_filename,
+                mcp_bindings, skill_bindings, generations
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+                $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26
+            ) RETURNING {_COLS}
+            """,
+            payload.slug, agent_id, payload.display_name, payload.description,
+            payload.dockerfile_id, payload.role_id,
+            _env(payload, "env_overrides"),
+            _env(payload, "mount_overrides"),
+            _env(payload, "param_overrides"),
+            payload.timeout_seconds, payload.workspace_path, payload.network_mode,
+            payload.graceful_shutdown_secs, payload.force_kill_delay_secs,
+            payload.mcp_template_slug, payload.mcp_template_culture, payload.mcp_config_filename,
+            payload.skills_template_slug, payload.skills_template_culture, payload.skills_config_filename,
+            payload.prompt_template_slug, payload.prompt_template_culture, payload.prompt_filename,
+            mcp_json, skill_json, gen_json,
+        )
+    except asyncpg.UniqueViolationError as exc:
+        raise DuplicateAgentError(f"Agent slug '{payload.slug}' already exists") from exc
+    assert row is not None
     _log.info("agents.create", slug=payload.slug)
-    return await _detail_from_summary(summary)
+    return await _detail_from_row(row)
 
 
 async def list_all() -> list[AgentSummary]:
-    slugs = agent_files_service.list_agent_slugs()
-    return [_summary_from_disk(s) for s in slugs]
+    rows = await fetch_all(f"SELECT {_COLS} FROM agents ORDER BY display_name ASC")
+    return [_row_to_summary(r) for r in rows]
 
 
 async def get_by_id(agent_id: UUID) -> AgentDetail:
-    for slug in agent_files_service.list_agent_slugs():
-        if _slug_to_id(slug) == agent_id:
-            summary = _summary_from_disk(slug)
-            return await _detail_from_summary(summary)
-    raise AgentNotFoundError(f"Agent {agent_id} not found")
+    row = await fetch_one(f"SELECT {_COLS} FROM agents WHERE id = $1", agent_id)
+    if row is None:
+        raise AgentNotFoundError(f"Agent {agent_id} not found")
+    return await _detail_from_row(row)
+
+
+async def get_by_slug(slug: str) -> AgentDetail:
+    row = await fetch_one(f"SELECT {_COLS} FROM agents WHERE slug = $1", slug)
+    if row is None:
+        raise AgentNotFoundError(f"Agent '{slug}' not found")
+    return await _detail_from_row(row)
 
 
 async def update(agent_id: UUID, payload: AgentUpdate) -> AgentDetail:
-    slug = _find_slug(agent_id)
-    existing = agent_files_service.read_agent(slug)
-    data = _payload_to_disk(slug, payload, existing)
-    agent_files_service.write_agent(slug, data)
-    summary = _summary_from_disk(slug)
-    _log.info("agents.update", slug=slug)
-    return await _detail_from_summary(summary)
+    mcp_json, skill_json = _bindings_json(payload)
+    gen_json = json.dumps([g.model_dump(mode="json") for g in (payload.generations or [])])
+    row = await fetch_one(
+        f"""
+        UPDATE agents SET
+            display_name = $2, description = $3, dockerfile_id = $4, role_id = $5,
+            env_overrides = $6, mount_overrides = $7, param_overrides = $8,
+            timeout_seconds = $9, workspace_path = $10, network_mode = $11,
+            graceful_shutdown_secs = $12, force_kill_delay_secs = $13,
+            mcp_template_slug = $14, mcp_template_culture = $15, mcp_config_filename = $16,
+            skills_template_slug = $17, skills_template_culture = $18, skills_config_filename = $19,
+            prompt_template_slug = $20, prompt_template_culture = $21, prompt_filename = $22,
+            mcp_bindings = $23, skill_bindings = $24, generations = $25
+        WHERE id = $1
+        RETURNING {_COLS}
+        """,
+        agent_id, payload.display_name, payload.description,
+        payload.dockerfile_id, payload.role_id,
+        _env(payload, "env_overrides"),
+        _env(payload, "mount_overrides"),
+        _env(payload, "param_overrides"),
+        payload.timeout_seconds, payload.workspace_path, payload.network_mode,
+        payload.graceful_shutdown_secs, payload.force_kill_delay_secs,
+        payload.mcp_template_slug, payload.mcp_template_culture, payload.mcp_config_filename,
+        payload.skills_template_slug, payload.skills_template_culture, payload.skills_config_filename,
+        payload.prompt_template_slug, payload.prompt_template_culture, payload.prompt_filename,
+        mcp_json, skill_json, gen_json,
+    )
+    if row is None:
+        raise AgentNotFoundError(f"Agent {agent_id} not found")
+    _log.info("agents.update", agent_id=str(agent_id))
+    return await _detail_from_row(row)
 
 
 async def delete(agent_id: UUID) -> None:
-    slug = _find_slug(agent_id)
-    agent_files_service.delete_agent_dir(slug)
-    _log.info("agents.delete", slug=slug)
+    result = await execute("DELETE FROM agents WHERE id = $1", agent_id)
+    if result == "DELETE 0":
+        raise AgentNotFoundError(f"Agent {agent_id} not found")
+    _log.info("agents.delete", agent_id=str(agent_id))
 
 
-async def duplicate(
-    agent_id: UUID, new_slug: str, new_display_name: str
-) -> AgentDetail:
+async def duplicate(agent_id: UUID, new_slug: str, new_display_name: str) -> AgentDetail:
     source = await get_by_id(agent_id)
     payload = AgentCreate(
         slug=new_slug,
@@ -285,44 +271,29 @@ async def duplicate(
         force_kill_delay_secs=source.force_kill_delay_secs,
         mcp_bindings=source.mcp_bindings,
         skill_bindings=source.skill_bindings,
+        generations=source.generations,
     )
     return await create(payload)
 
 
 async def get_assistant() -> AgentSummary | None:
-    for slug in agent_files_service.list_agent_slugs():
-        data = agent_files_service.read_agent(slug)
-        if data.get("is_assistant"):
-            return _summary_from_disk(slug)
-    return None
+    row = await fetch_one(f"SELECT {_COLS} FROM agents WHERE is_assistant = TRUE LIMIT 1")
+    return _row_to_summary(row) if row else None
 
 
 async def set_assistant(agent_id: UUID) -> None:
-    target_slug = _find_slug(agent_id)
-    for slug in agent_files_service.list_agent_slugs():
-        data = agent_files_service.read_agent(slug)
-        if data.get("is_assistant") and slug != target_slug:
-            data["is_assistant"] = False
-            agent_files_service.write_agent(slug, data)
-    data = agent_files_service.read_agent(target_slug)
-    data["is_assistant"] = True
-    agent_files_service.write_agent(target_slug, data)
-    _log.info("agents.set_assistant", slug=target_slug)
+    pool = await get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        exists = await conn.fetchval("SELECT 1 FROM agents WHERE id = $1", agent_id)
+        if not exists:
+            raise AgentNotFoundError(f"Agent {agent_id} not found")
+        await conn.execute(
+            "UPDATE agents SET is_assistant = FALSE WHERE is_assistant = TRUE AND id != $1",
+            agent_id,
+        )
+        await conn.execute("UPDATE agents SET is_assistant = TRUE WHERE id = $1", agent_id)
+    _log.info("agents.set_assistant", agent_id=str(agent_id))
 
 
 async def clear_assistant() -> None:
-    for slug in agent_files_service.list_agent_slugs():
-        data = agent_files_service.read_agent(slug)
-        if data.get("is_assistant"):
-            data["is_assistant"] = False
-            agent_files_service.write_agent(slug, data)
-
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-
-def _find_slug(agent_id: UUID) -> str:
-    for slug in agent_files_service.list_agent_slugs():
-        if _slug_to_id(slug) == agent_id:
-            return slug
-    raise AgentNotFoundError(f"Agent {agent_id} not found")
+    await execute("UPDATE agents SET is_assistant = FALSE WHERE is_assistant = TRUE")

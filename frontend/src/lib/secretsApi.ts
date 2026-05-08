@@ -1,65 +1,69 @@
 import { api } from "./api";
 
-export type Scope = "global" | "agent";
 export type EnvVarStatus = "missing" | "empty" | "ok";
 export type EnvVarStatusMap = Record<string, EnvVarStatus>;
 
-export interface SecretSummary {
+export type SecretType = "vault" | "env";
+
+export interface PlatformSecretSummary {
   id: string;
-  var_name: string;
-  scope: Scope;
+  key: string;
+  type: SecretType;
+  name: string;
+  has_value: boolean;
   created_at: string;
   updated_at: string;
-  used_by: string[];
 }
 
-export interface SecretReveal {
+export interface PlatformSecretReveal {
   id: string;
-  var_name: string;
+  name: string;
   value: string;
 }
 
-export interface SecretTestResult {
-  supported: boolean;
-  ok: boolean;
-  detail: string;
-}
-
-export interface SecretCreate {
-  var_name: string;
+export interface CreateVaultPayload {
+  name: string;
   value: string;
-  scope?: Scope;
 }
 
-export interface SecretUpdate {
-  value?: string;
-  scope?: Scope;
+export interface CreateEnvPayload {
+  name: string;
+  value: string;
+}
+
+export interface UpdateSecretPayload {
+  value: string;
 }
 
 export const secretsApi = {
-  async list(): Promise<SecretSummary[]> {
-    const res = await api.get<SecretSummary[]>("/admin/secrets");
+  async list(): Promise<PlatformSecretSummary[]> {
+    const res = await api.get<PlatformSecretSummary[]>("/admin/secrets");
     return res.data;
   },
-  async create(payload: SecretCreate): Promise<SecretSummary> {
-    const res = await api.post<SecretSummary>("/admin/secrets", payload);
+
+  async createVault(payload: CreateVaultPayload): Promise<PlatformSecretSummary> {
+    const res = await api.post<PlatformSecretSummary>("/admin/secrets/vault", payload);
     return res.data;
   },
-  async update(id: string, payload: SecretUpdate): Promise<SecretSummary> {
-    const res = await api.put<SecretSummary>(`/admin/secrets/${id}`, payload);
+
+  async createEnv(payload: CreateEnvPayload): Promise<PlatformSecretSummary> {
+    const res = await api.post<PlatformSecretSummary>("/admin/secrets/env", payload);
     return res.data;
   },
+
+  async update(id: string, payload: UpdateSecretPayload): Promise<void> {
+    await api.put(`/admin/secrets/${id}`, payload);
+  },
+
   async remove(id: string): Promise<void> {
     await api.delete(`/admin/secrets/${id}`);
   },
-  async reveal(id: string): Promise<SecretReveal> {
-    const res = await api.get<SecretReveal>(`/admin/secrets/${id}/reveal`);
+
+  async reveal(id: string): Promise<PlatformSecretReveal> {
+    const res = await api.get<PlatformSecretReveal>(`/admin/secrets/${id}/reveal`);
     return res.data;
   },
-  async test(id: string): Promise<SecretTestResult> {
-    const res = await api.post<SecretTestResult>(`/admin/secrets/${id}/test`);
-    return res.data;
-  },
+
   async resolveStatus(varNames: string[]): Promise<EnvVarStatusMap> {
     if (varNames.length === 0) return {};
     const res = await api.get<EnvVarStatusMap>("/admin/secrets/resolve-status", {

@@ -55,36 +55,38 @@ interface Props {
 export function Sidebar({ open = false, onClose }: Props) {
   const { t } = useTranslation();
   const location = useLocation();
-  const { logout, isAdmin } = useAuth();
+  const { logout, isAdmin, isOperator } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
 
-  const platformItems: NavItem[] = [
-    { to: "/discovery-services", label: t("discovery.page_title"), icon: RadioTower },
-    { to: "/service-types", label: t("service_types.page_title"), icon: Tags },
-    ...(isAdmin ? [{ to: "/secrets", label: t("secrets.page_title"), icon: KeyRound }] : []),
-    { to: "/dockerfiles", label: t("dockerfiles.page_title"), icon: FileCode2 },
-    { to: "/templates", label: t("templates.page_title"), icon: Braces },
-    { to: "/mcp-catalog", label: t("mcp_catalog.page_title"), icon: PlugZap },
-    { to: "/skills-catalog", label: t("skills_catalog.page_title"), icon: BookMarked },
-    { to: "/ai-providers", label: t("ai_providers.page_title"), icon: Wand2 },
-    { to: "/avatars", label: t("avatars.page_title"), icon: Palette },
-    ...(isAdmin ? [{ to: "/users", label: t("users.page_title"), icon: Users }] : []),
-  ];
-
   const sections: NavSection[] = [
-    {
-      title: t("sidebar.section_platform"),
-      items: platformItems,
-    },
-    {
-      title: t("sidebar.section_resources"),
-      items: [
-        { to: "/image-registries", label: t("registries.page_title"), icon: Boxes },
-        { to: "/product-catalog", label: t("products.page_title"), icon: Package },
-        { to: "/projects", label: t("projects.page_title"), icon: FolderKanban },
-        { to: "/scripts", label: t("scripts.page_title"), icon: FileCode2 },
-      ],
-    },
+    ...(isOperator
+      ? [
+          {
+            title: t("sidebar.section_platform"),
+            items: [
+              { to: "/discovery-services", label: t("discovery.page_title"), icon: RadioTower },
+              { to: "/service-types", label: t("service_types.page_title"), icon: Tags },
+              ...(isAdmin ? [{ to: "/secrets", label: t("secrets.page_title"), icon: KeyRound }] : []),
+              { to: "/dockerfiles", label: t("dockerfiles.page_title"), icon: FileCode2 },
+              { to: "/templates", label: t("templates.page_title"), icon: Braces },
+              { to: "/mcp-catalog", label: t("mcp_catalog.page_title"), icon: PlugZap },
+              { to: "/skills-catalog", label: t("skills_catalog.page_title"), icon: BookMarked },
+              { to: "/ai-providers", label: t("ai_providers.page_title"), icon: Wand2 },
+              { to: "/avatars", label: t("avatars.page_title"), icon: Palette },
+              ...(isAdmin ? [{ to: "/users", label: t("users.page_title"), icon: Users }] : []),
+            ],
+          },
+          {
+            title: t("sidebar.section_resources"),
+            items: [
+              { to: "/image-registries", label: t("registries.page_title"), icon: Boxes },
+              { to: "/product-catalog", label: t("products.page_title"), icon: Package },
+              { to: "/projects", label: t("projects.page_title"), icon: FolderKanban },
+              { to: "/scripts", label: t("scripts.page_title"), icon: FileCode2 },
+            ],
+          },
+        ]
+      : []),
     {
       title: t("sidebar.section_access"),
       items: [
@@ -92,25 +94,29 @@ export function Sidebar({ open = false, onClose }: Props) {
         { to: "/api-keys", label: t("api_keys.page_title"), icon: Key },
       ],
     },
-    {
-      title: t("sidebar.section_infra"),
-      items: [
-        { to: "/infra/categories", label: t("infra.categories_title"), icon: Tags },
-        { to: "/infra/named-types", label: t("infra.named_types_title"), icon: Tags },
-        { to: "/infra/machines", label: t("infra.machines_title"), icon: Server },
-        { to: "/infra/certificates", label: t("infra.certificates_title"), icon: KeyRound },
-      ],
-    },
-    {
-      title: t("sidebar.section_orchestration"),
-      items: [
-        { to: "/sessions", label: t("sessions.page_title"), icon: Activity },
-        { to: "/roles", label: t("roles.page_title"), icon: UserRoundCog },
-        { to: "/agents", label: t("agents.page_title"), icon: Bot },
-        { to: "/api-docs", label: t("sidebar.api_public"), icon: Globe },
-        { to: "/supervision", label: t("sidebar.supervision"), icon: Activity, disabled: true },
-      ],
-    },
+    ...(isOperator
+      ? [
+          {
+            title: t("sidebar.section_infra"),
+            items: [
+              { to: "/infra/categories", label: t("infra.categories_title"), icon: Tags },
+              { to: "/infra/named-types", label: t("infra.named_types_title"), icon: Tags },
+              { to: "/infra/machines", label: t("infra.machines_title"), icon: Server },
+              { to: "/infra/certificates", label: t("infra.certificates_title"), icon: KeyRound },
+            ],
+          },
+          {
+            title: t("sidebar.section_orchestration"),
+            items: [
+              { to: "/sessions", label: t("sessions.page_title"), icon: Activity },
+              { to: "/roles", label: t("roles.page_title"), icon: UserRoundCog },
+              { to: "/agents", label: t("agents.page_title"), icon: Bot },
+              { to: "/api-docs", label: t("sidebar.api_public"), icon: Globe },
+              { to: "/supervision", label: t("sidebar.supervision"), icon: Activity, disabled: true },
+            ],
+          },
+        ]
+      : []),
   ];
 
   return (

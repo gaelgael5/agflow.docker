@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class UserCreate(BaseModel):
     email: str = Field(min_length=3, max_length=200)
     name: str = Field(default="", max_length=200)
-    role: Literal["admin", "user"] = "user"
+    role: Literal["admin", "user", "operator", "viewer"] = "user"
     scopes: list[str] = Field(default_factory=list)
     status: Literal["pending", "active"] = "active"
 
@@ -31,5 +31,5 @@ class UserSummary(BaseModel):
 
 class UserUpdate(BaseModel):
     name: str | None = None
-    role: Literal["admin", "user"] | None = None
+    role: Literal["admin", "user", "operator", "viewer"] | None = None
     scopes: list[str] | None = None

@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   secretsApi,
-  type SecretCreate,
-  type SecretSummary,
-  type SecretUpdate,
+  type CreateEnvPayload,
+  type CreateVaultPayload,
+  type UpdateSecretPayload,
+  type PlatformSecretSummary,
 } from "@/lib/secretsApi";
 
 const SECRETS_KEY = ["secrets"] as const;
@@ -11,18 +12,23 @@ const SECRETS_KEY = ["secrets"] as const;
 export function useSecrets() {
   const qc = useQueryClient();
 
-  const listQuery = useQuery<SecretSummary[]>({
+  const listQuery = useQuery<PlatformSecretSummary[]>({
     queryKey: SECRETS_KEY,
     queryFn: () => secretsApi.list(),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (payload: SecretCreate) => secretsApi.create(payload),
+  const createVaultMutation = useMutation({
+    mutationFn: (payload: CreateVaultPayload) => secretsApi.createVault(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: SECRETS_KEY }),
+  });
+
+  const createEnvMutation = useMutation({
+    mutationFn: (payload: CreateEnvPayload) => secretsApi.createEnv(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: SECRETS_KEY }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: SecretUpdate }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateSecretPayload }) =>
       secretsApi.update(id, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: SECRETS_KEY }),
   });
@@ -36,7 +42,8 @@ export function useSecrets() {
     secrets: listQuery.data,
     isLoading: listQuery.isLoading,
     error: listQuery.error,
-    createMutation,
+    createVaultMutation,
+    createEnvMutation,
     updateMutation,
     deleteMutation,
   };

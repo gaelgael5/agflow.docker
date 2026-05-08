@@ -59,7 +59,7 @@ function loadMode(): RuntimeMode {
   } catch {
     /* ignore */
   }
-  return "swarm";
+  return "classic";
 }
 
 function randomId(): string {

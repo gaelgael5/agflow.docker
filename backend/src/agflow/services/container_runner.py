@@ -1245,11 +1245,12 @@ async def run_task_swarm(
         except Exception as _exc:
             _log.warning("run_task_swarm.set_container.failed", error=str(_exc))
 
-    # Lance bash deploy.sh comme subprocess
+    # Lance bash deploy.sh comme subprocess (stderr fusionné dans stdout pour
+    # que les erreurs Swarm soient visibles dans le stream au lieu d'être perdues).
     proc = await _asyncio.create_subprocess_exec(
         "bash", deploy_path,
         stdout=_asyncio.subprocess.PIPE,
-        stderr=_asyncio.subprocess.PIPE,
+        stderr=_asyncio.subprocess.STDOUT,
     )
 
     try:

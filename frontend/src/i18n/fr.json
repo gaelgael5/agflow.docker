@@ -190,6 +190,7 @@
     "confirm_delete_message": "Supprimer \"{{name}}\" ? Cette action est irréversible.",
     "error_duplicate": "Ce nom existe déjà",
     "error_generic": "Une erreur est survenue",
+    "error_update": "Impossible de mettre à jour le secret",
     "loading": "Chargement…"
   },
   "roles": {

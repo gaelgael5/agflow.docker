@@ -185,6 +185,7 @@
     "test_unsupported": "Test not available for this variable type",
     "error_duplicate": "This variable name already exists",
     "error_generic": "An error occurred",
+    "error_update": "Failed to update the secret",
     "loading": "Loading…"
   },
   "roles": {

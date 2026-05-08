@@ -113,13 +113,18 @@ async def create_env(name: str, value: str) -> PlatformSecretSummary:
 
 async def update(secret_id: UUID, value: str) -> None:
     row = await fetch_one(
-        "SELECT key FROM platform_secrets WHERE id = $1", secret_id
+        "SELECT key, default_value FROM platform_secrets WHERE id = $1", secret_id
     )
     if row is None:
         raise PlatformSecretNotFoundError(f"Secret '{secret_id}' introuvable")
     key: str = row["key"]
     if key.startswith("${vault://"):
-        await vault_client.update_secret(_parse_vault_name(key), value)
+        name = _parse_vault_name(key)
+        # default_value == "set" means a vault entry already exists; otherwise first write
+        if row["default_value"] == "set":
+            await vault_client.update_secret(name, value)
+        else:
+            await vault_client.create_secret(name, value)
         await execute(
             "UPDATE platform_secrets SET default_value = 'set' WHERE id = $1",
             secret_id,

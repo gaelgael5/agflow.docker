@@ -309,6 +309,8 @@ function SecretRow({
       await onUpdate(editValue);
       setRevealed(editValue);
       setEditing(false);
+    } catch {
+      toast.error(t("secrets.error_update"));
     } finally {
       setLoading(false);
     }

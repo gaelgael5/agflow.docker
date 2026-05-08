@@ -1,5 +1,11 @@
 import { api } from "@/lib/api";
 
+export interface TemplateCulture {
+  key: string;
+  label: string;
+  sort_order: number;
+}
+
 export interface TemplateSummary {
   slug: string;
   display_name: string;
@@ -21,6 +27,10 @@ export interface TemplateDetail {
 }
 
 export const templatesApi = {
+  async listCultures(): Promise<TemplateCulture[]> {
+    const res = await api.get<TemplateCulture[]>("/admin/templates/cultures");
+    return res.data;
+  },
   async list(): Promise<TemplateSummary[]> {
     const res = await api.get<TemplateSummary[]>("/admin/templates");
     return res.data;

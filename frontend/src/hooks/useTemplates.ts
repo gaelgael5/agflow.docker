@@ -1,7 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { templatesApi, type TemplateSummary } from "@/lib/templatesApi";
+import { templatesApi, type TemplateCulture, type TemplateSummary } from "@/lib/templatesApi";
 
 const TEMPLATES_KEY = ["templates"] as const;
+const CULTURES_KEY = ["template-cultures"] as const;
+
+export function useTemplateCultures() {
+  return useQuery<TemplateCulture[]>({
+    queryKey: CULTURES_KEY,
+    queryFn: () => templatesApi.listCultures(),
+    staleTime: Infinity,
+  });
+}
+
 
 export function useTemplates() {
   const qc = useQueryClient();

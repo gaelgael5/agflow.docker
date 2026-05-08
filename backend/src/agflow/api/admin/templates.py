@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from agflow.auth.dependencies import require_operator as require_admin
+from agflow.db.pool import fetch_all
 from agflow.schemas.templates import (
     FileCreate,
     FileUpdate,
@@ -23,6 +25,20 @@ router = APIRouter(
     tags=["admin-templates"],
     dependencies=[Depends(require_admin)],
 )
+
+
+class TemplateCulture(BaseModel):
+    key: str
+    label: str
+    sort_order: int
+
+
+@router.get("/cultures", response_model=list[TemplateCulture])
+async def list_cultures():
+    rows = await fetch_all(
+        "SELECT key, label, sort_order FROM template_cultures ORDER BY sort_order"
+    )
+    return [TemplateCulture(**dict(r)) for r in rows]
 
 
 @router.get("", response_model=list[TemplateSummary])

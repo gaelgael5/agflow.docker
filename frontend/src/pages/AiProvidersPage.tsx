@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Star, Trash2 } from "lucide-react";
+import { CircleCheck, CircleX, Play, Plus, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAiProviders } from "@/hooks/useAiProviders";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
-import { aiProvidersApi } from "@/lib/aiProvidersApi";
+import { aiProvidersApi, type ProviderTestResult } from "@/lib/aiProvidersApi";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -26,7 +26,14 @@ export function AiProvidersPage() {
   const { t } = useTranslation();
   const { providers, isLoading, createMutation, deleteMutation } = useAiProviders();
   const [showCreate, setShowCreate] = useState(false);
+  const [testResults, setTestResults] = useState<Record<string, ProviderTestResult>>({});
   const [deleteTarget, setDeleteTarget] = useState<{ serviceType: string; providerName: string; displayName: string } | null>(null);
+
+  async function handleTest(serviceType: string, providerName: string) {
+    const key = `${serviceType}:${providerName}`;
+    const result = await aiProvidersApi.test(serviceType, providerName);
+    setTestResults((prev) => ({ ...prev, [key]: result }));
+  }
 
   const secretNames = useMemo(
     () => (providers ?? []).map((p) => p.secret_ref).filter((r) => r.length > 0),
@@ -108,6 +115,34 @@ export function AiProvidersPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
+                      {(() => {
+                        const key = `${p.service_type}:${p.provider_name}`;
+                        const test = testResults[key];
+                        return test ? (
+                          <span
+                            className={
+                              test.ok
+                                ? "text-emerald-600 text-[11px] mr-1 flex items-center gap-1"
+                                : "text-destructive text-[11px] mr-1 flex items-center gap-1"
+                            }
+                            title={test.detail}
+                          >
+                            {test.ok ? (
+                              <><CircleCheck className="w-3 h-3" />{t("ai_providers.test_ok")}</>
+                            ) : (
+                              <><CircleX className="w-3 h-3" />{test.supported ? t("ai_providers.test_ko") : t("ai_providers.test_unsupported")}</>
+                            )}
+                          </span>
+                        ) : null;
+                      })()}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleTest(p.service_type, p.provider_name)}
+                        aria-label={t("ai_providers.test_button")}
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                      </Button>
                       {!p.is_default && (
                         <Button
                           variant="ghost"
@@ -116,7 +151,6 @@ export function AiProvidersPage() {
                           onClick={async () => {
                             await aiProvidersApi.update(p.service_type, p.provider_name, { is_default: true });
                             toast.success("Défaut mis à jour");
-                            // Trigger refetch
                             window.location.reload();
                           }}
                         >

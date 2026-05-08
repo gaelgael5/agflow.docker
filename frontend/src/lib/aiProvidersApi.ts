@@ -27,6 +27,12 @@ export interface ProviderUpdatePayload {
   is_default?: boolean;
 }
 
+export interface ProviderTestResult {
+  supported: boolean;
+  ok: boolean;
+  detail: string;
+}
+
 export const aiProvidersApi = {
   async list(serviceType?: ServiceType): Promise<ProviderSummary[]> {
     const params = serviceType ? `?service_type=${serviceType}` : "";
@@ -40,5 +46,8 @@ export const aiProvidersApi = {
   },
   async remove(serviceType: string, providerName: string): Promise<void> {
     await api.delete(`/admin/ai-providers/${serviceType}/${providerName}`);
+  },
+  async test(serviceType: string, providerName: string): Promise<ProviderTestResult> {
+    return (await api.post<ProviderTestResult>(`/admin/ai-providers/${serviceType}/${providerName}/test`)).data;
   },
 };

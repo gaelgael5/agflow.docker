@@ -88,6 +88,11 @@ class DockerStandaloneAdapter(AbstractContainerAdapter):
             instance_id=instance_id,
             extra_env=all_secrets,
         )
+        # Interactive launch: keep stdin open so the entrypoint doesn't receive
+        # EOF immediately and exit. Tty gives a proper terminal for docker exec.
+        config["Tty"] = True
+        config["OpenStdin"] = True
+        config["StdinOnce"] = False
         _ensure_mount_paths_from_config(
             dockerfile_id, params_json_content, instance_id, content_hash
         )

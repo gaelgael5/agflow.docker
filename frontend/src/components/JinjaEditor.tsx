@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorView, keymap, lineNumbers, Decoration, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { EditorState, RangeSetBuilder } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
@@ -98,6 +98,7 @@ export function JinjaEditor({ value, onChange, readOnly = false }: Props) {
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const [isDragOver, setIsDragOver] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -145,11 +146,47 @@ export function JinjaEditor({ value, onChange, readOnly = false }: Props) {
     }
   }, [value]);
 
+  function handleDragOver(e: React.DragEvent) {
+    if (readOnly) return;
+    e.preventDefault();
+    setIsDragOver(true);
+  }
+
+  function handleDragLeave() {
+    setIsDragOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (readOnly) return;
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result;
+      if (typeof text === "string") onChangeRef.current(text);
+    };
+    reader.readAsText(file, "utf-8");
+  }
+
   return (
     <div
-      ref={containerRef}
-      className="border rounded-md overflow-hidden flex-1 min-h-[240px]"
-      style={{ fontSize: "13px" }}
-    />
+      className="relative flex-1 min-h-[240px]"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <div
+        ref={containerRef}
+        className={`border rounded-md overflow-hidden h-full ${isDragOver ? "ring-2 ring-primary ring-offset-1" : ""}`}
+        style={{ fontSize: "13px" }}
+      />
+      {isDragOver && (
+        <div className="absolute inset-0 rounded-md bg-primary/10 flex items-center justify-center pointer-events-none">
+          <span className="text-primary text-sm font-medium">Déposer le fichier ici</span>
+        </div>
+      )}
+    </div>
   );
 }

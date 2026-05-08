@@ -485,6 +485,8 @@
     "prompt_base_url": "URL de base (ex: https://mcp.yoops.org/api/v1)",
     "prompt_api_key_var": "Nom de variable d'env pour la clé API (optionnel, ex: YOOPS_API_KEY)",
     "add_dialog_title": "Nouveau registre de découverte",
+    "edit_button": "Modifier",
+    "edit_dialog_title": "Modifier le registre",
     "confirm_delete_title": "Supprimer le registre",
     "confirm_delete_message": "Supprimer le registre \"{{name}}\" ? Cette action est irréversible.",
     "no_services": "Aucun registre — ajoute mcp.yoops.org pour commencer"

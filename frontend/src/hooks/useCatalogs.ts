@@ -5,6 +5,7 @@ import {
   skillsCatalogApi,
   type DiscoveryServiceCreate,
   type DiscoveryServiceSummary,
+  type DiscoveryServiceUpdate,
   type MCPServerSummary,
   type SkillSummary,
 } from "@/lib/catalogsApi";
@@ -27,6 +28,12 @@ export function useDiscoveryServices() {
     onSuccess: () => qc.invalidateQueries({ queryKey: DISCOVERY_KEY }),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: DiscoveryServiceUpdate }) =>
+      discoveryApi.update(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: DISCOVERY_KEY }),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => discoveryApi.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: DISCOVERY_KEY }),
@@ -37,6 +44,7 @@ export function useDiscoveryServices() {
     isLoading: listQuery.isLoading,
     error: listQuery.error,
     createMutation,
+    updateMutation,
     deleteMutation,
   };
 }

@@ -478,6 +478,8 @@
     "prompt_base_url": "Base URL (e.g. https://mcp.yoops.org/api/v1)",
     "prompt_api_key_var": "API key env var name (optional, e.g. YOOPS_API_KEY)",
     "add_dialog_title": "New discovery registry",
+    "edit_button": "Edit",
+    "edit_dialog_title": "Edit registry",
     "confirm_delete_title": "Delete registry",
     "confirm_delete_message": "Delete registry \"{{name}}\"? This action is irreversible.",
     "no_services": "No registry — add mcp.yoops.org to start"

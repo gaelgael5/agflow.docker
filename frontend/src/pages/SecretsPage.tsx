@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { copyToClipboard } from "@/lib/clipboard";
 import { secretsApi, type PlatformSecretSummary } from "@/lib/secretsApi";
 
 type FormMode = "vault" | "env" | null;
@@ -214,7 +215,7 @@ function SecretFormCard({
                   size="icon"
                   className="h-8 w-8 shrink-0"
                   title={t("secrets.copy_key")}
-                  onClick={() => { void navigator.clipboard.writeText(name.trim().toUpperCase()); toast.success(t("secrets.key_copied")); }}
+                  onClick={() => { void copyToClipboard(name.trim().toUpperCase()).then(() => toast.success(t("secrets.key_copied"))).catch(() => toast.error(t("secrets.error_generic"))); }}
                 >
                   <Copy className="w-3.5 h-3.5" />
                 </Button>
@@ -227,7 +228,7 @@ function SecretFormCard({
                   size="icon"
                   className="h-8 w-8 shrink-0"
                   title={t("secrets.copy_ref")}
-                  onClick={() => { void navigator.clipboard.writeText(preview); toast.success(t("secrets.ref_copied")); }}
+                  onClick={() => { void copyToClipboard(preview).then(() => toast.success(t("secrets.ref_copied"))).catch(() => toast.error(t("secrets.error_generic"))); }}
                 >
                   <Copy className="w-3.5 h-3.5" />
                 </Button>
@@ -332,7 +333,7 @@ function SecretRow({
             size="icon"
             className="h-5 w-5 shrink-0"
             title={t("secrets.copy_ref")}
-            onClick={() => { void navigator.clipboard.writeText(secret.key); toast.success(t("secrets.ref_copied")); }}
+            onClick={() => { void copyToClipboard(secret.key).then(() => toast.success(t("secrets.ref_copied"))).catch(() => toast.error(t("secrets.error_generic"))); }}
           >
             <Copy className="w-2.5 h-2.5" />
           </Button>
@@ -376,7 +377,7 @@ function SecretRow({
                   size="icon"
                   className="h-5 w-5"
                   title={t("secrets.copy_value")}
-                  onClick={() => { void navigator.clipboard.writeText(revealed); toast.success(t("secrets.value_copied")); }}
+                  onClick={() => { void copyToClipboard(revealed).then(() => toast.success(t("secrets.value_copied"))).catch(() => toast.error(t("secrets.error_generic"))); }}
                 >
                   <Copy className="w-2.5 h-2.5" />
                 </Button>

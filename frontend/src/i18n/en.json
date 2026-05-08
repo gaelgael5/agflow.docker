@@ -338,6 +338,10 @@
     "running_instances": "Running instances",
     "stop_instance": "Stop instance",
     "chat_window_button": "Chat",
+    "env_preview_button": "Preview resolved .env",
+    "env_preview_title": "Resolved environment variables",
+    "env_preview_subtitle": "Content of the .env that would be injected into the container — secrets masked. Unresolved variables are highlighted.",
+    "env_preview_unresolved": "Unresolved variables: {{keys}}",
     "chat_window": {
       "title": "Chat — {{id}}",
       "idle": "Ready for an instruction",

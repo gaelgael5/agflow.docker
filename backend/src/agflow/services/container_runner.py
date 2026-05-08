@@ -48,6 +48,10 @@ _TEMPLATE_RE = re.compile(r"(?<!\$)\{(\w+)\}")
 # docker via HTTP API (no shell in between), we do the expansion ourselves
 # against os.environ.
 _SHELL_VAR_RE = re.compile(r"\$\{(\w+)(?::-([^}]*))?\}")
+# Matches ${vault://KEY:NAME} and ${env://NAME} — Harpocrate/env references
+# stored in Dockerfile.json that must be resolved against platform secrets.
+_VAULT_REF_RE = re.compile(r"\$\{vault://[^:}]+:([^}]+)\}")
+_ENV_REF_RE = re.compile(r"\$\{env://([^}]+)\}")
 
 
 def _generate_tmp_files(
@@ -348,14 +352,19 @@ def expand_shell_vars(s: str, extra_env: dict[str, str] | None = None) -> str:
 def full_resolve(
     s: str, vars: dict[str, str], extra_env: dict[str, str] | None = None
 ) -> str:
-    """agflow {KEY} templating followed by shell ${VAR} expansion.
+    """agflow {KEY} templating followed by shell ${VAR} and vault/env ref expansion.
 
-    Shell ${VAR} expansion looks up in params (vars) AND secrets (extra_env),
-    so ${SOME_PARAM} resolves to its Params value and ${SOME_SECRET} resolves
-    to its vault value. Secrets override params on name collision.
+    Resolution order:
+    1. {KEY} → Params/system vars
+    2. ${VAR} / ${VAR:-default} → os.environ + extra_env (platform secrets)
+    3. ${vault://KEY:NAME} / ${env://NAME} → extra_env (platform secrets)
     """
     merged_env = {**vars, **(extra_env or {})}
-    return expand_shell_vars(resolve_templates(s, vars), merged_env)
+    result = expand_shell_vars(resolve_templates(s, vars), merged_env)
+    if extra_env:
+        result = _VAULT_REF_RE.sub(lambda m: extra_env.get(m.group(1), ""), result)
+        result = _ENV_REF_RE.sub(lambda m: extra_env.get(m.group(1), ""), result)
+    return result
 
 
 def _data_host_dir() -> str:

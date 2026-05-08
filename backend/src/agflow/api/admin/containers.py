@@ -151,6 +151,56 @@ async def regenerate_tmp_files(
     return {"status": "ok"}
 
 
+class EnvPreviewResponse(BaseModel):
+    env: dict[str, str]
+    unresolved: list[str]
+
+
+@router.get(
+    "/dockerfiles/{dockerfile_id}/env-preview",
+    response_model=EnvPreviewResponse,
+    summary="Prévisualiser le .env résolu",
+    description="Résout les secrets et retourne les variables d'environnement qui seraient injectées dans le container, sans rien écrire sur le disque.",
+)
+async def env_preview(dockerfile_id: str) -> EnvPreviewResponse:
+    """Retourne le dict KEY→VALUE tel qu'il serait injecté dans le container."""
+    import re
+
+    try:
+        dockerfile = await dockerfiles_service.get_by_id(dockerfile_id)
+    except dockerfiles_service.DockerfileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    files = await dockerfile_files_service.list_for_dockerfile(dockerfile_id)
+    params_file = next((f for f in files if f.path == "Dockerfile.json"), None)
+    if params_file is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dockerfile.json manquant.")
+
+    platform_secrets = await container_runner._load_platform_secrets()
+
+    try:
+        _name, config = container_runner.build_run_config(
+            dockerfile_id=dockerfile_id,
+            params_json_content=params_file.content,
+            content_hash=dockerfile.current_hash,
+            instance_id="preview",
+            extra_env=platform_secrets,
+        )
+    except container_runner.InvalidParamsError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    env_dict: dict[str, str] = {}
+    for line in config.get("Env", []):
+        if "=" in line:
+            k, v = line.split("=", 1)
+            env_dict[k] = v
+
+    unresolved_re = re.compile(r"\$\{[^}]+\}")
+    unresolved = [k for k, v in env_dict.items() if unresolved_re.search(v)]
+
+    return EnvPreviewResponse(env=env_dict, unresolved=unresolved)
+
+
 @router.get(
     "/containers",
     response_model=list[ContainerInfo],

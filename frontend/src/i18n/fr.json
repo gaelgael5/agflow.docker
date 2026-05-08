@@ -343,6 +343,10 @@
     "running_instances": "Instances en cours",
     "stop_instance": "Arrêter l'instance",
     "chat_window_button": "Chat",
+    "env_preview_button": "Voir le .env résolu",
+    "env_preview_title": "Variables d'environnement résolues",
+    "env_preview_subtitle": "Contenu du .env qui serait injecté dans le container — secrets masqués. Les variables non résolues sont signalées.",
+    "env_preview_unresolved": "Variables non résolues : {{keys}}",
     "chat_window": {
       "title": "Chat — {{id}}",
       "idle": "Prêt à recevoir une instruction",

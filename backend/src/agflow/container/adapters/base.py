@@ -28,6 +28,11 @@ class AbstractContainerAdapter(ABC):
     async def logs(self, container_id: str, *, tail: int = 200) -> list[str]: ...
 
     @abstractmethod
+    async def resolve_container_id(self, container_id: str) -> str:
+        """Résout un ID opaque (container ID ou service Swarm) vers un container ID réel."""
+        ...
+
+    @abstractmethod
     def run_task(
         self,
         dockerfile_id: str,
@@ -70,6 +75,9 @@ class NoneAdapter(AbstractContainerAdapter):
 
     async def logs(self, container_id: str, *, tail: int = 200) -> list[str]:
         return []
+
+    async def resolve_container_id(self, container_id: str) -> str:
+        return container_id
 
     async def run_task(  # type: ignore[override]
         self,

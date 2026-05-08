@@ -1,7 +1,7 @@
 """Interactive terminal for Docker containers via aiodocker exec.
 
 WebSocket → aiodocker exec -ti → /bin/sh inside the container.
-No SSH dependency: uses the Docker socket already mounted in the backend container.
+Uses the facade to resolve container IDs (handles Swarm services transparently).
 """
 from __future__ import annotations
 
@@ -12,30 +12,9 @@ import aiodocker
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from agflow.container.facade import get_facade
+
 _log = structlog.get_logger(__name__)
-
-
-async def _resolve_to_container_id(maybe_id: str) -> str:
-    """Résout un service Swarm vers son container_id. Retourne l'input tel quel si ce n'est pas un service."""
-    docker = aiodocker.Docker()
-    try:
-        try:
-            svc = await docker.services.inspect(maybe_id)
-        except aiodocker.exceptions.DockerError as exc:
-            if exc.status == 404:
-                return maybe_id
-            raise
-        svc_name = (svc.get("Spec") or {}).get("Name", "")
-        tasks = await docker.tasks.list(filters={"service": svc_name})
-        for task in tasks or []:
-            if (task.get("Status") or {}).get("State") == "running":
-                cid = ((task.get("Status") or {}).get("ContainerStatus") or {}).get("ContainerID")
-                if cid:
-                    return cid
-        raise ValueError(f"Service {maybe_id} has no running task")
-    finally:
-        await docker.close()
-
 
 router = APIRouter(
     prefix="/api/admin",
@@ -49,7 +28,7 @@ async def container_terminal(ws: WebSocket, container_id: str) -> None:
 
     docker = aiodocker.Docker()
     try:
-        resolved_id = await _resolve_to_container_id(container_id)
+        resolved_id = await get_facade().resolve_container_id(container_id)
 
         try:
             container = await docker.containers.get(resolved_id)

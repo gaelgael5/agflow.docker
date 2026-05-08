@@ -239,6 +239,26 @@ class DockerSwarmAdapter(AbstractContainerAdapter):
         finally:
             await docker.close()
 
+    async def resolve_container_id(self, container_id: str) -> str:
+        docker = aiodocker.Docker()
+        try:
+            try:
+                svc = await docker.services.inspect(container_id)
+            except aiodocker.exceptions.DockerError as exc:
+                if exc.status == 404:
+                    return container_id
+                raise
+            svc_name = (svc.get("Spec") or {}).get("Name", "")
+            tasks = await docker.tasks.list(filters={"service": svc_name})
+            for task in tasks or []:
+                if (task.get("Status") or {}).get("State") == "running":
+                    cid = ((task.get("Status") or {}).get("ContainerStatus") or {}).get("ContainerID")
+                    if cid:
+                        return cid
+            raise ValueError(f"Service {container_id} has no running task")
+        finally:
+            await docker.close()
+
     def run_task(  # type: ignore[override]
         self,
         dockerfile_id: str,

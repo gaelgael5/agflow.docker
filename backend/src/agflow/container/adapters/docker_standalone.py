@@ -160,6 +160,9 @@ class DockerStandaloneAdapter(AbstractContainerAdapter):
         finally:
             await docker.close()
 
+    async def resolve_container_id(self, container_id: str) -> str:
+        return container_id
+
     def run_task(  # type: ignore[override]
         self,
         dockerfile_id: str,

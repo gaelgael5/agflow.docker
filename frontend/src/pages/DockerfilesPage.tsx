@@ -467,8 +467,8 @@ export function DockerfilesPage() {
         dockerfileId: selectedId,
         secrets,
       });
-    } catch {
-      // Error handled by mutation state
+    } catch (err) {
+      reportError(err);
     }
   }
 

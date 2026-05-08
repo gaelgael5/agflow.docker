@@ -218,6 +218,16 @@ export function TemplatesPage() {
           <>
             {/* Left sidebar: file list */}
             <aside className="w-56 shrink-0 border-r bg-background overflow-y-auto flex flex-col">
+              <div className="p-2 border-b">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-[12px]"
+                  onClick={() => setShowAddFileDialog(true)}
+                >
+                  {t("templates.add_file_button")}
+                </Button>
+              </div>
               <div key={`${detail.slug}-${detail.display_name}`} className="p-3 border-b space-y-2">
                 <input
                   type="text"
@@ -294,16 +304,6 @@ export function TemplatesPage() {
                 )}
               </div>
 
-              <div className="p-3 border-t">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full text-[12px]"
-                  onClick={() => setShowAddFileDialog(true)}
-                >
-                  {t("templates.add_file_button")}
-                </Button>
-              </div>
             </aside>
 
             {/* Right: editor */}

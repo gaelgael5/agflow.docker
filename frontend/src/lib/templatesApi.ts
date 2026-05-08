@@ -6,6 +6,12 @@ export interface TemplateCulture {
   sort_order: number;
 }
 
+export interface TemplateFileType {
+  key: string;
+  label: string;
+  sort_order: number;
+}
+
 export interface TemplateSummary {
   slug: string;
   display_name: string;
@@ -29,6 +35,10 @@ export interface TemplateDetail {
 export const templatesApi = {
   async listCultures(): Promise<TemplateCulture[]> {
     const res = await api.get<TemplateCulture[]>("/admin/templates/cultures");
+    return res.data;
+  },
+  async listFileTypes(): Promise<TemplateFileType[]> {
+    const res = await api.get<TemplateFileType[]>("/admin/templates/file-types");
     return res.data;
   },
   async list(): Promise<TemplateSummary[]> {

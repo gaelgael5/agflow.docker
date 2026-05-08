@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Save, Trash2 } from "lucide-react";
-import { useTemplateCultures, useTemplates } from "@/hooks/useTemplates";
+import { useTemplateCultures, useTemplateFileTypes, useTemplates } from "@/hooks/useTemplates";
 import {
   templatesApi,
   type TemplateDetail,
@@ -20,7 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -40,6 +39,7 @@ export function TemplatesPage() {
   const qc = useQueryClient();
   const { templates, isLoading, createMutation, deleteMutation } = useTemplates();
   const { data: cultures = [] } = useTemplateCultures();
+  const { data: fileTypes = [] } = useTemplateFileTypes();
 
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [detail, setDetail] = useState<TemplateDetail | null>(null);
@@ -106,8 +106,7 @@ export function TemplatesPage() {
 
   async function handleAddFile() {
     if (!selectedSlug) return;
-    const kind = addFileType.trim() || "md";
-    const filename = `${addFileCulture}.${kind}.j2`;
+    const filename = `${addFileCulture}.${addFileType}.j2`;
     await templatesApi.createFile(selectedSlug, filename, "");
     const d = await fetchDetail(selectedSlug);
     setSelectedFile(filename);
@@ -411,15 +410,19 @@ export function TemplatesPage() {
             </div>
             <div className="space-y-1.5">
               <Label>{t("templates.add_file_type")}</Label>
-              <Input
-                value={addFileType}
-                onChange={(e) => setAddFileType(e.target.value)}
-                placeholder="md"
-                className="font-mono"
-              />
+              <Select value={addFileType} onValueChange={setAddFileType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {fileTypes.map((ft) => (
+                    <SelectItem key={ft.key} value={ft.key}>{ft.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <p className="text-[11px] text-muted-foreground font-mono">
-              → {addFileCulture}.{addFileType.trim() || "md"}.j2
+              → {addFileCulture}.{addFileType}.j2
             </p>
           </div>
           <DialogFooter>

@@ -33,12 +33,26 @@ class TemplateCulture(BaseModel):
     sort_order: int
 
 
+class TemplateFileType(BaseModel):
+    key: str
+    label: str
+    sort_order: int
+
+
 @router.get("/cultures", response_model=list[TemplateCulture])
 async def list_cultures():
     rows = await fetch_all(
         "SELECT key, label, sort_order FROM template_cultures ORDER BY sort_order"
     )
     return [TemplateCulture(**dict(r)) for r in rows]
+
+
+@router.get("/file-types", response_model=list[TemplateFileType])
+async def list_file_types():
+    rows = await fetch_all(
+        "SELECT key, label, sort_order FROM template_file_types ORDER BY sort_order"
+    )
+    return [TemplateFileType(**dict(r)) for r in rows]
 
 
 @router.get("", response_model=list[TemplateSummary])

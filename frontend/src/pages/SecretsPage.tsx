@@ -319,7 +319,22 @@ function SecretRow({
 
   return (
     <TableRow>
-      <TableCell className="font-mono text-[13px]">{secret.name}</TableCell>
+      <TableCell>
+        {(() => {
+          const slash = secret.name.lastIndexOf("/");
+          if (slash === -1) {
+            return <span className="font-mono text-[13px]">{secret.name}</span>;
+          }
+          const env = secret.name.slice(0, slash);
+          const varName = secret.name.slice(slash + 1);
+          return (
+            <span className="font-mono text-[13px]">
+              {varName}
+              <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">{env}</span>
+            </span>
+          );
+        })()}
+      </TableCell>
       <TableCell>
         <Badge variant={secret.type === "vault" ? "default" : "secondary"}>
           {t(`secrets.type_${secret.type}`)}

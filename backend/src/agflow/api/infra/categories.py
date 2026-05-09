@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
@@ -12,10 +10,8 @@ from agflow.schemas.infra import CategoryActionRow, CategoryRow
 router = APIRouter(prefix="/api/infra/categories", tags=["infra-categories"])
 
 _ACTION_SELECT = """
-    SELECT a.id, a.name, a.is_required, a.creates_named_type_id,
-           nt.name AS creates_named_type_name
+    SELECT a.id, a.name, a.is_required, a.creates_category
     FROM infra_category_actions a
-    LEFT JOIN infra_named_types nt ON nt.id = a.creates_named_type_id
 """
 
 
@@ -89,12 +85,12 @@ async def list_category_actions(category: str):
 class CategoryActionCreate(BaseModel):
     name: str
     is_required: bool = False
-    creates_named_type_id: UUID | None = None
+    creates_category: str | None = None
 
 
 class CategoryActionUpdate(BaseModel):
     is_required: bool | None = None
-    creates_named_type_id: UUID | None = None
+    creates_category: str | None = None
 
 
 @router.post(
@@ -115,9 +111,9 @@ async def create_category_action(category: str, payload: CategoryActionCreate):
         )
     try:
         row = await fetch_one(
-            """INSERT INTO infra_category_actions (category, name, is_required, creates_named_type_id)
+            """INSERT INTO infra_category_actions (category, name, is_required, creates_category)
                VALUES ($1, $2, $3, $4) RETURNING id""",
-            category, action_name, payload.is_required, payload.creates_named_type_id,
+            category, action_name, payload.is_required, payload.creates_category,
         )
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -138,9 +134,9 @@ async def update_category_action(category: str, name: str, payload: CategoryActi
     if payload.is_required is not None:
         params.append(payload.is_required)
         sets.append(f"is_required = ${len(params)}")
-    if "creates_named_type_id" in payload.model_fields_set:
-        params.append(payload.creates_named_type_id)
-        sets.append(f"creates_named_type_id = ${len(params)}")
+    if "creates_category" in payload.model_fields_set:
+        params.append(payload.creates_category)
+        sets.append(f"creates_category = ${len(params)}")
     if not sets:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="nothing to update")
     await execute(

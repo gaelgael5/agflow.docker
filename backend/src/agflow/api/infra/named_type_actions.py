@@ -36,15 +36,17 @@ async def create_action(named_type_id: UUID, payload: NamedTypeActionCreate):
         named_type_id=named_type_id,
         category_action_id=payload.category_action_id,
         url=payload.url,
+        creates_named_type_id=payload.creates_named_type_id,
     )
 
 
 @router.put("/{action_id}", response_model=NamedTypeActionRow, dependencies=_admin)
 async def update_action(named_type_id: UUID, action_id: UUID, payload: NamedTypeActionUpdate):
-    if payload.url is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="url is required")
+    fields = payload.model_dump(include=payload.model_fields_set)
+    if not fields:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="nothing to update")
     try:
-        return await infra_named_type_actions_service.update(action_id, url=payload.url)
+        return await infra_named_type_actions_service.update(action_id, fields)
     except infra_named_type_actions_service.NamedTypeActionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

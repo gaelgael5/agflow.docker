@@ -15,8 +15,7 @@ class CategoryActionRow(BaseModel):
     id: UUID
     name: str
     is_required: bool = False
-    creates_named_type_id: UUID | None = None
-    creates_named_type_name: str | None = None
+    creates_category: str | None = None
 
 
 # ── Named types (variantes typées, ex. Proxmox/SSH) ──────
@@ -55,6 +54,7 @@ class NamedTypeActionRow(BaseModel):
     category_action_id: UUID
     action_name: str
     url: str
+    creates_named_type_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -62,10 +62,12 @@ class NamedTypeActionRow(BaseModel):
 class NamedTypeActionCreate(BaseModel):
     category_action_id: UUID
     url: str = Field(min_length=1)
+    creates_named_type_id: UUID | None = None
 
 
 class NamedTypeActionUpdate(BaseModel):
     url: str | None = None
+    creates_named_type_id: UUID | None = None
 
 
 # ── Certificates ─────────────────────────────────────────

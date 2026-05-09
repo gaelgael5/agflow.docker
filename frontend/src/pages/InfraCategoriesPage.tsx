@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { useInfraCategories, useInfraCategoryActions, useInfraNamedTypes } from "@/hooks/useInfra";
+import { useInfraCategories, useInfraCategoryActions } from "@/hooks/useInfra";
 import { infraCategoriesApi, type InfraCategoryAction } from "@/lib/infraApi";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -24,7 +24,6 @@ import {
 export function InfraCategoriesPage() {
   const { t } = useTranslation();
   const { data: categories } = useInfraCategories();
-  const { data: namedTypes } = useInfraNamedTypes();
   const [showAddCategory, setShowAddCategory] = useState(false);
   const qc = useQueryClient();
 
@@ -52,7 +51,12 @@ export function InfraCategoriesPage() {
           </TableHeader>
           <TableBody>
             {(categories ?? []).map((c) => (
-              <CategoryRowItem key={c.name} category={c.name} namedTypes={namedTypes ?? []} t={t} />
+              <CategoryRowItem
+                key={c.name}
+                category={c.name}
+                allCategories={(categories ?? []).map((cat) => cat.name)}
+                t={t}
+              />
             ))}
           </TableBody>
         </Table>
@@ -75,28 +79,28 @@ export function InfraCategoriesPage() {
 
 function CategoryRowItem({
   category,
-  namedTypes,
+  allCategories,
   t,
 }: {
   category: string;
-  namedTypes: { id: string; name: string }[];
+  allCategories: string[];
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
   const qc = useQueryClient();
   const { data: actions } = useInfraCategoryActions(category);
   const [adding, setAdding] = useState(false);
   const [newAction, setNewAction] = useState("");
-  const [newCreatesTypeId, setNewCreatesTypeId] = useState<string | null>(null);
+  const [newCreatesCategory, setNewCreatesCategory] = useState<string | null>(null);
 
   const submitAdd = async () => {
     const n = newAction.trim();
     if (!n) return;
     try {
-      await infraCategoriesApi.createAction(category, n, false, newCreatesTypeId);
+      await infraCategoriesApi.createAction(category, n, false, newCreatesCategory);
       qc.invalidateQueries({ queryKey: ["infra-category-actions", category] });
       toast.success(t("infra.action_added", { name: n }));
       setNewAction("");
-      setNewCreatesTypeId(null);
+      setNewCreatesCategory(null);
       setAdding(false);
     } catch (e) {
       toast.error(String(e));
@@ -106,7 +110,7 @@ function CategoryRowItem({
   const cancelAdd = () => {
     setAdding(false);
     setNewAction("");
-    setNewCreatesTypeId(null);
+    setNewCreatesCategory(null);
   };
 
   return (
@@ -122,7 +126,7 @@ function CategoryRowItem({
               key={a.id}
               action={a}
               category={category}
-              namedTypes={namedTypes}
+              allCategories={allCategories}
               t={t}
               onUpdate={() => qc.invalidateQueries({ queryKey: ["infra-category-actions", category] })}
             />
@@ -143,21 +147,21 @@ function CategoryRowItem({
                 />
               </div>
               <div className="space-y-0.5">
-                <Label className="text-[10px] text-muted-foreground">{t("infra.action_creates_type")}</Label>
+                <Label className="text-[10px] text-muted-foreground">{t("infra.action_creates_category")}</Label>
                 <Select
-                  value={newCreatesTypeId ?? "__none__"}
-                  onValueChange={(v) => setNewCreatesTypeId(v === "__none__" ? null : v)}
+                  value={newCreatesCategory ?? "__none__"}
+                  onValueChange={(v) => setNewCreatesCategory(v === "__none__" ? null : v)}
                 >
                   <SelectTrigger className="h-7 w-44 text-[11px]">
-                    <SelectValue placeholder={t("infra.action_no_type")} />
+                    <SelectValue placeholder={t("infra.action_no_creates")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__" className="text-[11px] text-muted-foreground">
-                      {t("infra.action_no_type")}
+                      {t("infra.action_no_creates")}
                     </SelectItem>
-                    {namedTypes.map((nt) => (
-                      <SelectItem key={nt.id} value={nt.id} className="text-[11px]">
-                        {nt.name}
+                    {allCategories.map((cat) => (
+                      <SelectItem key={cat} value={cat} className="text-[11px]">
+                        {cat}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -186,7 +190,7 @@ function CategoryRowItem({
             try {
               await infraCategoriesApi.remove(category);
               qc.invalidateQueries({ queryKey: ["infra-categories"] });
-              toast.success(`Catégorie "${category}" supprimée`);
+              toast.success(t("infra.category_removed", { name: category }));
             } catch (e) {
               toast.error(String(e));
             }
@@ -202,13 +206,13 @@ function CategoryRowItem({
 function ActionBadge({
   action,
   category,
-  namedTypes,
+  allCategories,
   t,
   onUpdate,
 }: {
   action: InfraCategoryAction;
   category: string;
-  namedTypes: { id: string; name: string }[];
+  allCategories: string[];
   t: (key: string, opts?: Record<string, string>) => string;
   onUpdate: () => void;
 }) {
@@ -234,18 +238,18 @@ function ActionBadge({
       >
         {action.is_required ? "★ " : ""}{action.name}
       </button>
-      {action.creates_named_type_name && (
-        <span className="ml-0.5 opacity-75 font-normal">→ {action.creates_named_type_name}</span>
+      {action.creates_category && (
+        <span className="ml-0.5 opacity-75 font-normal">→ {action.creates_category}</span>
       )}
       <select
-        title={t("infra.action_creates_type")}
+        title={t("infra.action_creates_category")}
         className="ml-0.5 bg-transparent text-[9px] border-none outline-none cursor-pointer max-w-[80px] truncate"
-        value={action.creates_named_type_id ?? "__none__"}
+        value={action.creates_category ?? "__none__"}
         onChange={async (e) => {
           const v = e.target.value;
           try {
             await infraCategoriesApi.updateAction(category, action.name, {
-              creates_named_type_id: v === "__none__" ? null : v,
+              creates_category: v === "__none__" ? null : v,
             });
             onUpdate();
           } catch (err) {
@@ -254,8 +258,8 @@ function ActionBadge({
         }}
       >
         <option value="__none__">—</option>
-        {namedTypes.map((nt) => (
-          <option key={nt.id} value={nt.id}>{nt.name}</option>
+        {allCategories.map((cat) => (
+          <option key={cat} value={cat}>{cat}</option>
         ))}
       </select>
       <button

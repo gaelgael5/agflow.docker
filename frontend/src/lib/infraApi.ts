@@ -10,8 +10,7 @@ export interface InfraCategoryAction {
   id: string;
   name: string;
   is_required: boolean;
-  creates_named_type_id: string | null;
-  creates_named_type_name: string | null;
+  creates_category: string | null;
 }
 
 export const infraCategoriesApi = {
@@ -33,17 +32,17 @@ export const infraCategoriesApi = {
     category: string,
     name: string,
     isRequired = false,
-    createsNamedTypeId: string | null = null,
+    createsCategory: string | null = null,
   ): Promise<InfraCategoryAction> {
     return (await api.post<InfraCategoryAction>(
       `/infra/categories/${encodeURIComponent(category)}/actions`,
-      { name, is_required: isRequired, creates_named_type_id: createsNamedTypeId },
+      { name, is_required: isRequired, creates_category: createsCategory },
     )).data;
   },
   async updateAction(
     category: string,
     name: string,
-    patch: { is_required?: boolean; creates_named_type_id?: string | null },
+    patch: { is_required?: boolean; creates_category?: string | null },
   ): Promise<InfraCategoryAction> {
     return (await api.patch<InfraCategoryAction>(
       `/infra/categories/${encodeURIComponent(category)}/actions/${encodeURIComponent(name)}`,
@@ -113,6 +112,7 @@ export interface InfraNamedTypeAction {
   category_action_id: string;
   action_name: string;
   url: string;
+  creates_named_type_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -127,20 +127,21 @@ export const infraNamedTypeActionsApi = {
     namedTypeId: string,
     categoryActionId: string,
     url: string,
+    createsNamedTypeId: string | null = null,
   ): Promise<InfraNamedTypeAction> {
     return (await api.post<InfraNamedTypeAction>(
       `/infra/named-types/${namedTypeId}/actions`,
-      { category_action_id: categoryActionId, url },
+      { category_action_id: categoryActionId, url, creates_named_type_id: createsNamedTypeId },
     )).data;
   },
   async update(
     namedTypeId: string,
     actionId: string,
-    url: string,
+    patch: { url?: string; creates_named_type_id?: string | null },
   ): Promise<InfraNamedTypeAction> {
     return (await api.put<InfraNamedTypeAction>(
       `/infra/named-types/${namedTypeId}/actions/${actionId}`,
-      { url },
+      patch,
     )).data;
   },
   async remove(namedTypeId: string, actionId: string): Promise<void> {

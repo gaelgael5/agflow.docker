@@ -64,6 +64,7 @@ export function InfraNamedTypesPage() {
             <NamedTypeCard
               key={nt.id}
               namedType={nt}
+              allNamedTypes={namedTypes ?? []}
               onEdit={() => setEditTarget(nt)}
               onDelete={() => setDeleteTarget(nt)}
               t={t}
@@ -88,8 +89,6 @@ export function InfraNamedTypesPage() {
             namedTypeId = created.id;
           }
 
-          // Sync action URLs : create non-empty URLs, delete existing entries
-          // that were cleared.
           const existing = editTarget
             ? await infraNamedTypeActionsApi.list(namedTypeId)
             : [];
@@ -103,7 +102,7 @@ export function InfraNamedTypesPage() {
             if (trimmed) {
               if (current) {
                 if (current.url !== trimmed) {
-                  await infraNamedTypeActionsApi.update(namedTypeId, current.id, trimmed);
+                  await infraNamedTypeActionsApi.update(namedTypeId, current.id, { url: trimmed });
                 }
               } else {
                 await infraNamedTypeActionsApi.create(namedTypeId, categoryActionId, trimmed);
@@ -142,8 +141,9 @@ export function InfraNamedTypesPage() {
   );
 }
 
-function NamedTypeCard({ namedType, onEdit, onDelete, t }: {
+function NamedTypeCard({ namedType, allNamedTypes, onEdit, onDelete, t }: {
   namedType: InfraNamedType;
+  allNamedTypes: InfraNamedType[];
   onEdit: () => void;
   onDelete: () => void;
   t: (key: string, opts?: Record<string, string>) => string;
@@ -183,10 +183,21 @@ function NamedTypeCard({ namedType, onEdit, onDelete, t }: {
               <p className="text-[11px] text-muted-foreground italic">{t("infra.named_type_no_actions")}</p>
             ) : (
               (actions ?? []).map((a) => (
-                <ActionRow key={a.id} namedTypeId={namedType.id} actionId={a.id} name={a.action_name} url={a.url} t={t} />
+                <ActionRow
+                  key={a.id}
+                  namedTypeId={namedType.id}
+                  actionId={a.id}
+                  name={a.action_name}
+                  url={a.url}
+                  createsNamedTypeId={a.creates_named_type_id}
+                  allNamedTypes={allNamedTypes}
+                  categoryActionId={a.category_action_id}
+                  namedTypeCategoryId={namedType.type_id}
+                  t={t}
+                />
               ))
             )}
-            <AddActionButton namedType={namedType} t={t} />
+            <AddActionButton namedType={namedType} allNamedTypes={allNamedTypes} t={t} />
           </div>
         </div>
       </CardContent>
@@ -194,22 +205,48 @@ function NamedTypeCard({ namedType, onEdit, onDelete, t }: {
   );
 }
 
-function ActionRow({ namedTypeId, actionId, name, url, t }: {
+function ActionRow({
+  namedTypeId,
+  actionId,
+  name,
+  url,
+  createsNamedTypeId,
+  allNamedTypes,
+  categoryActionId,
+  namedTypeCategoryId,
+  t,
+}: {
   namedTypeId: string;
   actionId: string;
   name: string;
   url: string;
+  createsNamedTypeId: string | null;
+  allNamedTypes: InfraNamedType[];
+  categoryActionId: string;
+  namedTypeCategoryId: string;
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(url);
 
+  // Fetch category action to know its creates_category
+  const { data: categoryActions } = useInfraCategoryActions(namedTypeCategoryId);
+  const categoryAction = (categoryActions ?? []).find((a) => a.id === categoryActionId);
+  const createsCategory = categoryAction?.creates_category ?? null;
+  const candidateNamedTypes = createsCategory
+    ? allNamedTypes.filter((nt) => nt.type_id === createsCategory)
+    : [];
+
+  const createsNamedTypeName = createsNamedTypeId
+    ? (allNamedTypes.find((nt) => nt.id === createsNamedTypeId)?.name ?? createsNamedTypeId)
+    : null;
+
   const save = async () => {
     const trimmed = val.trim();
     if (!trimmed) return;
     try {
-      await infraNamedTypeActionsApi.update(namedTypeId, actionId, trimmed);
+      await infraNamedTypeActionsApi.update(namedTypeId, actionId, { url: trimmed });
       qc.invalidateQueries({ queryKey: ["infra-named-type-actions", namedTypeId] });
       setEditing(false);
       toast.success(t("infra.named_type_action_updated"));
@@ -219,55 +256,85 @@ function ActionRow({ namedTypeId, actionId, name, url, t }: {
   };
 
   return (
-    <div className="flex items-start gap-1 text-[11px]">
-      <Badge variant="secondary" className="text-[9px] shrink-0">{name}</Badge>
-      {editing ? (
-        <>
-          <Input
-            value={val}
-            onChange={(e) => setVal(e.target.value)}
-            className="h-6 text-[11px] font-mono flex-1"
-            autoFocus
-          />
-          <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={save}>OK</Button>
-          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => { setEditing(false); setVal(url); }}>
-            <X className="w-3 h-3" />
-          </Button>
-        </>
-      ) : (
-        <>
-          <code className="font-mono text-[10px] break-all flex-1">{url}</code>
-          <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setEditing(true)}>
-            <Edit2 className="w-3 h-3" />
-          </Button>
-          <Button
-            variant="ghost" size="icon" className="h-5 w-5 shrink-0"
-            onClick={async () => {
+    <div className="space-y-0.5">
+      <div className="flex items-start gap-1 text-[11px]">
+        <Badge variant="secondary" className="text-[9px] shrink-0">{name}</Badge>
+        {editing ? (
+          <>
+            <Input
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              className="h-6 text-[11px] font-mono flex-1"
+              autoFocus
+            />
+            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={save}>OK</Button>
+            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => { setEditing(false); setVal(url); }}>
+              <X className="w-3 h-3" />
+            </Button>
+          </>
+        ) : (
+          <>
+            <code className="font-mono text-[10px] break-all flex-1">{url}</code>
+            <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setEditing(true)}>
+              <Edit2 className="w-3 h-3" />
+            </Button>
+            <Button
+              variant="ghost" size="icon" className="h-5 w-5 shrink-0"
+              onClick={async () => {
+                try {
+                  await infraNamedTypeActionsApi.remove(namedTypeId, actionId);
+                  qc.invalidateQueries({ queryKey: ["infra-named-type-actions", namedTypeId] });
+                  toast.success(t("infra.named_type_action_deleted"));
+                } catch (e) {
+                  toast.error(String(e));
+                }
+              }}
+            >
+              <Trash2 className="w-3 h-3 text-destructive" />
+            </Button>
+          </>
+        )}
+      </div>
+      {/* creates_named_type picker — visible seulement si l'action de catégorie déclare creates_category */}
+      {createsCategory && (
+        <div className="flex items-center gap-1 pl-1 text-[10px] text-muted-foreground">
+          <span className="shrink-0">→ {createsCategory} :</span>
+          <select
+            className="bg-transparent border border-input rounded px-1 py-0 text-[10px] cursor-pointer"
+            value={createsNamedTypeId ?? "__none__"}
+            onChange={async (e) => {
+              const v = e.target.value;
               try {
-                await infraNamedTypeActionsApi.remove(namedTypeId, actionId);
+                await infraNamedTypeActionsApi.update(namedTypeId, actionId, {
+                  creates_named_type_id: v === "__none__" ? null : v,
+                });
                 qc.invalidateQueries({ queryKey: ["infra-named-type-actions", namedTypeId] });
-                toast.success(t("infra.named_type_action_deleted"));
-              } catch (e) {
-                toast.error(String(e));
+              } catch (err) {
+                toast.error(String(err));
               }
             }}
           >
-            <Trash2 className="w-3 h-3 text-destructive" />
-          </Button>
-        </>
+            <option value="__none__">— {t("common.none")} —</option>
+            {candidateNamedTypes.map((nt) => (
+              <option key={nt.id} value={nt.id}>{nt.name}</option>
+            ))}
+          </select>
+          {createsNamedTypeName && (
+            <span className="text-[9px] opacity-60">{createsNamedTypeName}</span>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-function AddActionButton({ namedType, t }: {
+function AddActionButton({ namedType, allNamedTypes, t }: {
   namedType: InfraNamedType;
+  allNamedTypes: InfraNamedType[];
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
   const qc = useQueryClient();
-  // Actions defined for the named_type's own category (type_id IS the category name).
   const { data: categoryActions } = useInfraCategoryActions(namedType.type_id);
-
   const { data: existing } = useInfraNamedTypeActions(namedType.id);
   const existingActionIds = new Set((existing ?? []).map((a) => a.category_action_id));
   const available = (categoryActions ?? []).filter((a) => !existingActionIds.has(a.id));
@@ -275,12 +342,24 @@ function AddActionButton({ namedType, t }: {
   const [open, setOpen] = useState(false);
   const [categoryActionId, setCategoryActionId] = useState("");
   const [url, setUrl] = useState("");
+  const [createsNamedTypeId, setCreatesNamedTypeId] = useState<string | null>(null);
+
+  const selectedAction = available.find((a) => a.id === categoryActionId);
+  const createsCategory = selectedAction?.creates_category ?? null;
+  const candidateNamedTypes = createsCategory
+    ? allNamedTypes.filter((nt) => nt.type_id === createsCategory)
+    : [];
 
   useEffect(() => {
     if (open && !categoryActionId && available.length > 0) {
       setCategoryActionId(available[0]!.id);
     }
   }, [open, available, categoryActionId]);
+
+  // Reset creates_named_type_id when the selected action changes
+  useEffect(() => {
+    setCreatesNamedTypeId(null);
+  }, [categoryActionId]);
 
   if (available.length === 0) return null;
 
@@ -290,7 +369,7 @@ function AddActionButton({ namedType, t }: {
         <Plus className="w-3 h-3" />
         {t("infra.named_type_action_add")}
       </Button>
-      <Dialog open={open} onOpenChange={(o) => { if (!o) { setOpen(false); setUrl(""); } }}>
+      <Dialog open={open} onOpenChange={(o) => { if (!o) { setOpen(false); setUrl(""); setCreatesNamedTypeId(null); } }}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t("infra.named_type_action_add")}</DialogTitle>
@@ -308,6 +387,23 @@ function AddActionButton({ namedType, t }: {
               <Label className="text-[11px]">{t("infra.named_type_action_url")}</Label>
               <Input value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1 font-mono text-[11px]" placeholder="https://..." />
             </div>
+            {createsCategory && (
+              <div>
+                <Label className="text-[11px]">
+                  {t("infra.action_creates_named_type_label", { category: createsCategory })}
+                </Label>
+                <select
+                  value={createsNamedTypeId ?? "__none__"}
+                  onChange={(e) => setCreatesNamedTypeId(e.target.value === "__none__" ? null : e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="__none__">— {t("common.none")} —</option>
+                  {candidateNamedTypes.map((nt) => (
+                    <option key={nt.id} value={nt.id}>{nt.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
@@ -315,10 +411,16 @@ function AddActionButton({ namedType, t }: {
               disabled={!categoryActionId || !url.trim()}
               onClick={async () => {
                 try {
-                  await infraNamedTypeActionsApi.create(namedType.id, categoryActionId, url.trim());
+                  await infraNamedTypeActionsApi.create(
+                    namedType.id,
+                    categoryActionId,
+                    url.trim(),
+                    createsNamedTypeId,
+                  );
                   qc.invalidateQueries({ queryKey: ["infra-named-type-actions", namedType.id] });
                   setOpen(false);
                   setUrl("");
+                  setCreatesNamedTypeId(null);
                   toast.success(t("infra.named_type_action_added"));
                 } catch (e) {
                   toast.error(String(e));
@@ -365,12 +467,9 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Category actions for the selected category
   const { data: categoryActions } = useInfraCategoryActions(typeId || undefined);
-  // Existing action URLs when editing
   const { data: existingActions } = useInfraNamedTypeActions(initial?.id);
 
-  // Pre-fill actionUrls when the existing actions arrive
   useEffect(() => {
     if (!open || !existingActions) return;
     const map: Record<string, string> = {};
@@ -379,9 +478,7 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingActions, open]);
 
-  // sub_type options: all named types except self
   const otherNamedTypes = namedTypes.filter((nt) => nt.id !== initial?.id);
-
   const canSubmit = name.trim() && typeId && connectionType;
 
   return (

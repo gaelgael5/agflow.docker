@@ -9,13 +9,14 @@ from pydantic import BaseModel, Field
 
 class CategoryRow(BaseModel):
     name: str
-    is_vps: bool = False
 
 
 class CategoryActionRow(BaseModel):
     id: UUID
     name: str
     is_required: bool = False
+    creates_named_type_id: UUID | None = None
+    creates_named_type_name: str | None = None
 
 
 # ── Named types (variantes typées, ex. Proxmox/SSH) ──────

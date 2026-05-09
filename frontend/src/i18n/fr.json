@@ -1279,6 +1279,8 @@
     "action_removed": "Action \"{{name}}\" supprimée",
     "action_required_on": "Cette action est obligatoire (clic pour désactiver)",
     "action_required_off": "Rendre cette action obligatoire",
+    "action_creates_type": "Type de machine créé par cette action",
+    "action_no_type": "— aucune machine créée",
     "status_required_missing": "⚠ {{count}} action(s) requise(s)",
     "status_required_tooltip": "Actions requises non effectuées : {{actions}}",
     "status_required_done": "Action requise \"{{name}}\" exécutée avec succès",

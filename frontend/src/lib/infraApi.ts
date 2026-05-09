@@ -4,27 +4,22 @@ import { api } from "./api";
 
 export interface InfraCategory {
   name: string;
-  is_vps: boolean;
 }
 
 export interface InfraCategoryAction {
   id: string;
   name: string;
   is_required: boolean;
+  creates_named_type_id: string | null;
+  creates_named_type_name: string | null;
 }
 
 export const infraCategoriesApi = {
   async list(): Promise<InfraCategory[]> {
     return (await api.get<InfraCategory[]>("/infra/categories")).data;
   },
-  async create(name: string, isVps = false): Promise<InfraCategory> {
-    return (await api.post<InfraCategory>("/infra/categories", { name, is_vps: isVps })).data;
-  },
-  async setVps(name: string, isVps: boolean): Promise<InfraCategory> {
-    return (await api.patch<InfraCategory>(
-      `/infra/categories/${encodeURIComponent(name)}`,
-      { is_vps: isVps },
-    )).data;
+  async create(name: string): Promise<InfraCategory> {
+    return (await api.post<InfraCategory>("/infra/categories", { name })).data;
   },
   async remove(name: string): Promise<void> {
     await api.delete(`/infra/categories/${encodeURIComponent(name)}`);
@@ -34,16 +29,25 @@ export const infraCategoriesApi = {
       `/infra/categories/${encodeURIComponent(category)}/actions`,
     )).data;
   },
-  async createAction(category: string, name: string, isRequired = false): Promise<InfraCategoryAction> {
+  async createAction(
+    category: string,
+    name: string,
+    isRequired = false,
+    createsNamedTypeId: string | null = null,
+  ): Promise<InfraCategoryAction> {
     return (await api.post<InfraCategoryAction>(
       `/infra/categories/${encodeURIComponent(category)}/actions`,
-      { name, is_required: isRequired },
+      { name, is_required: isRequired, creates_named_type_id: createsNamedTypeId },
     )).data;
   },
-  async setActionRequired(category: string, name: string, isRequired: boolean): Promise<InfraCategoryAction> {
+  async updateAction(
+    category: string,
+    name: string,
+    patch: { is_required?: boolean; creates_named_type_id?: string | null },
+  ): Promise<InfraCategoryAction> {
     return (await api.patch<InfraCategoryAction>(
       `/infra/categories/${encodeURIComponent(category)}/actions/${encodeURIComponent(name)}`,
-      { is_required: isRequired },
+      patch,
     )).data;
   },
   async removeAction(category: string, name: string): Promise<void> {

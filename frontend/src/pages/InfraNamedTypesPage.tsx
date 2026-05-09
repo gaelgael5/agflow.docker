@@ -365,10 +365,6 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // typeId IS a category name (FK → infra_categories.name)
-  const selectedCategory = categories.find((c) => c.name === typeId);
-  const selectedTypeIsVps = selectedCategory?.is_vps ?? false;
-
   // Category actions for the selected category
   const { data: categoryActions } = useInfraCategoryActions(typeId || undefined);
   // Existing action URLs when editing
@@ -383,19 +379,8 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingActions, open]);
 
-  // sub_type options: named_types whose category is NOT flagged VPS
-  const categoryByName = new Map(categories.map((c) => [c.name, c]));
-  const nonVpsNamedTypes = namedTypes.filter((nt) => {
-    if (nt.id === initial?.id) return false; // exclude self
-    const cat = categoryByName.get(nt.type_id);
-    return cat ? !cat.is_vps : false;
-  });
-
-  // If the selected type changed to a non-VPS one, reset sub_type
-  useEffect(() => {
-    if (!selectedTypeIsVps && subTypeId) setSubTypeId("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTypeIsVps]);
+  // sub_type options: all named types except self
+  const otherNamedTypes = namedTypes.filter((nt) => nt.id !== initial?.id);
 
   const canSubmit = name.trim() && typeId && connectionType;
 
@@ -421,23 +406,21 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
             <select value={typeId} onChange={(e) => setTypeId(e.target.value)} className={selectClass}>
               <option value="">—</option>
               {categories.map((c) => (
-                <option key={c.name} value={c.name}>{c.name}{c.is_vps ? " (VPS)" : ""}</option>
+                <option key={c.name} value={c.name}>{c.name}</option>
               ))}
             </select>
           </div>
-          {selectedTypeIsVps && (
-            <div>
-              <Label className="text-[11px]">{t("infra.named_type_sub_type")}</Label>
-              <select value={subTypeId} onChange={(e) => setSubTypeId(e.target.value)} className={selectClass}>
-                <option value="">— {t("common.none")} —</option>
-                {nonVpsNamedTypes.map((nt) => (
-                  <option key={nt.id} value={nt.id}>
-                    {nt.name} ({nt.type_id} / {nt.connection_type})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div>
+            <Label className="text-[11px]">{t("infra.named_type_sub_type")}</Label>
+            <select value={subTypeId} onChange={(e) => setSubTypeId(e.target.value)} className={selectClass}>
+              <option value="">— {t("common.none")} —</option>
+              {otherNamedTypes.map((nt) => (
+                <option key={nt.id} value={nt.id}>
+                  {nt.name} ({nt.type_id} / {nt.connection_type})
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <Label className="text-[11px]">{t("infra.connection_type")}</Label>
             <select value={connectionType} onChange={(e) => setConnectionType(e.target.value)} className={selectClass}>
@@ -476,7 +459,7 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
                   {
                     name: name.trim(),
                     type_id: typeId,
-                    sub_type_id: selectedTypeIsVps ? (subTypeId || null) : null,
+                    sub_type_id: subTypeId || null,
                     connection_type: connectionType,
                   },
                   actionUrls,

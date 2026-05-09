@@ -1272,6 +1272,8 @@
     "action_removed": "Action \"{{name}}\" removed",
     "action_required_on": "This action is required (click to disable)",
     "action_required_off": "Mark this action as required",
+    "action_creates_type": "Machine type created by this action",
+    "action_no_type": "— no machine created",
     "status_required_missing": "⚠ {{count}} required action(s)",
     "status_required_tooltip": "Required actions not run: {{actions}}",
     "status_required_done": "Required action \"{{name}}\" executed successfully",

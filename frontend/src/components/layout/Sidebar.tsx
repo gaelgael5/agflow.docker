@@ -11,7 +11,6 @@ import {
   Globe,
   Key,
   KeyRound,
-  Lock,
   Package,
   Palette,
   Server,
@@ -90,7 +89,6 @@ export function Sidebar({ open = false, onClose }: Props) {
     {
       title: t("sidebar.section_access"),
       items: [
-        { to: "/my-secrets", label: t("my_secrets.page_title"), icon: Lock },
         { to: "/api-keys", label: t("api_keys.page_title"), icon: Key },
       ],
     },

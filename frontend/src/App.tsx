@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { SecretsPage } from "./pages/SecretsPage";
-import { MySecretsPage } from "./pages/MySecretsPage";
 import { RolesPage } from "./pages/RolesPage";
 import { DockerfilesPage } from "./pages/DockerfilesPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
@@ -233,14 +232,6 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ApiDocsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/my-secrets"
-        element={
-          <ProtectedRoute>
-            <MySecretsPage />
           </ProtectedRoute>
         }
       />

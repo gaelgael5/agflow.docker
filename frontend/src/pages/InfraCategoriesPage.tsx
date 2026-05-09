@@ -233,6 +233,7 @@ function ActionBadge({
       <select
         title={t("infra.action_creates_category")}
         className="ml-0.5 bg-transparent text-[9px] border-none outline-none cursor-pointer max-w-[80px] truncate"
+        style={{ color: "var(--foreground, #111)" }}
         value={action.creates_category ?? "__none__"}
         onChange={async (e) => {
           const v = e.target.value;

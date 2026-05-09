@@ -59,18 +59,12 @@ export function InfraNamedTypesPage() {
       ) : (namedTypes ?? []).length === 0 ? (
         <p className="text-muted-foreground text-sm italic">{t("infra.named_types_empty")}</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {(namedTypes ?? []).map((nt) => (
-            <NamedTypeCard
-              key={nt.id}
-              namedType={nt}
-              allNamedTypes={namedTypes ?? []}
-              onEdit={() => setEditTarget(nt)}
-              onDelete={() => setDeleteTarget(nt)}
-              t={t}
-            />
-          ))}
-        </div>
+        <NamedTypesByCategory
+          namedTypes={namedTypes ?? []}
+          onEdit={(nt) => setEditTarget(nt)}
+          onDelete={(nt) => setDeleteTarget(nt)}
+          t={t}
+        />
       )}
 
       <NamedTypeDialog
@@ -137,6 +131,44 @@ export function InfraNamedTypesPage() {
         }}
       />
     </PageShell>
+  );
+}
+
+function NamedTypesByCategory({ namedTypes, onEdit, onDelete, t }: {
+  namedTypes: InfraNamedType[];
+  onEdit: (nt: InfraNamedType) => void;
+  onDelete: (nt: InfraNamedType) => void;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const groups = namedTypes.reduce<Map<string, InfraNamedType[]>>((acc, nt) => {
+    const key = nt.type_name || nt.type_id;
+    if (!acc.has(key)) acc.set(key, []);
+    acc.get(key)!.push(nt);
+    return acc;
+  }, new Map());
+
+  return (
+    <div className="space-y-6">
+      {[...groups.entries()].map(([category, items]) => (
+        <div key={category}>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-0.5">
+            {category}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {items.map((nt) => (
+              <NamedTypeCard
+                key={nt.id}
+                namedType={nt}
+                allNamedTypes={namedTypes}
+                onEdit={() => onEdit(nt)}
+                onDelete={() => onDelete(nt)}
+                t={t}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

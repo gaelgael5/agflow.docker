@@ -10,9 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -148,24 +145,16 @@ function CategoryRowItem({
               </div>
               <div className="space-y-0.5">
                 <Label className="text-[10px] text-muted-foreground">{t("infra.action_creates_category")}</Label>
-                <Select
+                <select
+                  className="flex h-7 w-44 rounded-md border border-input bg-background px-2 text-[11px] shadow-sm"
                   value={newCreatesCategory ?? "__none__"}
-                  onValueChange={(v) => setNewCreatesCategory(v === "__none__" ? null : v)}
+                  onChange={(e) => setNewCreatesCategory(e.target.value === "__none__" ? null : e.target.value)}
                 >
-                  <SelectTrigger className="h-7 w-44 text-[11px]">
-                    <SelectValue placeholder={t("infra.action_no_creates")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__" className="text-[11px] text-muted-foreground">
-                      {t("infra.action_no_creates")}
-                    </SelectItem>
-                    {allCategories.map((cat) => (
-                      <SelectItem key={cat} value={cat} className="text-[11px]">
-                        {cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <option value="__none__">{t("infra.action_no_creates")}</option>
+                  {allCategories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
               </div>
               <Button type="button" size="sm" variant="outline" className="h-7 px-2" onClick={() => void submitAdd()}>
                 {t("common.confirm")}

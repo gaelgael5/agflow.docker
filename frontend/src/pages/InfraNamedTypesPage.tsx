@@ -77,7 +77,6 @@ export function InfraNamedTypesPage() {
         open={showCreate || editTarget !== null}
         initial={editTarget}
         categories={categories ?? []}
-        namedTypes={namedTypes ?? []}
         onClose={() => { setShowCreate(false); setEditTarget(null); }}
         onSubmit={async (p, actionUrls) => {
           let namedTypeId: string;
@@ -159,11 +158,6 @@ function NamedTypeCard({ namedType, allNamedTypes, onEdit, onDelete, t }: {
             <div className="flex items-center gap-2 mt-0.5">
               <Badge variant="default" className="text-[9px]">{namedType.type_name}</Badge>
               <Badge variant="outline" className="text-[9px]">{namedType.connection_type}</Badge>
-              {namedType.sub_type_name && (
-                <Badge variant="outline" className="text-[9px] border-green-500 text-green-600">
-                  → {namedType.sub_type_name}
-                </Badge>
-              )}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -436,18 +430,16 @@ function AddActionButton({ namedType, allNamedTypes, t }: {
   );
 }
 
-function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSubmit, t }: {
+function NamedTypeDialog({ open, initial, categories, onClose, onSubmit, t }: {
   open: boolean;
   initial: InfraNamedType | null;
   categories: InfraCategory[];
-  namedTypes: InfraNamedType[];
   onClose: () => void;
   onSubmit: (p: InfraNamedTypeCreatePayload, actionUrls: Record<string, string>) => Promise<void>;
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
   const [name, setName] = useState("");
   const [typeId, setTypeId] = useState("");
-  const [subTypeId, setSubTypeId] = useState("");
   const [connectionType, setConnectionType] = useState("SSH");
   const [actionUrls, setActionUrls] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -457,10 +449,9 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
     if (initial) {
       setName(initial.name);
       setTypeId(initial.type_id);
-      setSubTypeId(initial.sub_type_id ?? "");
       setConnectionType(initial.connection_type);
     } else {
-      setName(""); setTypeId(""); setSubTypeId(""); setConnectionType("SSH");
+      setName(""); setTypeId(""); setConnectionType("SSH");
     }
     setActionUrls({});
     setSaving(false);
@@ -478,7 +469,6 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingActions, open]);
 
-  const otherNamedTypes = namedTypes.filter((nt) => nt.id !== initial?.id);
   const canSubmit = name.trim() && typeId && connectionType;
 
   return (
@@ -504,17 +494,6 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
               <option value="">—</option>
               {categories.map((c) => (
                 <option key={c.name} value={c.name}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("infra.named_type_sub_type")}</Label>
-            <select value={subTypeId} onChange={(e) => setSubTypeId(e.target.value)} className={selectClass}>
-              <option value="">— {t("common.none")} —</option>
-              {otherNamedTypes.map((nt) => (
-                <option key={nt.id} value={nt.id}>
-                  {nt.name} ({nt.type_id} / {nt.connection_type})
-                </option>
               ))}
             </select>
           </div>
@@ -556,7 +535,6 @@ function NamedTypeDialog({ open, initial, categories, namedTypes, onClose, onSub
                   {
                     name: name.trim(),
                     type_id: typeId,
-                    sub_type_id: subTypeId || null,
                     connection_type: connectionType,
                   },
                   actionUrls,

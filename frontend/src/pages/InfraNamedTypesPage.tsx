@@ -8,9 +8,12 @@ import {
   useInfraCategoryActions,
   useInfraNamedTypes,
   useInfraNamedTypeActions,
+  useNamedTypeRules,
+  useRuntimeConfig,
 } from "@/hooks/useInfra";
 import {
   infraNamedTypeActionsApi,
+  infraNamedTypeRulesApi,
   infraNamedTypesApi,
   type InfraCategory,
   type InfraNamedType,
@@ -226,6 +229,8 @@ function NamedTypeCard({ namedType, allNamedTypes, onEdit, onDelete, t }: {
             <AddActionButton namedType={namedType} allNamedTypes={allNamedTypes} t={t} />
           </div>
         </div>
+
+        <RulesBlock namedTypeId={namedType.id} t={t} />
       </CardContent>
     </Card>
   );
@@ -459,6 +464,121 @@ function AddActionButton({ namedType, allNamedTypes, t }: {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function RulesBlock({ namedTypeId, t }: {
+  namedTypeId: string;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const qc = useQueryClient();
+  const { data: rules } = useNamedTypeRules(namedTypeId);
+  const { data: runtimeConfig } = useRuntimeConfig();
+
+  const [adding, setAdding] = useState(false);
+  const [selectedKey, setSelectedKey] = useState("");
+  const [value, setValue] = useState("");
+
+  const configEntries = runtimeConfig ?? [];
+  const selectedEntry = configEntries.find((e) => e.key === selectedKey);
+  const filterOptions = selectedEntry?.filter ? selectedEntry.filter.split("|") : null;
+
+  const reset = () => { setAdding(false); setSelectedKey(""); setValue(""); };
+
+  const submit = async () => {
+    if (!selectedKey || !value) return;
+    try {
+      await infraNamedTypeRulesApi.create(namedTypeId, selectedKey, value);
+      qc.invalidateQueries({ queryKey: ["infra-named-type-rules", namedTypeId] });
+      reset();
+      toast.success(t("infra.named_type_rule_added"));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  return (
+    <div className="border-t pt-2 space-y-1.5">
+      <Label className="text-[10px] text-muted-foreground">{t("infra.named_type_rules")}</Label>
+
+      {(rules ?? []).length === 0 && !adding && (
+        <p className="text-[11px] text-muted-foreground italic">{t("infra.named_type_rules_empty")}</p>
+      )}
+
+      {(rules ?? []).map((rule) => (
+        <div key={rule.id} className="flex items-center gap-1 text-[11px]">
+          <Badge variant="outline" className="text-[9px] font-mono">{rule.key}</Badge>
+          <span className="text-muted-foreground">=</span>
+          <span className="font-mono text-[10px]">{rule.value}</span>
+          <Button
+            variant="ghost" size="icon" className="h-4 w-4 ml-auto"
+            onClick={async () => {
+              try {
+                await infraNamedTypeRulesApi.remove(namedTypeId, rule.id);
+                qc.invalidateQueries({ queryKey: ["infra-named-type-rules", namedTypeId] });
+                toast.success(t("infra.named_type_rule_deleted"));
+              } catch (e) {
+                toast.error(String(e));
+              }
+            }}
+          >
+            <Trash2 className="w-2.5 h-2.5 text-destructive" />
+          </Button>
+        </div>
+      ))}
+
+      {adding ? (
+        <div className="flex items-end gap-1">
+          <div className="flex-1">
+            <select
+              value={selectedKey}
+              onChange={(e) => { setSelectedKey(e.target.value); setValue(""); }}
+              className="flex h-7 w-full rounded-md border border-input bg-background px-2 text-[11px]"
+            >
+              <option value="">—</option>
+              {configEntries.map((e) => (
+                <option key={e.key} value={e.key}>{e.key}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1">
+            {filterOptions ? (
+              <select
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="flex h-7 w-full rounded-md border border-input bg-background px-2 text-[11px]"
+              >
+                <option value="">—</option>
+                {filterOptions.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="h-7 text-[11px]"
+                placeholder={t("infra.named_type_rule_value")}
+              />
+            )}
+          </div>
+          <Button
+            size="sm" variant="outline" className="h-7 px-2 text-[10px]"
+            onClick={submit} disabled={!selectedKey || !value}
+          >
+            OK
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={reset}>
+            <X className="w-3 h-3" />
+          </Button>
+        </div>
+      ) : (
+        <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => setAdding(true)}>
+          <Plus className="w-3 h-3" />
+          {t("infra.named_type_rule_add")}
+        </Button>
+      )}
+    </div>
   );
 }
 

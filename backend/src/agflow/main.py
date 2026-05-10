@@ -46,7 +46,10 @@ from agflow.api.infra.categories import router as infra_categories_router
 from agflow.api.infra.certificates import router as infra_certificates_router
 from agflow.api.infra.machines import router as infra_machines_router
 from agflow.api.infra.named_type_actions import router as infra_named_type_actions_router
+from agflow.api.infra.named_type_rules import router as infra_named_type_rules_router
+from agflow.api.infra.named_type_rules import router_all as infra_all_named_type_rules_router
 from agflow.api.infra.named_types import router as infra_named_types_router
+from agflow.api.infra.runtime_config import router as infra_runtime_config_router
 from agflow.api.infra.swarm_clusters import router as infra_swarm_clusters_router
 from agflow.api.public.agents import router as public_agents_router
 from agflow.api.public.containers import router as public_containers_router
@@ -318,6 +321,9 @@ def create_app() -> FastAPI:
     app.include_router(infra_categories_router)
     app.include_router(infra_named_types_router)
     app.include_router(infra_named_type_actions_router)
+    app.include_router(infra_named_type_rules_router)
+    app.include_router(infra_all_named_type_rules_router)
+    app.include_router(infra_runtime_config_router)
     app.include_router(infra_machines_router)
     app.include_router(infra_swarm_clusters_router)
     app.include_router(infra_certificates_router)

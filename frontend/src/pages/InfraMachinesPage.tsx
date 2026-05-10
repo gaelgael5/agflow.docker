@@ -19,7 +19,7 @@ import {
   type DockerContainer,
 } from "@/lib/infraApi";
 import { usersApi, type UserSummary } from "@/lib/usersApi";
-import { useInfraCategories, useInfraNamedTypes, useInfraMachinesRuns } from "@/hooks/useInfra";
+import { useInfraCategories, useInfraNamedTypes, useInfraMachinesRuns, useAllNamedTypeRules, useRuntimeConfig, filterNamedTypesByRules } from "@/hooks/useInfra";
 import { api } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { TerminalWindow } from "@/components/TerminalWindow";
@@ -58,9 +58,17 @@ export function InfraMachinesPage() {
   const qc = useQueryClient();
   const { data: namedTypes } = useInfraNamedTypes();
   const { data: categories } = useInfraCategories();
-  const visibleNamedTypes = (namedTypes ?? []).filter((nt) =>
-    (categories ?? []).some((c) => c.name === nt.type_id && c.visible_in_machines),
-  );
+  const { data: allRules } = useAllNamedTypeRules();
+  const { data: runtimeConfig } = useRuntimeConfig();
+
+  const visibleNamedTypes = (() => {
+    const base = (namedTypes ?? []).filter((nt) =>
+      (categories ?? []).some((c) => c.name === nt.type_id && c.visible_in_machines),
+    );
+    if (!allRules || !runtimeConfig) return base;
+    const passRules = filterNamedTypesByRules(base.map((nt) => nt.id), allRules, runtimeConfig);
+    return base.filter((nt) => passRules.has(nt.id));
+  })();
   const certsQuery = useQuery({ queryKey: ["infra-certificates"], queryFn: () => infraCertificatesApi.list() });
   const usersQuery = useQuery({ queryKey: ["users"], queryFn: () => usersApi.list() });
   const listQuery = useQuery({ queryKey: ["infra-machines"], queryFn: () => infraMachinesApi.list() });

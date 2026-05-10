@@ -8,6 +8,8 @@ from agflow.db.pool import fetch_one
 
 _log = structlog.get_logger(__name__)
 
+_MODE_FILTER = "docker_standalone|docker_swarm|k3s|k8s"
+
 
 async def _probe_docker() -> RuntimeMode | None:
     """Tente de joindre le socket Docker et détermine si Swarm est actif."""
@@ -58,18 +60,17 @@ async def validate_runtime(mode: RuntimeMode) -> bool:
 
 
 async def load_or_detect(pool: asyncpg.Pool) -> RuntimeMode:
-    """Charge le mode depuis la DB et le valide, ou détecte à neuf si absent."""
+    """Charge le mode depuis la DB (key='mode') et le valide, ou détecte à neuf."""
     row = await fetch_one(
-        "SELECT id, mode FROM runtime_config ORDER BY id DESC LIMIT 1"
+        "SELECT value FROM runtime_config WHERE key = 'mode'"
     )
     if row is not None:
         try:
-            mode = RuntimeMode(row["mode"])
+            mode = RuntimeMode(row["value"])
             if await validate_runtime(mode):
                 async with pool.acquire() as conn:
                     await conn.execute(
-                        "UPDATE runtime_config SET validated_at = NOW() WHERE id = $1",
-                        row["id"],
+                        "UPDATE runtime_config SET validated_at = NOW() WHERE key = 'mode'"
                     )
                 _log.info("runtime.validated", mode=mode.value)
                 return mode
@@ -79,6 +80,12 @@ async def load_or_detect(pool: asyncpg.Pool) -> RuntimeMode:
     mode = await detect_runtime()
     async with pool.acquire() as conn:
         await conn.execute(
-            "INSERT INTO runtime_config (mode) VALUES ($1)", mode.value
+            """
+            INSERT INTO runtime_config (key, value, filter)
+            VALUES ('mode', $1, $2)
+            ON CONFLICT (key) DO UPDATE SET value = $1, validated_at = NOW()
+            """,
+            mode.value,
+            _MODE_FILTER,
         )
     return mode

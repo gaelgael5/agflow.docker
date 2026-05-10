@@ -1,5 +1,49 @@
 import { api } from "./api";
 
+// ── Runtime config (key/value store) ──────────────────
+
+export interface RuntimeConfigEntry {
+  key: string;
+  value: string;
+  filter: string | null;
+}
+
+export const infraRuntimeConfigApi = {
+  async list(): Promise<RuntimeConfigEntry[]> {
+    return (await api.get<RuntimeConfigEntry[]>("/infra/runtime-config")).data;
+  },
+};
+
+// ── Named type rules ───────────────────────────────────
+
+export interface NamedTypeRule {
+  id: string;
+  named_type_id: string;
+  key: string;
+  value: string;
+  created_at: string;
+}
+
+export const infraNamedTypeRulesApi = {
+  async listAll(): Promise<NamedTypeRule[]> {
+    return (await api.get<NamedTypeRule[]>("/infra/named-type-rules")).data;
+  },
+  async list(namedTypeId: string): Promise<NamedTypeRule[]> {
+    return (await api.get<NamedTypeRule[]>(
+      `/infra/named-types/${namedTypeId}/rules`,
+    )).data;
+  },
+  async create(namedTypeId: string, key: string, value: string): Promise<NamedTypeRule> {
+    return (await api.post<NamedTypeRule>(
+      `/infra/named-types/${namedTypeId}/rules`,
+      { key, value },
+    )).data;
+  },
+  async remove(namedTypeId: string, ruleId: string): Promise<void> {
+    await api.delete(`/infra/named-types/${namedTypeId}/rules/${ruleId}`);
+  },
+};
+
 // ── Categories ────────────────────────────────────────
 
 export interface InfraCategory {

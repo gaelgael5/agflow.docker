@@ -5,6 +5,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+# ── Runtime config (key/value store) ────────────────────
+
+class RuntimeConfigEntry(BaseModel):
+    key: str
+    value: str
+    filter: str | None = None
+
+
 # ── Categories ───────────────────────────────────────────
 
 class CategoryRow(BaseModel):
@@ -45,6 +53,21 @@ class NamedTypeUpdate(BaseModel):
     type_id: str | None = None
     sub_type_id: UUID | None = None
     connection_type: str | None = None
+
+
+# ── Named type rules (filtres runtime par variante) ──────
+
+class NamedTypeRuleRow(BaseModel):
+    id: UUID
+    named_type_id: UUID
+    key: str
+    value: str
+    created_at: datetime
+
+
+class NamedTypeRuleCreate(BaseModel):
+    key: str = Field(min_length=1)
+    value: str = Field(min_length=1)
 
 
 # ── Named type actions (URLs par action de catégorie) ────

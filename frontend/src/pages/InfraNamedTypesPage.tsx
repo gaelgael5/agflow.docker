@@ -64,6 +64,7 @@ export function InfraNamedTypesPage() {
       ) : (
         <NamedTypesByCategory
           namedTypes={namedTypes ?? []}
+          categories={categories ?? []}
           onEdit={(nt) => setEditTarget(nt)}
           onDelete={(nt) => setDeleteTarget(nt)}
           t={t}
@@ -137,12 +138,15 @@ export function InfraNamedTypesPage() {
   );
 }
 
-function NamedTypesByCategory({ namedTypes, onEdit, onDelete, t }: {
+function NamedTypesByCategory({ namedTypes, categories, onEdit, onDelete, t }: {
   namedTypes: InfraNamedType[];
+  categories: InfraCategory[];
   onEdit: (nt: InfraNamedType) => void;
   onDelete: (nt: InfraNamedType) => void;
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
+  const visibleSet = new Set(categories.filter((c) => c.visible_in_machines).map((c) => c.name));
+
   const groups = namedTypes.reduce<Map<string, InfraNamedType[]>>((acc, nt) => {
     const key = nt.type_name || nt.type_id;
     if (!acc.has(key)) acc.set(key, []);
@@ -150,9 +154,16 @@ function NamedTypesByCategory({ namedTypes, onEdit, onDelete, t }: {
     return acc;
   }, new Map());
 
+  const sortedEntries = [...groups.entries()].sort(([aKey, aItems], [bKey, bItems]) => {
+    const aVisible = visibleSet.has(aItems[0]?.type_id ?? "");
+    const bVisible = visibleSet.has(bItems[0]?.type_id ?? "");
+    if (aVisible !== bVisible) return aVisible ? -1 : 1;
+    return aKey.localeCompare(bKey);
+  });
+
   return (
     <div className="space-y-6">
-      {[...groups.entries()].map(([category, items]) => (
+      {sortedEntries.map(([category, items]) => (
         <div key={category}>
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-0.5">
             {category}

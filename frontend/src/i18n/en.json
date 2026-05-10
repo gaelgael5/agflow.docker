@@ -1316,6 +1316,8 @@
     "named_type_action_url": "Script URL",
     "named_type_category_actions_label": "Actions for category \"{{category}}\"",
     "option_script_error": "Dynamic script unavailable — showing static options",
+    "option_script_empty": "Script returned no values (pvesm unreachable?)",
+    "option_script_loaded": "option(s) loaded dynamically",
     "named_type_rules": "Visibility rules",
     "named_type_rules_empty": "No rules",
     "named_type_rule_add": "+ Add rule",

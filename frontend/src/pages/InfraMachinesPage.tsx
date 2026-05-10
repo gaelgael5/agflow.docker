@@ -974,9 +974,19 @@ function ScriptRunDialog({ open, ctx, onClose, t }: {
                             {dyn?.loading && (
                               <Loader2 className="absolute right-2 top-2.5 w-4 h-4 animate-spin text-muted-foreground pointer-events-none" />
                             )}
-                            {dyn?.error && (
+                            {dyn && !dyn.loading && dyn.error && (
                               <p className="text-[10px] text-yellow-600 mt-0.5">
                                 ⚠ {t("infra.option_script_error")}
+                              </p>
+                            )}
+                            {dyn && !dyn.loading && !dyn.error && dyn.values.length === 0 && arg.option_script && (
+                              <p className="text-[10px] text-amber-600 mt-0.5">
+                                ⚠ {t("infra.option_script_empty")}
+                              </p>
+                            )}
+                            {dyn && !dyn.loading && !dyn.error && dyn.values.length > 0 && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                +{dyn.values.length} {t("infra.option_script_loaded")}
                               </p>
                             )}
                           </div>

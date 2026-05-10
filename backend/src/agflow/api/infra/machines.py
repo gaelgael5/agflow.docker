@@ -422,6 +422,9 @@ async def run_option_script(machine_id: UUID, payload: OptionScriptRequest):
 
     values: list[str] = []
     try:
+        # Prepend PATH so system tools (pvesm, zfs, lvm…) are found in non-login SSH sessions.
+        path_prefix = "export PATH=/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/sbin:/usr/local/bin:$PATH"
+        command = f"bash -c {shlex.quote(path_prefix + '; ' + payload.script)}"
         result = await asyncio.wait_for(
             ssh_executor.exec_command(
                 host=creds["host"],
@@ -430,7 +433,7 @@ async def run_option_script(machine_id: UUID, payload: OptionScriptRequest):
                 password=creds.get("password"),
                 private_key=private_key,
                 passphrase=passphrase,
-                command=f"bash -c {shlex.quote(payload.script)}",
+                command=command,
             ),
             timeout=10.0,
         )
@@ -445,6 +448,7 @@ async def run_option_script(machine_id: UUID, payload: OptionScriptRequest):
                 "option_script.nonzero_exit",
                 machine_id=str(machine_id),
                 exit_code=result["exit_code"],
+                stderr=result.get("stderr", "")[:500],
             )
     except TimeoutError:
         _log.warning("option_script.timeout", machine_id=str(machine_id))

@@ -690,7 +690,7 @@ async def _handle_tag(
     output_json: dict | None,
 ) -> None:
     """Dispatch to the tag-specific handler."""
-    if tag == "add_node":
+    if tag in ("add_node", "create_lxc"):
         await _handle_add_node(ws, conn, machine_id, output_json)
     else:
         _log.info("tag.unknown", tag=tag)

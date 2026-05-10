@@ -201,6 +201,10 @@ class ScriptRunRequest(BaseModel):
     args: dict[str, str] = Field(default_factory=dict)
 
 
+class OptionScriptRequest(BaseModel):
+    script: str = Field(min_length=1)
+
+
 # ── Swarm clusters (B0) ──────────────────────────────────────────────────
 
 

@@ -1322,6 +1322,7 @@
     "named_type_action_deleted": "Action supprimée",
     "named_type_action_url": "URL du script",
     "named_type_category_actions_label": "Actions de la catégorie « {{category}} »",
+    "option_script_error": "Script dynamique indisponible — options statiques affichées",
     "named_type_rules": "Règles de visibilité",
     "named_type_rules_empty": "Aucune règle",
     "named_type_rule_add": "+ Ajouter une règle",

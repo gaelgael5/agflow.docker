@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shlex
+import time
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +15,7 @@ from agflow.schemas.infra import (
     MachineCreate,
     MachineSummary,
     MachineUpdate,
+    OptionScriptRequest,
     ScriptRunRequest,
     SwarmInitRequest,
     SwarmJoinRequest,
@@ -365,7 +368,10 @@ async def run_script(machine_id: UUID, payload: ScriptRunRequest):
             )
         manifest = resp.json()
 
-    command_template: str = manifest.get("command", "")
+    commands_list: list[str] = manifest.get("commands") or []
+    command_template: str = (
+        " && ".join(commands_list) if commands_list else manifest.get("command", "")
+    )
     if not command_template:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Script manifest has no command")
 
@@ -392,6 +398,61 @@ async def run_script(machine_id: UUID, payload: ScriptRunRequest):
         "stderr": result["stderr"],
         "command": command,
     }
+
+
+# ── Option script resolver ───────────────────────────────
+
+_option_script_cache: dict[tuple[str, str], tuple[float, list[str]]] = {}
+_OPTION_SCRIPT_TTL = 30.0
+
+
+@router.post("/{machine_id}/option-script", dependencies=_admin)
+async def run_option_script(machine_id: UUID, payload: OptionScriptRequest):
+    """Execute an option_script on the SSH target and return its stdout lines (cached 30 s)."""
+    cache_key = (str(machine_id), payload.script)
+    now = time.monotonic()
+    cached = _option_script_cache.get(cache_key)
+    if cached and now - cached[0] < _OPTION_SCRIPT_TTL:
+        return {"values": cached[1]}
+
+    try:
+        creds, private_key, passphrase = await _get_ssh_creds(machine_id)
+    except infra_machines_service.MachineNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    values: list[str] = []
+    try:
+        result = await asyncio.wait_for(
+            ssh_executor.exec_command(
+                host=creds["host"],
+                port=creds["port"],
+                username=creds.get("username"),
+                password=creds.get("password"),
+                private_key=private_key,
+                passphrase=passphrase,
+                command=f"bash -c {shlex.quote(payload.script)}",
+            ),
+            timeout=10.0,
+        )
+        if result["exit_code"] == 0:
+            values = [
+                line.strip().strip("\r")
+                for line in result["stdout"].split("\n")
+                if line.strip().strip("\r")
+            ]
+        else:
+            _log.warning(
+                "option_script.nonzero_exit",
+                machine_id=str(machine_id),
+                exit_code=result["exit_code"],
+            )
+    except TimeoutError:
+        _log.warning("option_script.timeout", machine_id=str(machine_id))
+    except ssh_executor.SSHConnectionError as exc:
+        _log.warning("option_script.ssh_error", machine_id=str(machine_id), error=str(exc))
+
+    _option_script_cache[cache_key] = (now, values)
+    return {"values": values}
 
 
 # ── Machine runs history ─────────────────────────────────
@@ -473,7 +534,10 @@ async def ws_exec(ws: WebSocket, machine_id: UUID, token: str = ""):
                     return
                 manifest = resp.json()
 
-            command = manifest.get("command", "")
+            commands_list: list[str] = manifest.get("commands") or []
+            command = (
+                " && ".join(commands_list) if commands_list else manifest.get("command", "")
+            )
             raw_tags = manifest.get("tags") or []
             if isinstance(raw_tags, list):
                 manifest_tags = [str(t) for t in raw_tags]

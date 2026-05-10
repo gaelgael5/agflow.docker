@@ -273,11 +273,13 @@ export interface ScriptManifestArg {
   min?: number;
   max?: number;
   options?: { value: string; label: string }[];
+  option_script?: string;
 }
 
 export interface ScriptManifest {
   args: ScriptManifestArg[];
-  command: string;
+  commands: string[];
+  command?: string; // legacy
 }
 
 export interface ScriptRunResult {
@@ -329,6 +331,9 @@ export const infraMachinesApi = {
   },
   async fetchManifest(url: string): Promise<ScriptManifest> {
     return (await api.get<ScriptManifest>(`/infra/machines/manifest`, { params: { url } })).data;
+  },
+  async fetchOptionScript(machineId: string, script: string): Promise<string[]> {
+    return (await api.post<{ values: string[] }>(`/infra/machines/${machineId}/option-script`, { script })).data.values;
   },
   async listRuns(id: string, limit = 50): Promise<MachineRun[]> {
     return (await api.get<MachineRun[]>(`/infra/machines/${id}/runs`, { params: { limit } })).data;

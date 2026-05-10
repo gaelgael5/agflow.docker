@@ -21,6 +21,7 @@ import {
 import { usersApi, type UserSummary } from "@/lib/usersApi";
 import { useInfraCategories, useInfraNamedTypes, useInfraMachinesRuns, useAllNamedTypeRules, useRuntimeConfig, filterNamedTypesByRules } from "@/hooks/useInfra";
 import { api } from "@/lib/api";
+import { mergeSelectOptions } from "@/lib/mergeSelectOptions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { TerminalWindow } from "@/components/TerminalWindow";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -825,6 +826,9 @@ function ScriptRunDialog({ open, ctx, onClose, t }: {
   const termRef = useRef<HTMLPreElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  type DynState = { loading: boolean; values: string[]; error: boolean };
+  const [dynOptions, setDynOptions] = useState<Record<string, DynState>>({});
+
   useEffect(() => {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
   }, [lines]);
@@ -833,6 +837,7 @@ function ScriptRunDialog({ open, ctx, onClose, t }: {
     if (!open) return;
     setManifest(null); setLoading(true); setArgValues({});
     setRunning(false); setStarted(false); setLines([]); setExitCode(null);
+    setDynOptions({});
 
     infraMachinesApi.fetchManifest(ctx.url)
       .then((m) => {
@@ -840,6 +845,23 @@ function ScriptRunDialog({ open, ctx, onClose, t }: {
         const defaults: Record<string, string> = {};
         for (const a of m.args) defaults[a.arg] = a.default != null ? String(a.default) : "";
         setArgValues(defaults);
+
+        const dynArgs = m.args.filter((a) => a.type === "select" && a.option_script);
+        if (dynArgs.length > 0) {
+          const init: Record<string, DynState> = {};
+          for (const a of dynArgs) init[a.arg] = { loading: true, values: [], error: false };
+          setDynOptions(init);
+          for (const a of dynArgs) {
+            infraMachinesApi
+              .fetchOptionScript(ctx.machineId, a.option_script!)
+              .then((values) =>
+                setDynOptions((prev) => ({ ...prev, [a.arg]: { loading: false, values, error: false } })),
+              )
+              .catch(() =>
+                setDynOptions((prev) => ({ ...prev, [a.arg]: { loading: false, values: [], error: true } })),
+              );
+          }
+        }
       })
       .catch((e) => toast.error(String(e)))
       .finally(() => setLoading(false));
@@ -918,41 +940,83 @@ function ScriptRunDialog({ open, ctx, onClose, t }: {
             <>
               {manifest.args.length > 0 ? (
                 <div className="space-y-2">
-                  {manifest.args.map((arg) => (
-                    <div key={arg.arg}>
-                      <Label className="text-[11px]">
-                        {arg.label_fr || arg.arg}
-                        {arg.required && <span className="text-destructive ml-1">*</span>}
-                      </Label>
-                      {arg.description_fr && (
-                        <p className="text-[10px] text-muted-foreground">{arg.description_fr}</p>
-                      )}
-                      <Input
-                        value={argValues[arg.arg] ?? ""}
-                        onChange={(e) => setArgValues((prev) => ({ ...prev, [arg.arg]: e.target.value }))}
-                        className="mt-1 font-mono text-[12px]"
-                      />
-                    </div>
-                  ))}
+                  {manifest.args.map((arg) => {
+                    const dyn = dynOptions[arg.arg];
+                    const isSelect = arg.type === "select";
+                    const merged = isSelect
+                      ? mergeSelectOptions(
+                          arg.options ?? [],
+                          dyn?.values ?? [],
+                          arg.default !== undefined ? String(arg.default) : undefined,
+                        )
+                      : null;
+                    return (
+                      <div key={arg.arg}>
+                        <Label className="text-[11px]">
+                          {arg.label_fr || arg.arg}
+                          {arg.required && <span className="text-destructive ml-1">*</span>}
+                        </Label>
+                        {arg.description_fr && (
+                          <p className="text-[10px] text-muted-foreground">{arg.description_fr}</p>
+                        )}
+                        {isSelect && merged ? (
+                          <div className="relative">
+                            <select
+                              value={argValues[arg.arg] ?? ""}
+                              onChange={(e) => setArgValues((prev) => ({ ...prev, [arg.arg]: e.target.value }))}
+                              className={selectClass}
+                              disabled={dyn?.loading}
+                            >
+                              {merged.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            {dyn?.loading && (
+                              <Loader2 className="absolute right-2 top-2.5 w-4 h-4 animate-spin text-muted-foreground pointer-events-none" />
+                            )}
+                            {dyn?.error && (
+                              <p className="text-[10px] text-yellow-600 mt-0.5">
+                                ⚠ {t("infra.option_script_error")}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <Input
+                            value={argValues[arg.arg] ?? ""}
+                            onChange={(e) => setArgValues((prev) => ({ ...prev, [arg.arg]: e.target.value }))}
+                            className="mt-1 font-mono text-[12px]"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-[12px] text-muted-foreground">{t("infra.script_no_args")}</p>
               )}
 
-              {manifest.command && (
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">{t("infra.script_command_preview")}</Label>
-                  <pre className="mt-1 p-2 bg-muted rounded text-[11px] font-mono whitespace-pre-wrap break-all">
-                    {(() => {
-                      let cmd = manifest.command;
-                      for (const [k, v] of Object.entries(argValues)) {
-                        cmd = cmd.replaceAll(`{${k}}`, v || `{${k}}`);
-                      }
-                      return cmd;
-                    })()}
-                  </pre>
-                </div>
-              )}
+              {(() => {
+                const rawCmds = manifest.commands?.length
+                  ? manifest.commands
+                  : manifest.command ? [manifest.command] : [];
+                if (!rawCmds.length) return null;
+                const preview = rawCmds
+                  .map((cmd) => {
+                    let c = cmd;
+                    for (const [k, v] of Object.entries(argValues))
+                      c = c.replaceAll(`{${k}}`, v || `{${k}}`);
+                    return c;
+                  })
+                  .join(" &&\n");
+                return (
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">{t("infra.script_command_preview")}</Label>
+                    <pre className="mt-1 p-2 bg-muted rounded text-[11px] font-mono whitespace-pre-wrap break-all">
+                      {preview}
+                    </pre>
+                  </div>
+                );
+              })()}
             </>
           ) : started ? (
             <div className="space-y-2">

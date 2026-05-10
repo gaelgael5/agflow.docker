@@ -21,12 +21,15 @@ def _action_row(r) -> CategoryActionRow:
 
 @router.get("", response_model=list[CategoryRow], dependencies=[Depends(require_admin)])
 async def list_categories():
-    rows = await fetch_all("SELECT name FROM infra_categories ORDER BY name")
+    rows = await fetch_all(
+        "SELECT name, visible_in_machines FROM infra_categories ORDER BY name"
+    )
     return [CategoryRow(**r) for r in rows]
 
 
 class CategoryCreate(BaseModel):
     name: str
+    visible_in_machines: bool = False
 
 
 @router.post(
@@ -41,12 +44,33 @@ async def create_category(payload: CategoryCreate):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="name is required")
     try:
         row = await fetch_one(
-            "INSERT INTO infra_categories (name) VALUES ($1) RETURNING name",
-            name,
+            "INSERT INTO infra_categories (name, visible_in_machines) VALUES ($1, $2)"
+            " RETURNING name, visible_in_machines",
+            name, payload.visible_in_machines,
         )
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     assert row is not None
+    return CategoryRow(**row)
+
+
+class CategoryUpdate(BaseModel):
+    visible_in_machines: bool
+
+
+@router.patch(
+    "/{name}",
+    response_model=CategoryRow,
+    dependencies=[Depends(require_admin)],
+)
+async def update_category(name: str, payload: CategoryUpdate):
+    row = await fetch_one(
+        "UPDATE infra_categories SET visible_in_machines = $1 WHERE name = $2"
+        " RETURNING name, visible_in_machines",
+        payload.visible_in_machines, name,
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Category '{name}' not found")
     return CategoryRow(**row)
 
 

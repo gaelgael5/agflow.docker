@@ -19,7 +19,7 @@ import {
   type DockerContainer,
 } from "@/lib/infraApi";
 import { usersApi, type UserSummary } from "@/lib/usersApi";
-import { useInfraNamedTypes, useInfraMachinesRuns } from "@/hooks/useInfra";
+import { useInfraCategories, useInfraNamedTypes, useInfraMachinesRuns } from "@/hooks/useInfra";
 import { api } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { TerminalWindow } from "@/components/TerminalWindow";
@@ -57,6 +57,10 @@ export function InfraMachinesPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { data: namedTypes } = useInfraNamedTypes();
+  const { data: categories } = useInfraCategories();
+  const visibleNamedTypes = (namedTypes ?? []).filter((nt) =>
+    (categories ?? []).some((c) => c.name === nt.type_id && c.visible_in_machines),
+  );
   const certsQuery = useQuery({ queryKey: ["infra-certificates"], queryFn: () => infraCertificatesApi.list() });
   const usersQuery = useQuery({ queryKey: ["users"], queryFn: () => usersApi.list() });
   const listQuery = useQuery({ queryKey: ["infra-machines"], queryFn: () => infraMachinesApi.list() });
@@ -200,7 +204,7 @@ export function InfraMachinesPage() {
       <MachineFormDialog
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        namedTypes={namedTypes ?? []}
+        namedTypes={visibleNamedTypes}
         certificates={certificates}
         users={users}
         onSubmit={async (p) => {
@@ -215,7 +219,7 @@ export function InfraMachinesPage() {
         open={editTarget !== null}
         initial={editTarget}
         onClose={() => setEditTarget(null)}
-        namedTypes={namedTypes ?? []}
+        namedTypes={visibleNamedTypes}
         certificates={certificates}
         users={users}
         onSubmit={async (p) => {

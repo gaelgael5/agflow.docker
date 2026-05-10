@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class CategoryRow(BaseModel):
     name: str
+    visible_in_machines: bool = False
 
 
 class CategoryActionRow(BaseModel):

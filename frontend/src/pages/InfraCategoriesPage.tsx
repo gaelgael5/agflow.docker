@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, X } from "lucide-react";
+import { Monitor, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useInfraCategories, useInfraCategoryActions } from "@/hooks/useInfra";
-import { infraCategoriesApi, type InfraCategoryAction } from "@/lib/infraApi";
+import { infraCategoriesApi, type InfraCategory, type InfraCategoryAction } from "@/lib/infraApi";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -43,14 +43,17 @@ export function InfraCategoriesPage() {
             <TableRow>
               <TableHead>{t("infra.category_name")}</TableHead>
               <TableHead>{t("infra.category_actions")}</TableHead>
-              <TableHead className="text-right">{t("infra.cert_actions")}</TableHead>
+              <TableHead className="text-center w-32" title={t("infra.category_visible_in_machines_hint")}>
+                <Monitor className="w-3.5 h-3.5 inline-block" />
+              </TableHead>
+              <TableHead className="text-right w-12">{t("infra.cert_actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {(categories ?? []).map((c) => (
               <CategoryRowItem
                 key={c.name}
-                category={c.name}
+                category={c}
                 allCategories={(categories ?? []).map((cat) => cat.name)}
                 t={t}
               />
@@ -79,12 +82,12 @@ function CategoryRowItem({
   allCategories,
   t,
 }: {
-  category: string;
+  category: InfraCategory;
   allCategories: string[];
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
   const qc = useQueryClient();
-  const { data: actions } = useInfraCategoryActions(category);
+  const { data: actions } = useInfraCategoryActions(category.name);
   const [adding, setAdding] = useState(false);
   const [newAction, setNewAction] = useState("");
   const [newCreatesCategory, setNewCreatesCategory] = useState<string | null>(null);
@@ -93,8 +96,8 @@ function CategoryRowItem({
     const n = newAction.trim();
     if (!n) return;
     try {
-      await infraCategoriesApi.createAction(category, n, false, newCreatesCategory);
-      qc.invalidateQueries({ queryKey: ["infra-category-actions", category] });
+      await infraCategoriesApi.createAction(category.name, n, false, newCreatesCategory);
+      qc.invalidateQueries({ queryKey: ["infra-category-actions", category.name] });
       toast.success(t("infra.action_added", { name: n }));
       setNewAction("");
       setNewCreatesCategory(null);
@@ -112,7 +115,7 @@ function CategoryRowItem({
 
   return (
     <TableRow>
-      <TableCell className="font-medium align-top pt-3">{category}</TableCell>
+      <TableCell className="font-medium align-top pt-3">{category.name}</TableCell>
       <TableCell>
         <div className="flex flex-wrap items-center gap-1">
           {(actions ?? []).length === 0 && !adding && (
@@ -122,10 +125,10 @@ function CategoryRowItem({
             <ActionBadge
               key={a.id}
               action={a}
-              category={category}
+              category={category.name}
               allCategories={allCategories}
               t={t}
-              onUpdate={() => qc.invalidateQueries({ queryKey: ["infra-category-actions", category] })}
+              onUpdate={() => qc.invalidateQueries({ queryKey: ["infra-category-actions", category.name] })}
             />
           ))}
           {adding ? (
@@ -171,15 +174,38 @@ function CategoryRowItem({
           )}
         </div>
       </TableCell>
+      <TableCell className="text-center align-top pt-2">
+        <button
+          type="button"
+          title={t(category.visible_in_machines
+            ? "infra.category_visible_on"
+            : "infra.category_visible_off")}
+          className={`w-8 h-8 rounded-md flex items-center justify-center mx-auto transition-colors ${
+            category.visible_in_machines
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              : "border border-input hover:bg-accent text-muted-foreground"
+          }`}
+          onClick={async () => {
+            try {
+              await infraCategoriesApi.setVisibleInMachines(category.name, !category.visible_in_machines);
+              qc.invalidateQueries({ queryKey: ["infra-categories"] });
+            } catch (e) {
+              toast.error(String(e));
+            }
+          }}
+        >
+          <Monitor className="w-3.5 h-3.5" />
+        </button>
+      </TableCell>
       <TableCell className="text-right align-top pt-2">
         <Button
           variant="ghost"
           size="icon"
           onClick={async () => {
             try {
-              await infraCategoriesApi.remove(category);
+              await infraCategoriesApi.remove(category.name);
               qc.invalidateQueries({ queryKey: ["infra-categories"] });
-              toast.success(t("infra.category_removed", { name: category }));
+              toast.success(t("infra.category_removed", { name: category.name }));
             } catch (e) {
               toast.error(String(e));
             }

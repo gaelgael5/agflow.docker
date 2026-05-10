@@ -4,6 +4,7 @@ import { api } from "./api";
 
 export interface InfraCategory {
   name: string;
+  visible_in_machines: boolean;
 }
 
 export interface InfraCategoryAction {
@@ -19,6 +20,12 @@ export const infraCategoriesApi = {
   },
   async create(name: string): Promise<InfraCategory> {
     return (await api.post<InfraCategory>("/infra/categories", { name })).data;
+  },
+  async setVisibleInMachines(name: string, visible: boolean): Promise<InfraCategory> {
+    return (await api.patch<InfraCategory>(
+      `/infra/categories/${encodeURIComponent(name)}`,
+      { visible_in_machines: visible },
+    )).data;
   },
   async remove(name: string): Promise<void> {
     await api.delete(`/infra/categories/${encodeURIComponent(name)}`);

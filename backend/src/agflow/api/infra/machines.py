@@ -704,19 +704,36 @@ async def _handle_add_node(
 ) -> None:
     """add_node tag : create child cert + machine from the parsed stdout JSON.
 
-    The child machine's type_id is inherited from the parent machine's
-    named_type.sub_type_id. Refuses to create if the parent has no sub_type
-    (respects the "no programmatic modification of infra_types" rule).
+    Supports the create-lxc-docker.sh output format (machine block):
+      { status, machine: { ctid, hostname, systeme: { ip, ip_type, distro },
+        users: [{ user, ssh_key_private_path, ssh_key_public_path, ssh_key_public, groups }],
+        ssh_root: {...} }, docker: { docker_version } }
+
+    The management user is the first user in the `docker` group (with Docker + sudo access).
+    The child's type_id is inherited from the parent named_type's sub_type_id.
     """
     if not output_json or output_json.get("status") != "ok":
         _log.info("add_node.no_json_output")
         return
 
-    ip = output_json.get("ip", "")
-    user = output_json.get("user", "")
-    password = output_json.get("password", "")
-    ssh_key_path = output_json.get("ssh_key", "")
-    ctid = output_json.get("ctid", "")
+    machine_block: dict = output_json.get("machine") or {}
+    docker_block: dict = output_json.get("docker") or {}
+    systeme: dict = machine_block.get("systeme") or {}
+    users: list[dict] = machine_block.get("users") or []
+
+    ip = systeme.get("ip", "")
+    ctid = str(machine_block.get("ctid", ""))
+    hostname = machine_block.get("hostname", "")
+
+    # Pick the first user in the docker group as the management user.
+    mgmt_user = next(
+        (u for u in users if "docker" in (u.get("groups") or [])),
+        users[0] if users else {},
+    )
+    username = mgmt_user.get("user", "")
+    priv_key_path = mgmt_user.get("ssh_key_private_path", "")
+    pub_key_inline = mgmt_user.get("ssh_key_public", "")    # already in JSON
+    pub_key_path = mgmt_user.get("ssh_key_public_path", "")
 
     if not ip:
         _log.warning("add_node.no_ip")
@@ -724,8 +741,7 @@ async def _handle_add_node(
 
     await ws.send_json({"type": "stdout", "data": "\n── add_node ──\n"})
 
-    # 1. Find parent's named_type. sub_type_id points directly to the child's
-    # named_type variant (self-reference) — use it as the child machine's type_id.
+    # 1. Find parent's named_type. sub_type_id points to the child's named_type variant.
     parent_machine = await infra_machines_service.get_by_id(parent_machine_id)
     parent_named_type = await infra_named_types_service.get_by_id(parent_machine.type_id)
     if not parent_named_type.sub_type_id:
@@ -735,19 +751,22 @@ async def _handle_add_node(
         return
     child_type_id = parent_named_type.sub_type_id
 
-    # 2. Read the SSH private key from the parent machine
+    # 2. Read the SSH private key from the parent Proxmox machine.
     cert_summary = None
-    if ssh_key_path:
+    if priv_key_path:
         try:
-            result = await conn.run(f"cat {ssh_key_path}", check=True, encoding="utf-8")
+            result = await conn.run(f"cat {priv_key_path}", check=True, encoding="utf-8")
             priv_key_content = result.stdout.strip()
 
-            result_pub = await conn.run(f"cat {ssh_key_path}.pub", check=False, encoding="utf-8")
-            pub_key_content = result_pub.stdout.strip() if result_pub.exit_status == 0 else None
+            # Public key is in the JSON; fall back to reading the file if missing.
+            pub_key_content: str | None = pub_key_inline or None
+            if not pub_key_content and pub_key_path:
+                result_pub = await conn.run(f"cat {pub_key_path}", check=False, encoding="utf-8")
+                if result_pub.exit_status == 0:
+                    pub_key_content = result_pub.stdout.strip() or None
 
             key_type = "ed25519" if "ed25519" in priv_key_content.lower() else "rsa"
-
-            cert_name = f"lxc-{ctid}-{user}" if ctid else f"{ip}-{user}"
+            cert_name = f"lxc-{ctid}-{username}" if ctid else f"{ip}-{username}"
             cert_summary = await infra_certificates_service.create(
                 name=cert_name,
                 private_key=priv_key_content,
@@ -758,29 +777,36 @@ async def _handle_add_node(
             _log.info("add_node.cert_created", name=cert_name, key_type=key_type)
         except Exception as exc:
             await ws.send_json({"type": "stderr", "data": f"✗ Lecture clé SSH échouée: {exc}\n"})
-            _log.warning("add_node.key_read_failed", path=ssh_key_path, error=str(exc))
+            _log.warning("add_node.key_read_failed", path=priv_key_path, error=str(exc))
 
-    # 3. Create the child machine
+    # 3. Build metadata from the machine and docker blocks.
+    meta: dict[str, str] = {}
+    if ctid:
+        meta["ctid"] = ctid
+    if systeme.get("distro"):
+        meta["distro"] = systeme["distro"]
+    if systeme.get("ip_type"):
+        meta["ip_type"] = systeme["ip_type"]
+    if docker_block.get("docker_version"):
+        meta["docker"] = docker_block["docker_version"]
+
+    # 4. Create the child machine.
+    machine_name = hostname or (f"LXC-{ctid}" if ctid else ip)
     try:
-        machine_name = f"LXC-{ctid}" if ctid else ip
-
-        meta = {}
-        for k in ("distro", "ip_type", "docker", "ctid"):
-            if output_json.get(k):
-                meta[k] = str(output_json[k])
-
         new_machine = await infra_machines_service.create(
             name=machine_name,
             type_id=child_type_id,
             host=ip,
             port=22,
-            username=user or None,
-            password=password or None,
+            username=username or None,
             certificate_id=cert_summary.id if cert_summary else None,
             metadata=meta,
             parent_id=parent_machine_id,
         )
-        await ws.send_json({"type": "stdout", "data": f"✓ Machine créée: {machine_name} ({ip}:22, user={user})\n"})
+        await ws.send_json({
+            "type": "stdout",
+            "data": f"✓ Machine créée: {machine_name} ({ip}:22, user={username})\n",
+        })
         await ws.send_json({
             "type": "provisioned",
             "data": json.dumps({
@@ -788,13 +814,10 @@ async def _handle_add_node(
                 "certificate_id": str(cert_summary.id) if cert_summary else None,
                 "name": machine_name,
                 "host": ip,
-                "user": user,
+                "user": username,
             }),
         })
-        _log.info(
-            "add_node.machine_created",
-            name=machine_name, host=ip, type_id=str(child_type_id),
-        )
+        _log.info("add_node.machine_created", name=machine_name, host=ip, type_id=str(child_type_id))
     except Exception as exc:
         await ws.send_json({"type": "stderr", "data": f"✗ Création machine échouée: {exc}\n"})
         _log.error("add_node.machine_create_failed", error=str(exc))

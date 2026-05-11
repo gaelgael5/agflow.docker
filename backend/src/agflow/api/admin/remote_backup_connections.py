@@ -48,7 +48,7 @@ async def create_connection(
                 kind=body.kind,
                 config=body.config,
                 credentials=body.credentials,
-                created_by_user_id=None,
+                created_by_user_id=_user_id,
             )
             dto = await rbc_service.get_connection(conn, connection_id)
     except asyncpg.UniqueViolationError as exc:
@@ -70,7 +70,7 @@ async def get_connection(connection_id: UUID) -> RemoteBackupConnectionSummary:
 @router.patch("/{connection_id}", response_model=RemoteBackupConnectionSummary)
 async def update_connection(
     connection_id: UUID, body: RemoteBackupConnectionUpdate
-) -> RemoteBackupConnectionSummary | None:
+) -> RemoteBackupConnectionSummary:
     async with (await get_pool()).acquire() as conn:
         await rbc_service.update_connection(
             conn,
@@ -79,7 +79,10 @@ async def update_connection(
             config=body.config,
             credentials=body.credentials,
         )
-        return await rbc_service.get_connection(conn, connection_id)
+        dto = await rbc_service.get_connection(conn, connection_id)
+    if dto is None:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    return dto
 
 
 @router.delete("/{connection_id}", status_code=204)
@@ -125,3 +128,6 @@ async def test_connection_saved(
         return TestConnectionResult(ok=True)
     except RemoteBackupProviderError as exc:
         return TestConnectionResult(ok=False, error="provider_error", message=str(exc))
+    except Exception as exc:
+        _log.warning("rbc.test_connection_saved.unexpected", error=str(exc))
+        return TestConnectionResult(ok=False, error="unexpected", message=str(exc))

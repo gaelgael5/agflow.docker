@@ -36,7 +36,7 @@ async def create_backup(
     _user_id: str = Depends(require_admin),
 ) -> LocalBackupSummary:
     """Déclenche un pg_dump et le sauvegarde sur disque."""
-    return await local_backups_service.create_backup(created_by_user_id=None)
+    return await local_backups_service.create_backup(created_by_user_id=_user_id)
 
 
 @router.post("/{backup_id}/push-to-remote/{remote_id}", status_code=200)

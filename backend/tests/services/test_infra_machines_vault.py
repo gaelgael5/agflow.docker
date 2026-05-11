@@ -67,3 +67,37 @@ async def test_create_rolls_back_on_vault_failure():
         # La machine doit être supprimée (rollback)
         delete_calls = [c for c in mock_exec.call_args_list if "DELETE" in str(c)]
         assert len(delete_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_credentials_reads_from_vault():
+    """get_credentials() doit lire le password depuis Harpocrate."""
+    with (
+        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
+    ):
+        mock_vault.get_secret = AsyncMock(return_value="s3cr3t")
+        mock_fetch.return_value = {
+            "host": "192.168.1.1", "port": 22, "username": "root",
+            "password": f"${{vault://HARPOCRATE_KEY:machines/{MACHINE_ID}/password}}",
+            "certificate_id": None,
+        }
+
+        creds = await svc.get_credentials(MACHINE_ID)
+
+        mock_vault.get_secret.assert_called_once_with(
+            f"machines/{MACHINE_ID}/password"
+        )
+        assert creds["password"] == "s3cr3t"
+
+
+@pytest.mark.asyncio
+async def test_get_credentials_no_password():
+    """get_credentials() retourne None si pas de vault ref."""
+    with patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch:
+        mock_fetch.return_value = {
+            "host": "192.168.1.1", "port": 22, "username": "root",
+            "password": None, "certificate_id": None,
+        }
+        creds = await svc.get_credentials(MACHINE_ID)
+        assert creds["password"] is None

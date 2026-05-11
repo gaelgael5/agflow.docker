@@ -133,18 +133,24 @@ async def get_by_id(machine_id: UUID) -> MachineSummary:
 
 
 async def get_credentials(machine_id: UUID) -> dict[str, Any]:
-    """Return decrypted credentials for SSH use."""
+    """Return credentials for SSH use. Password fetched from Harpocrate."""
     row = await fetch_one(
         "SELECT host, port, username, password, certificate_id FROM infra_machines WHERE id = $1",
         machine_id,
     )
     if row is None:
         raise MachineNotFoundError(f"Machine {machine_id} not found")
+
+    plain_password: str | None = None
+    path = _parse_vault_ref(row["password"])
+    if path:
+        plain_password = await vault_client.get_secret(path)
+
     return {
         "host": row["host"],
         "port": row["port"],
         "username": row["username"],
-        "password": crypto_service.decrypt(row["password"]),
+        "password": plain_password,
         "certificate_id": row.get("certificate_id"),
     }
 

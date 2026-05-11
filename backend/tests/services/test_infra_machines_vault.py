@@ -146,7 +146,7 @@ async def test_update_password_calls_create_secret_when_no_path():
 
 @pytest.mark.asyncio
 async def test_delete_removes_vault_secret():
-    """delete() doit supprimer le secret dans Harpocrate avant la machine en DB."""
+    """delete() doit supprimer le secret Harpocrate après la suppression DB."""
     with (
         patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
         patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
@@ -164,3 +164,21 @@ async def test_delete_removes_vault_secret():
         mock_vault.delete_secret.assert_called_once_with(
             f"machines/{MACHINE_ID}/password"
         )
+
+
+@pytest.mark.asyncio
+async def test_delete_no_vault_ref_skips_vault():
+    """delete() ne doit pas appeler vault si la machine n'a pas de password."""
+    with (
+        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
+    ):
+        mock_vault.delete_secret = AsyncMock()
+        mock_fetch.side_effect = [
+            {"password": None},
+            {"id": MACHINE_ID},
+        ]
+
+        await svc.delete(MACHINE_ID)
+
+        mock_vault.delete_secret.assert_not_called()

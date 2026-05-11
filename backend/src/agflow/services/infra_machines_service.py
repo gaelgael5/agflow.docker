@@ -17,7 +17,10 @@ from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.schemas.infra import MachineSummary, RequiredActionStatus
 from agflow.services import vault_client
 
+_log = structlog.get_logger(__name__)
+
 _VAULT_REF_RE = re.compile(r"^\$\{vault://([^:]+):(.+)\}$")
+_VAULT_KEY_NAME = "HARPOCRATE_KEY"
 
 
 def _vault_path(machine_id: _uuid.UUID) -> str:
@@ -25,21 +28,17 @@ def _vault_path(machine_id: _uuid.UUID) -> str:
 
 
 def _vault_ref(machine_id: _uuid.UUID) -> str:
-    return f"${{vault://HARPOCRATE_KEY:{_vault_path(machine_id)}}}"
+    return f"${{vault://{_VAULT_KEY_NAME}:{_vault_path(machine_id)}}}"
 
 
 def _parse_vault_ref(value: str | None) -> str | None:
-    """Retourne le chemin vault si value est un vault ref, sinon None."""
+    """Retourne le chemin vault si value est un vault ref valide, sinon None."""
     if not value:
         return None
     m = _VAULT_REF_RE.match(value)
-    return m.group(2) if m else None
+    return m.group(2) if (m and m.group(1) == _VAULT_KEY_NAME) else None
 
-_log = structlog.get_logger(__name__)
 
-# Jointure : machine + named_type → category.
-# Le label humain de la variante vient de infra_named_types.name,
-# la catégorie de infra_named_types.type_id (FK infra_categories.name).
 _LIST_SQL = """
     SELECT
         m.id, m.name, m.type_id, m.host, m.port, m.username, m.password,
@@ -181,7 +180,8 @@ async def create(
         _json.dumps(metadata or {}),
         user_id, environment,
     )
-    assert row is not None
+    if row is None:
+        raise RuntimeError("INSERT INTO infra_machines returned no row")
     machine_id: _uuid.UUID = row["id"]
 
     if password is not None:
@@ -212,7 +212,6 @@ async def create(
 async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:
     await get_by_id(machine_id)
 
-    # Gérer le password séparément (vault)
     new_password: str | None = kwargs.pop("password", None)
     if new_password is not None:
         pw_row = await fetch_one(
@@ -228,7 +227,6 @@ async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:
                 _vault_ref(machine_id), machine_id,
             )
 
-    # Autres champs (sans password)
     updates: dict[str, Any] = {}
     for field in ("name", "host", "port", "username", "certificate_id", "user_id", "environment"):
         if field in kwargs and kwargs[field] is not None:
@@ -263,7 +261,6 @@ async def merge_metadata(machine_id: UUID, updates: dict) -> None:
 
 
 async def delete(machine_id: UUID) -> None:
-    # Lire le vault ref AVANT de supprimer
     pw_row = await fetch_one(
         "SELECT password FROM infra_machines WHERE id = $1", machine_id
     )
@@ -284,15 +281,8 @@ async def delete(machine_id: UUID) -> None:
     _log.info("infra_machines.delete", id=str(machine_id))
 
 
-async def get_for_user(
-    user_id: UUID, environment: str | None,
-) -> MachineSummary | None:
-    """Return the machine assigned to (user_id, environment), or None if absent.
-
-    Used by the SaaS runtime creation flow to resolve which machine hosts a
-    given user's runtime for a given environment. Unique by (user_id,
-    environment) — see migration 085.
-    """
+async def get_for_user(user_id: UUID, environment: str | None) -> MachineSummary | None:
+    """Machine assigned to (user_id, environment), or None. Unique by (user_id, environment) — see migration 085."""
     row = await fetch_one(
         _LIST_SQL + " WHERE m.user_id = $1 AND m.environment IS NOT DISTINCT FROM $2",
         user_id, environment,
@@ -301,9 +291,6 @@ async def get_for_user(
         return None
     return _to_summary(row)
 
-
-# ── B0 : ingestion JSON create-swarm-lxc → colonnes 1st-class + metadata ──
-# Fonctions déplacées dans infra_machines_ingest.py (limite 300 lignes).
 
 from agflow.services.infra_machines_ingest import (  # noqa: F401, E402  (re-export)
     derive_machine_columns_from_output,

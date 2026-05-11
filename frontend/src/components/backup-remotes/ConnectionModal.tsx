@@ -18,20 +18,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import type { Connection, Kind } from "./types";
+import { KindConfigFields } from "./KindConfigFields";
+import { CredentialsFields } from "./CredentialsFields";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface Connection {
-  id: string;
-  name: string;
-  kind: "sftp" | "ftps" | "s3";
-  config: Record<string, string>;
-  has_credentials: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-type Kind = "sftp" | "ftps" | "s3";
+export type { Connection } from "./types";
 
 interface TestResult {
   ok: boolean;
@@ -64,11 +57,8 @@ export function ConnectionModal({
   );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [testResults, setTestResults] = useState<Record<string, TestResult>>(
-    {}
-  );
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
 
-  // Computed: use vault credentials when editing and user hasn't typed new creds
   const useVault = isEdit && !username;
 
   const saveMutation = useMutation({
@@ -108,8 +98,6 @@ export function ConnectionModal({
   const handleTest = async (pathKey: string) => {
     const path = config[pathKey] ?? "";
     if (!path) return;
-
-    // Guard: in creation mode, require credentials
     const hasCredentials = Boolean(username && password);
     if (!useVault && !hasCredentials) return;
 
@@ -151,6 +139,9 @@ export function ConnectionModal({
       ? "path_snapshots"
       : "path_full";
 
+  const handleConfigChange = (key: string, value: string) =>
+    setConfig((c) => ({ ...c, [key]: value }));
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-lg">
@@ -179,75 +170,15 @@ export function ConnectionModal({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sftp">
-                    {t("backup_remotes.kind_sftp")}
-                  </SelectItem>
-                  <SelectItem value="ftps">
-                    {t("backup_remotes.kind_ftps")}
-                  </SelectItem>
-                  <SelectItem value="s3">
-                    {t("backup_remotes.kind_s3")}
-                  </SelectItem>
+                  <SelectItem value="sftp">{t("backup_remotes.kind_sftp")}</SelectItem>
+                  <SelectItem value="ftps">{t("backup_remotes.kind_ftps")}</SelectItem>
+                  <SelectItem value="s3">{t("backup_remotes.kind_s3")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           )}
 
-          {kind !== "s3" && (
-            <>
-              <div>
-                <Label>{t("backup_remotes.host")}</Label>
-                <Input
-                  value={config["host"] ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({ ...c, host: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>{t("backup_remotes.port")}</Label>
-                <Input
-                  type="number"
-                  value={config["port"] ?? (kind === "ftps" ? "21" : "22")}
-                  onChange={(e) =>
-                    setConfig((c) => ({ ...c, port: e.target.value }))
-                  }
-                />
-              </div>
-            </>
-          )}
-
-          {kind === "s3" && (
-            <>
-              <div>
-                <Label>{t("backup_remotes.endpoint_url")}</Label>
-                <Input
-                  value={config["endpoint_url"] ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({ ...c, endpoint_url: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>{t("backup_remotes.bucket")}</Label>
-                <Input
-                  value={config["bucket"] ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({ ...c, bucket: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>{t("backup_remotes.region")}</Label>
-                <Input
-                  value={config["region"] ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({ ...c, region: e.target.value }))
-                  }
-                />
-              </div>
-            </>
-          )}
+          <KindConfigFields kind={kind} config={config} onChange={handleConfigChange} />
 
           {pathKeys.map((key) => {
             const result = testResults[key];
@@ -286,48 +217,14 @@ export function ConnectionModal({
             );
           })}
 
-          <div
-            className={`rounded-md border px-3 py-2 text-sm ${
-              isEdit && connection.has_credentials
-                ? "border-border bg-muted/50 text-foreground"
-                : "border-destructive/50 bg-destructive/10 text-destructive"
-            }`}
-          >
-            {isEdit && connection.has_credentials
-              ? t("backup_remotes.credentials_ok")
-              : t("backup_remotes.credentials_missing")}
-          </div>
-
-          <div>
-            <Label>
-              {kind === "s3"
-                ? t("backup_remotes.access_key_id")
-                : t("backup_remotes.username")}
-            </Label>
-            <Input
-              placeholder={
-                isEdit && connection?.has_credentials ? "••••••••" : ""
-              }
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <Label>
-              {kind === "s3"
-                ? t("backup_remotes.secret_access_key")
-                : t("backup_remotes.password")}
-            </Label>
-            <Input
-              type="password"
-              placeholder={
-                isEdit && connection?.has_credentials ? "••••••••" : ""
-              }
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
+          <CredentialsFields
+            kind={kind}
+            username={username}
+            password={password}
+            hasExisting={isEdit && connection.has_credentials}
+            onChangeUsername={setUsername}
+            onChangePassword={setPassword}
+          />
 
           {saveMutation.isError && (
             <p className="text-xs text-destructive">

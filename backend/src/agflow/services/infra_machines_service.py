@@ -212,25 +212,35 @@ async def create(
 async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:
     await get_by_id(machine_id)
 
+    # Gérer le password séparément (vault)
+    new_password: str | None = kwargs.pop("password", None)
+    if new_password is not None:
+        pw_row = await fetch_one(
+            "SELECT password FROM infra_machines WHERE id = $1", machine_id
+        )
+        existing_path = _parse_vault_ref(pw_row["password"] if pw_row else None)
+        if existing_path:
+            await vault_client.update_secret(existing_path, new_password)
+        else:
+            await vault_client.create_secret(_vault_path(machine_id), new_password)
+            await execute(
+                "UPDATE infra_machines SET password = $1 WHERE id = $2",
+                _vault_ref(machine_id), machine_id,
+            )
+
+    # Autres champs (sans password)
     updates: dict[str, Any] = {}
-    for field in (
-        "name", "host", "port", "username", "password",
-        "certificate_id", "user_id", "environment",
-    ):
+    for field in ("name", "host", "port", "username", "certificate_id", "user_id", "environment"):
         if field in kwargs and kwargs[field] is not None:
-            val = kwargs[field]
-            if field == "password":
-                val = crypto_service.encrypt(val)
-            updates[field] = val
+            updates[field] = kwargs[field]
 
-    if not updates:
-        return await get_by_id(machine_id)
+    if updates:
+        sets = [f"{k} = ${i}" for i, k in enumerate(updates, 2)]
+        await execute(
+            f"UPDATE infra_machines SET {', '.join(sets)} WHERE id = $1",
+            machine_id, *updates.values(),
+        )
 
-    sets = [f"{k} = ${i}" for i, k in enumerate(updates, 2)]
-    await execute(
-        f"UPDATE infra_machines SET {', '.join(sets)} WHERE id = $1",
-        machine_id, *updates.values(),
-    )
     _log.info("infra_machines.update", id=str(machine_id))
     return await get_by_id(machine_id)
 
@@ -253,11 +263,24 @@ async def merge_metadata(machine_id: UUID, updates: dict) -> None:
 
 
 async def delete(machine_id: UUID) -> None:
+    # Lire le vault ref AVANT de supprimer
+    pw_row = await fetch_one(
+        "SELECT password FROM infra_machines WHERE id = $1", machine_id
+    )
+    path = _parse_vault_ref(pw_row["password"] if pw_row else None)
+
     row = await fetch_one(
         "DELETE FROM infra_machines WHERE id = $1 RETURNING id", machine_id,
     )
     if row is None:
         raise MachineNotFoundError(f"Machine {machine_id} not found")
+
+    if path:
+        try:
+            await vault_client.delete_secret(path)
+        except Exception:
+            _log.warning("infra_machines.vault_delete_failed", id=str(machine_id), path=path)
+
     _log.info("infra_machines.delete", id=str(machine_id))
 
 

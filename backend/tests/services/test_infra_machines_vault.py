@@ -101,3 +101,66 @@ async def test_get_credentials_no_password():
         }
         creds = await svc.get_credentials(MACHINE_ID)
         assert creds["password"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_password_calls_update_secret_when_path_exists():
+    """update() avec password existant → vault.update_secret, pas de UPDATE DB password."""
+    with (
+        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
+        patch("agflow.services.infra_machines_service.execute") as mock_exec,
+    ):
+        vault_ref = f"${{vault://HARPOCRATE_KEY:machines/{MACHINE_ID}/password}}"
+        mock_vault.update_secret = AsyncMock()
+        # get_by_id (check existence) + SELECT password + get_by_id (return)
+        mock_fetch.side_effect = [_ROW, {"password": vault_ref}, _ROW]
+        mock_exec.return_value = None
+
+        await svc.update(MACHINE_ID, password="new_secret")
+
+        mock_vault.update_secret.assert_called_once_with(
+            f"machines/{MACHINE_ID}/password", "new_secret"
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_password_calls_create_secret_when_no_path():
+    """update() avec password absent en DB → vault.create_secret + UPDATE DB."""
+    with (
+        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
+        patch("agflow.services.infra_machines_service.execute") as mock_exec,
+    ):
+        mock_vault.create_secret = AsyncMock(return_value="secret-id")
+        no_pw_row = {**_ROW, "password": None}
+        mock_fetch.side_effect = [no_pw_row, {"password": None}, _ROW]
+        mock_exec.return_value = None
+
+        await svc.update(MACHINE_ID, password="new_secret")
+
+        mock_vault.create_secret.assert_called_once_with(
+            f"machines/{MACHINE_ID}/password", "new_secret"
+        )
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_vault_secret():
+    """delete() doit supprimer le secret dans Harpocrate avant la machine en DB."""
+    with (
+        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
+    ):
+        vault_ref = f"${{vault://HARPOCRATE_KEY:machines/{MACHINE_ID}/password}}"
+        mock_vault.delete_secret = AsyncMock()
+        # SELECT password + DELETE RETURNING id
+        mock_fetch.side_effect = [
+            {"password": vault_ref},
+            {"id": MACHINE_ID},
+        ]
+
+        await svc.delete(MACHINE_ID)
+
+        mock_vault.delete_secret.assert_called_once_with(
+            f"machines/{MACHINE_ID}/password"
+        )

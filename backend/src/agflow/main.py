@@ -22,6 +22,7 @@ from agflow.api.admin.generations import router as admin_generations_router
 from agflow.api.admin.group_scripts import router as admin_group_scripts_router
 from agflow.api.admin.groups import router as admin_groups_router
 from agflow.api.admin.image_registries import router as admin_image_registries_router
+from agflow.api.admin.local_backups import router as admin_local_backups_router
 from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
 from agflow.api.admin.platform_config import router as admin_platform_config_router
 from agflow.api.admin.product_instances import router as admin_product_instances_router
@@ -29,6 +30,9 @@ from agflow.api.admin.products import router as admin_products_router
 from agflow.api.admin.project_deployments import router as admin_deployments_router
 from agflow.api.admin.project_runtimes import router as admin_runtimes_router
 from agflow.api.admin.projects import router as admin_projects_router
+from agflow.api.admin.remote_backup_connections import (
+    router as admin_remote_backup_connections_router,
+)
 from agflow.api.admin.roles import router as admin_roles_router
 from agflow.api.admin.scripts import router as admin_scripts_router
 from agflow.api.admin.secrets import router as admin_secrets_router
@@ -318,6 +322,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_users_router)
     app.include_router(admin_api_keys_router)
     app.include_router(admin_apps_router)
+    app.include_router(admin_remote_backup_connections_router)
+    app.include_router(admin_local_backups_router)
     app.include_router(infra_categories_router)
     app.include_router(infra_named_types_router)
     app.include_router(infra_named_type_actions_router)

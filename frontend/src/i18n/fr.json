@@ -95,7 +95,9 @@
     "close": "Fermer",
     "edit": "Éditer",
     "save": "Enregistrer",
-    "loading": "Chargement…"
+    "loading": "Chargement…",
+    "error_loading": "Erreur lors du chargement.",
+    "error_saving": "Erreur lors de l'enregistrement."
   },
   "sidebar": {
     "section_platform": "Plateforme",
@@ -1397,6 +1399,9 @@
     "bucket": "Bucket",
     "region": "Région",
     "port": "Port",
-    "not_configured": "Non configuré"
+    "not_configured": "Non configuré",
+    "test_request_failed": "Échec de la requête",
+    "delete_aria": "Supprimer cette connexion",
+    "delete_description": "Supprimer « {{name}} » ? Cette action est irréversible."
   }
 }

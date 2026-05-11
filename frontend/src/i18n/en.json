@@ -95,7 +95,9 @@
     "close": "Close",
     "edit": "Edit",
     "save": "Save",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "error_loading": "Error loading data.",
+    "error_saving": "Error saving data."
   },
   "sidebar": {
     "section_platform": "Platform",
@@ -1390,6 +1392,9 @@
     "bucket": "Bucket",
     "region": "Region",
     "port": "Port",
-    "not_configured": "Not configured"
+    "not_configured": "Not configured",
+    "test_request_failed": "Request failed",
+    "delete_aria": "Delete this connection",
+    "delete_description": "Delete \"{{name}}\"? This action is irreversible."
   }
 }

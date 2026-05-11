@@ -13,23 +13,30 @@ from agflow.services import vault_client
 _log = structlog.get_logger(__name__)
 
 # ─── helpers DB internes (facilement mockables dans les tests) ─────────────
+#
+# Note : execute/fetch_all/fetch_one du pool acquièrent leur propre connexion
+# et ne supportent pas de paramètre conn externe. Le paramètre conn présent
+# dans l'API publique (list_connections, get_connection, …) est conservé pour
+# compatibilité avec les appelants (routers) mais n'est pas transmis ici.
 
-async def _insert_row(conn, *, connection_id: UUID, name: str, kind: str,
+
+async def _insert_row(*, connection_id: UUID, name: str, kind: str,
                       config: dict, vault_api_key_id: str | None,
                       vault_secret_path: str | None,
                       created_by_user_id: UUID | None) -> None:
+    # Le codec JSONB du pool gère l'encodage dict → JSON automatiquement.
     await execute(
         """
         INSERT INTO remote_backup_connections
             (id, name, kind, config, vault_api_key_id, vault_secret_path, created_by_user_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         """,
-        connection_id, name, kind, json.dumps(config),
+        connection_id, name, kind, config,
         vault_api_key_id, vault_secret_path, created_by_user_id,
     )
 
 
-async def _fetch_all_rows(conn) -> list[dict]:
+async def _fetch_all_rows() -> list[dict]:
     return await fetch_all(
         "SELECT id, name, kind, config, vault_api_key_id, vault_secret_path, "
         "       created_at, updated_at, "
@@ -39,7 +46,7 @@ async def _fetch_all_rows(conn) -> list[dict]:
     )
 
 
-async def _fetch_row_by_id(conn, connection_id: UUID) -> dict | None:
+async def _fetch_row_by_id(connection_id: UUID) -> dict | None:
     return await fetch_one(
         "SELECT id, name, kind, config, vault_api_key_id, vault_secret_path, "
         "       created_at, updated_at, "
@@ -50,7 +57,7 @@ async def _fetch_row_by_id(conn, connection_id: UUID) -> dict | None:
     )
 
 
-async def _soft_delete_row(conn, connection_id: UUID) -> None:
+async def _soft_delete_row(connection_id: UUID) -> None:
     await execute(
         "UPDATE remote_backup_connections SET deleted_at = NOW() WHERE id = $1",
         connection_id,
@@ -58,6 +65,8 @@ async def _soft_delete_row(conn, connection_id: UUID) -> None:
 
 
 def _to_dto(row: dict) -> RemoteBackupConnectionSummary:
+    # Le codec JSONB du pool décode toujours en dict ; la branche json.loads
+    # reste en défense pour les cas où le champ serait une string brute.
     return RemoteBackupConnectionSummary(
         id=row["id"],
         name=row["name"],
@@ -72,12 +81,12 @@ def _to_dto(row: dict) -> RemoteBackupConnectionSummary:
 # ─── API publique ──────────────────────────────────────────────────────────
 
 async def list_connections(conn) -> list[RemoteBackupConnectionSummary]:
-    rows = await _fetch_all_rows(conn)
+    rows = await _fetch_all_rows()
     return [_to_dto(r) for r in rows]
 
 
 async def get_connection(conn, connection_id: UUID) -> RemoteBackupConnectionSummary | None:
-    row = await _fetch_row_by_id(conn, connection_id)
+    row = await _fetch_row_by_id(connection_id)
     return _to_dto(row) if row else None
 
 
@@ -112,7 +121,6 @@ async def create_connection(
 
     try:
         await _insert_row(
-            conn,
             connection_id=connection_id,
             name=name, kind=kind, config=config,
             vault_api_key_id=vault_api_key_id,
@@ -139,7 +147,7 @@ async def update_connection(
     config: dict | None = None,
     credentials: dict | None = None,
 ) -> None:
-    row = await _fetch_row_by_id(conn, connection_id)
+    row = await _fetch_row_by_id(connection_id)
     if row is None:
         raise ValueError(f"Connection {connection_id} not found")
 
@@ -149,10 +157,17 @@ async def update_connection(
         settings = get_settings()
         path = f"remote-backups/{connection_id}"
         await vault_client.create_secret(path, json.dumps(credentials))
-        await execute(
-            "UPDATE remote_backup_connections SET vault_api_key_id=$1, vault_secret_path=$2 WHERE id=$3",
-            settings.harpocrate_vault_api_key_id, path, connection_id,
-        )
+        try:
+            await execute(
+                "UPDATE remote_backup_connections SET vault_api_key_id=$1, vault_secret_path=$2 WHERE id=$3",
+                settings.harpocrate_vault_api_key_id, path, connection_id,
+            )
+        except Exception:
+            try:
+                await vault_client.delete_secret(path)
+            except Exception as cleanup_err:
+                _log.warning("rbc.vault_cleanup_failed", path=path, error=str(cleanup_err))
+            raise
 
     updates: list[str] = []
     params: list = []
@@ -162,22 +177,31 @@ async def update_connection(
         params.append(name)
         idx += 1
     if config is not None:
+        # Le codec JSONB du pool gère l'encodage dict → JSON automatiquement.
         updates.append(f"config = ${idx}")
-        params.append(json.dumps(config))
+        params.append(config)
         idx += 1
+
     if updates:
         params.append(connection_id)
         await execute(
             f"UPDATE remote_backup_connections SET {', '.join(updates)} WHERE id = ${idx}",
             *params,
         )
+    elif credentials is not None:
+        # Credentials mis à jour sans changement name/config : forcer updated_at
+        # pour que les appelants voient la modification dans le champ timestamp.
+        await execute(
+            "UPDATE remote_backup_connections SET updated_at = NOW() WHERE id = $1",
+            connection_id,
+        )
 
 
 async def delete_connection(conn, connection_id: UUID) -> None:
-    row = await _fetch_row_by_id(conn, connection_id)
+    row = await _fetch_row_by_id(connection_id)
     if row is None:
         return
-    await _soft_delete_row(conn, connection_id)
+    await _soft_delete_row(connection_id)
     if row["vault_secret_path"]:
         try:
             await vault_client.delete_secret(row["vault_secret_path"])

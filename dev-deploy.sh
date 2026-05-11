@@ -140,6 +140,7 @@ if [ ! -f ".env" ]; then
     # aléatoire et essaie de le hasher. Si bcrypt absent, affiche le mdp en
     # clair pour que l'admin puisse le hasher manuellement.
     ADMIN_PASS="$(gen_urlsafe 24)"
+    set_env_value .env "ADMIN_PASSWORD" "$ADMIN_PASS"
     if python3 -c "import bcrypt" 2>/dev/null; then
       ADMIN_HASH="$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'${ADMIN_PASS}', bcrypt.gensalt()).decode())")"
       set_env_value .env "ADMIN_PASSWORD_HASH" "$ADMIN_HASH"
@@ -155,6 +156,7 @@ if [ ! -f ".env" ]; then
     echo "      ✓ JWT_SECRET        : généré ($(echo -n "$JWT_SECRET" | wc -c) chars)"
     echo "      ✓ API_KEY_SALT      : généré ($(echo -n "$API_SALT" | wc -c) chars)"
     echo "      ✓ AGFLOW_INFRA_KEY  : généré (clé Fernet)"
+    echo "      ✓ ADMIN_PASSWORD    : généré (stocké dans .env)"
     if [ "$ADMIN_HASH_OK" -eq 1 ]; then
       echo "      ✓ ADMIN_PASSWORD_HASH : généré (bcrypt)"
     else
@@ -163,7 +165,7 @@ if [ ! -f ".env" ]; then
     fi
     echo
     echo "      ⚠  Login admin : ${ADMIN_EMAIL:-admin@agflow.local} / ${ADMIN_PASS}"
-    echo "         (récupérable plus tard dans .env — chmod 600)"
+    echo "         (stocké dans .env — chmod 600)"
     echo
     echo "      ⚠  À RENSEIGNER MANUELLEMENT dans .env :"
     echo "         - ADMIN_EMAIL                (si autre que admin@agflow.local)"

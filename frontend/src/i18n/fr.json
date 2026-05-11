@@ -1368,5 +1368,35 @@
       "direction_in": "◀ in",
       "direction_out": "▶ out"
     }
+  },
+  "backup_remotes": {
+    "title": "Connexions distantes (Backups)",
+    "add": "Nouvelle connexion",
+    "name": "Nom",
+    "kind": "Type",
+    "host": "Hôte",
+    "paths": "Chemins",
+    "has_credentials": "Identifiants",
+    "credentials_ok": "✓ Identifiants enregistrés (Vault). Laisser vide pour conserver.",
+    "credentials_missing": "⚠ Aucun identifiant enregistré.",
+    "path_snapshots": "Chemin snapshots",
+    "path_full": "Chemin full backup",
+    "test": "Tester",
+    "test_ok": "✓ Connexion réussie",
+    "test_fail": "✗ Échec",
+    "save": "Enregistrer",
+    "delete_confirm": "Supprimer cette connexion ?",
+    "kind_sftp": "SFTP",
+    "kind_ftps": "FTPS",
+    "kind_s3": "S3 / Compatible",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "access_key_id": "Access Key ID",
+    "secret_access_key": "Secret Access Key",
+    "endpoint_url": "URL endpoint (vide = AWS)",
+    "bucket": "Bucket",
+    "region": "Région",
+    "port": "Port",
+    "not_configured": "Non configuré"
   }
 }

@@ -1361,5 +1361,35 @@
       "direction_in": "◀ in",
       "direction_out": "▶ out"
     }
+  },
+  "backup_remotes": {
+    "title": "Remote Backup Connections",
+    "add": "New connection",
+    "name": "Name",
+    "kind": "Type",
+    "host": "Host",
+    "paths": "Paths",
+    "has_credentials": "Credentials",
+    "credentials_ok": "✓ Credentials stored (Vault). Leave blank to keep current.",
+    "credentials_missing": "⚠ No credentials stored.",
+    "path_snapshots": "Snapshots path",
+    "path_full": "Full backup path",
+    "test": "Test",
+    "test_ok": "✓ Connection successful",
+    "test_fail": "✗ Failed",
+    "save": "Save",
+    "delete_confirm": "Delete this connection?",
+    "kind_sftp": "SFTP",
+    "kind_ftps": "FTPS",
+    "kind_s3": "S3 / Compatible",
+    "username": "Username",
+    "password": "Password",
+    "access_key_id": "Access Key ID",
+    "secret_access_key": "Secret Access Key",
+    "endpoint_url": "Endpoint URL (blank = AWS)",
+    "bucket": "Bucket",
+    "region": "Region",
+    "port": "Port",
+    "not_configured": "Not configured"
   }
 }

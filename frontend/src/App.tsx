@@ -29,6 +29,7 @@ import { ServiceTypesPage } from "./pages/ServiceTypesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ApiDocsPage } from "./pages/ApiDocsPage";
+import { RemoteBackupConnectionsPage } from "./pages/RemoteBackupConnectionsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -256,6 +257,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <SessionAgentTimelinePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/backup-remotes"
+        element={
+          <ProtectedRoute>
+            <RemoteBackupConnectionsPage />
           </ProtectedRoute>
         }
       />

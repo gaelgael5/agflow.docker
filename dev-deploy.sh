@@ -136,11 +136,10 @@ if [ ! -f ".env" ]; then
     set_env_value .env "API_KEY_SALT" "$API_SALT"
     set_env_value .env "AGFLOW_INFRA_KEY" "$INFRA_KEY"
 
-    # ADMIN_PASSWORD_HASH : nécessite python3 + bcrypt. Génère un mot de passe
-    # aléatoire et essaie de le hasher. Si bcrypt absent, affiche le mdp en
-    # clair pour que l'admin puisse le hasher manuellement.
+    # Génère un mot de passe aléatoire, le stocke en clair dans .env,
+    # puis dérive ADMIN_PASSWORD_HASH via bcrypt.
     ADMIN_PASS="$(gen_urlsafe 24)"
-    set_env_value .env "ADMIN_PASSWORD" "$ADMIN_PASS"
+    echo "ADMIN_PASSWORD=${ADMIN_PASS}" >> .env
     if python3 -c "import bcrypt" 2>/dev/null; then
       ADMIN_HASH="$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'${ADMIN_PASS}', bcrypt.gensalt()).decode())")"
       set_env_value .env "ADMIN_PASSWORD_HASH" "$ADMIN_HASH"

@@ -15,7 +15,7 @@ import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.schemas.infra import MachineSummary, RequiredActionStatus
-from agflow.services import crypto_service, vault_client
+from agflow.services import vault_client
 
 _VAULT_REF_RE = re.compile(r"^\$\{vault://([^:]+):(.+)\}$")
 

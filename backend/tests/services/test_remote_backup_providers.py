@@ -80,11 +80,16 @@ async def test_sftp_upload_stream_creates_parent_dirs():
 async def test_ftps_upload_stream_success():
     from agflow.services.remote_backup_providers.ftps_provider import FtpsProvider
 
+    async def _drain_and_upload(gen, path):
+        """Consume the generator so the written counter is updated."""
+        async for _ in gen:
+            pass
+
     mock_client = MagicMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.login = AsyncMock()
-    mock_client.upload_stream = AsyncMock()
+    mock_client.upload_stream = AsyncMock(side_effect=_drain_and_upload)
     mock_client.make_directory = AsyncMock()
 
     async def _source():
@@ -95,9 +100,10 @@ async def test_ftps_upload_stream_success():
     provider = FtpsProvider(config=config, credentials=creds)
 
     with patch("aioftp.Client.context", return_value=mock_client):
-        await provider.upload_stream("/backups", "dump.sql.gz", _source())
+        n = await provider.upload_stream("/backups", "dump.sql.gz", _source())
 
     mock_client.upload_stream.assert_called_once()
+    assert n == len(b"data")
 
 
 # ─── S3 ────────────────────────────────────────────────────────────────────
@@ -125,3 +131,41 @@ async def test_s3_upload_creates_temp_file_and_cleans_up():
 
     mock_s3.upload_fileobj.assert_called_once()
     assert n == len(b"s3data")
+
+
+# ─── Validation filename ────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_sftp_rejects_filename_with_slash():
+    from agflow.services.remote_backup_providers.sftp_provider import SftpProvider
+
+    async def _source():
+        yield b"data"
+
+    provider = SftpProvider(config={"host": "h", "port": 22}, credentials={"username": "u"})
+    with pytest.raises(RemoteBackupProviderError):
+        await provider.upload_stream("/backups", "path/to/dump.gz", _source())
+
+
+# ─── Factory dispatch ───────────────────────────────────────────────────────
+
+def test_factory_returns_correct_provider():
+    from agflow.services.remote_backup_providers.factory import get_provider
+    from agflow.services.remote_backup_providers.ftps_provider import FtpsProvider
+    from agflow.services.remote_backup_providers.s3_provider import S3CompatibleProvider
+    from agflow.services.remote_backup_providers.sftp_provider import SftpProvider
+
+    assert isinstance(
+        get_provider("sftp", {"host": "h", "port": 22}, {"username": "u"}),
+        SftpProvider,
+    )
+    assert isinstance(
+        get_provider("ftps", {"host": "h"}, {"username": "u", "password": "p"}),
+        FtpsProvider,
+    )
+    assert isinstance(
+        get_provider("s3", {"bucket": "b"}, {"access_key_id": "k", "secret_access_key": "s"}),
+        S3CompatibleProvider,
+    )
+    with pytest.raises(RemoteBackupProviderError):
+        get_provider("unknown", {}, {})

@@ -34,12 +34,14 @@ class FtpsProvider:
             ) as client:
                 await client.login(self._username, self._password)
                 await client.make_directory(path, parents=True)
+        except RemoteBackupProviderError:
+            raise
         except Exception as exc:
             raise RemoteBackupProviderError(f"FTPS test failed: {exc}") from exc
 
     async def upload_stream(self, path: str, filename: str, source: AsyncIterator[bytes]) -> int:
         if "/" in filename or "\\" in filename:
-            raise ValueError("filename must not contain path separators")
+            raise RemoteBackupProviderError("filename must not contain path separators")
         try:
             async with aioftp.Client.context(
                 self._host, port=self._port, ssl=self._ssl_context()
@@ -57,5 +59,7 @@ class FtpsProvider:
                 await client.upload_stream(_gen(), remote_path)
             _log.info("ftps.upload_done", path=remote_path, bytes=written)
             return written
+        except RemoteBackupProviderError:
+            raise
         except Exception as exc:
             raise RemoteBackupProviderError(f"FTPS upload failed: {exc}") from exc

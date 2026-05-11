@@ -59,7 +59,7 @@ class SftpProvider:
 
     async def upload_stream(self, path: str, filename: str, source: AsyncIterator[bytes]) -> int:
         if "/" in filename or "\\" in filename:
-            raise ValueError("filename must not contain path separators")
+            raise RemoteBackupProviderError("filename must not contain path separators")
         try:
             conn = await asyncssh.connect(**self._connect_kwargs())
             async with conn, conn.start_sftp_client() as sftp:

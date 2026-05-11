@@ -41,7 +41,7 @@ class S3CompatibleProvider:
 
     async def upload_stream(self, path: str, filename: str, source: AsyncIterator[bytes]) -> int:
         if "/" in filename or "\\" in filename:
-            raise ValueError("filename must not contain path separators")
+            raise RemoteBackupProviderError("filename must not contain path separators")
         key = f"{path.lstrip('/')}{filename}"
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".sql.gz")  # noqa: SIM115
         tmp_path = Path(tmp.name)
@@ -55,8 +55,13 @@ class S3CompatibleProvider:
                 await asyncio.to_thread(tmp.close)
 
             client = self._client()
-            with tmp_path.open("rb") as fobj:
-                await asyncio.to_thread(client.upload_fileobj, fobj, self._bucket, key)
+            # open() is synchronous on a local temp file (no network I/O); wrapping
+            # upload_fileobj in to_thread is sufficient to keep the event loop free.
+            def _upload_file(path: Path, s3_client, bucket: str, s3_key: str) -> None:
+                with open(path, "rb") as fobj:
+                    s3_client.upload_fileobj(fobj, bucket, s3_key)
+
+            await asyncio.to_thread(_upload_file, tmp_path, client, self._bucket, key)
             _log.info("s3.upload_done", bucket=self._bucket, key=key, bytes=written)
             return written
         except RemoteBackupProviderError:

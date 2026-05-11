@@ -1,11 +1,13 @@
 """Infrastructure machines service — asyncpg CRUD.
 
-Passwords are encrypted at rest via crypto_service (Fernet).
+Passwords are stored in Harpocrate vault; a vault ref is persisted in DB.
 Table unifiée (ex-infra_servers + ex-infra_machines depuis la migration 064).
 """
 from __future__ import annotations
 
 import json as _json
+import re
+import uuid as _uuid
 from typing import Any
 from uuid import UUID
 
@@ -13,7 +15,25 @@ import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.schemas.infra import CreateLxcOutput, MachineSummary, RequiredActionStatus
-from agflow.services import crypto_service
+from agflow.services import crypto_service, vault_client
+
+_VAULT_REF_RE = re.compile(r"^\$\{vault://([^:]+):(.+)\}$")
+
+
+def _vault_path(machine_id: _uuid.UUID) -> str:
+    return f"machines/{machine_id}/password"
+
+
+def _vault_ref(machine_id: _uuid.UUID) -> str:
+    return f"${{vault://HARPOCRATE_KEY:{_vault_path(machine_id)}}}"
+
+
+def _parse_vault_ref(value: str | None) -> str | None:
+    """Retourne le chemin vault si value est un vault ref, sinon None."""
+    if not value:
+        return None
+    m = _VAULT_REF_RE.match(value)
+    return m.group(2) if m else None
 
 _log = structlog.get_logger(__name__)
 
@@ -145,22 +165,32 @@ async def create(
     row = await fetch_one(
         """
         INSERT INTO infra_machines
-            (name, type_id, host, port, username, password,
+            (name, type_id, host, port, username,
              certificate_id, parent_id, metadata, user_id, environment)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
         RETURNING id
         """,
         name, type_id, host, port, username,
-        crypto_service.encrypt(password),
-        certificate_id,
-        parent_id,
+        certificate_id, parent_id,
         _json.dumps(metadata or {}),
-        user_id,
-        environment,
+        user_id, environment,
     )
     assert row is not None
+    machine_id: _uuid.UUID = row["id"]
+
+    if password is not None:
+        try:
+            await vault_client.create_secret(_vault_path(machine_id), password)
+            await execute(
+                "UPDATE infra_machines SET password = $1 WHERE id = $2",
+                _vault_ref(machine_id), machine_id,
+            )
+        except Exception:
+            await execute("DELETE FROM infra_machines WHERE id = $1", machine_id)
+            raise
+
     _log.info("infra_machines.create", host=host, type_id=str(type_id))
-    return await get_by_id(row["id"])
+    return await get_by_id(machine_id)
 
 
 async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:

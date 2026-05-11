@@ -72,6 +72,9 @@ from agflow.logging_setup import configure_logging
 from agflow.workers.agent_reaper import run_agent_reaper_loop as _run_agent_reaper_loop
 from agflow.workers.docker_reconciler import run_docker_reconciliation
 from agflow.workers.mom_reclaimer import run_mom_reclaimer_loop as _run_mom_reclaimer_loop
+from agflow.workers.remote_backup_pusher import (
+    run_remote_backup_pusher_loop as _run_remote_backup_pusher_loop,
+)
 from agflow.workers.session_expiry import run_expiry_loop as _run_expiry_loop
 from agflow.workers.session_idle_reaper import (
     run_session_idle_reaper_loop as _run_session_idle_reaper_loop,
@@ -187,12 +190,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.warning("docker_reconciler.startup_failed", error=str(exc))
 
     # Démarrage des workers de fond
-    _stops = [_asyncio.Event() for _ in range(4)]
+    _stops = [_asyncio.Event() for _ in range(5)]
     _tasks = [
         _asyncio.create_task(_run_expiry_loop(_stops[0])),
         _asyncio.create_task(_run_agent_reaper_loop(_stops[1])),
         _asyncio.create_task(_run_session_idle_reaper_loop(_stops[2])),
         _asyncio.create_task(_run_mom_reclaimer_loop(_stops[3])),
+        _asyncio.create_task(_run_remote_backup_pusher_loop(_stops[4])),
     ]
     yield
     log.info("app.shutdown")

@@ -18,9 +18,13 @@ class SftpProvider:
         self._fingerprint: str | None = config.get("host_key_fingerprint")
         self._username: str = credentials.get("username", "")
         self._password: str | None = credentials.get("password")
-        self._known_hosts = None if not self._fingerprint else asyncssh.import_known_hosts(
-            f"{self._host} {self._fingerprint}"
-        )
+        if not self._fingerprint:
+            _log.warning("sftp.host_key_check_disabled", host=self._host)
+            self._known_hosts = None
+        else:
+            self._known_hosts = asyncssh.import_known_hosts(
+                f"{self._host} {self._fingerprint}"
+            )
 
     def _connect_kwargs(self) -> dict:
         kw: dict = {

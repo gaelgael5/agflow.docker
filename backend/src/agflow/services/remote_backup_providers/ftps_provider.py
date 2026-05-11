@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ssl
 from collections.abc import AsyncIterator
+from pathlib import PurePosixPath
 
 import aioftp
 import structlog
@@ -25,6 +26,7 @@ class FtpsProvider:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+        _log.warning("ftps.tls_verification_disabled", host=self._host)
         return ctx
 
     async def test_connection(self, path: str) -> None:
@@ -33,7 +35,9 @@ class FtpsProvider:
                 self._host, port=self._port, ssl=self._ssl_context()
             ) as client:
                 await client.login(self._username, self._password)
-                await client.make_directory(path, parents=True)
+                # Vérifie l'accès en listant le répertoire parent — sans muter le serveur.
+                parent = str(PurePosixPath(path).parent) if path not in ("", "/") else "/"
+                await client.list(parent)
         except RemoteBackupProviderError:
             raise
         except Exception as exc:

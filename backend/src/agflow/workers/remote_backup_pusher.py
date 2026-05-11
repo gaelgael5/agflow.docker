@@ -65,7 +65,7 @@ async def _run_scheduled_push() -> None:
             continue
         try:
             provider = get_provider(connection.kind, connection.config, credentials)
-            source = local_backups_service.stream_backup_chunks(backup.id)
+            source = await local_backups_service.stream_backup_chunks(backup.id)
             await provider.upload_stream(remote_path, backup.filename, source)
             _log.info(
                 "remote_backup_pusher.push_ok",

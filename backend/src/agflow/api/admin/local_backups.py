@@ -8,12 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from agflow.auth.dependencies import require_admin
 from agflow.db.pool import get_pool
 from agflow.schemas.local_backups import LocalBackupSummary
-from agflow.services import (
-    local_backups_service,
-)
-from agflow.services import (
-    remote_backup_connections_service as rbc_service,
-)
+from agflow.services import local_backups_service, users_service
+from agflow.services import remote_backup_connections_service as rbc_service
 from agflow.services.remote_backup_providers import RemoteBackupProviderError
 from agflow.services.remote_backup_providers.factory import get_provider
 
@@ -33,10 +29,12 @@ async def list_backups() -> list[LocalBackupSummary]:
 
 @router.post("", response_model=LocalBackupSummary, status_code=201)
 async def create_backup(
-    _user_id: str = Depends(require_admin),
+    admin_email: str = Depends(require_admin),
 ) -> LocalBackupSummary:
     """Déclenche un pg_dump et le sauvegarde sur disque."""
-    return await local_backups_service.create_backup(created_by_user_id=_user_id)
+    admin_user = await users_service.get_by_email(admin_email)
+    user_uuid = admin_user.id if admin_user else None
+    return await local_backups_service.create_backup(created_by_user_id=user_uuid)
 
 
 @router.post("/{backup_id}/push-to-remote/{remote_id}", status_code=200)

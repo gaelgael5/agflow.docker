@@ -30,10 +30,15 @@ class S3CompatibleProvider:
             aws_secret_access_key=self._secret_key,
         )
 
+    @staticmethod
+    def _build_key(path: str, filename: str) -> str:
+        prefix = path.strip("/")
+        return f"{prefix}/{filename}" if prefix else filename
+
     async def test_connection(self, path: str) -> None:
         try:
             client = self._client()
-            key = f"{path.lstrip('/')}.agflow-test"
+            key = self._build_key(path, ".agflow-test")
             await asyncio.to_thread(client.put_object, Bucket=self._bucket, Key=key, Body=b"")
             await asyncio.to_thread(client.delete_object, Bucket=self._bucket, Key=key)
         except Exception as exc:
@@ -42,7 +47,7 @@ class S3CompatibleProvider:
     async def upload_stream(self, path: str, filename: str, source: AsyncIterator[bytes]) -> int:
         if "/" in filename or "\\" in filename:
             raise RemoteBackupProviderError("filename must not contain path separators")
-        key = f"{path.lstrip('/')}{filename}"
+        key = self._build_key(path, filename)
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".sql.gz")  # noqa: SIM115
         tmp_path = Path(tmp.name)
         written = 0

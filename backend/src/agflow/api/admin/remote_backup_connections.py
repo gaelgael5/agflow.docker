@@ -17,6 +17,7 @@ from agflow.schemas.remote_backup_connections import (
     TestConnectionWithIdRequest,
 )
 from agflow.services import remote_backup_connections_service as rbc_service
+from agflow.services import users_service
 from agflow.services.remote_backup_providers import RemoteBackupProviderError
 from agflow.services.remote_backup_providers.factory import get_provider
 
@@ -38,8 +39,10 @@ async def list_connections() -> list[RemoteBackupConnectionSummary]:
 @router.post("", response_model=RemoteBackupConnectionSummary, status_code=201)
 async def create_connection(
     body: RemoteBackupConnectionCreate,
-    _user_id: str = Depends(require_admin),
+    admin_email: str = Depends(require_admin),
 ) -> RemoteBackupConnectionSummary:
+    admin_user = await users_service.get_by_email(admin_email)
+    user_uuid = admin_user.id if admin_user else None
     try:
         async with (await get_pool()).acquire() as conn:
             connection_id = await rbc_service.create_connection(
@@ -48,7 +51,7 @@ async def create_connection(
                 kind=body.kind,
                 config=body.config,
                 credentials=body.credentials,
-                created_by_user_id=_user_id,
+                created_by_user_id=user_uuid,
             )
             dto = await rbc_service.get_connection(conn, connection_id)
     except asyncpg.UniqueViolationError as exc:
@@ -71,15 +74,18 @@ async def get_connection(connection_id: UUID) -> RemoteBackupConnectionSummary:
 async def update_connection(
     connection_id: UUID, body: RemoteBackupConnectionUpdate
 ) -> RemoteBackupConnectionSummary:
-    async with (await get_pool()).acquire() as conn:
-        await rbc_service.update_connection(
-            conn,
-            connection_id,
-            name=body.name,
-            config=body.config,
-            credentials=body.credentials,
-        )
-        dto = await rbc_service.get_connection(conn, connection_id)
+    try:
+        async with (await get_pool()).acquire() as conn:
+            await rbc_service.update_connection(
+                conn,
+                connection_id,
+                name=body.name,
+                config=body.config,
+                credentials=body.credentials,
+            )
+            dto = await rbc_service.get_connection(conn, connection_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     if dto is None:
         raise HTTPException(status_code=404, detail="Connection not found")
     return dto

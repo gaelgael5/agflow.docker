@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class RemoteBackupConnectionSummary(BaseModel):
@@ -20,7 +20,7 @@ class RemoteBackupConnectionSummary(BaseModel):
 class RemoteBackupConnectionCreate(BaseModel):
     name: str
     kind: str
-    config: dict[str, Any] = {}
+    config: dict[str, Any] = Field(default_factory=dict)
     credentials: dict[str, Any] | None = None
 
     @field_validator("kind")

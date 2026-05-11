@@ -47,3 +47,23 @@ async def test_create_stores_vault_ref():
         call_args = mock_exec.call_args[0]
         assert f"machines/{MACHINE_ID}/password" in call_args[1]
         assert result.has_password is True
+
+
+@pytest.mark.asyncio
+async def test_create_rolls_back_on_vault_failure():
+    """create() doit supprimer la machine si vault.create_secret échoue."""
+    with (
+        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
+        patch("agflow.services.infra_machines_service.execute") as mock_exec,
+    ):
+        mock_vault.create_secret = AsyncMock(side_effect=RuntimeError("vault down"))
+        mock_fetch.return_value = {"id": MACHINE_ID}
+        mock_exec.return_value = None
+
+        with pytest.raises(RuntimeError, match="vault down"):
+            await svc.create(type_id=TYPE_ID, host="192.168.1.1", password="s3cr3t")
+
+        # La machine doit être supprimée (rollback)
+        delete_calls = [c for c in mock_exec.call_args_list if "DELETE" in str(c)]
+        assert len(delete_calls) == 1

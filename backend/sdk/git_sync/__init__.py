@@ -4,6 +4,7 @@ Spec : specs/sdk_git_sync_specs.md (v1.0).
 """
 from __future__ import annotations
 
+from sdk.git_sync.dependency_resolver import DependencyResolver
 from sdk.git_sync.exceptions import (
     DependencyResolveError,
     GitAuthError,
@@ -16,6 +17,7 @@ from sdk.git_sync.exceptions import (
     TableNotFoundError,
     VaultResolutionError,
 )
+from sdk.git_sync.export_service import ExportService
 from sdk.git_sync.git_service import GitService
 from sdk.git_sync.models import (
     AuthMode,
@@ -33,6 +35,8 @@ __all__ = [
     "AuthMode",
     "DependencyGraph",
     "DependencyResolveError",
+    "DependencyResolver",
+    "ExportService",
     "GitAuthError",
     "GitCloneError",
     "GitConfig",

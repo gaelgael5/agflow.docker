@@ -44,6 +44,11 @@ class GitService:
         self._vault = vault_client
         self._auth_provider: GitAuthProvider | None = None
 
+    @property
+    def config(self) -> GitConfig:
+        """Accès lecture seule au config — utilisé par Export/Import services."""
+        return self._config
+
     # ─── Opérations publiques ────────────────────────────────────────────
 
     async def clone(self) -> Path:

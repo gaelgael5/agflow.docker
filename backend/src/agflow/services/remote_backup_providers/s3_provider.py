@@ -8,7 +8,10 @@ from pathlib import Path
 import boto3
 import structlog
 
-from agflow.services.remote_backup_providers.protocol import RemoteBackupProviderError
+from agflow.services.remote_backup_providers.protocol import (
+    RemoteBackupProviderError,
+    RemoteFile,
+)
 
 _log = structlog.get_logger(__name__)
 
@@ -60,6 +63,7 @@ class S3CompatibleProvider:
                 await asyncio.to_thread(tmp.close)
 
             client = self._client()
+
             # open() is synchronous on a local temp file (no network I/O); wrapping
             # upload_fileobj in to_thread is sufficient to keep the event loop free.
             def _upload_file(path: Path, s3_client, bucket: str, s3_key: str) -> None:
@@ -75,3 +79,62 @@ class S3CompatibleProvider:
             raise RemoteBackupProviderError(f"S3 upload failed: {exc}") from exc
         finally:
             await asyncio.to_thread(tmp_path.unlink, missing_ok=True)
+
+    async def list_remote(self, path: str) -> list[RemoteFile]:
+        prefix = path.strip("/")
+        prefix_with_slash = f"{prefix}/" if prefix else ""
+        try:
+            client = self._client()
+            resp = await asyncio.to_thread(
+                client.list_objects_v2,
+                Bucket=self._bucket,
+                Prefix=prefix_with_slash,
+            )
+            contents = resp.get("Contents", [])
+            files: list[RemoteFile] = []
+            for obj in contents:
+                key: str = obj["Key"]
+                if key.endswith("/"):
+                    continue
+                relative = key[len(prefix_with_slash) :] if prefix_with_slash else key
+                if "/" in relative:
+                    # Skip subdirectory entries — flat listing only
+                    continue
+                files.append(
+                    RemoteFile(
+                        filename=relative,
+                        size_bytes=obj.get("Size"),
+                        last_modified=obj.get("LastModified"),
+                    )
+                )
+            return files
+        except Exception as exc:
+            raise RemoteBackupProviderError(f"S3 list failed: {exc}") from exc
+
+    async def download_stream(self, path: str, filename: str) -> AsyncIterator[bytes]:
+        """Stream chunks of the S3 object. The S3 client is created lazily on first
+        iteration. The caller MUST iterate to EOF or call ``aclose()`` on the returned
+        generator — abandoning it leaves the connection open until GC.
+        """
+        if "/" in filename or "\\" in filename:
+            raise RemoteBackupProviderError("filename must not contain path separators")
+        key = self._build_key(path, filename)
+
+        async def _gen() -> AsyncIterator[bytes]:
+            try:
+                client = self._client()
+                resp = await asyncio.to_thread(
+                    client.get_object,
+                    Bucket=self._bucket,
+                    Key=key,
+                )
+                body = resp["Body"]
+                while True:
+                    chunk = await asyncio.to_thread(body.read, 64 * 1024)
+                    if not chunk:
+                        return
+                    yield chunk
+            except Exception as exc:
+                raise RemoteBackupProviderError(f"S3 download failed: {exc}") from exc
+
+        return _gen()

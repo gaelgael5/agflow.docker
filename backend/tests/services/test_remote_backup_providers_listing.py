@@ -11,6 +11,7 @@ from agflow.services.remote_backup_providers.protocol import (
     RemoteBackupProviderError,
     RemoteFile,
 )
+from agflow.services.remote_backup_providers.s3_provider import S3CompatibleProvider
 from agflow.services.remote_backup_providers.sftp_provider import SftpProvider
 
 
@@ -223,3 +224,96 @@ async def test_ftps_download_stream_yields_chunks():
             result.append(c)
 
     assert result == [b"data1", b"data2"]
+
+
+# ─── S3 ────────────────────────────────────────────────────────────────────
+
+
+def _s3_provider() -> S3CompatibleProvider:
+    return S3CompatibleProvider(
+        config={"bucket": "b", "region": "us-east-1"},
+        credentials={"access_key_id": "k", "secret_access_key": "s"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_s3_list_remote_returns_objects():
+    """list_remote returns objects under the prefix, skipping the dir marker."""
+    provider = _s3_provider()
+
+    client = MagicMock()
+    client.list_objects_v2.return_value = {
+        "Contents": [
+            {
+                "Key": "backups/x.sql.gz",
+                "Size": 4096,
+                "LastModified": datetime(2026, 5, 1, tzinfo=UTC),
+            },
+            {
+                "Key": "backups/y.sql.gz",
+                "Size": 8192,
+                "LastModified": datetime(2026, 5, 2, tzinfo=UTC),
+            },
+            {"Key": "backups/", "Size": 0, "LastModified": datetime(2026, 5, 1, tzinfo=UTC)},
+        ]
+    }
+
+    with patch.object(provider, "_client", return_value=client):
+        files = await provider.list_remote("backups")
+
+    assert sorted(f.filename for f in files) == ["x.sql.gz", "y.sql.gz"]
+
+
+@pytest.mark.asyncio
+async def test_s3_list_remote_empty_bucket():
+    """list_remote returns [] when no Contents key in the response."""
+    provider = _s3_provider()
+    client = MagicMock()
+    client.list_objects_v2.return_value = {}
+
+    with patch.object(provider, "_client", return_value=client):
+        files = await provider.list_remote("backups")
+
+    assert files == []
+
+
+@pytest.mark.asyncio
+async def test_s3_list_remote_raises_on_error():
+    """boto3 error → RemoteBackupProviderError."""
+    provider = _s3_provider()
+    client = MagicMock()
+    client.list_objects_v2.side_effect = RuntimeError("NoSuchBucket")
+
+    with (
+        patch.object(provider, "_client", return_value=client),
+        pytest.raises(RemoteBackupProviderError, match="S3 list failed"),
+    ):
+        await provider.list_remote("backups")
+
+
+@pytest.mark.asyncio
+async def test_s3_download_stream_yields_chunks():
+    """download_stream reads Body of get_object in 64KB chunks."""
+    provider = _s3_provider()
+
+    body = MagicMock()
+    body.read.side_effect = [b"chunk1", b"chunk2", b""]  # b"" = EOF
+
+    client = MagicMock()
+    client.get_object.return_value = {"Body": body}
+
+    with patch.object(provider, "_client", return_value=client):
+        result = []
+        async for c in await provider.download_stream("backups", "x.sql.gz"):
+            result.append(c)
+
+    assert result == [b"chunk1", b"chunk2"]
+
+
+@pytest.mark.asyncio
+async def test_s3_download_stream_rejects_path_separator():
+    """Filename safety check fires before iteration."""
+    provider = _s3_provider()
+    with pytest.raises(RemoteBackupProviderError, match="path separators"):
+        async for _ in await provider.download_stream("backups", "evil/escape"):
+            pass

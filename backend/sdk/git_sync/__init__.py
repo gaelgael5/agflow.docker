@@ -19,6 +19,7 @@ from sdk.git_sync.exceptions import (
 )
 from sdk.git_sync.export_service import ExportService
 from sdk.git_sync.git_service import GitService
+from sdk.git_sync.import_service import ImportService
 from sdk.git_sync.models import (
     AuthMode,
     DependencyGraph,
@@ -48,6 +49,7 @@ __all__ = [
     "ImportConflictError",
     "ImportPreview",
     "ImportResult",
+    "ImportService",
     "SyncResult",
     "TableNotFoundError",
     "TablePreview",

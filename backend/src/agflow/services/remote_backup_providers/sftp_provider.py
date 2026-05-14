@@ -115,6 +115,13 @@ class SftpProvider:
             raise RemoteBackupProviderError(f"SFTP list failed: {exc}") from exc
 
     async def download_stream(self, path: str, filename: str) -> AsyncIterator[bytes]:
+        """Stream chunks of the remote file.
+
+        The SSH connection is opened lazily on first iteration.  The caller
+        MUST iterate to EOF or call ``aclose()`` on the returned generator —
+        abandoning it without doing so leaves the SSH connection open until
+        garbage collection, which is non-deterministic.
+        """
         if "/" in filename or "\\" in filename:
             raise RemoteBackupProviderError("filename must not contain path separators")
         remote_file_path = f"{path.rstrip('/')}/{filename}"

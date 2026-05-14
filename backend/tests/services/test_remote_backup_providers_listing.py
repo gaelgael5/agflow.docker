@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -70,6 +70,9 @@ async def test_sftp_list_remote_returns_files():
     assert len(files) == 1
     assert files[0].filename == "backup.sql.gz"
     assert files[0].size_bytes == 1024
+    # mtime=1714521600 → 2024-05-01 00:00:00 UTC
+    assert files[0].last_modified == datetime(2024, 5, 1, 0, 0, 0, tzinfo=UTC)
+    assert files[0].last_modified.tzinfo is UTC
 
 
 @pytest.mark.asyncio

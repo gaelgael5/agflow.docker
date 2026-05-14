@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from agflow.auth.dependencies import require_admin
 from agflow.db.pool import get_pool
 from agflow.schemas.local_backups import LocalBackupSummary
-from agflow.services import local_backups_service, users_service
+from agflow.schemas.remote_backup_files import PullRequest, RestoreResult
+from agflow.services import local_backups_service, restore_service, users_service
 from agflow.services import remote_backup_connections_service as rbc_service
 from agflow.services.remote_backup_providers import RemoteBackupProviderError
 from agflow.services.remote_backup_providers.factory import get_provider
@@ -75,3 +76,52 @@ async def push_to_remote(backup_id: UUID, remote_id: UUID) -> dict:
     except RemoteBackupProviderError as exc:
         _log.warning("push_to_remote.provider_error", error=str(exc))
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/pull-from-remote/{remote_id}",
+    response_model=LocalBackupSummary,
+    status_code=201,
+)
+async def pull_from_remote(
+    remote_id: UUID,
+    body: PullRequest,
+    admin_email: str = Depends(require_admin),
+) -> LocalBackupSummary:
+    """Pull un fichier distant vers les backups locaux."""
+    admin_user = await users_service.get_by_email(admin_email)
+    user_uuid = admin_user.id if admin_user else None
+    try:
+        return await local_backups_service.pull_remote_to_local(
+            remote_id,
+            filename=body.filename,
+            created_by_user_id=user_uuid,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/{backup_id}/restore", response_model=RestoreResult, status_code=200)
+async def restore_backup(backup_id: UUID, body: PullRequest) -> RestoreResult:
+    """Restaure (DROP + recreate) un backup local dans Postgres.
+
+    L'admin doit retaper exactement le filename pour confirmer l'action destructive.
+    """
+    backup = await local_backups_service.get_backup(backup_id)
+    if backup is None:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    if body.filename != backup.filename:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Filename does not match (expected {backup.filename!r})",
+        )
+    try:
+        return await restore_service.restore_local_backup(backup_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -16,6 +16,7 @@ from agflow.schemas.remote_backup_connections import (
     TestConnectionResult,
     TestConnectionWithIdRequest,
 )
+from agflow.schemas.remote_backup_files import RemoteBackupFileDTO
 from agflow.services import remote_backup_connections_service as rbc_service
 from agflow.services import users_service
 from agflow.services.remote_backup_providers import RemoteBackupProviderError
@@ -137,3 +138,38 @@ async def test_connection_saved(
     except Exception as exc:
         _log.warning("rbc.test_connection_saved.unexpected", error=str(exc))
         return TestConnectionResult(ok=False, error="unexpected", message=str(exc))
+
+
+@router.get("/{connection_id}/files", response_model=list[RemoteBackupFileDTO])
+async def list_remote_files(connection_id: UUID) -> list[RemoteBackupFileDTO]:
+    """Liste les fichiers présents sur la cible distante (usage='full')."""
+    async with (await get_pool()).acquire() as conn:
+        dto = await rbc_service.get_connection(conn, connection_id)
+        if dto is None:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        credentials = await rbc_service.fetch_credentials(dto)
+
+    if credentials is None:
+        raise HTTPException(status_code=422, detail="No credentials configured")
+
+    remote_path = rbc_service.resolve_remote_path(dto.config, dto.kind, "full")
+    if remote_path is None:
+        raise HTTPException(
+            status_code=422, detail="No full backup path configured"
+        )
+
+    try:
+        provider = get_provider(dto.kind, dto.config, credentials)
+        files = await provider.list_remote(remote_path)
+    except RemoteBackupProviderError as exc:
+        _log.warning("list_remote_files.provider_error", error=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return [
+        RemoteBackupFileDTO(
+            filename=f.filename,
+            size_bytes=f.size_bytes,
+            last_modified=f.last_modified,
+        )
+        for f in files
+    ]

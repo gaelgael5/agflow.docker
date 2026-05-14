@@ -132,24 +132,36 @@ gen_fernet_key() {
   python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
 }
 
-# Substitue la valeur d'une clé `KEY=...` dans un .env (la ligne doit exister).
-# Délimiteur sed = `#` pour ne pas être gêné par `/` (présent dans base64).
-# Les valeurs générées ne contiennent ni `#` ni `&` (caractères spéciaux sed).
+# Upsert idempotent d'une variable dans un .env :
+#   - substitue la ligne `KEY=...` si la clé existe déjà
+#   - append `KEY=value` sinon
+#
+# Implémenté via awk (et non sed) pour gérer correctement les valeurs
+# contenant `$`, `/`, `#`, `&`, etc. Cas critique : les hashes bcrypt
+# (`$2b$12$...`) sont mangés par bash dans un `sed -i "s#…#${value}#"`
+# car bash interpole `$2`, `$2y`, … avant que sed ne voie la chaîne.
+# `awk -v v="$value"` passe la valeur littéralement, sans réinterprétation.
 set_env_value() {
   local file="$1" key="$2" value="$3"
-  sed -i "s#^${key}=.*#${key}=${value}#" "$file"
+  local tmp
+  tmp="$(mktemp)"
+  awk -v k="$key" -v v="$value" '
+    BEGIN { matched = 0 }
+    {
+      if ($0 ~ "^" k "=") {
+        print k "=" v
+        matched = 1
+      } else {
+        print
+      }
+    }
+    END { if (!matched) print k "=" v }
+  ' "$file" > "$tmp" && mv "$tmp" "$file"
 }
 
-# Variante idempotente : substitue si la clé existe, append sinon.
-# À utiliser quand on ne peut pas garantir la présence de la ligne (par
-# ex. ADMIN_PASSWORD n'est pas dans .env.example, on l'ajoute à la volée).
+# Alias historique — l'upsert est désormais le comportement par défaut.
 upsert_env_value() {
-  local file="$1" key="$2" value="$3"
-  if grep -qE "^${key}=" "$file"; then
-    set_env_value "$file" "$key" "$value"
-  else
-    echo "${key}=${value}" >> "$file"
-  fi
+  set_env_value "$@"
 }
 
 # Lit la valeur d'une variable depuis .env. Retourne une chaîne vide si le

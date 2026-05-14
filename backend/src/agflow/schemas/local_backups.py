@@ -12,3 +12,4 @@ class LocalBackupSummary(BaseModel):
     size_bytes: int | None
     status: str
     created_at: datetime
+    source_remote_connection_id: UUID | None = None

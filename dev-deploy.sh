@@ -5,7 +5,9 @@
 # Cible : machine de dev (LXC, VM, poste local) avec Docker installé.
 # Le script :
 #   1. git pull (ou clone si pas encore fait)
-#   2. Crée .env depuis .env.example si absent, génère les secrets aléatoires
+#   2. .env : création depuis .env.example si absent (+ génération des secrets
+#      aléatoires), sinon sync des nouvelles vars + vérification ADMIN_PASSWORD
+#      et ADMIN_PASSWORD_HASH
 #   3. Crée le dossier data/ pour les volumes Docker (gitignored)
 #   4. Génère la clé SSH backend si absente (/root/.ssh/backend_key)
 #   5. Build les images locales backend + frontend
@@ -14,6 +16,12 @@
 # Usage :
 #   ./dev-deploy.sh                       # reste sur la branche courante, pull
 #   ./dev-deploy.sh feat/ma-branche       # checkout cette branche, puis pull
+#   ./dev-deploy.sh --reset               # DESTRUCTIF : down -v + redeploy
+#   ./dev-deploy.sh feat/ma-branche --reset
+#
+# Le flag --reset force `down -v` (suppression des volumes nommés, dont
+# `postgres_data`). Utile pour repartir d'une base fraîche en dev. Ne supprime
+# PAS le dossier `data/` (backups, dockerfiles, roles) ni `.env`.
 #
 # Pour la PROD (pull GHCR, pas de build local), utiliser scripts/refresh.sh.
 
@@ -22,9 +30,29 @@ set -euo pipefail
 REPO_URL="${REPO_URL:-git@github.com:gaelgael5/agflow.docker.git}"
 COMPOSE_FILE="docker-compose.dev.yml"
 
-# Branche cible : argument positionnel optionnel. Si absent, on reste sur la
-# branche courante du repo (pas de switch automatique).
-TARGET_BRANCH="${1:-}"
+# Parse args : on accepte un mix « branche optionnelle » + « flags --xxx ».
+# Tout ce qui commence par `--` est un flag ; le reste est la branche.
+TARGET_BRANCH=""
+RESET_DATA=0
+for arg in "$@"; do
+  case "$arg" in
+    --reset)
+      RESET_DATA=1
+      ;;
+    --*)
+      echo "✗ Flag inconnu : ${arg}" >&2
+      echo "  Flags supportés : --reset" >&2
+      exit 1
+      ;;
+    *)
+      if [ -n "$TARGET_BRANCH" ]; then
+        echo "✗ Plusieurs branches passées en argument : '${TARGET_BRANCH}' et '${arg}'" >&2
+        exit 1
+      fi
+      TARGET_BRANCH="$arg"
+      ;;
+  esac
+done
 
 # ─── 0) Pré-requis : Docker installé ─────────────────────────────────────────
 
@@ -104,12 +132,129 @@ gen_fernet_key() {
   python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
 }
 
-# Substitue la valeur d'une clé `KEY=...` dans un .env.
+# Substitue la valeur d'une clé `KEY=...` dans un .env (la ligne doit exister).
 # Délimiteur sed = `#` pour ne pas être gêné par `/` (présent dans base64).
 # Les valeurs générées ne contiennent ni `#` ni `&` (caractères spéciaux sed).
 set_env_value() {
   local file="$1" key="$2" value="$3"
   sed -i "s#^${key}=.*#${key}=${value}#" "$file"
+}
+
+# Variante idempotente : substitue si la clé existe, append sinon.
+# À utiliser quand on ne peut pas garantir la présence de la ligne (par
+# ex. ADMIN_PASSWORD n'est pas dans .env.example, on l'ajoute à la volée).
+upsert_env_value() {
+  local file="$1" key="$2" value="$3"
+  if grep -qE "^${key}=" "$file"; then
+    set_env_value "$file" "$key" "$value"
+  else
+    echo "${key}=${value}" >> "$file"
+  fi
+}
+
+# Lit la valeur d'une variable depuis .env. Retourne une chaîne vide si le
+# fichier n'existe pas ou si la clé est absente. La valeur conserve les
+# espaces internes ; on strip uniquement le \r terminal (fichiers édités
+# sous Windows).
+read_env_var() {
+  local key="$1"
+  [ -f ".env" ] || return 0
+  awk -F'=' -v k="$key" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' .env | tr -d '\r'
+}
+
+# Calcule le hash bcrypt d'un mot de passe en clair. Stdout = hash.
+# Retourne 1 si python3-bcrypt n'est pas installé. Le password est passé
+# via stdin (pas via argv) pour éviter qu'il fuite dans `ps`.
+bcrypt_hash() {
+  local password="$1"
+  python3 - "$password" <<'PY' 2>/dev/null
+import sys
+import bcrypt
+pwd = sys.argv[1].encode()
+print(bcrypt.hashpw(pwd, bcrypt.gensalt()).decode())
+PY
+}
+
+# Ajoute au .env les clés présentes dans .env.example mais manquantes côté
+# local (typiquement : nouvelles variables introduites par un git pull). Les
+# valeurs existantes ne sont JAMAIS écrasées — on ajoute seulement les clés
+# absentes, avec la valeur par défaut du .env.example.
+sync_new_vars_from_example() {
+  local env_file=".env" example_file=".env.example"
+  [ -f "$env_file" ] || return 0
+  [ -f "$example_file" ] || return 0
+  local added=()
+  while IFS= read -r line; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    local key="${line%%=*}"
+    [ -z "$key" ] && continue
+    if ! grep -qE "^${key}=" "$env_file"; then
+      if [ ${#added[@]} -eq 0 ]; then
+        {
+          echo ""
+          echo "# Nouvelles variables ajoutées par dev-deploy.sh ($(date -I))"
+        } >> "$env_file"
+      fi
+      echo "$line" >> "$env_file"
+      added+=("$key")
+    fi
+  done < "$example_file"
+  if [ ${#added[@]} -gt 0 ]; then
+    echo "      + ${#added[@]} nouvelle(s) variable(s) ajoutée(s) au .env :"
+    for k in "${added[@]}"; do
+      echo "          - ${k}"
+    done
+  fi
+}
+
+# Garantit que ADMIN_PASSWORD (clair) et ADMIN_PASSWORD_HASH (bcrypt) sont
+# remplis dans .env. Logique :
+#   - ADMIN_PASSWORD vide   → génère un mot de passe aléatoire et l'inscrit
+#   - ADMIN_PASSWORD_HASH vide → recalcule le hash bcrypt depuis ADMIN_PASSWORD
+# Si on regénère ADMIN_PASSWORD, le hash existant est invalidé et recalculé
+# automatiquement. Idempotent : si les deux sont déjà remplis, ne fait rien.
+ensure_admin_credentials() {
+  local file=".env"
+  [ -f "$file" ] || return 0
+
+  local current_pass current_hash
+  current_pass="$(read_env_var ADMIN_PASSWORD)"
+  current_hash="$(read_env_var ADMIN_PASSWORD_HASH)"
+
+  local pass_was_generated=0
+  if [ -z "$current_pass" ]; then
+    current_pass="$(gen_urlsafe 24)"
+    upsert_env_value "$file" "ADMIN_PASSWORD" "$current_pass"
+    pass_was_generated=1
+    # Le hash existant (s'il y en avait un) ne correspond plus au nouveau pass.
+    current_hash=""
+    echo "      ✓ ADMIN_PASSWORD régénéré (était vide)"
+  fi
+
+  if [ -z "$current_hash" ]; then
+    if python3 -c "import bcrypt" 2>/dev/null; then
+      local new_hash
+      new_hash="$(bcrypt_hash "$current_pass")"
+      if [ -n "$new_hash" ]; then
+        upsert_env_value "$file" "ADMIN_PASSWORD_HASH" "$new_hash"
+        echo "      ✓ ADMIN_PASSWORD_HASH régénéré (bcrypt depuis ADMIN_PASSWORD)"
+      else
+        echo "      ⚠  ADMIN_PASSWORD_HASH : échec de l'appel bcrypt — à renseigner manuellement"
+      fi
+    else
+      echo "      ⚠  ADMIN_PASSWORD_HASH vide et python3-bcrypt indisponible"
+      echo "         Installer : apt install python3-bcrypt   (ou uv add bcrypt côté backend)"
+      echo "         Puis : ADMIN_PASSWORD_HASH=\$(python3 -c \"import bcrypt; print(bcrypt.hashpw(b'\$ADMIN_PASSWORD', bcrypt.gensalt()).decode())\")"
+    fi
+  fi
+
+  # Si on a généré le pass cette fois, on l'affiche en clair une fois pour
+  # que l'admin puisse le copier sans aller fouiller dans .env.
+  if [ "$pass_was_generated" = "1" ]; then
+    echo "      → Nouveau mot de passe admin : ${current_pass}"
+  fi
 }
 
 # Détecte l'IPv4 de l'interface eth0.
@@ -136,17 +281,9 @@ if [ ! -f ".env" ]; then
     set_env_value .env "API_KEY_SALT" "$API_SALT"
     set_env_value .env "AGFLOW_INFRA_KEY" "$INFRA_KEY"
 
-    # Génère un mot de passe aléatoire, le stocke en clair dans .env,
-    # puis dérive ADMIN_PASSWORD_HASH via bcrypt.
-    ADMIN_PASS="$(gen_urlsafe 24)"
-    echo "ADMIN_PASSWORD=${ADMIN_PASS}" >> .env
-    if python3 -c "import bcrypt" 2>/dev/null; then
-      ADMIN_HASH="$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'${ADMIN_PASS}', bcrypt.gensalt()).decode())")"
-      set_env_value .env "ADMIN_PASSWORD_HASH" "$ADMIN_HASH"
-      ADMIN_HASH_OK=1
-    else
-      ADMIN_HASH_OK=0
-    fi
+    # ADMIN_PASSWORD + ADMIN_PASSWORD_HASH : générés via la routine partagée
+    # (idempotente). À ce stade les deux sont vides → génération complète.
+    ensure_admin_credentials
 
     # `.env` contient des secrets : restreindre les permissions.
     chmod 600 .env
@@ -155,26 +292,18 @@ if [ ! -f ".env" ]; then
     echo "      ✓ JWT_SECRET        : généré ($(echo -n "$JWT_SECRET" | wc -c) chars)"
     echo "      ✓ API_KEY_SALT      : généré ($(echo -n "$API_SALT" | wc -c) chars)"
     echo "      ✓ AGFLOW_INFRA_KEY  : généré (clé Fernet)"
-    echo "      ✓ ADMIN_PASSWORD    : généré (stocké dans .env)"
-    if [ "$ADMIN_HASH_OK" -eq 1 ]; then
-      echo "      ✓ ADMIN_PASSWORD_HASH : généré (bcrypt)"
-    else
-      echo "      ⚠  ADMIN_PASSWORD_HASH : bcrypt absent — à renseigner manuellement :"
-      echo "         python3 -c \"import bcrypt; print(bcrypt.hashpw(b'MOT_DE_PASSE', bcrypt.gensalt()).decode())\""
-    fi
-    echo
-    echo "      ⚠  Login admin : ${ADMIN_EMAIL:-admin@agflow.local} / ${ADMIN_PASS}"
-    echo "         (stocké dans .env — chmod 600)"
     echo
     echo "      ⚠  À RENSEIGNER MANUELLEMENT dans .env :"
-    echo "         - ADMIN_EMAIL                (si autre que admin@agflow.local)"
+    echo "         - ADMIN_EMAIL                (si autre que admin@agflow.example.com)"
     echo "         - HARPOCRATE_KEY / URL        (token hrpv_1_* fourni par le coffre)"
     echo "         - KEYCLOAK_* + AUTH_MODE      (si auth OIDC Keycloak)"
   else
     echo "[2/6] ⚠  .env absent et .env.example introuvable — config requise pour démarrer"
   fi
 else
-  echo "[2/6] .env déjà présent (secrets non régénérés)."
+  echo "[2/6] .env déjà présent — sync des nouvelles vars + vérification admin..."
+  sync_new_vars_from_example
+  ensure_admin_credentials
 fi
 
 # ─── 3) Dossier data/ pour volumes Docker (ignoré par .gitignore) ────────────
@@ -212,7 +341,16 @@ docker build -t agflow-frontend:latest frontend/
 # ─── 6) Stop + cleanup orphelins + pull registry + up ────────────────────────
 
 echo "[6/6] Arrêt de la stack (incl. orphelins)..."
-docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
+if [ "$RESET_DATA" = "1" ]; then
+  # `down -v` supprime aussi les volumes nommés (postgres_data, caddy_data,
+  # caddy_config). Les bind mounts (`./data`, `/root/.ssh/backend_key`) ne
+  # sont jamais touchés par Compose.
+  echo "      ⚠  --reset : down -v (suppression des volumes nommés, DESTRUCTIF)..."
+  docker compose -f "$COMPOSE_FILE" down -v --remove-orphans || true
+  echo "      ✓ Volumes nommés supprimés — Postgres se réinitialisera avec POSTGRES_PASSWORD du .env"
+else
+  docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
+fi
 
 echo "      Pull images registry (postgres, redis, caddy, pgweb)..."
 docker compose -f "$COMPOSE_FILE" pull postgres redis caddy pgweb || true
@@ -240,3 +378,18 @@ cat <<EOF
   pgweb    →  http://${HOST}:8081
 ═════════════════════════════════════════════════════════════════
 EOF
+
+# ─── Affichage credentials admin local ──────────────────────────────────────
+# Rappel à chaque déploiement : login + mot de passe admin. Évite à l'admin
+# d'aller fouiller dans .env quand il lance le script depuis une nouvelle
+# session. Affiché uniquement si les deux valeurs sont présentes.
+ADMIN_EMAIL_VAL="$(read_env_var ADMIN_EMAIL)"
+ADMIN_PWD_VAL="$(read_env_var ADMIN_PASSWORD)"
+if [ -n "$ADMIN_EMAIL_VAL" ] && [ -n "$ADMIN_PWD_VAL" ]; then
+  cat <<EOF
+  → Admin local :
+      email    : ${ADMIN_EMAIL_VAL}
+      password : ${ADMIN_PWD_VAL}
+═════════════════════════════════════════════════════════════════
+EOF
+fi

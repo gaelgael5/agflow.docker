@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from agflow.services.remote_backup_providers.ftps_provider import FtpsProvider
 from agflow.services.remote_backup_providers.protocol import (
     RemoteBackupProvider,
     RemoteBackupProviderError,
@@ -130,3 +131,95 @@ async def test_sftp_download_stream_yields_chunks():
             result_chunks.append(c)
 
     assert result_chunks == [b"chunk1", b"chunk2"]
+
+
+# ─── FTPS ──────────────────────────────────────────────────────────────────
+
+
+def _ftps_provider() -> FtpsProvider:
+    return FtpsProvider(
+        config={"host": "h", "port": 21, "use_tls": False},
+        credentials={"username": "u", "password": "p"},
+    )
+
+
+async def _async_iter(items: list[bytes]):
+    for it in items:
+        yield it
+
+
+@pytest.mark.asyncio
+async def test_ftps_list_remote_filters_directories():
+    """list_remote returns only files (type='file'), not dirs."""
+    provider = _ftps_provider()
+
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.login = AsyncMock()
+    mock_client.list = AsyncMock(
+        return_value=[
+            (
+                MagicMock(parts=["/backups", "x.sql.gz"]),
+                {"type": "file", "size": "2048", "modify": "20260101000000"},
+            ),
+            (
+                MagicMock(parts=["/backups", "subdir"]),
+                {"type": "dir", "size": "0"},
+            ),
+        ]
+    )
+
+    with patch("aioftp.Client.context", return_value=mock_client):
+        files = await provider.list_remote("/backups")
+
+    assert len(files) == 1
+    assert files[0].filename == "x.sql.gz"
+    assert files[0].size_bytes == 2048
+
+
+@pytest.mark.asyncio
+async def test_ftps_list_remote_raises_on_error():
+    """Connection error → RemoteBackupProviderError('FTPS list failed')."""
+    provider = _ftps_provider()
+    with (
+        patch(
+            "aioftp.Client.context",
+            side_effect=ConnectionError("nope"),
+        ),
+        pytest.raises(RemoteBackupProviderError, match="FTPS list failed"),
+    ):
+        await provider.list_remote("/backups")
+
+
+@pytest.mark.asyncio
+async def test_ftps_download_stream_rejects_path_separator():
+    """Filename safety check fires before iteration."""
+    provider = _ftps_provider()
+    with pytest.raises(RemoteBackupProviderError, match="path separators"):
+        async for _ in await provider.download_stream("/p", "evil/escape"):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_ftps_download_stream_yields_chunks():
+    """download_stream yields the chunks returned by aioftp.iter_by_block."""
+    provider = _ftps_provider()
+
+    stream = MagicMock()
+    stream.__aenter__ = AsyncMock(return_value=stream)
+    stream.__aexit__ = AsyncMock(return_value=False)
+    stream.iter_by_block = MagicMock(return_value=_async_iter([b"data1", b"data2"]))
+
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.login = AsyncMock()
+    mock_client.download_stream = MagicMock(return_value=stream)
+
+    with patch("aioftp.Client.context", return_value=mock_client):
+        result = []
+        async for c in await provider.download_stream("/backups", "x.sql.gz"):
+            result.append(c)
+
+    assert result == [b"data1", b"data2"]

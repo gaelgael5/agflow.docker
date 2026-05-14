@@ -30,6 +30,7 @@ import { UsersPage } from "./pages/UsersPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ApiDocsPage } from "./pages/ApiDocsPage";
 import { RemoteBackupConnectionsPage } from "./pages/RemoteBackupConnectionsPage";
+import { BackupsPage } from "./pages/BackupsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -265,6 +266,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <RemoteBackupConnectionsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/backups"
+        element={
+          <ProtectedRoute>
+            <BackupsPage />
           </ProtectedRoute>
         }
       />

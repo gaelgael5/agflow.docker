@@ -105,6 +105,7 @@
     "section_access": "Access",
     "section_infra": "Infrastructure",
     "section_orchestration": "Orchestration",
+    "section_backups": "Backups",
     "api_public": "Public API",
     "supervision": "Supervision",
     "theme_dark": "Dark theme"

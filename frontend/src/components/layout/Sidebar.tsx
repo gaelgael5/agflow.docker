@@ -2,10 +2,12 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Activity,
+  Archive,
   Bot,
   BookMarked,
   Boxes,
   Braces,
+  Cloud,
   FileCode2,
   FolderKanban,
   Globe,
@@ -111,6 +113,17 @@ export function Sidebar({ open = false, onClose }: Props) {
               { to: "/agents", label: t("agents.page_title"), icon: Bot },
               { to: "/api-docs", label: t("sidebar.api_public"), icon: Globe },
               { to: "/supervision", label: t("sidebar.supervision"), icon: Activity, disabled: true },
+            ],
+          },
+        ]
+      : []),
+    ...(isAdmin
+      ? [
+          {
+            title: t("sidebar.section_backups"),
+            items: [
+              { to: "/backups", label: t("backups.sidebar"), icon: Archive },
+              { to: "/backup-remotes", label: t("backup_remotes.title"), icon: Cloud },
             ],
           },
         ]

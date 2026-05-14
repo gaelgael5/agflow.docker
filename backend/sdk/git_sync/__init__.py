@@ -16,6 +16,7 @@ from sdk.git_sync.exceptions import (
     TableNotFoundError,
     VaultResolutionError,
 )
+from sdk.git_sync.git_service import GitService
 from sdk.git_sync.models import (
     AuthMode,
     DependencyGraph,
@@ -26,6 +27,7 @@ from sdk.git_sync.models import (
     TablePreview,
     TableRef,
 )
+from sdk.git_sync.vault_resolver import VaultResolver, is_vault_ref
 
 __all__ = [
     "AuthMode",
@@ -37,6 +39,7 @@ __all__ = [
     "GitConflictError",
     "GitDirtyRepoError",
     "GitPushError",
+    "GitService",
     "GitSyncError",
     "ImportConflictError",
     "ImportPreview",
@@ -46,4 +49,6 @@ __all__ = [
     "TablePreview",
     "TableRef",
     "VaultResolutionError",
+    "VaultResolver",
+    "is_vault_ref",
 ]

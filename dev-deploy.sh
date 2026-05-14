@@ -174,17 +174,42 @@ read_env_var() {
   awk -F'=' -v k="$key" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' .env | tr -d '\r'
 }
 
-# Calcule le hash bcrypt d'un mot de passe en clair. Stdout = hash.
-# Retourne 1 si python3-bcrypt n'est pas installé. Le password est passé
-# via stdin (pas via argv) pour éviter qu'il fuite dans `ps`.
+# Calcule le hash bcrypt d'un mot de passe en clair. Stdout = hash bcrypt.
+# Hypothèse : `ensure_bcrypt_available` a été appelée et a réussi en amont.
+# Stderr n'est PAS muselé : si bcrypt explose à l'exécution (cas pathologique
+# de cffi mal lié, etc.), on veut voir la stacktrace plutôt qu'écrire un
+# .env silencieusement vide.
 bcrypt_hash() {
   local password="$1"
-  python3 - "$password" <<'PY' 2>/dev/null
+  python3 - "$password" <<'PY'
 import sys
 import bcrypt
 pwd = sys.argv[1].encode()
 print(bcrypt.hashpw(pwd, bcrypt.gensalt()).decode())
 PY
+}
+
+# Vérifie que python3 + bcrypt sont opérationnels. Test FONCTIONNEL (un
+# hashpw réel) plutôt qu'un simple `import` : sur certaines installs,
+# `import bcrypt` réussit mais `bcrypt.hashpw` échoue (cffi cassé,
+# binaires manquants, etc.).
+# Si manque et qu'on a apt, on tente d'installer python3-bcrypt
+# automatiquement (script de dev → on s'autorise à modifier l'env). Sinon
+# on renvoie 1 — l'appelant doit prendre une décision (typiquement: exit).
+ensure_bcrypt_available() {
+  if python3 -c "import bcrypt; bcrypt.hashpw(b'x', bcrypt.gensalt())" >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "      python3-bcrypt indisponible — installation via apt..."
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1 || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-bcrypt >/dev/null 2>&1 || true
+  fi
+  if python3 -c "import bcrypt; bcrypt.hashpw(b'x', bcrypt.gensalt())" >/dev/null 2>&1; then
+    echo "      ✓ python3-bcrypt installé."
+    return 0
+  fi
+  return 1
 }
 
 # Ajoute au .env les clés présentes dans .env.example mais manquantes côté
@@ -246,20 +271,32 @@ ensure_admin_credentials() {
   fi
 
   if [ -z "$current_hash" ]; then
-    if python3 -c "import bcrypt" 2>/dev/null; then
-      local new_hash
-      new_hash="$(bcrypt_hash "$current_pass")"
-      if [ -n "$new_hash" ]; then
-        upsert_env_value "$file" "ADMIN_PASSWORD_HASH" "$new_hash"
-        echo "      ✓ ADMIN_PASSWORD_HASH régénéré (bcrypt depuis ADMIN_PASSWORD)"
-      else
-        echo "      ⚠  ADMIN_PASSWORD_HASH : échec de l'appel bcrypt — à renseigner manuellement"
-      fi
-    else
-      echo "      ⚠  ADMIN_PASSWORD_HASH vide et python3-bcrypt indisponible"
-      echo "         Installer : apt install python3-bcrypt   (ou uv add bcrypt côté backend)"
-      echo "         Puis : ADMIN_PASSWORD_HASH=\$(python3 -c \"import bcrypt; print(bcrypt.hashpw(b'\$ADMIN_PASSWORD', bcrypt.gensalt()).decode())\")"
+    if ! ensure_bcrypt_available; then
+      echo "      ✗ python3-bcrypt indisponible et installation automatique échouée." >&2
+      echo "         Installer manuellement : apt install python3-bcrypt" >&2
+      echo "         Puis relancer ./dev-deploy.sh" >&2
+      exit 1
     fi
+    local new_hash
+    new_hash="$(bcrypt_hash "$current_pass")"
+    if [ -z "$new_hash" ] || [ "${new_hash#\$2}" = "$new_hash" ]; then
+      echo "      ✗ bcrypt_hash a retourné une valeur invalide : '${new_hash}'" >&2
+      echo "         (un hash bcrypt commence par \$2a/\$2b/\$2y)" >&2
+      exit 1
+    fi
+    set_env_value "$file" "ADMIN_PASSWORD_HASH" "$new_hash"
+
+    # Sanity check : on relit la valeur écrite. Si elle ne ressemble plus
+    # à un bcrypt, on a un bug dans set_env_value et il faut planter
+    # immédiatement plutôt que de produire un .env inutilisable.
+    local readback
+    readback="$(read_env_var ADMIN_PASSWORD_HASH)"
+    if [ -z "$readback" ] || [ "${readback#\$2}" = "$readback" ]; then
+      echo "      ✗ Hash relu depuis .env corrompu : '${readback}'" >&2
+      echo "         Le hash a été calculé correctement mais l'écriture .env l'a abîmé." >&2
+      exit 1
+    fi
+    echo "      ✓ ADMIN_PASSWORD_HASH régénéré (bcrypt depuis ADMIN_PASSWORD)"
   fi
 
   # Si on a généré le pass cette fois, on l'affiche en clair une fois pour

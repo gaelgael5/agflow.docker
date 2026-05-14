@@ -1396,5 +1396,66 @@
     "test_request_failed": "Request failed",
     "delete_aria": "Delete this connection",
     "delete_description": "Delete \"{{name}}\"? This action is irreversible."
+  },
+  "backups": {
+    "page_title": "Backups",
+    "page_subtitle": "Manage local and remote database backups",
+    "sidebar": "Backups",
+    "local": {
+      "title": "Local backups",
+      "subtitle": "Dumps stored on the server disk",
+      "empty": "No local backups",
+      "create": "Create backup",
+      "creating": "Creating…",
+      "filename": "Filename",
+      "size": "Size",
+      "status": "Status",
+      "created_at": "Created at",
+      "source": "Source",
+      "source_remote": "Pulled from {{name}}",
+      "source_local": "Local dump",
+      "actions": "Actions",
+      "push": "Push…",
+      "restore": "Restore…",
+      "delete": "Delete",
+      "delete_confirm": "Delete backup \"{{filename}}\"?"
+    },
+    "remote": {
+      "title": "Remote backups",
+      "subtitle": "Files present on a remote connection",
+      "select_connection": "Select a connection",
+      "no_connection": "Pick a connection to list its files",
+      "empty": "No files on this target",
+      "filename": "Filename",
+      "size": "Size",
+      "last_modified": "Modified at",
+      "pull": "Pull to local",
+      "pulling": "Pulling…",
+      "load_error": "Failed to list remote files"
+    },
+    "restore": {
+      "dialog": {
+        "title": "Restore database",
+        "warning": "WARNING: this will drop all current data and replace it with the backup.",
+        "instructions": "To confirm, type the filename exactly: {{filename}}",
+        "filenameLabel": "Filename",
+        "confirm": "Confirm restore"
+      },
+      "running": "Restore in progress…",
+      "success": "Restore completed (exit {{code}})",
+      "error": "Restore failed: {{message}}"
+    },
+    "push": {
+      "dialog_title": "Push to remote target",
+      "select_remote": "Select target",
+      "confirm": "Push",
+      "running": "Uploading…",
+      "success": "Upload complete ({{bytes}} bytes)",
+      "error": "Upload failed: {{message}}"
+    },
+    "pull": {
+      "success": "\"{{filename}}\" pulled locally",
+      "error": "Pull failed: {{message}}"
+    }
   }
 }

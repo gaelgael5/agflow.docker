@@ -1403,5 +1403,66 @@
     "test_request_failed": "Échec de la requête",
     "delete_aria": "Supprimer cette connexion",
     "delete_description": "Supprimer « {{name}} » ? Cette action est irréversible."
+  },
+  "backups": {
+    "page_title": "Sauvegardes",
+    "page_subtitle": "Gérer les sauvegardes locales et distantes de la base de données",
+    "sidebar": "Sauvegardes",
+    "local": {
+      "title": "Sauvegardes locales",
+      "subtitle": "Dumps stockés sur le disque du serveur",
+      "empty": "Aucune sauvegarde locale",
+      "create": "Créer une sauvegarde",
+      "creating": "Création en cours…",
+      "filename": "Nom du fichier",
+      "size": "Taille",
+      "status": "Statut",
+      "created_at": "Créée le",
+      "source": "Origine",
+      "source_remote": "Pull depuis {{name}}",
+      "source_local": "Dump local",
+      "actions": "Actions",
+      "push": "Pousser…",
+      "restore": "Restaurer…",
+      "delete": "Supprimer",
+      "delete_confirm": "Supprimer la sauvegarde « {{filename}} » ?"
+    },
+    "remote": {
+      "title": "Sauvegardes distantes",
+      "subtitle": "Fichiers présents sur une connexion distante",
+      "select_connection": "Sélectionner une connexion",
+      "no_connection": "Choisissez une connexion pour lister ses fichiers",
+      "empty": "Aucun fichier sur cette cible",
+      "filename": "Nom du fichier",
+      "size": "Taille",
+      "last_modified": "Modifié le",
+      "pull": "Tirer en local",
+      "pulling": "Tirage en cours…",
+      "load_error": "Impossible de lister les fichiers distants"
+    },
+    "restore": {
+      "dialog": {
+        "title": "Restaurer la base de données",
+        "warning": "ATTENTION : cette opération va supprimer toutes les données actuelles et les remplacer par celles du backup.",
+        "instructions": "Pour confirmer, saisissez exactement le nom du fichier : {{filename}}",
+        "filenameLabel": "Nom du fichier",
+        "confirm": "Confirmer la restauration"
+      },
+      "running": "Restauration en cours…",
+      "success": "Restauration terminée (exit {{code}})",
+      "error": "Échec de la restauration : {{message}}"
+    },
+    "push": {
+      "dialog_title": "Pousser vers une connexion distante",
+      "select_remote": "Sélectionner la cible",
+      "confirm": "Pousser",
+      "running": "Envoi en cours…",
+      "success": "Envoi terminé ({{bytes}} octets)",
+      "error": "Échec de l'envoi : {{message}}"
+    },
+    "pull": {
+      "success": "« {{filename}} » récupéré en local",
+      "error": "Échec du pull : {{message}}"
+    }
   }
 }

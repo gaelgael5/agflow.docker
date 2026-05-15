@@ -215,7 +215,23 @@ ssh pve "pct exec <CTID> -- docker compose -f /opt/<project name>/docker-compose
 ssh pve "pct exec <CTID> -- cat /opt/<project name>/.env"
 ```
 
-Supprimer manuellement après inspection :
+Supprimer le LXC après inspection — via le script `destroy-test.sh` (poussé
+sur pve par `run-test.sh` en même temps que `test-create-lxc.sh`) :
+
+```bash
+# Depuis le poste local
+./scripts/destroy-test.sh <CTID>
+
+# OU directement sur pve
+ssh pve
+/opt/scripts/destroy-test.sh <CTID>
+```
+
+Le script vérifie deux garde-fous avant de détruire :
+- CTID dans la plage `[CTID_MIN..CTID_MAX]` déclarée dans le fichier de config
+- nom du LXC commence par `test-`
+
+À défaut (cas extrême, garde-fou KO), suppression manuelle :
 
 ```bash
 ssh pve "pct stop <CTID> && pct destroy <CTID> --purge"
@@ -272,6 +288,36 @@ délai imparti. Vérifier :
 1. `pct exec <CTID> -- docker compose ps` — `agflow-backend` doit être `Up (healthy)`
 2. Migrations DB : `docker compose logs backend | grep migration`
 3. Connexion Postgres : `DATABASE_URL` dans `.env` cohérent avec le `POSTGRES_PASSWORD` généré
+
+---
+
+## Chantier ouvert : tests pytest dans le LXC
+
+L'objectif de la procédure était initialement d'exécuter dans le LXC frais
+**les tests unitaires backend qui nécessitent un environnement de test**
+(typiquement les tests qui touchent Postgres et sont actuellement marqués
+`@pytest.mark.skip` en local). Ce chantier est **reporté** car deux
+verrous techniques sont à lever d'abord :
+
+1. **`pytest` absent de l'image `agflow-backend:latest`** — le Dockerfile
+   backend fait `uv sync` sans `--group dev`, donc pytest et pytest-asyncio
+   ne sont pas dans l'image runtime. Pistes possibles :
+   - Modifier le Dockerfile pour inclure les dev deps en target dev (cible
+     multistage, ou simplement `uv sync --group dev` dans une image
+     `agflow-backend:test`)
+   - Faire un `docker compose run --rm --no-deps backend bash -c "uv sync
+     --group dev && uv run pytest"` (one-shot, plus lent mais sans toucher
+     à l'image runtime)
+2. **`conftest.py` hardcode `DATABASE_URL`** vers une IP obsolète (cf.
+   memory `project_tests_hardcoded_db_ip`). Tant que ce n'est pas corrigé,
+   les tests pointeront vers une DB qui n'existe pas dans le LXC frais.
+
+Une fois ces deux points résolus, ajouter une **étape 7bis** dans
+`test-create-lxc.sh` :
+```bash
+pct exec ${CTID} -- bash -c "cd ${APP_DIR} && \
+    docker compose -f docker-compose.dev.yml exec -T backend uv run pytest -v"
+```
 
 ---
 

@@ -3,9 +3,13 @@
 # run-test.sh — Orchestre le test d'intégration LXC depuis le poste local.
 #
 # Étapes :
-#   1. Pousse scripts/test-create-lxc.sh vers pve:/opt/scripts/ (écrase, chmod +x)
-#   2. Pousse scripts/.env.test.docker vers pve:/opt/scripts/ (écrase)
+#   1. Pousse scripts/test-create-lxc.sh ET scripts/destroy-test.sh vers
+#      pve:/opt/scripts/ (écrase, chmod +x)
+#   2. Pousse scripts/.env.test.docker vers pve:/opt/scripts/ (CRLF→LF, écrase)
 #   3. Lance sur pve : /opt/scripts/test-create-lxc.sh .env.test.docker
+#
+# Le destroy-test.sh poussé permet ensuite, depuis pve ou depuis le poste
+# local, de purger proprement un LXC créé par le test (voir docs/test.md).
 #
 # Usage :
 #   ./scripts/run-test.sh                # config par défaut: scripts/.env.test.docker

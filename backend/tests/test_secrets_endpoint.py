@@ -17,7 +17,6 @@ from httpx import ASGITransport, AsyncClient
 
 from agflow.main import create_app
 from tests._db_reset import reset_schema_and_migrate
-from tests._vault_mock import vault_mock  # noqa: F401  — fixture injectée
 
 
 @pytest.fixture

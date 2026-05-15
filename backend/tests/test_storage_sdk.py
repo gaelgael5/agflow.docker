@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from agflow.db.pool import close_pool, get_pool
+from agflow.db.pool import get_pool
 from agflow.storage import StorageSDK
 from tests._db_reset import reset_schema_and_migrate
 
@@ -11,7 +11,6 @@ from tests._db_reset import reset_schema_and_migrate
 async def _clean():
     await reset_schema_and_migrate()
     yield
-    await close_pool()
 
 
 @pytest.fixture

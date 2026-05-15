@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from agflow.db.pool import close_pool, execute, fetch_one
+from agflow.db.pool import execute, fetch_one
 from agflow.schemas.agents import (
     AgentCreate,
     AgentMCPBinding,
@@ -12,7 +12,6 @@ from agflow.schemas.agents import (
 )
 from agflow.services import agents_service, composition_builder, roles_service
 from tests._db_reset import reset_schema_and_migrate
-from tests._vault_mock import vault_mock  # noqa: F401  — fixture utilisée par injection
 
 
 @pytest.fixture
@@ -35,7 +34,6 @@ async def db() -> AsyncIterator[None]:
         """
     )
     yield
-    await close_pool()
 
 
 async def _seed_mcp(name: str = "Filesystem") -> str:

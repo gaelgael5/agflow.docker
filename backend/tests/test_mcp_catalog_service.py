@@ -7,7 +7,7 @@ import pytest
 
 os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
-from agflow.db.pool import close_pool
+
 from agflow.services import (
     discovery_services_service,
     mcp_catalog_service,
@@ -23,7 +23,6 @@ async def _clean():
         service_id="yoops", name="yoops", base_url="https://x"
     )
     yield
-    await close_pool()
 
 
 _MCP_DETAIL = {

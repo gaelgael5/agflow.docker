@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from agflow.db.pool import close_pool, fetch_all, fetch_one
+from agflow.db.pool import fetch_all, fetch_one
 from tests._db_reset import reset_schema_and_migrate
 
 
@@ -15,7 +15,6 @@ async def test_run_migrations_creates_schema_migrations_table() -> None:
     )
     assert row is not None
     assert row["version"] == "001_init"
-    await close_pool()
 
 
 @pytest.mark.asyncio
@@ -26,7 +25,6 @@ async def test_run_migrations_is_idempotent() -> None:
     rows = await fetch_all("SELECT version FROM schema_migrations")
     versions = [r["version"] for r in rows]
     assert versions.count("001_init") == 1
-    await close_pool()
 
 
 # Note : l'ancien test_consolidated_schema_creates_secrets_with_encrypted_value
@@ -50,7 +48,6 @@ async def test_consolidated_schema_creates_roles_and_role_sections() -> None:
     names = [t["table_name"] for t in tables]
     assert "roles" in names
     assert "role_sections" in names
-    await close_pool()
 
 
 @pytest.mark.asyncio
@@ -66,7 +63,6 @@ async def test_consolidated_schema_creates_dockerfiles_tables() -> None:
     )
     names = [r["table_name"] for r in rows]
     assert set(names) == {"dockerfile_builds", "dockerfiles"}
-    await close_pool()
 
 
 @pytest.mark.asyncio
@@ -85,7 +81,6 @@ async def test_consolidated_schema_creates_catalogs_tables() -> None:
         "mcp_servers",
         "skills",
     ]
-    await close_pool()
 
 
 @pytest.mark.asyncio
@@ -148,4 +143,3 @@ async def test_consolidated_schema_supervision_columns_and_platform_config() -> 
     assert seeded["supervision_reaper_interval_s"] == "20"
     assert seeded["supervision_reclaim_interval_s"] == "15"
     assert seeded["supervision_reclaim_stale_threshold_s"] == "30"
-    await close_pool()

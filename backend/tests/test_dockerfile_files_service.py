@@ -7,7 +7,7 @@ import pytest
 
 os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
-from agflow.db.pool import close_pool
+
 from agflow.services import dockerfile_files_service as files
 from agflow.services import dockerfiles_service
 from tests._db_reset import reset_schema_and_migrate
@@ -18,7 +18,6 @@ async def _clean():
     await reset_schema_and_migrate()
     await dockerfiles_service.create(dockerfile_id="test", display_name="Test")
     yield
-    await close_pool()
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from agflow.db.pool import close_pool, fetch_all
+from agflow.db.pool import fetch_all
 from agflow.schemas.agents import (
     AgentCreate,
     AgentGeneration,
@@ -22,7 +22,6 @@ from tests._db_reset import reset_schema_and_migrate
 async def _clean():
     await reset_schema_and_migrate()
     yield
-    await close_pool()
 
 
 @pytest.mark.asyncio

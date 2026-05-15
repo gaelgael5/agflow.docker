@@ -1,11 +1,14 @@
 from __future__ import annotations
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
+
 import pytest
+
 from agflow.services import infra_machines_service as svc
 
-_NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
+_NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
 MACHINE_ID = uuid.uuid4()
 TYPE_ID = uuid.uuid4()

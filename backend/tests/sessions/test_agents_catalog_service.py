@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from agflow.db.pool import close_pool, fetch_all, get_pool
+from agflow.db.pool import fetch_all, get_pool
 from agflow.services import agents_catalog_service
 
 
@@ -11,7 +11,6 @@ from agflow.services import agents_catalog_service
 async def pool():
     p = await get_pool()
     yield p
-    await close_pool()
 
 
 @pytest.mark.asyncio

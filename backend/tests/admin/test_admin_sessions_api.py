@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from agflow.db.pool import close_pool, execute, fetch_one
+from agflow.db.pool import execute, fetch_one
 from agflow.main import create_app
 from agflow.services import agents_catalog_service
 

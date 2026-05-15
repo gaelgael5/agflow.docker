@@ -10,7 +10,6 @@ from __future__ import annotations
 import pytest
 
 from agflow.services import secrets_service
-from tests._vault_mock import vault_mock  # noqa: F401  — fixture utilisée par injection
 
 
 @pytest.mark.asyncio

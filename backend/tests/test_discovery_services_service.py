@@ -7,18 +7,16 @@ import pytest
 
 os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
-from agflow.db.pool import close_pool
+
 from agflow.schemas.catalogs import ProbeResult
 from agflow.services import discovery_services_service as svc
 from tests._db_reset import reset_schema_and_migrate
-from tests._vault_mock import vault_mock  # noqa: F401  — fixture utilisée par injection
 
 
 @pytest.fixture(autouse=True)
 async def _clean():
     await reset_schema_and_migrate()
     yield
-    await close_pool()
 
 
 @pytest.mark.asyncio

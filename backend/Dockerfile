@@ -8,6 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 COPY pyproject.toml ./
 COPY vendor ./vendor
 COPY src ./src
+# `sdk/` est déclaré dans [tool.hatch.build.targets.wheel] packages — il
+# doit être présent au moment du `uv pip install .` pour être inclus dans
+# le wheel (sinon le package `sdk` est silencieusement omis du site-packages).
+COPY sdk ./sdk
 RUN uv pip install --system --no-cache ./vendor/*.whl \
     && sed -i '/^\[tool\.uv\.sources\]/d; /^harpocrate = { path/d' pyproject.toml \
     && uv pip install --system --no-cache .

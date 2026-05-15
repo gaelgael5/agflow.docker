@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
+import aiodocker  # noqa: F401 — exposé comme attribut module pour mocking dans tests
 import structlog
 
 from agflow.mom.adapters.generic import GenericAdapter

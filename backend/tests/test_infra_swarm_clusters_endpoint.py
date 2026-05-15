@@ -5,8 +5,6 @@ import os
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-os.environ["AGFLOW_INFRA_KEY"] = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="
-
 import jwt
 from fastapi.testclient import TestClient
 

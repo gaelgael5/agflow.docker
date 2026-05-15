@@ -5,8 +5,6 @@ import inspect
 import os
 from unittest.mock import AsyncMock, patch
 
-os.environ.setdefault("AGFLOW_INFRA_KEY", "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=")
-
 import jwt
 import pytest
 from fastapi.testclient import TestClient

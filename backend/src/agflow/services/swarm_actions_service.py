@@ -157,11 +157,9 @@ async def join_cluster(
     if cluster is None:
         raise SwarmActionError(f"Cluster {cluster_id} not found")
 
-    tokens = infra_swarm_clusters_service.decrypt_tokens(
-        worker_encrypted=cluster["join_token_worker_encrypted"],
-        manager_encrypted=cluster["join_token_manager_encrypted"],
-    )
-    token = tokens["manager"] if role == "manager" else tokens["worker"]
+    # get_with_tokens() fetch les tokens en clair depuis Harpocrate.
+    # Les valeurs ne doivent JAMAIS être persistées ni loggées.
+    token = cluster["join_token_manager"] if role == "manager" else cluster["join_token_worker"]
 
     args = ["--join", "--manager", str(cluster["manager_addr"]), "--token", token]
     if role == "manager":

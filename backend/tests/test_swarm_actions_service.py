@@ -1,14 +1,10 @@
 """Tests pour swarm_actions_service avec mocks ssh_executor + DB layer."""
 from __future__ import annotations
 
-import os
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-
-# Fix la cle Fernet pour la reproductibilite (32 bytes url-safe base64)
-os.environ["AGFLOW_INFRA_KEY"] = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="
 
 from agflow.services.swarm_actions_service import (
     SwarmActionError,
@@ -125,13 +121,9 @@ async def test_join_cluster_succeeds_with_worker_role() -> None:
             "agflow.services.infra_swarm_clusters_service.get_with_tokens",
             AsyncMock(return_value={
                 "id": cluster_id, "name": "swarm1", "manager_addr": "10.0.0.1:2377",
-                "join_token_worker_encrypted": "ENC1",
-                "join_token_manager_encrypted": "ENC2",
+                "join_token_worker": "WT-clear",
+                "join_token_manager": "MT-clear",
             }),
-        ),
-        patch(
-            "agflow.services.infra_swarm_clusters_service.decrypt_tokens",
-            return_value={"worker": "WT-clear", "manager": "MT-clear"},
         ),
         patch("agflow.services.swarm_actions_service._exec_swarm_script",
               AsyncMock(return_value={"status": "ok", "exit_code": 0,

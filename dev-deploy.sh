@@ -416,13 +416,15 @@ else
   docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 fi
 
-echo "      Pull images registry (tous les services avec image:, skip les build:)..."
-# `docker compose pull` sans argument pull tous les services qui ont une
-# `image:` (postgres, redis, caddy, pgweb…) et skip automatiquement ceux
-# qui ont un `build:` (backend, frontend custom). Plus robuste qu'un
-# listing explicite : si on ajoute un nouveau service registry au compose,
-# pas besoin de mettre à jour ce script.
-docker compose -f "$COMPOSE_FILE" pull || true
+echo "      Pull images registry (postgres, redis, caddy, pgweb)..."
+# Listing EXPLICITE des services à pull — on NE PEUT PAS faire
+# `docker compose pull` (sans argument) car le compose agflow.docker
+# déclare `image: agflow-backend:latest` et `image: agflow-frontend:latest`
+# SANS `build:` (le build est fait hors compose, juste au-dessus). Le pull
+# sans arg essaierait donc de les puller depuis Docker Hub → access denied
+# → erreur. Si tu ajoutes un nouveau service registry au compose, l'ajouter
+# explicitement ici aussi.
+docker compose -f "$COMPOSE_FILE" pull postgres redis caddy pgweb || true
 
 echo "      Démarrage de la stack..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans --pull never

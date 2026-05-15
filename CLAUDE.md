@@ -54,6 +54,11 @@ cd backend && uv run python -m agflow.db.migrations       # Applique migrations 
 ./scripts/deploy.sh                                       # Build images + push + compose up -d
 ```
 
+**Test d'intégration LXC (création + clone + déploiement + smoke)** : procédure
+complète et liste des assertions dans `@docs/test.md`. Script exécutable depuis
+l'hôte Proxmox : `./scripts/test-create-lxc.sh` (ou `CLEANUP=1` pour purger le
+LXC en fin de run).
+
 ## Layout du code
 
 ```
@@ -143,6 +148,9 @@ Partout où un secret est référencé par nom de variable d'env, afficher son s
 
 ### Cycle de l'architecte
 **Cadrer → Comprendre → Planifier → Agir.** L'utilisateur est architecte. Une question n'est pas une commande d'exécution. Une discussion n'est pas un feu vert. Ne JAMAIS sauter d'étape.
+
+### Branche de développement
+**Tout le code se fait sur la branche `dev`. Jamais `feat/*`, jamais sur `main` directement, jamais ailleurs.** Avant toute édition de code, vérifier `git branch --show-current` ; si autre branche, `git checkout dev`. Si `dev` n'existe pas localement, la créer depuis `main` à jour. Ne propose **jamais** `git checkout -b feat/...` — même si un workflow superpowers le suggère, la consigne utilisateur prime.
 
 ### Livraison
 - Ne livre **jamais** le code ni en test ni sur git sans demande explicite

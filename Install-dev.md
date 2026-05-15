@@ -34,32 +34,54 @@ pct enter 201                    # depuis l'hôte Proxmox
 
 ---
 
-## Étape 2 — Accès SSH GitHub
+## Étape 2 — Accès GitHub via Personal Access Token (PAT)
 
-Le repo est privé. Génère une clé SSH dédiée au déploiement :
+Le repo est privé. On utilise un PAT GitHub plutôt qu'une clé SSH : c'est la
+méthode utilisée par le script automatisé `scripts/test-create-lxc.sh`,
+elle évite la gestion des `known_hosts` et fonctionne identiquement en LXC, VM
+ou poste local.
 
-```bash
-ssh-keygen -t ed25519 -C "agflow-deploy"
-# Entrée pour accepter ~/.ssh/id_ed25519
-# Passphrase vide (déploiement automatique)
+### 2.1 Générer le PAT sur GitHub
 
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/id_ed25519
-cat ~/.ssh/id_ed25519.pub
-```
+1. <https://github.com/settings/tokens> → **Generate new token (classic)**
+2. Note : `agflow-dev <hostname>` (ou autre libellé identifiable)
+3. Expiration : selon ta policy (90 jours recommandé pour un dev partagé)
+4. Scope : cocher **`repo`** (suffit pour cloner et puller un repo privé)
+5. **Generate token** → copier la valeur (commence par `ghp_…`) — **elle ne sera
+   plus jamais affichée**
 
-Ajoute la clé publique sur GitHub :
-
-1. <https://github.com/settings/keys> → **New SSH key**
-2. Title : `agflow-dev <hostname>`
-3. Coller la clé publique → **Add SSH key**
-
-Tester :
+### 2.2 Poser le token sur le serveur
 
 ```bash
-ssh -T git@github.com
-# → Hi gaelgael5! You've successfully authenticated, but GitHub does not provide shell access.
+mkdir -p /opt/scripts
+chmod 700 /opt/scripts
+
+cat > /opt/scripts/.env.git <<'EOF'
+TOKEN=ghp_REMPLACE_PAR_TON_TOKEN
+EOF
+chmod 600 /opt/scripts/.env.git
 ```
+
+`/opt/scripts/.env.git` est l'emplacement standard lu par le script
+`scripts/test-create-lxc.sh`. Si tu n'utilises pas ce script, n'importe
+quel emplacement convient (export `TOKEN=…` dans ton shell par exemple).
+
+### 2.3 Tester
+
+```bash
+source /opt/scripts/.env.git
+curl -s -H "Authorization: token ${TOKEN}" https://api.github.com/user | grep '"login"'
+# → "login": "gaelgael5",
+
+curl -s -o /dev/null -w "%{http_code}\n" \
+     -H "Authorization: token ${TOKEN}" \
+     https://api.github.com/repos/gaelgael5/agflow.docker
+# → 200
+```
+
+Si tu obtiens `401`, le token est invalide ou expiré — en regénérer un.
+Si tu obtiens `404`, le token n'a pas le scope `repo` ou le compte n'a pas accès
+au repo.
 
 ---
 
@@ -67,19 +89,23 @@ ssh -T git@github.com
 
 ### 3.1 Cloner le repo
 
+Charger le token et cloner via HTTPS authentifié :
+
 ```bash
+source /opt/scripts/.env.git    # exporte TOKEN=ghp_…
 cd /opt
-git clone git@github.com:gaelgael5/agflow.docker.git
+git clone --branch dev "https://${TOKEN}@github.com/gaelgael5/agflow.docker.git"
 cd agflow.docker
 ```
 
-Pour une branche spécifique :
+> **Branche** : `dev` est la branche de développement courante du projet.
+> Pour cloner une autre branche, remplacer `--branch dev` par `--branch <nom>`.
 
-```bash
-cd /opt
-git clone --branch feat/mom-bus git@github.com:gaelgael5/agflow.docker.git
-cd agflow.docker
-```
+> **Sécurité** : l'URL `https://${TOKEN}@…` inscrit le token dans la sortie
+> de `git remote -v`. Si tu préfères ne pas l'écrire en clair dans la conf
+> git du repo, utiliser un credential helper (`git config credential.helper
+> store`) ou cloner sans token puis configurer l'auth via
+> `~/.git-credentials` (hors-scope ici).
 
 ### 3.2 Configurer `.env`
 

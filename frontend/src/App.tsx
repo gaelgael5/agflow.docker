@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { SecretsPage } from "./pages/SecretsPage";
-import { MySecretsPage } from "./pages/MySecretsPage";
 import { RolesPage } from "./pages/RolesPage";
 import { DockerfilesPage } from "./pages/DockerfilesPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
@@ -30,6 +29,8 @@ import { ServiceTypesPage } from "./pages/ServiceTypesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ApiDocsPage } from "./pages/ApiDocsPage";
+import { RemoteBackupConnectionsPage } from "./pages/RemoteBackupConnectionsPage";
+import { BackupsPage } from "./pages/BackupsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -237,14 +238,6 @@ export default function App() {
         }
       />
       <Route
-        path="/my-secrets"
-        element={
-          <ProtectedRoute>
-            <MySecretsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
         path="/sessions"
         element={
           <ProtectedRoute>
@@ -265,6 +258,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <SessionAgentTimelinePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/backup-remotes"
+        element={
+          <ProtectedRoute>
+            <RemoteBackupConnectionsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/backups"
+        element={
+          <ProtectedRoute>
+            <BackupsPage />
           </ProtectedRoute>
         }
       />

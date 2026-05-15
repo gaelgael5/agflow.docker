@@ -47,18 +47,15 @@ Le flag `--docker` installe Docker automatiquement dans le LXC.
 Sur la machine cible :
 
 ```bash
-
 pct enter 203
-
-ssh-keygen -t ed25519 -C "deploy-roles"
 ```
 
-Appuyer sur Entrée pour accepter le chemin par défaut :
 ```bash
+ssh-keygen -t ed25519 -C "deploy-roles"
 ~/.ssh/id_ed25519
 ```
 
-Passphrase :
+Passphrase (Appuyer sur Entrée 3x pour accepter le chemin par défaut) :
 - laisser vide pour un serveur (déploiement automatique)
 - ou en définir une pour plus de sécurité
 

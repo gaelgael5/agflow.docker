@@ -6,9 +6,9 @@ import {
   Crosshair,
   Download,
   FilePlus,
+  FileText,
   FolderPlus,
   Hammer,
-  Lock,
   MessageSquare,
   Play,
   Plus,
@@ -19,7 +19,6 @@ import {
   ScrollText,
   TerminalSquare,
   Trash2,
-  Unlock,
   Upload,
 } from "lucide-react";
 import {
@@ -34,7 +33,6 @@ import { BuildStatusBadge } from "@/components/BuildStatusBadge";
 import { BuildModal } from "@/components/BuildModal";
 import { CodeEditor } from "@/components/CodeEditor";
 import { FileTree } from "@/components/FileTree";
-import { useVault } from "@/hooks/useVault";
 import { useEmptyLaunchKeys } from "@/hooks/useEmptyLaunchKeys";
 import { userSecretsApi } from "@/lib/userSecretsApi";
 import { TerminalWindow } from "@/components/TerminalWindow";
@@ -43,7 +41,6 @@ import { DockerChatModal } from "@/components/DockerChatModal";
 import { DockerfileParamsDialog } from "@/components/DockerfileParamsDialog";
 import { ChatWindow } from "@/components/ChatWindow";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { VaultUnlockDialog } from "@/components/VaultUnlockDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { dockerfilesApi } from "@/lib/dockerfilesApi";
 import { cn, maskEnvSecrets } from "@/lib/utils";
@@ -82,7 +79,6 @@ export function DockerfilesPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { state: vaultState } = useVault();
   const {
     dockerfiles,
     isLoading,
@@ -119,8 +115,11 @@ export function DockerfilesPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [chatOpenFor, setChatOpenFor] = useState<string | null>(null);
   const [regenSpin, setRegenSpin] = useState(false);
-  const [decryptedSecrets, setDecryptedSecrets] = useState<Record<string, string> | null>(null);
-  const [showVaultUnlock, setShowVaultUnlock] = useState(false);
+  const [envPreview, setEnvPreview] = useState<{
+    env: Record<string, string>;
+    unresolved: string[];
+  } | null>(null);
+  const [envPreviewLoading, setEnvPreviewLoading] = useState(false);
   const [logsContainer, setLogsContainer] = useState<{
     id: string;
     name: string;
@@ -135,19 +134,6 @@ export function DockerfilesPage() {
   const { services: discoveryServices } = useDiscoveryServices();
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const hasUnsavedChanges = draftContent !== null;
-  const vaultIsOpen = vaultState === "unlocked";
-
-  // Auto-detect vault already unlocked on mount
-  useEffect(() => {
-    if (vaultIsOpen && !decryptedSecrets) {
-      void decryptUserSecrets().then((s) => {
-        if (Object.keys(s).length > 0) setDecryptedSecrets(s);
-      });
-    }
-    if (!vaultIsOpen && decryptedSecrets) {
-      setDecryptedSecrets(null);
-    }
-  }, [vaultIsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -177,7 +163,7 @@ export function DockerfilesPage() {
   })();
   const { emptyKeys: launchEmptyKeys } = useEmptyLaunchKeys({
     dockerfileJsonContent: dockerfileJsonFile?.content ?? null,
-    decryptedSecrets,
+    decryptedSecrets: null,
   });
   const [launchPendingSecrets, setLaunchPendingSecrets] = useState<
     Record<string, string> | null
@@ -446,8 +432,8 @@ export function DockerfilesPage() {
   async function handleRunContainer() {
     if (!selectedId) return;
     try {
-      // Merge: vault secrets + test overrides from Dockerfile.json
-      const vaultSecrets = decryptedSecrets ?? await decryptUserSecrets();
+      // Merge: user secrets + test overrides from Dockerfile.json
+      const vaultSecrets = await decryptUserSecrets();
       const testOverrides: Record<string, string> = {};
       if (dockerfileJsonFile) {
         try {
@@ -467,8 +453,8 @@ export function DockerfilesPage() {
         dockerfileId: selectedId,
         secrets,
       });
-    } catch {
-      // Error handled by mutation state
+    } catch (err) {
+      reportError(err);
     }
   }
 
@@ -651,7 +637,7 @@ export function DockerfilesPage() {
                   if (!selectedId) return;
                   setRegenSpin(true);
                   window.setTimeout(() => setRegenSpin(false), 1400);
-                  const secrets = decryptedSecrets ?? await decryptUserSecrets();
+                  const secrets = await decryptUserSecrets();
                   await dockerfilesApi.regenerateTmp(selectedId, secrets);
                   qc.invalidateQueries({ queryKey: ["dockerfile", selectedId] });
                 }}
@@ -717,27 +703,27 @@ export function DockerfilesPage() {
               >
                 <MessageSquare className="w-3.5 h-3.5" />
               </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                disabled={envPreviewLoading}
+                title={t("dockerfiles.env_preview_button")}
+                onClick={async () => {
+                  if (!selectedId) return;
+                  setEnvPreviewLoading(true);
+                  try {
+                    setEnvPreview(await dockerfilesApi.envPreview(selectedId));
+                  } catch (err) {
+                    reportError(err);
+                  } finally {
+                    setEnvPreviewLoading(false);
+                  }
+                }}
+              >
+                <FileText className="w-3.5 h-3.5" />
+              </Button>
             </div>
-            <Button
-              size="icon"
-              variant="outline"
-              className={`h-7 w-7 ${vaultIsOpen ? "border-emerald-500 bg-emerald-500/10" : ""}`}
-              title={vaultIsOpen ? t("dockerfiles.vault_unlocked") : t("dockerfiles.vault_unlock")}
-              onClick={async () => {
-                if (vaultIsOpen) return;
-                if (vaultState === "locked") {
-                  setShowVaultUnlock(true);
-                } else {
-                  navigate("/my-secrets");
-                }
-              }}
-            >
-              {vaultIsOpen ? (
-                <Unlock className="w-3.5 h-3.5 text-emerald-500" />
-              ) : (
-                <Lock className="w-3.5 h-3.5" />
-              )}
-            </Button>
             <input
               ref={importInputRef}
               type="file"
@@ -1199,7 +1185,6 @@ export function DockerfilesPage() {
         <ChatWindow
           dockerfileId={chatOpenFor}
           onClose={() => setChatOpenFor(null)}
-          secrets={decryptedSecrets ?? undefined}
           dockerfileJsonContent={dockerfileJsonFile?.content ?? null}
         />
       )}
@@ -1219,16 +1204,36 @@ export function DockerfilesPage() {
           onClose={() => setTerminalContainer(null)}
         />
       )}
-      <VaultUnlockDialog
-        open={showVaultUnlock}
-        email="admin@agflow.example.com"
-        onComplete={async () => {
-          setShowVaultUnlock(false);
-          const s = await decryptUserSecrets();
-          if (Object.keys(s).length > 0) setDecryptedSecrets(s);
-        }}
-        onClose={() => setShowVaultUnlock(false)}
-      />
+
+      <Dialog open={envPreview !== null} onOpenChange={(o) => { if (!o) setEnvPreview(null); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{t("dockerfiles.env_preview_title")}</DialogTitle>
+            <DialogDescription>{t("dockerfiles.env_preview_subtitle")}</DialogDescription>
+          </DialogHeader>
+          {envPreview && (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {envPreview.unresolved.length > 0 && (
+                <div className="mb-3 rounded-md border border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 px-3 py-2 text-[12px] text-yellow-800 dark:text-yellow-300">
+                  {t("dockerfiles.env_preview_unresolved", { keys: envPreview.unresolved.join(", ") })}
+                </div>
+              )}
+              <pre className="rounded-md bg-zinc-950 text-zinc-100 text-[11px] font-mono p-4 overflow-x-auto whitespace-pre-wrap break-all">
+                {maskEnvSecrets(
+                  Object.entries(envPreview.env)
+                    .map(([k, v]) => `${k}=${v}`)
+                    .join("\n")
+                )}
+              </pre>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEnvPreview(null)}>
+              {t("common.close")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

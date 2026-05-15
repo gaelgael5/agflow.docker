@@ -156,6 +156,14 @@ export const dockerfilesApi = {
       secrets: secrets ?? {},
     });
   },
+  async envPreview(
+    dockerfileId: string,
+  ): Promise<{ env: Record<string, string>; unresolved: string[] }> {
+    const res = await api.get<{ env: Record<string, string>; unresolved: string[] }>(
+      `/admin/dockerfiles/${dockerfileId}/env-preview`,
+    );
+    return res.data;
+  },
   async importZip(
     dockerfileId: string,
     file: File,

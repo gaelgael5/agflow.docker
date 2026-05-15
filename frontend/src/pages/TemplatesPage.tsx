@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Save, Trash2 } from "lucide-react";
-import { useTemplates } from "@/hooks/useTemplates";
+import { useTemplateCultures, useTemplateFileTypes, useTemplates } from "@/hooks/useTemplates";
 import {
   templatesApi,
   type TemplateDetail,
@@ -14,6 +14,14 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -21,7 +29,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-/** Extract the culture code from a filename like "fr.md.j2" → "fr". */
 function extractCulture(filename: string): string {
   const dot = filename.indexOf(".");
   return dot > 0 ? filename.slice(0, dot) : filename;
@@ -30,8 +37,9 @@ function extractCulture(filename: string): string {
 export function TemplatesPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { templates, isLoading, createMutation, deleteMutation } =
-    useTemplates();
+  const { templates, isLoading, createMutation, deleteMutation } = useTemplates();
+  const { data: cultures = [] } = useTemplateCultures();
+  const { data: fileTypes = [] } = useTemplateFileTypes();
 
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [detail, setDetail] = useState<TemplateDetail | null>(null);
@@ -40,6 +48,8 @@ export function TemplatesPage() {
   const [draftContent, setDraftContent] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showAddFileDialog, setShowAddFileDialog] = useState(false);
+  const [addFileCulture, setAddFileCulture] = useState("default");
+  const [addFileType, setAddFileType] = useState("md");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteFileTarget, setDeleteFileTarget] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -94,15 +104,16 @@ export function TemplatesPage() {
     await fetchDetail(created.slug);
   }
 
-  async function handleAddFile(values: Record<string, string>) {
+  async function handleAddFile() {
     if (!selectedSlug) return;
-    const filename = values.filename ?? "";
+    const filename = `${addFileCulture}.${addFileType}.j2`;
     await templatesApi.createFile(selectedSlug, filename, "");
     const d = await fetchDetail(selectedSlug);
     setSelectedFile(filename);
     setFileContent("");
     setDraftContent(null);
     setDetail(d);
+    setShowAddFileDialog(false);
   }
 
   async function handleDeleteTemplate() {
@@ -207,6 +218,16 @@ export function TemplatesPage() {
           <>
             {/* Left sidebar: file list */}
             <aside className="w-56 shrink-0 border-r bg-background overflow-y-auto flex flex-col">
+              <div className="p-2 border-b">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-[12px]"
+                  onClick={() => setShowAddFileDialog(true)}
+                >
+                  {t("templates.add_file_button")}
+                </Button>
+              </div>
               <div key={`${detail.slug}-${detail.display_name}`} className="p-3 border-b space-y-2">
                 <input
                   type="text"
@@ -263,7 +284,7 @@ export function TemplatesPage() {
                           variant="outline"
                           className="text-[9px] px-1 py-0 shrink-0"
                         >
-                          {extractCulture(file.filename)}
+                          {cultures.find((c) => c.key === extractCulture(file.filename))?.label ?? extractCulture(file.filename)}
                         </Badge>
                       </div>
                       <Button
@@ -283,16 +304,6 @@ export function TemplatesPage() {
                 )}
               </div>
 
-              <div className="p-3 border-t">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full text-[12px]"
-                  onClick={() => setShowAddFileDialog(true)}
-                >
-                  {t("templates.add_file_button")}
-                </Button>
-              </div>
             </aside>
 
             {/* Right: editor */}
@@ -305,7 +316,7 @@ export function TemplatesPage() {
                         {selectedFile}
                       </code>
                       <Badge variant="outline" className="text-[10px]">
-                        {extractCulture(selectedFile)}
+                        {cultures.find((c) => c.key === extractCulture(selectedFile))?.label ?? extractCulture(selectedFile)}
                       </Badge>
                       {hasUnsavedChanges && (
                         <Badge variant="secondary" className="text-[10px]">
@@ -372,21 +383,58 @@ export function TemplatesPage() {
         ]}
       />
 
-      <PromptDialog
+      <Dialog
         open={showAddFileDialog}
-        onOpenChange={setShowAddFileDialog}
-        title={t("templates.add_file_dialog_title")}
-        submitLabel={t("common.create")}
-        onSubmit={handleAddFile}
-        fields={[
-          {
-            name: "filename",
-            label: t("templates.add_file_name"),
-            placeholder: "fr.md.j2",
-            monospace: true,
-          },
-        ]}
-      />
+        onOpenChange={(o) => {
+          setShowAddFileDialog(o);
+          if (o) { setAddFileCulture("default"); setAddFileType("md"); }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("templates.add_file_dialog_title")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t("templates.add_file_culture")}</Label>
+              <Select value={addFileCulture} onValueChange={setAddFileCulture}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {cultures.map((c) => (
+                    <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("templates.add_file_type")}</Label>
+              <Select value={addFileType} onValueChange={setAddFileType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {fileTypes.map((ft) => (
+                    <SelectItem key={ft.key} value={ft.key}>{ft.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-[11px] text-muted-foreground font-mono">
+              → {addFileCulture}.{addFileType}.j2
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddFileDialog(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => void handleAddFile()}>
+              {t("common.create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={showDeleteConfirm}

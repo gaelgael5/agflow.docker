@@ -9,20 +9,27 @@ from agflow.schemas.infra import CategoryActionRow, CategoryRow
 
 router = APIRouter(prefix="/api/infra/categories", tags=["infra-categories"])
 
+_ACTION_SELECT = """
+    SELECT a.id, a.name, a.is_required, a.creates_category
+    FROM infra_category_actions a
+"""
+
+
+def _action_row(r) -> CategoryActionRow:
+    return CategoryActionRow(**dict(r))
+
 
 @router.get("", response_model=list[CategoryRow], dependencies=[Depends(require_admin)])
 async def list_categories():
-    rows = await fetch_all("SELECT name, is_vps FROM infra_categories ORDER BY name")
+    rows = await fetch_all(
+        "SELECT name, visible_in_machines FROM infra_categories ORDER BY name"
+    )
     return [CategoryRow(**r) for r in rows]
 
 
 class CategoryCreate(BaseModel):
     name: str
-    is_vps: bool = False
-
-
-class CategoryUpdate(BaseModel):
-    is_vps: bool
+    visible_in_machines: bool = False
 
 
 @router.post(
@@ -37,13 +44,18 @@ async def create_category(payload: CategoryCreate):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="name is required")
     try:
         row = await fetch_one(
-            "INSERT INTO infra_categories (name, is_vps) VALUES ($1, $2) RETURNING name, is_vps",
-            name, payload.is_vps,
+            "INSERT INTO infra_categories (name, visible_in_machines) VALUES ($1, $2)"
+            " RETURNING name, visible_in_machines",
+            name, payload.visible_in_machines,
         )
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     assert row is not None
     return CategoryRow(**row)
+
+
+class CategoryUpdate(BaseModel):
+    visible_in_machines: bool
 
 
 @router.patch(
@@ -53,8 +65,9 @@ async def create_category(payload: CategoryCreate):
 )
 async def update_category(name: str, payload: CategoryUpdate):
     row = await fetch_one(
-        "UPDATE infra_categories SET is_vps = $2 WHERE name = $1 RETURNING name, is_vps",
-        name, payload.is_vps,
+        "UPDATE infra_categories SET visible_in_machines = $1 WHERE name = $2"
+        " RETURNING name, visible_in_machines",
+        payload.visible_in_machines, name,
     )
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Category '{name}' not found")
@@ -70,7 +83,7 @@ async def delete_category(name: str):
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Impossible de supprimer la catégorie '{name}' — utilisée par des types",
+            detail=f"Impossible de supprimer la categorie '{name}' -- utilisee par des types",
         ) from exc
     if result.endswith(" 0"):
         raise HTTPException(
@@ -78,8 +91,7 @@ async def delete_category(name: str):
         )
 
 
-# ── Actions attached to a category ──────────────────────────
-
+# Actions attached to a category
 
 @router.get(
     "/{category}/actions",
@@ -88,19 +100,21 @@ async def delete_category(name: str):
 )
 async def list_category_actions(category: str):
     rows = await fetch_all(
-        "SELECT id, name, is_required FROM infra_category_actions WHERE category = $1 ORDER BY name",
+        _ACTION_SELECT + " WHERE a.category = $1 ORDER BY a.name",
         category,
     )
-    return [CategoryActionRow(**r) for r in rows]
+    return [_action_row(r) for r in rows]
 
 
 class CategoryActionCreate(BaseModel):
     name: str
     is_required: bool = False
+    creates_category: str | None = None
 
 
 class CategoryActionUpdate(BaseModel):
-    is_required: bool
+    is_required: bool | None = None
+    creates_category: str | None = None
 
 
 @router.post(
@@ -121,15 +135,16 @@ async def create_category_action(category: str, payload: CategoryActionCreate):
         )
     try:
         row = await fetch_one(
-            "INSERT INTO infra_category_actions (category, name, is_required) VALUES ($1, $2, $3) RETURNING id, name, is_required",
-            category,
-            action_name,
-            payload.is_required,
+            """INSERT INTO infra_category_actions (category, name, is_required, creates_category)
+               VALUES ($1, $2, $3, $4) RETURNING id""",
+            category, action_name, payload.is_required, payload.creates_category,
         )
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     assert row is not None
-    return CategoryActionRow(**row)
+    result = await fetch_one(_ACTION_SELECT + " WHERE a.id = $1", row["id"])
+    assert result is not None
+    return _action_row(result)
 
 
 @router.patch(
@@ -138,16 +153,27 @@ async def create_category_action(category: str, payload: CategoryActionCreate):
     dependencies=[Depends(require_admin)],
 )
 async def update_category_action(category: str, name: str, payload: CategoryActionUpdate):
-    row = await fetch_one(
-        "UPDATE infra_category_actions SET is_required = $3 WHERE category = $1 AND name = $2 RETURNING id, name, is_required",
-        category, name, payload.is_required,
+    sets = []
+    params: list = [category, name]
+    if payload.is_required is not None:
+        params.append(payload.is_required)
+        sets.append(f"is_required = ${len(params)}")
+    if "creates_category" in payload.model_fields_set:
+        params.append(payload.creates_category)
+        sets.append(f"creates_category = ${len(params)}")
+    if not sets:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="nothing to update")
+    await execute(
+        f"UPDATE infra_category_actions SET {', '.join(sets)} WHERE category = $1 AND name = $2",
+        *params,
     )
+    row = await fetch_one(_ACTION_SELECT + " WHERE a.category = $1 AND a.name = $2", category, name)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Action '{name}' not found in category '{category}'",
         )
-    return CategoryActionRow(**row)
+    return _action_row(row)
 
 
 @router.delete(

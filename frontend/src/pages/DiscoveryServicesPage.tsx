@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CircleCheck, CircleX, Plus, Play, Trash2 } from "lucide-react";
+import { CircleCheck, CircleX, Pencil, Plus, Play, Trash2 } from "lucide-react";
 import { useDiscoveryServices } from "@/hooks/useCatalogs";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
@@ -22,12 +22,13 @@ import { discoveryApi, type ProbeResult } from "@/lib/catalogsApi";
 
 export function DiscoveryServicesPage() {
   const { t } = useTranslation();
-  const { services, isLoading, createMutation, deleteMutation } =
+  const { services, isLoading, createMutation, updateMutation, deleteMutation } =
     useDiscoveryServices();
   const [testResults, setTestResults] = useState<Record<string, ProbeResult>>(
     {},
   );
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editTarget, setEditTarget] = useState<{ id: string; name: string; base_url: string; api_key_var: string | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const apiKeyVars = (services ?? [])
@@ -41,6 +42,18 @@ export function DiscoveryServicesPage() {
       name: values.name ?? "",
       base_url: values.base_url ?? "",
       api_key_var: values.api_key_var ? values.api_key_var : null,
+    });
+  }
+
+  async function handleEdit(values: Record<string, string>) {
+    if (!editTarget) return;
+    await updateMutation.mutateAsync({
+      id: editTarget.id,
+      payload: {
+        name: values.name,
+        base_url: values.base_url,
+        api_key_var: values.api_key_var || null,
+      },
     });
   }
 
@@ -177,6 +190,14 @@ export function DiscoveryServicesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => setEditTarget({ id: s.id, name: s.name, base_url: s.base_url, api_key_var: s.api_key_var })}
+                          aria-label={t("discovery.edit_button")}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => handleDelete(s.id, s.name)}
                           aria-label={t("discovery.delete_button")}
                         >
@@ -191,6 +212,25 @@ export function DiscoveryServicesPage() {
           </Table>
         )}
       </Card>
+
+      <PromptDialog
+        open={editTarget !== null}
+        onOpenChange={(open) => { if (!open) setEditTarget(null); }}
+        title={t("discovery.edit_dialog_title")}
+        submitLabel={t("common.save")}
+        onSubmit={handleEdit}
+        fields={[
+          { name: "name", label: t("discovery.prompt_name"), defaultValue: editTarget?.name ?? "" },
+          { name: "base_url", label: t("discovery.prompt_base_url"), defaultValue: editTarget?.base_url ?? "" },
+          {
+            name: "api_key_var",
+            label: t("discovery.prompt_api_key_var"),
+            required: false,
+            monospace: true,
+            defaultValue: editTarget?.api_key_var ?? "",
+          },
+        ]}
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}

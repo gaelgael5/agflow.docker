@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shlex
+import time
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +15,7 @@ from agflow.schemas.infra import (
     MachineCreate,
     MachineSummary,
     MachineUpdate,
+    OptionScriptRequest,
     ScriptRunRequest,
     SwarmInitRequest,
     SwarmJoinRequest,
@@ -23,7 +26,6 @@ from agflow.services import (
     infra_machines_runs_service,
     infra_machines_service,
     infra_named_type_actions_service,
-    infra_named_types_service,
     ssh_executor,
     swarm_actions_service,
 )
@@ -365,7 +367,10 @@ async def run_script(machine_id: UUID, payload: ScriptRunRequest):
             )
         manifest = resp.json()
 
-    command_template: str = manifest.get("command", "")
+    commands_list: list[str] = manifest.get("commands") or []
+    command_template: str = (
+        " && ".join(commands_list) if commands_list else manifest.get("command", "")
+    )
     if not command_template:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Script manifest has no command")
 
@@ -392,6 +397,65 @@ async def run_script(machine_id: UUID, payload: ScriptRunRequest):
         "stderr": result["stderr"],
         "command": command,
     }
+
+
+# ── Option script resolver ───────────────────────────────
+
+_option_script_cache: dict[tuple[str, str], tuple[float, list[str]]] = {}
+_OPTION_SCRIPT_TTL = 30.0
+
+
+@router.post("/{machine_id}/option-script", dependencies=_admin)
+async def run_option_script(machine_id: UUID, payload: OptionScriptRequest):
+    """Execute an option_script on the SSH target and return its stdout lines (cached 30 s)."""
+    cache_key = (str(machine_id), payload.script)
+    now = time.monotonic()
+    cached = _option_script_cache.get(cache_key)
+    if cached and now - cached[0] < _OPTION_SCRIPT_TTL:
+        return {"values": cached[1]}
+
+    try:
+        creds, private_key, passphrase = await _get_ssh_creds(machine_id)
+    except infra_machines_service.MachineNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    values: list[str] = []
+    try:
+        # Prepend PATH so system tools (pvesm, zfs, lvm…) are found in non-login SSH sessions.
+        path_prefix = "export PATH=/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/sbin:/usr/local/bin:$PATH"
+        command = f"bash -c {shlex.quote(path_prefix + '; ' + payload.script)}"
+        result = await asyncio.wait_for(
+            ssh_executor.exec_command(
+                host=creds["host"],
+                port=creds["port"],
+                username=creds.get("username"),
+                password=creds.get("password"),
+                private_key=private_key,
+                passphrase=passphrase,
+                command=command,
+            ),
+            timeout=10.0,
+        )
+        if result["exit_code"] == 0:
+            values = [
+                line.strip().strip("\r")
+                for line in result["stdout"].split("\n")
+                if line.strip().strip("\r")
+            ]
+        else:
+            _log.warning(
+                "option_script.nonzero_exit",
+                machine_id=str(machine_id),
+                exit_code=result["exit_code"],
+                stderr=result.get("stderr", "")[:500],
+            )
+    except TimeoutError:
+        _log.warning("option_script.timeout", machine_id=str(machine_id))
+    except ssh_executor.SSHConnectionError as exc:
+        _log.warning("option_script.ssh_error", machine_id=str(machine_id), error=str(exc))
+
+    _option_script_cache[cache_key] = (now, values)
+    return {"values": values}
 
 
 # ── Machine runs history ─────────────────────────────────
@@ -438,7 +502,7 @@ async def ws_exec(ws: WebSocket, machine_id: UUID, token: str = ""):
 
     run_id: UUID | None = None
     triggered_action_name: str | None = None
-    manifest_tags: list[str] = []
+    creates_named_type_id: UUID | None = None
 
     try:
         raw = await ws.receive_text()
@@ -454,6 +518,7 @@ async def ws_exec(ws: WebSocket, machine_id: UUID, token: str = ""):
             action = await infra_named_type_actions_service.get_by_id(UUID(action_id_raw))
             script_url = action.url
             triggered_action_name = action.action_name
+            creates_named_type_id = action.creates_named_type_id
             run_row = await infra_machines_runs_service.start(machine_id, action.id)
             run_id = run_row.id
 
@@ -473,14 +538,14 @@ async def ws_exec(ws: WebSocket, machine_id: UUID, token: str = ""):
                     return
                 manifest = resp.json()
 
-            command = manifest.get("command", "")
-            raw_tags = manifest.get("tags") or []
-            if isinstance(raw_tags, list):
-                manifest_tags = [str(t) for t in raw_tags]
+            commands_list: list[str] = manifest.get("commands") or []
+            command = (
+                " && ".join(commands_list) if commands_list else manifest.get("command", "")
+            )
             _log.info(
                 "ws_exec.manifest_fetched",
                 url=script_url,
-                manifest_tags=manifest_tags,
+                creates_named_type_id=str(creates_named_type_id) if creates_named_type_id else None,
                 has_command=bool(command),
             )
             for key, value in args.items():
@@ -541,21 +606,21 @@ async def ws_exec(ws: WebSocket, machine_id: UUID, token: str = ""):
             _log.info(
                 "ws_exec.post",
                 success=success,
-                manifest_tags=manifest_tags,
                 triggered_action_name=triggered_action_name,
+                creates_named_type_id=str(creates_named_type_id) if creates_named_type_id else None,
                 stdout_lines_count=len(stdout_lines),
             )
             if success:
-                # Tag dispatch — triggered by manifest.tags
-                if manifest_tags:
+                # Si l'action crée une machine enfant, on parse la dernière ligne JSON du stdout
+                # et on provisionne la machine avec le type configuré sur l'action.
+                if creates_named_type_id:
                     output_json = _parse_last_json(stdout_lines)
                     _log.info(
-                        "ws_exec.tag_dispatch_entering",
-                        manifest_tags=manifest_tags,
+                        "ws_exec.provision_child",
+                        creates_named_type_id=str(creates_named_type_id),
                         parsed_ok=bool(output_json),
                     )
-                    for tag in manifest_tags:
-                        await _handle_tag(tag, ws, conn, machine_id, output_json)
+                    await _handle_add_node(ws, conn, machine_id, creates_named_type_id, output_json)
 
                 # Legacy behaviour: install action → mark machine as initialized
                 if triggered_action_name == "install":
@@ -614,105 +679,120 @@ def _parse_last_json(stdout_lines: list[str]) -> dict | None:
     return None
 
 
-async def _handle_tag(
-    tag: str,
-    ws: WebSocket,
-    conn,
-    machine_id: UUID,
-    output_json: dict | None,
-) -> None:
-    """Dispatch to the tag-specific handler."""
-    if tag == "add_node":
-        await _handle_add_node(ws, conn, machine_id, output_json)
-    else:
-        _log.info("tag.unknown", tag=tag)
-
-
 async def _handle_add_node(
     ws: WebSocket,
     conn,  # asyncssh connection still open to the parent machine
     parent_machine_id: UUID,
+    child_type_id: UUID,
     output_json: dict | None,
 ) -> None:
-    """add_node tag : create child cert + machine from the parsed stdout JSON.
+    """Crée la machine enfant après exécution réussie d'une action avec creates_named_type_id.
 
-    The child machine's type_id is inherited from the parent machine's
-    named_type.sub_type_id. Refuses to create if the parent has no sub_type
-    (respects the "no programmatic modification of infra_types" rule).
+    Lit le JSON de fin de script (format create-lxc-docker.sh) :
+      { status, machine: { ctid, hostname, systeme: { ip, ip_type, distro },
+        users: [{ user, ssh_key_private_path, ssh_key_public_path, ssh_key_public, groups }] },
+        docker: { docker_version } }
+
+    - Le user de gestion est le premier user dans le groupe `docker`.
+    - La clé privée SSH est lue depuis le Proxmox parent via la connexion SSH existante.
+    - La clé publique est directement dans le JSON (champ ssh_key_public).
+    - Un certificat est créé en DB avant la machine.
     """
     if not output_json or output_json.get("status") != "ok":
-        _log.info("add_node.no_json_output")
+        _log.warning("add_node.bad_output", status=output_json.get("status") if output_json else None)
+        await ws.send_json({"type": "stderr", "data": "✗ JSON de provisioning absent ou status != ok\n"})
         return
 
-    ip = output_json.get("ip", "")
-    user = output_json.get("user", "")
-    password = output_json.get("password", "")
-    ssh_key_path = output_json.get("ssh_key", "")
-    ctid = output_json.get("ctid", "")
+    machine_block: dict = output_json.get("machine") or {}
+    docker_block: dict = output_json.get("docker") or {}
+    systeme: dict = machine_block.get("systeme") or {}
+    users: list[dict] = machine_block.get("users") or []
+
+    ip = systeme.get("ip", "")
+    ctid = str(machine_block.get("ctid", ""))
+    hostname = machine_block.get("hostname", "")
 
     if not ip:
         _log.warning("add_node.no_ip")
+        await ws.send_json({"type": "stderr", "data": "✗ IP manquante dans le JSON de provisioning\n"})
         return
 
-    await ws.send_json({"type": "stdout", "data": "\n── add_node ──\n"})
+    # Premier user dans le groupe docker = user de gestion (Docker + sudo).
+    mgmt_user: dict = next(
+        (u for u in users if "docker" in (u.get("groups") or [])),
+        users[0] if users else {},
+    )
+    username = mgmt_user.get("user", "")
+    priv_key_path = mgmt_user.get("ssh_key_private_path", "")
+    pub_key_inline = mgmt_user.get("ssh_key_public", "")   # déjà dans le JSON
+    pub_key_path = mgmt_user.get("ssh_key_public_path", "")
 
-    # 1. Find parent's named_type. sub_type_id points directly to the child's
-    # named_type variant (self-reference) — use it as the child machine's type_id.
-    parent_machine = await infra_machines_service.get_by_id(parent_machine_id)
-    parent_named_type = await infra_named_types_service.get_by_id(parent_machine.type_id)
-    if not parent_named_type.sub_type_id:
-        msg = f"La variante '{parent_named_type.name}' n'a pas de sous-type configuré"
-        await ws.send_json({"type": "stderr", "data": f"✗ {msg}\n"})
-        _log.warning("add_node.no_sub_type", parent_named_type_id=str(parent_named_type.id))
-        return
-    child_type_id = parent_named_type.sub_type_id
+    await ws.send_json({"type": "stdout", "data": "\n── provisioning machine enfant ──\n"})
 
-    # 2. Read the SSH private key from the parent machine
+    # 1. Lire la clé privée SSH depuis le Proxmox (connexion SSH encore ouverte).
     cert_summary = None
-    if ssh_key_path:
+    if priv_key_path:
         try:
-            result = await conn.run(f"cat {ssh_key_path}", check=True, encoding="utf-8")
+            result = await conn.run(f"cat {priv_key_path}", check=True, encoding="utf-8")
             priv_key_content = result.stdout.strip()
 
-            result_pub = await conn.run(f"cat {ssh_key_path}.pub", check=False, encoding="utf-8")
-            pub_key_content = result_pub.stdout.strip() if result_pub.exit_status == 0 else None
+            # La clé publique est dans le JSON ; lecture fichier uniquement en fallback.
+            pub_key_content: str | None = pub_key_inline or None
+            if not pub_key_content and pub_key_path:
+                result_pub = await conn.run(f"cat {pub_key_path}", check=False, encoding="utf-8")
+                if result_pub.exit_status == 0:
+                    pub_key_content = result_pub.stdout.strip() or None
 
             key_type = "ed25519" if "ed25519" in priv_key_content.lower() else "rsa"
-
-            cert_name = f"lxc-{ctid}-{user}" if ctid else f"{ip}-{user}"
+            cert_name = f"lxc-{ctid}-{username}" if ctid else f"{ip}-{username}"
             cert_summary = await infra_certificates_service.create(
                 name=cert_name,
                 private_key=priv_key_content,
                 public_key=pub_key_content,
                 key_type=key_type,
             )
-            await ws.send_json({"type": "stdout", "data": f"✓ Certificat SSH créé: {cert_name} ({key_type})\n"})
+            await ws.send_json({
+                "type": "stdout",
+                "data": f"✓ Certificat SSH créé : {cert_name} ({key_type})\n",
+            })
             _log.info("add_node.cert_created", name=cert_name, key_type=key_type)
         except Exception as exc:
-            await ws.send_json({"type": "stderr", "data": f"✗ Lecture clé SSH échouée: {exc}\n"})
-            _log.warning("add_node.key_read_failed", path=ssh_key_path, error=str(exc))
+            await ws.send_json({"type": "stderr", "data": f"✗ Lecture clé SSH échouée : {exc}\n"})
+            _log.warning("add_node.key_read_failed", path=priv_key_path, error=str(exc))
+    else:
+        await ws.send_json({
+            "type": "stderr",
+            "data": "⚠ Aucune clé SSH dans le JSON — connexion sans certificat\n",
+        })
 
-    # 3. Create the child machine
+    # 2. Métadonnées extraites du JSON.
+    meta: dict[str, str] = {}
+    if ctid:
+        meta["ctid"] = ctid
+    if systeme.get("distro"):
+        meta["distro"] = systeme["distro"]
+    if systeme.get("ip_type"):
+        meta["ip_type"] = systeme["ip_type"]
+    if docker_block.get("docker_version"):
+        meta["docker"] = docker_block["docker_version"]
+
+    # 3. Création de la machine enfant.
+    machine_name = hostname or (f"LXC-{ctid}" if ctid else ip)
     try:
-        machine_name = f"LXC-{ctid}" if ctid else ip
-
-        meta = {}
-        for k in ("distro", "ip_type", "docker", "ctid"):
-            if output_json.get(k):
-                meta[k] = str(output_json[k])
-
         new_machine = await infra_machines_service.create(
             name=machine_name,
             type_id=child_type_id,
             host=ip,
             port=22,
-            username=user or None,
-            password=password or None,
+            username=username or None,
             certificate_id=cert_summary.id if cert_summary else None,
             metadata=meta,
             parent_id=parent_machine_id,
         )
-        await ws.send_json({"type": "stdout", "data": f"✓ Machine créée: {machine_name} ({ip}:22, user={user})\n"})
+        await ws.send_json({
+            "type": "stdout",
+            "data": f"✓ Machine créée : {machine_name} ({ip}:22, user={username})\n",
+        })
         await ws.send_json({
             "type": "provisioned",
             "data": json.dumps({
@@ -720,7 +800,7 @@ async def _handle_add_node(
                 "certificate_id": str(cert_summary.id) if cert_summary else None,
                 "name": machine_name,
                 "host": ip,
-                "user": user,
+                "user": username,
             }),
         })
         _log.info(
@@ -728,7 +808,7 @@ async def _handle_add_node(
             name=machine_name, host=ip, type_id=str(child_type_id),
         )
     except Exception as exc:
-        await ws.send_json({"type": "stderr", "data": f"✗ Création machine échouée: {exc}\n"})
+        await ws.send_json({"type": "stderr", "data": f"✗ Création machine échouée : {exc}\n"})
         _log.error("add_node.machine_create_failed", error=str(exc))
 
 

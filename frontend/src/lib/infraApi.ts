@@ -1,29 +1,74 @@
 import { api } from "./api";
 
+// ── Runtime config (key/value store) ──────────────────
+
+export interface RuntimeConfigEntry {
+  key: string;
+  value: string;
+  filter: string | null;
+}
+
+export const infraRuntimeConfigApi = {
+  async list(): Promise<RuntimeConfigEntry[]> {
+    return (await api.get<RuntimeConfigEntry[]>("/infra/runtime-config")).data;
+  },
+};
+
+// ── Named type rules ───────────────────────────────────
+
+export interface NamedTypeRule {
+  id: string;
+  named_type_id: string;
+  key: string;
+  value: string;
+  created_at: string;
+}
+
+export const infraNamedTypeRulesApi = {
+  async listAll(): Promise<NamedTypeRule[]> {
+    return (await api.get<NamedTypeRule[]>("/infra/named-type-rules")).data;
+  },
+  async list(namedTypeId: string): Promise<NamedTypeRule[]> {
+    return (await api.get<NamedTypeRule[]>(
+      `/infra/named-types/${namedTypeId}/rules`,
+    )).data;
+  },
+  async create(namedTypeId: string, key: string, value: string): Promise<NamedTypeRule> {
+    return (await api.post<NamedTypeRule>(
+      `/infra/named-types/${namedTypeId}/rules`,
+      { key, value },
+    )).data;
+  },
+  async remove(namedTypeId: string, ruleId: string): Promise<void> {
+    await api.delete(`/infra/named-types/${namedTypeId}/rules/${ruleId}`);
+  },
+};
+
 // ── Categories ────────────────────────────────────────
 
 export interface InfraCategory {
   name: string;
-  is_vps: boolean;
+  visible_in_machines: boolean;
 }
 
 export interface InfraCategoryAction {
   id: string;
   name: string;
   is_required: boolean;
+  creates_category: string | null;
 }
 
 export const infraCategoriesApi = {
   async list(): Promise<InfraCategory[]> {
     return (await api.get<InfraCategory[]>("/infra/categories")).data;
   },
-  async create(name: string, isVps = false): Promise<InfraCategory> {
-    return (await api.post<InfraCategory>("/infra/categories", { name, is_vps: isVps })).data;
+  async create(name: string): Promise<InfraCategory> {
+    return (await api.post<InfraCategory>("/infra/categories", { name })).data;
   },
-  async setVps(name: string, isVps: boolean): Promise<InfraCategory> {
+  async setVisibleInMachines(name: string, visible: boolean): Promise<InfraCategory> {
     return (await api.patch<InfraCategory>(
       `/infra/categories/${encodeURIComponent(name)}`,
-      { is_vps: isVps },
+      { visible_in_machines: visible },
     )).data;
   },
   async remove(name: string): Promise<void> {
@@ -34,16 +79,25 @@ export const infraCategoriesApi = {
       `/infra/categories/${encodeURIComponent(category)}/actions`,
     )).data;
   },
-  async createAction(category: string, name: string, isRequired = false): Promise<InfraCategoryAction> {
+  async createAction(
+    category: string,
+    name: string,
+    isRequired = false,
+    createsCategory: string | null = null,
+  ): Promise<InfraCategoryAction> {
     return (await api.post<InfraCategoryAction>(
       `/infra/categories/${encodeURIComponent(category)}/actions`,
-      { name, is_required: isRequired },
+      { name, is_required: isRequired, creates_category: createsCategory },
     )).data;
   },
-  async setActionRequired(category: string, name: string, isRequired: boolean): Promise<InfraCategoryAction> {
+  async updateAction(
+    category: string,
+    name: string,
+    patch: { is_required?: boolean; creates_category?: string | null },
+  ): Promise<InfraCategoryAction> {
     return (await api.patch<InfraCategoryAction>(
       `/infra/categories/${encodeURIComponent(category)}/actions/${encodeURIComponent(name)}`,
-      { is_required: isRequired },
+      patch,
     )).data;
   },
   async removeAction(category: string, name: string): Promise<void> {
@@ -109,6 +163,7 @@ export interface InfraNamedTypeAction {
   category_action_id: string;
   action_name: string;
   url: string;
+  creates_named_type_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -123,20 +178,21 @@ export const infraNamedTypeActionsApi = {
     namedTypeId: string,
     categoryActionId: string,
     url: string,
+    createsNamedTypeId: string | null = null,
   ): Promise<InfraNamedTypeAction> {
     return (await api.post<InfraNamedTypeAction>(
       `/infra/named-types/${namedTypeId}/actions`,
-      { category_action_id: categoryActionId, url },
+      { category_action_id: categoryActionId, url, creates_named_type_id: createsNamedTypeId },
     )).data;
   },
   async update(
     namedTypeId: string,
     actionId: string,
-    url: string,
+    patch: { url?: string; creates_named_type_id?: string | null },
   ): Promise<InfraNamedTypeAction> {
     return (await api.put<InfraNamedTypeAction>(
       `/infra/named-types/${namedTypeId}/actions/${actionId}`,
-      { url },
+      patch,
     )).data;
   },
   async remove(namedTypeId: string, actionId: string): Promise<void> {
@@ -217,11 +273,13 @@ export interface ScriptManifestArg {
   min?: number;
   max?: number;
   options?: { value: string; label: string }[];
+  option_script?: string;
 }
 
 export interface ScriptManifest {
   args: ScriptManifestArg[];
-  command: string;
+  commands: string[];
+  command?: string; // legacy
 }
 
 export interface ScriptRunResult {
@@ -273,6 +331,9 @@ export const infraMachinesApi = {
   },
   async fetchManifest(url: string): Promise<ScriptManifest> {
     return (await api.get<ScriptManifest>(`/infra/machines/manifest`, { params: { url } })).data;
+  },
+  async fetchOptionScript(machineId: string, script: string): Promise<string[]> {
+    return (await api.post<{ values: string[] }>(`/infra/machines/${machineId}/option-script`, { script })).data.values;
   },
   async listRuns(id: string, limit = 50): Promise<MachineRun[]> {
     return (await api.get<MachineRun[]>(`/infra/machines/${id}/runs`, { params: { limit } })).data;

@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     admin_password_hash: str
     harpocrate_key: str = ""
     harpocrate_url: str = ""
+    harpocrate_vault_api_key_id: str = "default"
+    agflow_data_dir: str = "/app/data"
 
     google_client_id: str = ""
     google_client_secret: str = ""

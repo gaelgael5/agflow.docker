@@ -1,25 +1,44 @@
 """Infrastructure machines service — asyncpg CRUD.
 
-Passwords are encrypted at rest via crypto_service (Fernet).
+Passwords are stored in Harpocrate vault; a vault ref is persisted in DB.
 Table unifiée (ex-infra_servers + ex-infra_machines depuis la migration 064).
 """
 from __future__ import annotations
 
 import json as _json
+import re
+import uuid as _uuid
 from typing import Any
 from uuid import UUID
 
 import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
-from agflow.schemas.infra import CreateLxcOutput, MachineSummary, RequiredActionStatus
-from agflow.services import crypto_service
+from agflow.schemas.infra import MachineSummary, RequiredActionStatus
+from agflow.services import vault_client
 
 _log = structlog.get_logger(__name__)
 
-# Jointure : machine + named_type → category.
-# Le label humain de la variante vient de infra_named_types.name,
-# la catégorie de infra_named_types.type_id (FK infra_categories.name).
+_VAULT_REF_RE = re.compile(r"^\$\{vault://([^:]+):(.+)\}$")
+_VAULT_KEY_NAME = "HARPOCRATE_KEY"
+
+
+def _vault_path(machine_id: _uuid.UUID) -> str:
+    return f"machines/{machine_id}/password"
+
+
+def _vault_ref(machine_id: _uuid.UUID) -> str:
+    return f"${{vault://{_VAULT_KEY_NAME}:{_vault_path(machine_id)}}}"
+
+
+def _parse_vault_ref(value: str | None) -> str | None:
+    """Retourne le chemin vault si value est un vault ref valide, sinon None."""
+    if not value:
+        return None
+    m = _VAULT_REF_RE.match(value)
+    return m.group(2) if (m and m.group(1) == _VAULT_KEY_NAME) else None
+
+
 _LIST_SQL = """
     SELECT
         m.id, m.name, m.type_id, m.host, m.port, m.username, m.password,
@@ -113,18 +132,24 @@ async def get_by_id(machine_id: UUID) -> MachineSummary:
 
 
 async def get_credentials(machine_id: UUID) -> dict[str, Any]:
-    """Return decrypted credentials for SSH use."""
+    """Return credentials for SSH use. Password fetched from Harpocrate."""
     row = await fetch_one(
         "SELECT host, port, username, password, certificate_id FROM infra_machines WHERE id = $1",
         machine_id,
     )
     if row is None:
         raise MachineNotFoundError(f"Machine {machine_id} not found")
+
+    plain_password: str | None = None
+    path = _parse_vault_ref(row["password"])
+    if path:
+        plain_password = await vault_client.get_secret(path)
+
     return {
         "host": row["host"],
         "port": row["port"],
         "username": row["username"],
-        "password": crypto_service.decrypt(row["password"]),
+        "password": plain_password,
         "certificate_id": row.get("certificate_id"),
     }
 
@@ -145,46 +170,75 @@ async def create(
     row = await fetch_one(
         """
         INSERT INTO infra_machines
-            (name, type_id, host, port, username, password,
+            (name, type_id, host, port, username,
              certificate_id, parent_id, metadata, user_id, environment)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
         RETURNING id
         """,
         name, type_id, host, port, username,
-        crypto_service.encrypt(password),
-        certificate_id,
-        parent_id,
+        certificate_id, parent_id,
         _json.dumps(metadata or {}),
-        user_id,
-        environment,
+        user_id, environment,
     )
-    assert row is not None
+    if row is None:
+        raise RuntimeError("INSERT INTO infra_machines returned no row")
+    machine_id: _uuid.UUID = row["id"]
+
+    if password is not None:
+        secret_created = False
+        try:
+            await vault_client.create_secret(_vault_path(machine_id), password)
+            secret_created = True
+            await execute(
+                "UPDATE infra_machines SET password = $1 WHERE id = $2",
+                _vault_ref(machine_id), machine_id,
+            )
+        except Exception:
+            if secret_created:
+                try:
+                    await vault_client.delete_secret(_vault_path(machine_id))
+                except Exception:
+                    _log.warning(
+                        "infra_machines.vault_rollback_failed",
+                        machine_id=str(machine_id),
+                    )
+            await execute("DELETE FROM infra_machines WHERE id = $1", machine_id)
+            raise
+
     _log.info("infra_machines.create", host=host, type_id=str(type_id))
-    return await get_by_id(row["id"])
+    return await get_by_id(machine_id)
 
 
 async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:
     await get_by_id(machine_id)
 
+    new_password: str | None = kwargs.pop("password", None)
+    if new_password is not None:
+        pw_row = await fetch_one(
+            "SELECT password FROM infra_machines WHERE id = $1", machine_id
+        )
+        existing_path = _parse_vault_ref(pw_row["password"] if pw_row else None)
+        if existing_path:
+            await vault_client.update_secret(existing_path, new_password)
+        else:
+            await vault_client.create_secret(_vault_path(machine_id), new_password)
+            await execute(
+                "UPDATE infra_machines SET password = $1 WHERE id = $2",
+                _vault_ref(machine_id), machine_id,
+            )
+
     updates: dict[str, Any] = {}
-    for field in (
-        "name", "host", "port", "username", "password",
-        "certificate_id", "user_id", "environment",
-    ):
+    for field in ("name", "host", "port", "username", "certificate_id", "user_id", "environment"):
         if field in kwargs and kwargs[field] is not None:
-            val = kwargs[field]
-            if field == "password":
-                val = crypto_service.encrypt(val)
-            updates[field] = val
+            updates[field] = kwargs[field]
 
-    if not updates:
-        return await get_by_id(machine_id)
+    if updates:
+        sets = [f"{k} = ${i}" for i, k in enumerate(updates, 2)]
+        await execute(
+            f"UPDATE infra_machines SET {', '.join(sets)} WHERE id = $1",
+            machine_id, *updates.values(),
+        )
 
-    sets = [f"{k} = ${i}" for i, k in enumerate(updates, 2)]
-    await execute(
-        f"UPDATE infra_machines SET {', '.join(sets)} WHERE id = $1",
-        machine_id, *updates.values(),
-    )
     _log.info("infra_machines.update", id=str(machine_id))
     return await get_by_id(machine_id)
 
@@ -207,23 +261,28 @@ async def merge_metadata(machine_id: UUID, updates: dict) -> None:
 
 
 async def delete(machine_id: UUID) -> None:
+    pw_row = await fetch_one(
+        "SELECT password FROM infra_machines WHERE id = $1", machine_id
+    )
+    path = _parse_vault_ref(pw_row["password"] if pw_row else None)
+
     row = await fetch_one(
         "DELETE FROM infra_machines WHERE id = $1 RETURNING id", machine_id,
     )
     if row is None:
         raise MachineNotFoundError(f"Machine {machine_id} not found")
+
+    if path:
+        try:
+            await vault_client.delete_secret(path)
+        except Exception:
+            _log.warning("infra_machines.vault_delete_failed", id=str(machine_id), path=path)
+
     _log.info("infra_machines.delete", id=str(machine_id))
 
 
-async def get_for_user(
-    user_id: UUID, environment: str | None,
-) -> MachineSummary | None:
-    """Return the machine assigned to (user_id, environment), or None if absent.
-
-    Used by the SaaS runtime creation flow to resolve which machine hosts a
-    given user's runtime for a given environment. Unique by (user_id,
-    environment) — see migration 085.
-    """
+async def get_for_user(user_id: UUID, environment: str | None) -> MachineSummary | None:
+    """Machine assigned to (user_id, environment), or None. Unique by (user_id, environment) — see migration 085."""
     row = await fetch_one(
         _LIST_SQL + " WHERE m.user_id = $1 AND m.environment IS NOT DISTINCT FROM $2",
         user_id, environment,
@@ -233,56 +292,7 @@ async def get_for_user(
     return _to_summary(row)
 
 
-# ── B0 : ingestion JSON create-swarm-lxc → colonnes 1st-class + metadata ──
-
-
-def derive_machine_columns_from_output(output: CreateLxcOutput) -> dict[str, Any]:
-    """Map le JSON CreateLxcOutput vers les colonnes typees de infra_machines.
-
-    Ne retourne que les colonnes 1st-class (sans metadata). Le statut est
-    derive : 'ready' si docker.docker_ok et systeme.ip_type valide, sinon
-    'partial'. Note : la colonne DB s'appelle lxc_ctid (pas ctid, conflit
-    avec colonne systeme Postgres) ; le champ JSON reste 'ctid'.
-    """
-    agflow_user = output.users[0] if output.users else None
-    docker_ok = output.docker.docker_ok
-    ip_type_valid = output.systeme.ip_type in ("static", "dhcp")
-    return {
-        "name": output.identification.hostname,
-        "host": output.systeme.ip,
-        "username": agflow_user.user if agflow_user else None,
-        "lxc_ctid": output.identification.ctid,
-        "distro": output.systeme.distro,
-        "ip_type": output.systeme.ip_type,
-        "docker_version": output.docker.docker_version,
-        "compose_version": output.docker.compose_version,
-        "swarm_ready": output.swarm.swarm_ready,
-        "swarm_mode": output.swarm.swarm_mode,
-        "tun_device_present": output.swarm.tun_device_present,
-        "status": "ready" if (docker_ok and ip_type_valid) else "partial",
-    }
-
-
-def derive_metadata_from_output(output: CreateLxcOutput) -> dict[str, Any]:
-    """Champs residuels du JSON qui ne sont PAS en colonnes 1st-class.
-
-    Utilise pour peupler infra_machines.metadata (JSONB). Inclut le user
-    agflow secondary metadata, les paths de conf, le hello_world_ok docker.
-    """
-    meta: dict[str, Any] = {}
-    if output.ressources and "storage" in output.ressources:
-        meta["storage"] = output.ressources["storage"]
-    if output.host:
-        if output.host.script_version is not None:
-            meta["script_version"] = output.host.script_version
-        if output.host.conf_path is not None:
-            meta["conf_path"] = output.host.conf_path
-        if output.host.conf_backup_path is not None:
-            meta["conf_backup_path"] = output.host.conf_backup_path
-    if output.users:
-        agflow_user = output.users[0]
-        meta["agflow_user_groups"] = list(agflow_user.groups)
-        meta["agflow_sudo_nopasswd"] = agflow_user.sudo_nopasswd
-    if output.docker.hello_world_ok is not None:
-        meta["docker_hello_world_ok"] = output.docker.hello_world_ok
-    return meta
+from agflow.services.infra_machines_ingest import (  # noqa: F401, E402  (re-export)
+    derive_machine_columns_from_output,
+    derive_metadata_from_output,
+)

@@ -5,17 +5,26 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+# ── Runtime config (key/value store) ────────────────────
+
+class RuntimeConfigEntry(BaseModel):
+    key: str
+    value: str
+    filter: str | None = None
+
+
 # ── Categories ───────────────────────────────────────────
 
 class CategoryRow(BaseModel):
     name: str
-    is_vps: bool = False
+    visible_in_machines: bool = False
 
 
 class CategoryActionRow(BaseModel):
     id: UUID
     name: str
     is_required: bool = False
+    creates_category: str | None = None
 
 
 # ── Named types (variantes typées, ex. Proxmox/SSH) ──────
@@ -46,6 +55,21 @@ class NamedTypeUpdate(BaseModel):
     connection_type: str | None = None
 
 
+# ── Named type rules (filtres runtime par variante) ──────
+
+class NamedTypeRuleRow(BaseModel):
+    id: UUID
+    named_type_id: UUID
+    key: str
+    value: str
+    created_at: datetime
+
+
+class NamedTypeRuleCreate(BaseModel):
+    key: str = Field(min_length=1)
+    value: str = Field(min_length=1)
+
+
 # ── Named type actions (URLs par action de catégorie) ────
 
 class NamedTypeActionRow(BaseModel):
@@ -54,6 +78,7 @@ class NamedTypeActionRow(BaseModel):
     category_action_id: UUID
     action_name: str
     url: str
+    creates_named_type_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -61,10 +86,12 @@ class NamedTypeActionRow(BaseModel):
 class NamedTypeActionCreate(BaseModel):
     category_action_id: UUID
     url: str = Field(min_length=1)
+    creates_named_type_id: UUID | None = None
 
 
 class NamedTypeActionUpdate(BaseModel):
     url: str | None = None
+    creates_named_type_id: UUID | None = None
 
 
 # ── Certificates ─────────────────────────────────────────
@@ -172,6 +199,10 @@ class MachineRunRow(BaseModel):
 class ScriptRunRequest(BaseModel):
     script_url: str = Field(min_length=1)
     args: dict[str, str] = Field(default_factory=dict)
+
+
+class OptionScriptRequest(BaseModel):
+    script: str = Field(min_length=1)
 
 
 # ── Swarm clusters (B0) ──────────────────────────────────────────────────

@@ -61,8 +61,6 @@ function resolveCrumbs(path: string, t: (k: string) => string): Crumb | null {
     return { section: t("sidebar.section_platform"), page: t("users.page_title") };
   if (path.startsWith("/api-keys"))
     return { section: t("sidebar.section_platform"), page: t("api_keys.page_title") };
-  if (path.startsWith("/my-secrets"))
-    return { section: t("sidebar.section_platform"), page: t("my_secrets.page_title") };
   return null;
 }
 

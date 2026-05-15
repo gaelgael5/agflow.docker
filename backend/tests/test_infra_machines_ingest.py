@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from agflow.schemas.infra import CreateLxcOutput
-from agflow.services.infra_machines_service import (
+from agflow.services.infra_machines_ingest import (
     derive_machine_columns_from_output,
     derive_metadata_from_output,
 )

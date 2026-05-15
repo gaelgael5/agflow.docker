@@ -22,6 +22,14 @@ export interface DiscoveryServiceCreate {
   enabled?: boolean;
 }
 
+export interface DiscoveryServiceUpdate {
+  name?: string;
+  base_url?: string;
+  api_key_var?: string | null;
+  description?: string;
+  enabled?: boolean;
+}
+
 export interface ProbeResult {
   ok: boolean;
   detail: string;
@@ -103,6 +111,10 @@ export const discoveryApi = {
       "/admin/discovery-services",
       payload,
     );
+    return res.data;
+  },
+  async update(id: string, payload: DiscoveryServiceUpdate): Promise<DiscoveryServiceSummary> {
+    const res = await api.put<DiscoveryServiceSummary>(`/admin/discovery-services/${id}`, payload);
     return res.data;
   },
   async remove(id: string): Promise<void> {

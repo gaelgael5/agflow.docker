@@ -25,11 +25,30 @@ _fernet: Fernet | None = None
 def _get_fernet() -> Fernet:
     global _fernet
     if _fernet is None:
-        key = get_swarm_secret("agflow_infra_key", env_fallback="AGFLOW_INFRA_KEY")
-        if not key:
-            _log.warning("crypto_service.no_key", msg="AGFLOW_INFRA_KEY not set, generating ephemeral key")
-            key = Fernet.generate_key().decode()
-        _fernet = Fernet(key.encode() if isinstance(key, str) else key)
+        raw = get_swarm_secret("agflow_infra_key", env_fallback="AGFLOW_INFRA_KEY")
+        if raw:
+            try:
+                _fernet = Fernet(raw.encode() if isinstance(raw, str) else raw)
+                return _fernet
+            except ValueError:
+                ephemeral = Fernet.generate_key()
+                _log.error(
+                    "crypto_service.invalid_key",
+                    msg="AGFLOW_INFRA_KEY invalide (pas une clé Fernet 32 octets base64). "
+                        "Utiliser une clé éphémère — les données chiffrées seront perdues au redémarrage. "
+                        "Générez une clé valide avec : "
+                        "python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"",
+                    suggested_key=ephemeral.decode(),
+                )
+                _fernet = Fernet(ephemeral)
+        else:
+            ephemeral = Fernet.generate_key()
+            _log.warning(
+                "crypto_service.no_key",
+                msg="AGFLOW_INFRA_KEY non définie, clé éphémère utilisée — données perdues au redémarrage.",
+                suggested_key=ephemeral.decode(),
+            )
+            _fernet = Fernet(ephemeral)
     return _fernet
 
 

@@ -22,6 +22,7 @@ from agflow.api.admin.generations import router as admin_generations_router
 from agflow.api.admin.group_scripts import router as admin_group_scripts_router
 from agflow.api.admin.groups import router as admin_groups_router
 from agflow.api.admin.image_registries import router as admin_image_registries_router
+from agflow.api.admin.local_backups import router as admin_local_backups_router
 from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
 from agflow.api.admin.platform_config import router as admin_platform_config_router
 from agflow.api.admin.product_instances import router as admin_product_instances_router
@@ -29,6 +30,9 @@ from agflow.api.admin.products import router as admin_products_router
 from agflow.api.admin.project_deployments import router as admin_deployments_router
 from agflow.api.admin.project_runtimes import router as admin_runtimes_router
 from agflow.api.admin.projects import router as admin_projects_router
+from agflow.api.admin.remote_backup_connections import (
+    router as admin_remote_backup_connections_router,
+)
 from agflow.api.admin.roles import router as admin_roles_router
 from agflow.api.admin.scripts import router as admin_scripts_router
 from agflow.api.admin.secrets import router as admin_secrets_router
@@ -46,7 +50,10 @@ from agflow.api.infra.categories import router as infra_categories_router
 from agflow.api.infra.certificates import router as infra_certificates_router
 from agflow.api.infra.machines import router as infra_machines_router
 from agflow.api.infra.named_type_actions import router as infra_named_type_actions_router
+from agflow.api.infra.named_type_rules import router as infra_named_type_rules_router
+from agflow.api.infra.named_type_rules import router_all as infra_all_named_type_rules_router
 from agflow.api.infra.named_types import router as infra_named_types_router
+from agflow.api.infra.runtime_config import router as infra_runtime_config_router
 from agflow.api.infra.swarm_clusters import router as infra_swarm_clusters_router
 from agflow.api.public.agents import router as public_agents_router
 from agflow.api.public.containers import router as public_containers_router
@@ -65,6 +72,9 @@ from agflow.logging_setup import configure_logging
 from agflow.workers.agent_reaper import run_agent_reaper_loop as _run_agent_reaper_loop
 from agflow.workers.docker_reconciler import run_docker_reconciliation
 from agflow.workers.mom_reclaimer import run_mom_reclaimer_loop as _run_mom_reclaimer_loop
+from agflow.workers.remote_backup_pusher import (
+    run_remote_backup_pusher_loop as _run_remote_backup_pusher_loop,
+)
 from agflow.workers.session_expiry import run_expiry_loop as _run_expiry_loop
 from agflow.workers.session_idle_reaper import (
     run_session_idle_reaper_loop as _run_session_idle_reaper_loop,
@@ -180,12 +190,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.warning("docker_reconciler.startup_failed", error=str(exc))
 
     # Démarrage des workers de fond
-    _stops = [_asyncio.Event() for _ in range(4)]
+    _stops = [_asyncio.Event() for _ in range(5)]
     _tasks = [
         _asyncio.create_task(_run_expiry_loop(_stops[0])),
         _asyncio.create_task(_run_agent_reaper_loop(_stops[1])),
         _asyncio.create_task(_run_session_idle_reaper_loop(_stops[2])),
         _asyncio.create_task(_run_mom_reclaimer_loop(_stops[3])),
+        _asyncio.create_task(_run_remote_backup_pusher_loop(_stops[4])),
     ]
     yield
     log.info("app.shutdown")
@@ -315,9 +326,14 @@ def create_app() -> FastAPI:
     app.include_router(admin_users_router)
     app.include_router(admin_api_keys_router)
     app.include_router(admin_apps_router)
+    app.include_router(admin_remote_backup_connections_router)
+    app.include_router(admin_local_backups_router)
     app.include_router(infra_categories_router)
     app.include_router(infra_named_types_router)
     app.include_router(infra_named_type_actions_router)
+    app.include_router(infra_named_type_rules_router)
+    app.include_router(infra_all_named_type_rules_router)
+    app.include_router(infra_runtime_config_router)
     app.include_router(infra_machines_router)
     app.include_router(infra_swarm_clusters_router)
     app.include_router(infra_certificates_router)

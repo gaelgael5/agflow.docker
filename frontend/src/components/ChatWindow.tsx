@@ -59,7 +59,7 @@ function loadMode(): RuntimeMode {
   } catch {
     /* ignore */
   }
-  return "swarm";
+  return "classic";
 }
 
 function randomId(): string {
@@ -80,7 +80,9 @@ export function ChatWindow({
     dockerfileJsonContent,
     decryptedSecrets: secrets,
   });
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState(() => {
+    try { return crypto.randomUUID(); } catch { return randomId() + randomId() + randomId(); }
+  });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);

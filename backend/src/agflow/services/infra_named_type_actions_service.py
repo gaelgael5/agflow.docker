@@ -17,6 +17,7 @@ _log = structlog.get_logger(__name__)
 _LIST_SQL = """
     SELECT
         a.id, a.named_type_id, a.category_action_id, a.url,
+        a.creates_named_type_id,
         a.created_at, a.updated_at,
         ca.name AS action_name
     FROM infra_named_type_actions a
@@ -35,6 +36,7 @@ def _to_row(row: dict[str, Any]) -> NamedTypeActionRow:
         category_action_id=row["category_action_id"],
         action_name=row["action_name"],
         url=row["url"],
+        creates_named_type_id=row.get("creates_named_type_id"),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -59,14 +61,15 @@ async def create(
     named_type_id: UUID,
     category_action_id: UUID,
     url: str,
+    creates_named_type_id: UUID | None = None,
 ) -> NamedTypeActionRow:
     row = await fetch_one(
         """
-        INSERT INTO infra_named_type_actions (named_type_id, category_action_id, url)
-        VALUES ($1, $2, $3)
+        INSERT INTO infra_named_type_actions (named_type_id, category_action_id, url, creates_named_type_id)
+        VALUES ($1, $2, $3, $4)
         RETURNING id
         """,
-        named_type_id, category_action_id, url,
+        named_type_id, category_action_id, url, creates_named_type_id,
     )
     assert row is not None
     _log.info(
@@ -77,13 +80,20 @@ async def create(
     return await get_by_id(row["id"])
 
 
-async def update(action_id: UUID, url: str) -> NamedTypeActionRow:
+async def update(action_id: UUID, fields: dict[str, Any]) -> NamedTypeActionRow:
     await get_by_id(action_id)
-    await execute(
-        "UPDATE infra_named_type_actions SET url = $1 WHERE id = $2",
-        url, action_id,
-    )
-    _log.info("infra_named_type_actions.update", id=str(action_id))
+    sets = []
+    params: list[Any] = []
+    for field, value in fields.items():
+        params.append(value)
+        sets.append(f"{field} = ${len(params)}")
+    if sets:
+        params.append(action_id)
+        await execute(
+            f"UPDATE infra_named_type_actions SET {', '.join(sets)} WHERE id = ${len(params)}",
+            *params,
+        )
+        _log.info("infra_named_type_actions.update", id=str(action_id))
     return await get_by_id(action_id)
 
 

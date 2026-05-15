@@ -3,31 +3,93 @@
 # test-create-lxc.sh
 #
 # Script de test automatisé : création LXC + Docker + clone sources GitHub
-# + déploiement via dev-deploy.sh. À exécuter sur l'HÔTE PROXMOX, pas dans
-# le LXC.
+# + déploiement via le script de deploy défini par projet. À exécuter sur
+# l'HÔTE PROXMOX, pas dans le LXC.
 #
 # Usage :
-#   ./test-create-lxc.sh              # Crée le LXC, le laisse en place
-#   CLEANUP=1 ./test-create-lxc.sh    # Supprime le LXC après les tests
+#   ./test-create-lxc.sh <fichier-config>
+#   CLEANUP=1 ./test-create-lxc.sh <fichier-config>
+#
+# Exemple :
+#   ./test-create-lxc.sh .env.test.docker
+#
+# Le fichier de config est résolu dans cet ordre :
+#   1. chemin absolu (commence par /)
+#   2. /opt/scripts/<nom>  (emplacement standard, peuplé par run-test.sh)
+#   3. répertoire courant
+#
+# Variables requises dans le fichier de config (format `KEY="value"`) :
+#   - GIT_REPO       ex: gaelgael5/agflow.docker
+#   - GIT_BRANCH     ex: dev
+#   - APP_DIR        ex: /opt/agflow.docker
+#   - DEPLOY_SCRIPT  ex: ./dev-deploy.sh
+#   - CTID_MIN       ex: 900
+#   - CTID_MAX       ex: 999
+#   - SCRIPTS_DIR    ex: /opt/scripts
 #
 # Pré-requis sur l'hôte Proxmox :
-#   - /opt/scripts/.env.git  (TOKEN=ghp_... PAT GitHub avec scope `repo`)
+#   - <SCRIPTS_DIR>/.env.git  (TOKEN=ghp_... PAT GitHub avec scope `repo`)
 #   - python3 (pour parser le JSON de create-lxc.sh)
 #   - curl
 ###############################################################################
 set -uo pipefail
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CONFIGURATION — à adapter par projet
+# CHARGEMENT DU FICHIER DE CONFIG (paramètre obligatoire)
 # ══════════════════════════════════════════════════════════════════════════════
-GIT_REPO="gaelgael5/agflow.docker"
-GIT_BRANCH="dev"
-APP_DIR="/opt/agflow.docker"
-DEPLOY_SCRIPT="./dev-deploy.sh"
+if [ $# -lt 1 ]; then
+    echo "✗ Usage : $0 <fichier-config>" >&2
+    echo "  Exemple : $0 .env.test.docker" >&2
+    exit 1
+fi
 
-CTID_MIN=900
-CTID_MAX=999
-SCRIPTS_DIR="/opt/scripts"
+CONFIG_ARG="$1"
+
+# Résolution du path du fichier de config :
+#   - absolu (commence par /)        → utilisé tel quel
+#   - relatif et présent dans /opt/scripts/ → /opt/scripts/<arg>
+#   - relatif et présent dans pwd    → pwd/<arg>
+#   - sinon                          → erreur
+if [ "${CONFIG_ARG:0:1}" = "/" ]; then
+    CONFIG_FILE="${CONFIG_ARG}"
+elif [ -f "/opt/scripts/${CONFIG_ARG}" ]; then
+    CONFIG_FILE="/opt/scripts/${CONFIG_ARG}"
+elif [ -f "${CONFIG_ARG}" ]; then
+    CONFIG_FILE="${PWD}/${CONFIG_ARG}"
+else
+    echo "✗ Fichier de config introuvable : '${CONFIG_ARG}'" >&2
+    echo "  Cherché : /opt/scripts/${CONFIG_ARG} et ${PWD}/${CONFIG_ARG}" >&2
+    exit 1
+fi
+
+if [ ! -f "${CONFIG_FILE}" ]; then
+    echo "✗ Fichier de config inexistant : ${CONFIG_FILE}" >&2
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+. "${CONFIG_FILE}"
+
+# Validation : toutes les variables requises doivent être définies et non vides
+_missing=()
+for _var in GIT_REPO GIT_BRANCH APP_DIR DEPLOY_SCRIPT CTID_MIN CTID_MAX SCRIPTS_DIR; do
+    if [ -z "${!_var:-}" ]; then
+        _missing+=("${_var}")
+    fi
+done
+if [ ${#_missing[@]} -gt 0 ]; then
+    echo "✗ Variables manquantes ou vides dans ${CONFIG_FILE} :" >&2
+    for v in "${_missing[@]}"; do
+        echo "    - ${v}" >&2
+    done
+    exit 1
+fi
+
+echo "[CONFIG] Fichier chargé : ${CONFIG_FILE}"
+echo "         GIT_REPO=${GIT_REPO}  GIT_BRANCH=${GIT_BRANCH}"
+echo "         APP_DIR=${APP_DIR}  DEPLOY_SCRIPT=${DEPLOY_SCRIPT}"
+echo "         CTID range=${CTID_MIN}–${CTID_MAX}  SCRIPTS_DIR=${SCRIPTS_DIR}"
+echo ""
 
 # ══════════════════════════════════════════════════════════════════════════════
 # VARIABLES D'ENVIRONNEMENT (surchargeables au lancement)

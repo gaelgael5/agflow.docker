@@ -151,13 +151,14 @@ async def test_delete_node_removes_file(storage: StorageSDK) -> None:
 
 @pytest.mark.asyncio
 async def test_delete_node_cascades_to_children(storage: StorageSDK) -> None:
-    root_id = await storage.create_folder_path("/root/sub")
-    sub_id = await storage.resolve_node("sub", root_id)
-    assert sub_id is not None
-
+    # Note : create_folder_path retourne le LEAF segment (= sub), pas root.
+    # On crée donc root et sub séparément pour garder une référence sur les
+    # deux et vérifier la cascade.
+    root_id = await storage.create_folder("root", None)
+    sub_id = await storage.create_folder("sub", root_id)
     file_id = await storage.write_document(sub_id, "child.txt", "child")
 
-    # Supprimer root supprime sub et child
+    # Supprimer root doit supprimer sub et child (FK ON DELETE CASCADE)
     await storage.delete_node(root_id)
 
     assert await storage.read_node(root_id) is None

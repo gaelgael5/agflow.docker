@@ -110,7 +110,10 @@ async def test_update_content() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_file() -> None:
-    f = await files.create(dockerfile_id="test", path="x", content="")
+    # Path avec extension `.txt` → résolu comme storage kind=1 (texte) qui
+    # accepte un content str. Sans extension, le storage SDK route vers
+    # storage_bin (bytea) et asyncpg refuse la str vide.
+    f = await files.create(dockerfile_id="test", path="x.txt", content="")
     await files.delete(f.id)
 
     remaining = await files.list_for_dockerfile("test")

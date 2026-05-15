@@ -53,8 +53,14 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "session"
-asyncio_default_test_loop_scope = "session"
+# Scope `function` (et non `session`) : chaque test obtient un nouvel event
+# loop. Évite le bug « RuntimeError: Event loop is closed » qui apparaissait
+# quand un teardown asyncpg fermait le loop session partagé → tous les tests
+# asyncio suivants plantaient en cascade (~50 errors dans le LXC de test).
+# Aucune fixture du projet n'est explicitement session-scope, donc le passage
+# à function-scope est safe (juste des tests un peu plus lents).
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 

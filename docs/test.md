@@ -33,7 +33,7 @@ sur l'hôte Proxmox.
 │   │       ├─ pct create + install Docker                      │   │
 │   │       ├─ pct push .env.git + git clone (branche dev)      │   │
 │   │       ├─ pct exec ./dev-deploy.sh                         │   │
-│   │       └─ 7 assertions (Docker OK, /health, …)             │   │
+│   │       └─ 8 assertions (Docker OK, /health, pytest, …)     │   │
 │   │                                                            │   │
 │   │   ┌── LXC créé : test-<project name>-<CTID> ───────┐       │   │
 │   │   │   /opt/<project name>  (clone branche dev)     │       │   │
@@ -156,10 +156,10 @@ Variantes :
 | 4 | Création LXC | `create-lxc.sh <CTID> <NAME> --docker`. Provisionne le container, installe Docker, lance `hello-world`. Récupère le JSON de sortie (IP, version Docker, etc.). |
 | 5 | Push `.env.git` + clone | `pct push` du token dans le LXC, puis `git clone --branch ${GIT_BRANCH} https://${TOKEN}@github.com/${GIT_REPO}.git ${APP_DIR}`. |
 | 6 | Déploiement | Exécute `${DEPLOY_SCRIPT}` dans le LXC. Pour <project name> : `dev-deploy.sh` provisionne `.env` (auto-génération secrets + bcrypt admin), build les images, lance la stack. |
-| 7 | Validation | Joue 7 assertions (tableau ci-dessous). Compte pass / fail. |
+| 7 | Validation | Joue 8 assertions (tableau ci-dessous), dont la suite `pytest` exécutée dans le container backend. Compte pass / fail. |
 | 8 | Nettoyage | Si `CLEANUP=1` : `pct stop` + `pct destroy --purge`. Sinon, affiche les commandes manuelles. |
 
-### Les 7 assertions
+### Les 8 assertions
 
 | # | Critère |
 |---|---|
@@ -170,6 +170,7 @@ Variantes :
 | 5 | `${APP_DIR}` existe dans le LXC |
 | 6 | `${APP_DIR}/.git` existe (clone complet) |
 | 7 | `curl http://<CT_IP>/health` répond `200` (via Caddy:80, boucle 60s) — **smoke applicatif backend** |
+| 8 | `docker compose exec backend pytest --tb=short -q` exit 0 — **suite pytest backend** (image `agflow-backend:latest` buildée sur le stage `dev` du Dockerfile, inclut pytest + tests + pyproject) |
 
 ---
 
@@ -188,8 +189,8 @@ Variantes :
   Branche      : dev
   Sources      : /opt/<project name>
   -----------------------------------------
-  Tests OK     : 7/7
-  Tests FAIL   : 0/7
+  Tests OK     : 8/8
+  Tests FAIL   : 0/8
 
   Statut       : OK SUCCES
 =========================================
@@ -291,33 +292,33 @@ délai imparti. Vérifier :
 
 ---
 
-## Chantier ouvert : tests pytest dans le LXC
+## Détails sur le test 8 (suite pytest dans le LXC)
 
-L'objectif de la procédure était initialement d'exécuter dans le LXC frais
-**les tests unitaires backend qui nécessitent un environnement de test**
-(typiquement les tests qui touchent Postgres et sont actuellement marqués
-`@pytest.mark.skip` en local). Ce chantier est **reporté** car deux
-verrous techniques sont à lever d'abord :
-
-1. **`pytest` absent de l'image `agflow-backend:latest`** — le Dockerfile
-   backend fait `uv sync` sans `--group dev`, donc pytest et pytest-asyncio
-   ne sont pas dans l'image runtime. Pistes possibles :
-   - Modifier le Dockerfile pour inclure les dev deps en target dev (cible
-     multistage, ou simplement `uv sync --group dev` dans une image
-     `agflow-backend:test`)
-   - Faire un `docker compose run --rm --no-deps backend bash -c "uv sync
-     --group dev && uv run pytest"` (one-shot, plus lent mais sans toucher
-     à l'image runtime)
-2. **`conftest.py` hardcode `DATABASE_URL`** vers une IP obsolète (cf.
-   memory `project_tests_hardcoded_db_ip`). Tant que ce n'est pas corrigé,
-   les tests pointeront vers une DB qui n'existe pas dans le LXC frais.
-
-Une fois ces deux points résolus, ajouter une **étape 7bis** dans
-`test-create-lxc.sh` :
+L'invocation effective :
 ```bash
 pct exec ${CTID} -- bash -c "cd ${APP_DIR} && \
-    docker compose -f docker-compose.dev.yml exec -T backend uv run pytest -v"
+    docker compose -f docker-compose.dev.yml exec -T backend pytest --tb=short -q"
 ```
+
+**Pré-requis** côté image :
+- L'image `agflow-backend:latest` doit être buildée sur le stage `dev` du
+  Dockerfile (qui hérite de `runtime` + installe `pytest`/`pytest-asyncio`
+  + copie `tests/` et `pyproject.toml`). C'est ce que fait `dev-deploy.sh`
+  par défaut (= build du dernier stage).
+- Pour la prod (`scripts/deploy.sh`), le build cible explicitement
+  `--target runtime` pour rester lean (sans pytest ni tests).
+
+**Pré-requis** côté env :
+- Le container backend reçoit `DATABASE_URL` via `env_file=.env` du compose.
+- `conftest.py` utilise `os.environ.setdefault(...)` → la valeur hardcodée
+  (`192.168.10.154`) n'est utilisée QUE si `DATABASE_URL` n'est pas déjà
+  dans l'env. Comme le container l'a déjà, les tests pointent
+  automatiquement vers le postgres local du LXC.
+
+**Tests skip locaux** (memory `project_no_local_tests`) : certains tests
+sont marqués `@pytest.mark.skip` en local faute de Postgres réel. Dans le
+LXC, ces tests devraient s'exécuter — sauf si le marqueur skip est
+inconditionnel (à vérifier au cas par cas si besoin).
 
 ---
 

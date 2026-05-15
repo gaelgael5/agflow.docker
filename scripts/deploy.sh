@@ -90,7 +90,7 @@ ssh pve "pct push ${CTID} /tmp/agflow-deploy.tar.gz /tmp/agflow-deploy.tar.gz &&
 
 if [ "$REBUILD" -eq 1 ]; then
     echo "==> Rebuilding images on CT ${CTID}..."
-    ssh pve "pct exec ${CTID} -- bash -c 'cd ${REPO_DIR_ON_CT}/backend && docker build -t agflow-backend:latest .'"
+    ssh pve "pct exec ${CTID} -- bash -c 'cd ${REPO_DIR_ON_CT}/backend && docker build --target runtime -t agflow-backend:latest .'"
     ssh pve "pct exec ${CTID} -- bash -c 'cd ${REPO_DIR_ON_CT}/frontend && docker build -t agflow-frontend:latest .'"
 fi
 

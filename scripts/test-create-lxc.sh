@@ -491,6 +491,23 @@ if [ -n "${CT_IP}" ]; then
     fi
 fi
 
+# Test 8 : exécution de la suite pytest dans le container backend.
+# Image `agflow-backend:latest` buildée via `dev-deploy.sh` cible le stage
+# `dev` du Dockerfile (qui inclut pytest + pytest-asyncio + /app/tests).
+# Le container reçoit DATABASE_URL via env_file=.env, donc le setdefault
+# de conftest.py n'écrase rien et les tests pointent vers le postgres
+# local du LXC. Output complet affiché pour traçabilité ; --tb=short -q
+# pour limiter le volume.
+echo ""
+echo "→ [Test 8] Exécution de pytest dans le container backend (peut prendre 1-2 min)..."
+PYTEST_CMD="cd ${APP_DIR} && docker compose -f docker-compose.dev.yml exec -T backend pytest --tb=short -q"
+if pct exec "${CREATED_CTID}" -- bash -c "${PYTEST_CMD}"; then
+    log_pass "Suite pytest backend (exit 0)"
+else
+    _PYTEST_RC=$?
+    log_fail "Suite pytest backend (exit ${_PYTEST_RC})"
+fi
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ÉTAPE 8 : Nettoyage (optionnel)
 # ══════════════════════════════════════════════════════════════════════════════

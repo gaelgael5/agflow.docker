@@ -54,9 +54,15 @@ scp "${TEST_SCRIPT}" "${SSH_HOST}:${REMOTE_DIR}/test-create-lxc.sh"
 ssh "${SSH_HOST}" "chmod +x ${REMOTE_DIR}/test-create-lxc.sh"
 echo "      ✓ poussé et rendu exécutable"
 
-# ─── 2) Push du fichier de config ──────────────────────────────────────────
-echo "[2/3] Push ${CONFIG_NAME} → ${SSH_HOST}:${REMOTE_DIR}/..."
-scp "${LOCAL_CONFIG}" "${SSH_HOST}:${REMOTE_DIR}/${CONFIG_NAME}"
+# ─── 2) Push du fichier de config (converti en LF si CRLF) ────────────────
+# Sur Windows, l'éditeur peut sauver en CRLF. Source-r un .env avec CRLF
+# colle un `\r` à chaque valeur, ce qui pourrit silencieusement les URLs
+# et chemins côté pve. On strippe les `\r` avant le scp.
+echo "[2/3] Push ${CONFIG_NAME} (LF normalisé) → ${SSH_HOST}:${REMOTE_DIR}/..."
+_CONFIG_TMP="$(mktemp)"
+tr -d '\r' < "${LOCAL_CONFIG}" > "${_CONFIG_TMP}"
+scp "${_CONFIG_TMP}" "${SSH_HOST}:${REMOTE_DIR}/${CONFIG_NAME}"
+rm -f "${_CONFIG_TMP}"
 echo "      ✓ poussé"
 echo ""
 

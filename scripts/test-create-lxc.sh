@@ -67,8 +67,15 @@ if [ ! -f "${CONFIG_FILE}" ]; then
     exit 1
 fi
 
+# Le fichier peut avoir été produit/édité sous Windows (CRLF). Sourcer
+# directement attache alors un `\r` à chaque valeur, ce qui corrompt
+# silencieusement URLs et chemins (curl récupère `https://…/repo\r` →
+# requête malformée → `000`). On source une version débarrassée des `\r`.
+_CONFIG_CLEAN="$(mktemp)"
+tr -d '\r' < "${CONFIG_FILE}" > "${_CONFIG_CLEAN}"
 # shellcheck source=/dev/null
-. "${CONFIG_FILE}"
+. "${_CONFIG_CLEAN}"
+rm -f "${_CONFIG_CLEAN}"
 
 # Validation : toutes les variables requises doivent être définies et non vides
 _missing=()
@@ -463,12 +470,24 @@ else
     log_fail "Répertoire .git absent — clone incomplet ?"
 fi
 
-# Test 7 : la stack répond sur /health (smoke applicatif côté agflow.docker)
+# Test 7 : smoke /health via Caddy (port 80). Le port 8000 du backend n'est
+# pas exposé hors du LXC — Caddy proxifie depuis :80. On boucle jusqu'à 60s
+# (12 × 5s) car le boot du backend (pool DB + migrations + resolver) prend
+# typiquement 5-20s même quand Docker déclare le container "healthy" tôt.
 if [ -n "${CT_IP}" ]; then
-    if curl -sf -m 5 "http://${CT_IP}:8000/health" >/dev/null 2>&1; then
-        log_pass "Backend agflow répond sur http://${CT_IP}:8000/health"
+    HEALTH_URL="http://${CT_IP}/health"
+    HEALTH_OK=0
+    for _try in $(seq 1 12); do
+        if curl -sf -m 3 "${HEALTH_URL}" >/dev/null 2>&1; then
+            HEALTH_OK=1
+            break
+        fi
+        sleep 5
+    done
+    if [ "${HEALTH_OK}" = "1" ]; then
+        log_pass "Backend répond sur ${HEALTH_URL}"
     else
-        log_fail "Backend agflow ne répond pas sur http://${CT_IP}:8000/health"
+        log_fail "Backend ne répond pas sur ${HEALTH_URL} après 60s"
     fi
 fi
 

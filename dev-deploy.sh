@@ -416,8 +416,13 @@ else
   docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 fi
 
-echo "      Pull images registry (postgres, redis, caddy, pgweb)..."
-docker compose -f "$COMPOSE_FILE" pull postgres redis caddy pgweb || true
+echo "      Pull images registry (tous les services avec image:, skip les build:)..."
+# `docker compose pull` sans argument pull tous les services qui ont une
+# `image:` (postgres, redis, caddy, pgweb…) et skip automatiquement ceux
+# qui ont un `build:` (backend, frontend custom). Plus robuste qu'un
+# listing explicite : si on ajoute un nouveau service registry au compose,
+# pas besoin de mettre à jour ce script.
+docker compose -f "$COMPOSE_FILE" pull || true
 
 echo "      Démarrage de la stack..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans --pull never

@@ -169,7 +169,7 @@ Variantes :
 | 4 | `docker.hello_world_ok == true` |
 | 5 | `${APP_DIR}` existe dans le LXC |
 | 6 | `${APP_DIR}/.git` existe (clone complet) |
-| 7 | `curl http://<CT_IP>:8000/health` répond — **smoke applicatif backend** |
+| 7 | `curl http://<CT_IP>/health` répond `200` (via Caddy:80, boucle 60s) — **smoke applicatif backend** |
 
 ---
 

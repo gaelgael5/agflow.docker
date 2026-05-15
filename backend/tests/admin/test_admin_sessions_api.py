@@ -20,11 +20,13 @@ async def async_client() -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
-    # NOTE (deferred): closing the pool per-test is the current pattern because
-    # pytest-asyncio creates a fresh event loop per test. Moving this to a
-    # module/session-scoped fixture requires coordinating event-loop scope
-    # across the whole suite — out of scope for this PR. See review follow-up.
-    await close_pool()
+    # PAS de `close_pool()` ici — quand on combine AsyncClient+ASGITransport
+    # avec un `create_app()` (qui démarre le lifespan FastAPI et donc le
+    # pool), le close_pool explicite après le `async with` provoque un
+    # double-close qui rend l'event loop inutilisable pour TOUS les tests
+    # asyncio suivants (les tests/mom/* étaient catastrophés : 50 errors
+    # « Event loop is closed »). Le pool est lazy (`get_pool()` le recrée),
+    # donc le laisser ouvert ne fuit que jusqu'à la fin du process pytest.
 
 
 async def _auth_header(client: AsyncClient) -> dict[str, str]:

@@ -11,6 +11,7 @@ from agflow.db.pool import close_pool
 from agflow.schemas.catalogs import ProbeResult
 from agflow.services import discovery_services_service as svc
 from tests._db_reset import reset_schema_and_migrate
+from tests._vault_mock import vault_mock  # noqa: F401  — fixture utilisée par injection
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +63,7 @@ async def test_list_and_update_and_delete() -> None:
 
 
 @pytest.mark.asyncio
-async def test_test_connectivity_with_missing_secret() -> None:
+async def test_test_connectivity_with_missing_secret(vault_mock) -> None:
     await svc.create(
         service_id="with-key",
         name="k",

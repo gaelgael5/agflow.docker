@@ -29,20 +29,11 @@ async def test_run_migrations_is_idempotent() -> None:
     await close_pool()
 
 
-@pytest.mark.asyncio
-async def test_consolidated_schema_creates_secrets_with_encrypted_value() -> None:
-    await reset_schema_and_migrate()
-
-    row = await fetch_one(
-        """
-        SELECT column_name, data_type
-        FROM information_schema.columns
-        WHERE table_name = 'secrets' AND column_name = 'value_encrypted'
-        """
-    )
-    assert row is not None
-    assert row["data_type"] == "bytea"
-    await close_pool()
+# Note : l'ancien test_consolidated_schema_creates_secrets_with_encrypted_value
+# a été supprimé : la table `secrets` (et sa colonne `value_encrypted` bytea)
+# n'existe plus depuis la migration vers Harpocrate. Le stockage des secrets
+# plateforme est désormais dans `platform_secrets` (cf. 092_platform_secrets.sql)
+# avec les valeurs sensibles déléguées au coffre Harpocrate.
 
 
 @pytest.mark.asyncio

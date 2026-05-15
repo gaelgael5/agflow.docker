@@ -21,6 +21,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEST_SCRIPT="${SCRIPT_DIR}/test-create-lxc.sh"
+DESTROY_SCRIPT="${SCRIPT_DIR}/destroy-test.sh"
 
 CONFIG_NAME="${1:-.env.test.docker}"
 LOCAL_CONFIG="${SCRIPT_DIR}/${CONFIG_NAME}"
@@ -34,6 +35,10 @@ if [ ! -f "${TEST_SCRIPT}" ]; then
     echo "✗ Script local introuvable : ${TEST_SCRIPT}" >&2
     exit 1
 fi
+if [ ! -f "${DESTROY_SCRIPT}" ]; then
+    echo "✗ Script local introuvable : ${DESTROY_SCRIPT}" >&2
+    exit 1
+fi
 if [ ! -f "${LOCAL_CONFIG}" ]; then
     echo "✗ Fichier de config introuvable : ${LOCAL_CONFIG}" >&2
     echo "  Tu peux passer un autre nom de config en argument :" >&2
@@ -42,17 +47,19 @@ if [ ! -f "${LOCAL_CONFIG}" ]; then
 fi
 
 echo "→ Cible SSH         : ${SSH_HOST}"
-echo "→ Script à pousser  : ${TEST_SCRIPT}"
+echo "→ Scripts à pousser : ${TEST_SCRIPT}"
+echo "                      ${DESTROY_SCRIPT}"
 echo "→ Config à pousser  : ${LOCAL_CONFIG}"
 echo "→ Destination       : ${SSH_HOST}:${REMOTE_DIR}/"
 echo ""
 
-# ─── 1) Push du script test-create-lxc.sh ──────────────────────────────────
-echo "[1/3] Push test-create-lxc.sh → ${SSH_HOST}:${REMOTE_DIR}/..."
+# ─── 1) Push des scripts test-create-lxc.sh + destroy-test.sh ─────────────
+echo "[1/3] Push scripts → ${SSH_HOST}:${REMOTE_DIR}/..."
 ssh "${SSH_HOST}" "mkdir -p ${REMOTE_DIR}"
 scp "${TEST_SCRIPT}" "${SSH_HOST}:${REMOTE_DIR}/test-create-lxc.sh"
-ssh "${SSH_HOST}" "chmod +x ${REMOTE_DIR}/test-create-lxc.sh"
-echo "      ✓ poussé et rendu exécutable"
+scp "${DESTROY_SCRIPT}" "${SSH_HOST}:${REMOTE_DIR}/destroy-test.sh"
+ssh "${SSH_HOST}" "chmod +x ${REMOTE_DIR}/test-create-lxc.sh ${REMOTE_DIR}/destroy-test.sh"
+echo "      ✓ test-create-lxc.sh + destroy-test.sh poussés et exécutables"
 
 # ─── 2) Push du fichier de config (converti en LF si CRLF) ────────────────
 # Sur Windows, l'éditeur peut sauver en CRLF. Source-r un .env avec CRLF

@@ -123,3 +123,45 @@ async def test_list_remote_returns_remote_files() -> None:
     assert files[0].filename == "backup-2026-05-15.sql.gz"
     assert files[0].size_bytes == 12345
     assert files[0].last_modified is not None
+
+
+@pytest.mark.asyncio
+async def test_download_stream_yields_file_bytes() -> None:
+    provider = GoogleDriveProvider(config=_CONFIG, credentials=_CREDS)
+    fake_service = MagicMock()
+    # files.list pour résoudre l'ID depuis le filename
+    fake_service.files().list().execute.return_value = {
+        "files": [{"id": "fileXYZ", "name": "backup.sql.gz"}],
+    }
+    # files.get_media + download
+    fake_service.files().get_media.return_value = MagicMock()
+
+    fake_downloader = MagicMock()
+    # Simule 2 chunks puis done=True
+    fake_downloader.next_chunk.side_effect = [
+        (MagicMock(progress=lambda: 0.5), False),
+        (MagicMock(progress=lambda: 1.0), True),
+    ]
+
+    with (
+        patch(
+            "agflow.services.remote_backup_providers.gdrive_provider.gdrive_client.build_drive_service",
+            return_value=fake_service,
+        ),
+        patch(
+            "agflow.services.remote_backup_providers.gdrive_provider.MediaIoBaseDownload",
+            return_value=fake_downloader,
+        ),
+        # Patch BytesIO pour récupérer le contenu accumulé entre les next_chunk
+        patch(
+            "agflow.services.remote_backup_providers.gdrive_provider.io.BytesIO",
+        ) as mock_bytesio,
+    ):
+        mock_buf = MagicMock()
+        mock_buf.getvalue.side_effect = [b"chunk1", b"chunk1chunk2"]
+        mock_buf.seek.return_value = None
+        mock_buf.truncate.return_value = None
+        mock_bytesio.return_value = mock_buf
+        chunks = [chunk async for chunk in provider.download_stream(path="", filename="backup.sql.gz")]
+
+    assert b"".join(chunks) == b"chunk1chunk2"

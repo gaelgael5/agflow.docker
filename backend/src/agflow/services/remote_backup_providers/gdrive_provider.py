@@ -7,10 +7,12 @@ préserver le contrat Protocol commun avec sftp/s3/ftps.
 from __future__ import annotations
 
 import asyncio
+import io
 from collections.abc import AsyncIterator
 
 import structlog
 from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseDownload
 
 from agflow.services.remote_backup_providers import gdrive_client
 from agflow.services.remote_backup_providers.protocol import (
@@ -119,5 +121,50 @@ class GoogleDriveProvider:
     async def download_stream(
         self, path: str, filename: str,
     ) -> AsyncIterator[bytes]:
-        raise NotImplementedError("Implemented in next task")
-        yield b""  # pour satisfaire le type hint AsyncIterator
+        # Résoudre file_id depuis filename
+        def _resolve_id() -> str:
+            service = gdrive_client.build_drive_service(self._creds)
+            resp = service.files().list(
+                q=(
+                    f"'{self._folder_id}' in parents and "
+                    f"name='{filename}' and trashed=false"
+                ),
+                fields="files(id)",
+                pageSize=1,
+            ).execute()
+            files = resp.get("files", [])
+            if not files:
+                raise RemoteBackupProviderError(
+                    f"gdrive download_stream: file {filename!r} not found in folder",
+                )
+            return str(files[0]["id"])
+
+        try:
+            file_id = await asyncio.to_thread(_resolve_id)
+        except HttpError as exc:
+            raise RemoteBackupProviderError(
+                f"gdrive download_stream resolve failed: {exc.resp.status}",
+            ) from exc
+
+        def _build_downloader() -> tuple[MediaIoBaseDownload, io.BytesIO]:
+            service = gdrive_client.build_drive_service(self._creds)
+            request = service.files().get_media(fileId=file_id)
+            buf = io.BytesIO()
+            return MediaIoBaseDownload(buf, request), buf
+
+        downloader, buf = await asyncio.to_thread(_build_downloader)
+
+        previous_pos = 0
+        while True:
+            def _step() -> tuple[bool, bytes]:
+                _status, done = downloader.next_chunk()
+                data = buf.getvalue()
+                return done, data
+
+            done, data = await asyncio.to_thread(_step)
+            new_chunk = data[previous_pos:]
+            if new_chunk:
+                yield new_chunk
+                previous_pos = len(data)
+            if done:
+                break

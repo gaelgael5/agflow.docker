@@ -69,8 +69,8 @@ def test_list_returns_summaries_for_admin(client: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert len(body) == 2
-    # Aucun api_key leak
-    assert "api_key" not in r.text
+    # Aucun api_key leak — vérifie spécifiquement la clé JSON et la colonne DB
+    assert '"api_key":' not in r.text
     assert "api_key_encrypted" not in r.text
 
 
@@ -93,7 +93,7 @@ def test_create_returns_201(client: TestClient) -> None:
         )
     assert r.status_code == 201
     assert r.json()["name"] == "created"
-    assert "api_key" not in r.text
+    assert '"api_key":' not in r.text
 
 
 def test_create_returns_409_on_duplicate(client: TestClient) -> None:

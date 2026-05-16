@@ -234,3 +234,216 @@ async def test_run_full_job_prunes_after_run(fresh_db: None) -> None:
         sched.id,
     )
     assert len(remaining) == 2
+
+
+# ── Snapshot job tests (symetric to full) ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_snapshot_job_happy_path_no_remote(fresh_db: None) -> None:
+    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
+    actor = await _create_admin()
+    sched = await svc.create_snapshot_schedule(
+        SnapshotScheduleCreate(
+            name="s", interval_amount=5, interval_unit="minutes",
+            retention_count=5,
+        ),
+        actor_user_id=actor,
+    )
+
+    fake_backup = MagicMock(id=uuid.uuid4(), filename="b.sql.gz")
+    with patch(
+        "agflow.services.backup_job_runner.local_backups_service.create_backup",
+        AsyncMock(return_value=fake_backup),
+    ) as mock_create:
+        await backup_job_runner.run_snapshot_job(sched.id)
+
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs["source_schedule_snapshot_id"] == sched.id
+
+    refreshed = await svc.get_snapshot_schedule(sched.id)
+    assert refreshed.last_run_status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_run_snapshot_job_skipped_if_disabled(fresh_db: None) -> None:
+    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
+    actor = await _create_admin()
+    sched = await svc.create_snapshot_schedule(
+        SnapshotScheduleCreate(
+            name="s", interval_amount=5, interval_unit="minutes",
+            enabled=False,
+        ),
+        actor_user_id=actor,
+    )
+    with patch(
+        "agflow.services.backup_job_runner.local_backups_service.create_backup",
+        AsyncMock(),
+    ) as mock_create:
+        await backup_job_runner.run_snapshot_job(sched.id)
+    mock_create.assert_not_called()
+    refreshed = await svc.get_snapshot_schedule(sched.id)
+    assert refreshed.last_run_at is None
+
+
+@pytest.mark.asyncio
+async def test_run_snapshot_job_with_remote_uses_snapshots_path(fresh_db: None) -> None:
+    """Snapshot push utilise resolve_remote_path(..., 'snapshots') (pluriel, pas 'full')."""
+    from agflow.db.pool import execute
+    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
+
+    actor = await _create_admin()
+    conn_id = uuid.uuid4()
+    await execute(
+        "INSERT INTO remote_backup_connections "
+        "(id, name, kind, config, vault_api_key_id, vault_secret_path) "
+        "VALUES ($1, 'r', 'sftp', '{}'::jsonb, 'default', 'remote-backups/dummy')",
+        conn_id,
+    )
+    sched = await svc.create_snapshot_schedule(
+        SnapshotScheduleCreate(
+            name="s", interval_amount=5, interval_unit="minutes",
+            remote_connection_id=conn_id,
+        ),
+        actor_user_id=actor,
+    )
+
+    fake_backup = MagicMock(id=uuid.uuid4(), filename="b.sql.gz")
+    fake_provider = MagicMock()
+    fake_provider.upload_stream = AsyncMock(return_value=42)
+
+    resolve_mock = MagicMock(return_value="snapshots/")
+
+    with (
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.create_backup",
+            AsyncMock(return_value=fake_backup),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.stream_backup_chunks",
+            AsyncMock(return_value=iter([b"data"])),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.rbc_service.fetch_credentials",
+            AsyncMock(return_value={"username": "u", "password": "p"}),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.rbc_service.resolve_remote_path",
+            resolve_mock,
+        ),
+        patch(
+            "agflow.services.backup_job_runner.get_provider",
+            return_value=fake_provider,
+        ),
+    ):
+        await backup_job_runner.run_snapshot_job(sched.id)
+
+    # IMPORTANT : pour snapshot, on appelle resolve_remote_path avec "snapshots"
+    resolve_call = resolve_mock.call_args
+    assert resolve_call.args[2] == "snapshots", (
+        f"snapshot job doit utiliser path 'snapshots', got {resolve_call.args[2]!r}"
+    )
+    fake_provider.upload_stream.assert_called_once()
+
+    refreshed = await svc.get_snapshot_schedule(sched.id)
+    assert refreshed.last_run_status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_run_snapshot_job_remote_push_failed(fresh_db: None) -> None:
+    from agflow.db.pool import execute
+    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
+
+    actor = await _create_admin()
+    conn_id = uuid.uuid4()
+    await execute(
+        "INSERT INTO remote_backup_connections "
+        "(id, name, kind, config, vault_api_key_id, vault_secret_path) "
+        "VALUES ($1, 'r', 'sftp', '{}'::jsonb, 'default', 'remote-backups/dummy')",
+        conn_id,
+    )
+    sched = await svc.create_snapshot_schedule(
+        SnapshotScheduleCreate(
+            name="s", interval_amount=5, interval_unit="minutes",
+            remote_connection_id=conn_id,
+        ),
+        actor_user_id=actor,
+    )
+
+    fake_backup = MagicMock(id=uuid.uuid4(), filename="b.sql.gz")
+    fake_provider = MagicMock()
+    fake_provider.upload_stream = AsyncMock(side_effect=RuntimeError("S3 timeout"))
+
+    with (
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.create_backup",
+            AsyncMock(return_value=fake_backup),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.stream_backup_chunks",
+            AsyncMock(return_value=iter([b"data"])),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.rbc_service.fetch_credentials",
+            AsyncMock(return_value={"username": "u", "password": "p"}),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.rbc_service.resolve_remote_path",
+            return_value="snapshots/",
+        ),
+        patch(
+            "agflow.services.backup_job_runner.get_provider",
+            return_value=fake_provider,
+        ),
+    ):
+        await backup_job_runner.run_snapshot_job(sched.id)
+
+    refreshed = await svc.get_snapshot_schedule(sched.id)
+    assert refreshed.last_run_status == "failed"
+    assert "S3 timeout" in (refreshed.last_run_error or "")
+
+
+@pytest.mark.asyncio
+async def test_run_snapshot_job_prunes_after_run(fresh_db: None) -> None:
+    from agflow.db.pool import execute, fetch_all
+    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
+
+    actor = await _create_admin()
+    sched = await svc.create_snapshot_schedule(
+        SnapshotScheduleCreate(
+            name="s", interval_amount=5, interval_unit="minutes",
+            retention_count=2,
+        ),
+        actor_user_id=actor,
+    )
+
+    for i in range(3):
+        await execute(
+            "INSERT INTO local_backups (id, filename, file_path, status, "
+            "source_schedule_snapshot_id, created_at) "
+            "VALUES ($1, $2, $3, 'completed', $4, now() - ($5::int || ' minutes')::interval)",
+            uuid.uuid4(), f"old-{i}.sql.gz", f"/nonexistent/old-{i}.sql.gz",
+            sched.id, 100 - i,
+        )
+
+    async def fake_create_backup(**kwargs):
+        bid = uuid.uuid4()
+        await execute(
+            "INSERT INTO local_backups (id, filename, file_path, status, "
+            "source_schedule_snapshot_id, created_at) "
+            "VALUES ($1, 'new.sql.gz', '/nonexistent/new.sql.gz', 'completed', $2, now())",
+            bid, kwargs["source_schedule_snapshot_id"],
+        )
+        return MagicMock(id=bid, filename="new.sql.gz")
+
+    with patch(
+        "agflow.services.backup_job_runner.local_backups_service.create_backup",
+        side_effect=fake_create_backup,
+    ):
+        await backup_job_runner.run_snapshot_job(sched.id)
+
+    remaining = await fetch_all(
+        "SELECT id FROM local_backups WHERE source_schedule_snapshot_id = $1",
+        sched.id,
+    )
+    assert len(remaining) == 2

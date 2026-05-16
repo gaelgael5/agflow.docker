@@ -6,11 +6,10 @@ Appelé par APScheduler (cf. backup_scheduler.py, Task 9). Orchestre :
 3. Si remote_connection_id : fetch_credentials + provider.upload_stream
 4. record_run avec status final (ok/failed) + error éventuelle
 5. prune_old_backups au-delà de retention_count
-
-run_snapshot_job vient à Task 8.
 """
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 import structlog
@@ -34,19 +33,57 @@ async def run_full_job(schedule_id: UUID) -> None:
     except schedules_svc.ScheduleNotFoundError:
         _log.warning("backup_job_runner.full.schedule_not_found", id=str(schedule_id))
         return
+    await _run_job(
+        schedule=schedule,
+        kind="full",
+        remote_kind_label="full",
+    )
+
+
+async def run_snapshot_job(schedule_id: UUID) -> None:
+    """Exécute un schedule snapshot : dump + push optionnel + record + prune."""
+    try:
+        schedule = await schedules_svc.get_snapshot_schedule(schedule_id)
+    except schedules_svc.ScheduleNotFoundError:
+        _log.warning("backup_job_runner.snapshot.schedule_not_found", id=str(schedule_id))
+        return
+    await _run_job(
+        schedule=schedule,
+        kind="snapshot",
+        remote_kind_label="snapshots",
+    )
+
+
+async def _run_job(
+    *,
+    schedule,
+    kind: Literal["full", "snapshot"],
+    remote_kind_label: str,
+) -> None:
+    """Logique commune full/snapshot.
+
+    `remote_kind_label` est passé à resolve_remote_path :
+    singulier 'full' pour les full schedules, pluriel 'snapshots' pour les
+    snapshot schedules (convention historique du config remote).
+    """
+    schedule_id = schedule.id
 
     if not schedule.enabled:
-        _log.debug("backup_job_runner.full.skipped_disabled", id=str(schedule_id))
+        _log.debug(f"backup_job_runner.{kind}.skipped_disabled", id=str(schedule_id))
         return
+
+    source_kwargs: dict = (
+        {"source_schedule_full_id": schedule_id}
+        if kind == "full"
+        else {"source_schedule_snapshot_id": schedule_id}
+    )
 
     error: str | None = None
     status: str = "ok"
     backup = None
     try:
         # 1. Dump local
-        backup = await local_backups_service.create_backup(
-            source_schedule_full_id=schedule_id,
-        )
+        backup = await local_backups_service.create_backup(**source_kwargs)
 
         # 2. Push remote optionnel
         if schedule.remote_connection_id is not None:
@@ -54,36 +91,41 @@ async def run_full_job(schedule_id: UUID) -> None:
                 connection_id=schedule.remote_connection_id,
                 backup_id=backup.id,
                 filename=backup.filename,
+                remote_kind_label=remote_kind_label,
             )
     except Exception as exc:
         status = "failed"
         error = f"{type(exc).__name__}: {exc}"
         _log.error(
-            "backup_job_runner.full.failed",
+            f"backup_job_runner.{kind}.failed",
             schedule_id=str(schedule_id), error=error,
         )
 
     # 3. Record run (toujours, même en échec)
     await schedules_svc.record_run(
-        schedule_id=schedule_id, kind="full", status=status, error=error,
+        schedule_id=schedule_id, kind=kind, status=status, error=error,
     )
 
     # 4. Prune (uniquement si le backup local a été créé, pour préserver l'historique)
     if backup is not None:
         try:
             await schedules_svc.prune_old_backups(
-                schedule_id=schedule_id, kind="full",
+                schedule_id=schedule_id, kind=kind,
                 retention_count=schedule.retention_count,
             )
         except Exception as exc:
             _log.warning(
-                "backup_job_runner.full.prune_failed",
+                f"backup_job_runner.{kind}.prune_failed",
                 schedule_id=str(schedule_id), error=str(exc),
             )
 
 
 async def _push_to_remote(
-    *, connection_id: UUID, backup_id: UUID, filename: str,
+    *,
+    connection_id: UUID,
+    backup_id: UUID,
+    filename: str,
+    remote_kind_label: str,
 ) -> None:
     """Push un backup local vers une remote_backup_connection. Lève si KO."""
     connection = await rbc_service.get_connection(None, connection_id)
@@ -95,12 +137,12 @@ async def _push_to_remote(
         raise RuntimeError(f"No credentials for connection {connection_id}")
 
     remote_path = rbc_service.resolve_remote_path(
-        connection.config, connection.kind, "full",
+        connection.config, connection.kind, remote_kind_label,
     )
     provider = get_provider(connection.kind, connection.config, credentials)
     source = await local_backups_service.stream_backup_chunks(backup_id)
     await provider.upload_stream(remote_path, filename, source)
     _log.info(
-        "backup_job_runner.full.pushed",
-        connection=connection.name, filename=filename,
+        "backup_job_runner.pushed",
+        connection=connection.name, filename=filename, kind=remote_kind_label,
     )

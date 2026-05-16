@@ -96,3 +96,30 @@ async def test_upload_stream_maps_http_error_to_provider_error() -> None:
         return_value=fake_service,
     ), pytest.raises(RemoteBackupProviderError, match="403"):
         await provider.upload_stream(path="", filename="b.sql", source=_source())
+
+
+@pytest.mark.asyncio
+async def test_list_remote_returns_remote_files() -> None:
+    provider = GoogleDriveProvider(config=_CONFIG, credentials=_CREDS)
+    fake_service = MagicMock()
+    fake_service.files().list().execute.return_value = {
+        "files": [
+            {
+                "id": "f1", "name": "backup-2026-05-15.sql.gz",
+                "size": "12345", "modifiedTime": "2026-05-15T10:00:00.000Z",
+            },
+            {
+                "id": "f2", "name": "backup-2026-05-16.sql.gz",
+                "size": "23456", "modifiedTime": "2026-05-16T10:00:00.000Z",
+            },
+        ],
+    }
+    with patch(
+        "agflow.services.remote_backup_providers.gdrive_provider.gdrive_client.build_drive_service",
+        return_value=fake_service,
+    ):
+        files = await provider.list_remote(path="")
+    assert len(files) == 2
+    assert files[0].filename == "backup-2026-05-15.sql.gz"
+    assert files[0].size_bytes == 12345
+    assert files[0].last_modified is not None

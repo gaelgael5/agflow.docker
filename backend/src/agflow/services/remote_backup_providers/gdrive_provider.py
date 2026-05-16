@@ -86,7 +86,35 @@ class GoogleDriveProvider:
         return bytes_written
 
     async def list_remote(self, path: str) -> list[RemoteFile]:
-        raise NotImplementedError("Implemented in next task")
+        from datetime import datetime
+
+        def _sync() -> list[dict]:
+            service = gdrive_client.build_drive_service(self._creds)
+            resp = service.files().list(
+                q=f"'{self._folder_id}' in parents and trashed=false",
+                fields="files(id, name, size, modifiedTime)",
+                pageSize=1000,
+            ).execute()
+            return resp.get("files", [])
+
+        try:
+            raw = await asyncio.to_thread(_sync)
+        except HttpError as exc:
+            raise RemoteBackupProviderError(
+                f"gdrive list_remote failed: {exc.resp.status} {exc.reason}",
+            ) from exc
+
+        result: list[RemoteFile] = []
+        for entry in raw:
+            ts = entry.get("modifiedTime")
+            last_modified = (
+                datetime.fromisoformat(ts.replace("Z", "+00:00")) if ts else None
+            )
+            size = int(entry["size"]) if entry.get("size") is not None else None
+            result.append(RemoteFile(
+                filename=entry["name"], size_bytes=size, last_modified=last_modified,
+            ))
+        return result
 
     async def download_stream(
         self, path: str, filename: str,

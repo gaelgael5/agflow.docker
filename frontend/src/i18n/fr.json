@@ -1467,6 +1467,31 @@
     "pull": {
       "success": "« {{filename}} » récupéré en local",
       "error": "Échec du pull : {{message}}"
+    },
+    "gdrive": {
+      "kindLabel": "Google Drive",
+      "phaseSetupTitle": "Configure ton projet Google Cloud (Client ID/Secret) puis autorise l'accès à Drive.",
+      "phaseAuthInProgress": "Autorisation en cours dans la fenêtre Google… attends la confirmation puis cette fenêtre se mettra à jour automatiquement.",
+      "phaseConfirmedTitle": "Connexion autorisée",
+      "fieldName": "Nom logique",
+      "fieldClientId": "Client ID",
+      "fieldClientIdHint": "Format <id>.apps.googleusercontent.com",
+      "fieldClientSecret": "Client Secret",
+      "fieldFolderName": "Nom du dossier Drive",
+      "fieldFolderNameHint": "Sera créé dans le Drive personnel. Si un dossier de ce nom existe déjà, un suffixe daté est ajouté.",
+      "fieldRedirectUri": "Redirect URI (à coller dans Google Cloud Console)",
+      "fieldRedirectUriHint": "Copie cette URL dans la section « Autorized redirect URIs » de ton OAuth client.",
+      "btnAuthorize": "Autoriser dans Google Drive",
+      "btnReauthorize": "Re-autoriser",
+      "errorPopupBlocked": "Popup bloquée. Autorise les popups pour ce site et réessaie.",
+      "errorAborted": "Tu as fermé la fenêtre Google avant la fin du processus.",
+      "errorOauth": "Échec OAuth : {{msg}}",
+      "errorGeneric": "Une erreur est survenue lors du flow OAuth.",
+      "errorRequired": "Tous les champs sont obligatoires.",
+      "confirmedUserEmail": "Compte Google",
+      "confirmedFolderId": "Folder ID",
+      "tableTargetEmail": "Compte",
+      "tableTargetFolder": "Dossier"
     }
   },
   "settings": {

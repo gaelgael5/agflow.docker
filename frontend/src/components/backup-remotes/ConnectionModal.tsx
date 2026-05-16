@@ -17,10 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Connection, Kind } from "./types";
 import { KindConfigFields } from "./KindConfigFields";
 import { CredentialsFields } from "./CredentialsFields";
+import { GDriveFields } from "./GDriveFields";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -151,11 +153,6 @@ export function ConnectionModal({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <div>
-            <Label>{t("backup_remotes.name")}</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-
           {!isEdit && (
             <div>
               <Label>{t("backup_remotes.kind")}</Label>
@@ -173,76 +170,103 @@ export function ConnectionModal({
                   <SelectItem value="sftp">{t("backup_remotes.kind_sftp")}</SelectItem>
                   <SelectItem value="ftps">{t("backup_remotes.kind_ftps")}</SelectItem>
                   <SelectItem value="s3">{t("backup_remotes.kind_s3")}</SelectItem>
+                  <SelectItem value="gdrive">{t("backups.gdrive.kindLabel")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           )}
 
-          <KindConfigFields kind={kind} config={config} onChange={handleConfigChange} />
+          {kind === "gdrive" && !isEdit && (
+            <GDriveFields
+              onCompleted={() => {
+                toast.success(t("backups.gdrive.phaseConfirmedTitle"));
+                onSaved();
+                onClose();
+              }}
+              onCancel={onClose}
+            />
+          )}
 
-          {pathKeys.map((key) => {
-            const result = testResults[key];
-            const pathFilled = Boolean(config[key]);
-            const hasCredentials = Boolean(username && password);
-            const testDisabled = !pathFilled || (!useVault && !hasCredentials);
-            return (
-              <div key={key}>
-                <Label>{t(`backup_remotes.${pathLabelKey(key)}`)}</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={config[key] ?? ""}
-                    onChange={(e) =>
-                      setConfig((c) => ({ ...c, [key]: e.target.value }))
-                    }
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={testDisabled}
-                    onClick={() => void handleTest(key)}
-                  >
-                    {t("backup_remotes.test")}
-                  </Button>
-                </div>
-                {result !== undefined && (
-                  <p
-                    className={`text-xs mt-0.5 ${result.ok ? "text-green-600" : "text-red-600"}`}
-                  >
-                    {result.ok
-                      ? t("backup_remotes.test_ok")
-                      : `${t("backup_remotes.test_fail")}: ${result.msg ?? ""}`}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-
-          <CredentialsFields
-            kind={kind}
-            username={username}
-            password={password}
-            hasExisting={isEdit && connection.has_credentials}
-            onChangeUsername={setUsername}
-            onChangePassword={setPassword}
-          />
-
-          {saveMutation.isError && (
-            <p className="text-xs text-destructive">
-              {t("common.error_saving")}
+          {kind === "gdrive" && isEdit && (
+            <p className="text-sm text-muted-foreground">
+              {t("backups.gdrive.btnReauthorize")} : disponible depuis la liste des connexions.
             </p>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
-            >
-              {t("backup_remotes.save")}
-            </Button>
-          </div>
+          {kind !== "gdrive" && (
+            <>
+              <div>
+                <Label>{t("backup_remotes.name")}</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+
+              <KindConfigFields kind={kind} config={config} onChange={handleConfigChange} />
+
+              {pathKeys.map((key) => {
+                const result = testResults[key];
+                const pathFilled = Boolean(config[key]);
+                const hasCredentials = Boolean(username && password);
+                const testDisabled = !pathFilled || (!useVault && !hasCredentials);
+                return (
+                  <div key={key}>
+                    <Label>{t(`backup_remotes.${pathLabelKey(key)}`)}</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={config[key] ?? ""}
+                        onChange={(e) =>
+                          setConfig((c) => ({ ...c, [key]: e.target.value }))
+                        }
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={testDisabled}
+                        onClick={() => void handleTest(key)}
+                      >
+                        {t("backup_remotes.test")}
+                      </Button>
+                    </div>
+                    {result !== undefined && (
+                      <p
+                        className={`text-xs mt-0.5 ${result.ok ? "text-green-600" : "text-red-600"}`}
+                      >
+                        {result.ok
+                          ? t("backup_remotes.test_ok")
+                          : `${t("backup_remotes.test_fail")}: ${result.msg ?? ""}`}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+
+              <CredentialsFields
+                kind={kind}
+                username={username}
+                password={password}
+                hasExisting={isEdit && connection.has_credentials}
+                onChangeUsername={setUsername}
+                onChangePassword={setPassword}
+              />
+
+              {saveMutation.isError && (
+                <p className="text-xs text-destructive">
+                  {t("common.error_saving")}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={onClose}>
+                  {t("common.cancel")}
+                </Button>
+                <Button
+                  onClick={() => saveMutation.mutate()}
+                  disabled={saveMutation.isPending}
+                >
+                  {t("backup_remotes.save")}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

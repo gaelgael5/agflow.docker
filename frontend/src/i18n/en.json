@@ -1460,6 +1460,31 @@
     "pull": {
       "success": "\"{{filename}}\" pulled locally",
       "error": "Pull failed: {{message}}"
+    },
+    "gdrive": {
+      "kindLabel": "Google Drive",
+      "phaseSetupTitle": "Configure your Google Cloud project (Client ID/Secret) then authorize Drive access.",
+      "phaseAuthInProgress": "Authorization in progress in the Google window… wait for the confirmation, this window will update automatically.",
+      "phaseConfirmedTitle": "Connection authorized",
+      "fieldName": "Logical name",
+      "fieldClientId": "Client ID",
+      "fieldClientIdHint": "Format <id>.apps.googleusercontent.com",
+      "fieldClientSecret": "Client Secret",
+      "fieldFolderName": "Drive folder name",
+      "fieldFolderNameHint": "Will be created in the personal Drive. If a folder with this name exists, a dated suffix is appended.",
+      "fieldRedirectUri": "Redirect URI (paste in Google Cloud Console)",
+      "fieldRedirectUriHint": "Copy this URL into the \"Authorized redirect URIs\" section of your OAuth client.",
+      "btnAuthorize": "Authorize with Google Drive",
+      "btnReauthorize": "Reauthorize",
+      "errorPopupBlocked": "Popup blocked. Allow popups for this site and try again.",
+      "errorAborted": "You closed the Google window before completing the process.",
+      "errorOauth": "OAuth failure: {{msg}}",
+      "errorGeneric": "An error occurred during the OAuth flow.",
+      "errorRequired": "All fields are required.",
+      "confirmedUserEmail": "Google account",
+      "confirmedFolderId": "Folder ID",
+      "tableTargetEmail": "Account",
+      "tableTargetFolder": "Folder"
     }
   },
   "settings": {

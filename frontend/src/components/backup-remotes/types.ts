@@ -1,4 +1,4 @@
-export type Kind = "sftp" | "ftps" | "s3";
+export type Kind = "sftp" | "ftps" | "s3" | "gdrive";
 
 export interface Connection {
   id: string;

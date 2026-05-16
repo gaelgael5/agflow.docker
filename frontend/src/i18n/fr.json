@@ -1543,6 +1543,12 @@
       "created": "Planification créée",
       "updated": "Planification mise à jour",
       "deleted": "Planification supprimée"
+    },
+    "backupNow": {
+      "button": "Sauvegarder maintenant",
+      "running": "Création en cours…",
+      "success": "Sauvegarde créée",
+      "error": "Échec : {{msg}}"
     }
   },
   "settings": {

@@ -1536,6 +1536,12 @@
       "created": "Schedule created",
       "updated": "Schedule updated",
       "deleted": "Schedule deleted"
+    },
+    "backupNow": {
+      "button": "Backup now",
+      "running": "Creating...",
+      "success": "Backup created",
+      "error": "Failed: {{msg}}"
     }
   },
   "settings": {

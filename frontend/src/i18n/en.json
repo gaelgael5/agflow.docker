@@ -1542,7 +1542,12 @@
       "running": "Creating...",
       "success": "Backup created",
       "error": "Failed: {{msg}}"
-    }
+    },
+    "filterSource": "Filter",
+    "filterAll": "All",
+    "filterManual": "Manual",
+    "filterFull": "Scheduled (full)",
+    "filterSnapshot": "Snapshots"
   },
   "settings": {
     "title": "Settings",

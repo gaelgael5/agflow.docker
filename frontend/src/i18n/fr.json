@@ -1549,7 +1549,12 @@
       "running": "Création en cours…",
       "success": "Sauvegarde créée",
       "error": "Échec : {{msg}}"
-    }
+    },
+    "filterSource": "Filtre",
+    "filterAll": "Toutes",
+    "filterManual": "Manuelles",
+    "filterFull": "Planifiées (full)",
+    "filterSnapshot": "Snapshots"
   },
   "settings": {
     "title": "Paramètres",

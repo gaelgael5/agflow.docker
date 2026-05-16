@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -30,6 +31,9 @@ export function LocalBackupsSection() {
   const { data: backups, isLoading, error } = useLocalBackups();
   const restore = useRestoreMutation();
   const [restoreTarget, setRestoreTarget] = useState<LocalBackup | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<
+    "all" | "manual" | "full" | "snapshot"
+  >("all");
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">{t("common.loading")}</p>;
@@ -39,6 +43,11 @@ export function LocalBackupsSection() {
       <p className="text-sm text-destructive">{t("common.error_loading")}</p>
     );
   }
+
+  const filtered =
+    sourceFilter === "all"
+      ? (backups ?? [])
+      : (backups ?? []).filter((b) => b.source_kind === sourceFilter);
 
   const hasBackups = backups && backups.length > 0;
 
@@ -50,6 +59,25 @@ export function LocalBackupsSection() {
           {t("backups.local.subtitle")}
         </p>
       </header>
+
+      <div className="flex items-center gap-2">
+        <Label htmlFor="local-backups-filter">
+          {t("backups.filterSource")}
+        </Label>
+        <select
+          id="local-backups-filter"
+          value={sourceFilter}
+          onChange={(e) =>
+            setSourceFilter(e.target.value as typeof sourceFilter)
+          }
+          className="text-sm border rounded px-2 py-1 bg-background"
+        >
+          <option value="all">{t("backups.filterAll")}</option>
+          <option value="manual">{t("backups.filterManual")}</option>
+          <option value="full">{t("backups.filterFull")}</option>
+          <option value="snapshot">{t("backups.filterSnapshot")}</option>
+        </select>
+      </div>
 
       {!hasBackups ? (
         <p className="text-sm text-muted-foreground">
@@ -70,7 +98,7 @@ export function LocalBackupsSection() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {backups.map((b) => (
+            {filtered.map((b) => (
               <TableRow key={b.id}>
                 <TableCell className="font-mono text-xs">{b.filename}</TableCell>
                 <TableCell>{formatSize(b.size_bytes)}</TableCell>

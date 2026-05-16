@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 
@@ -118,20 +118,12 @@ async def create(
     join_token_worker: str,
     join_token_manager: str,
 ) -> dict[str, Any]:
-    """Create a cluster. Tokens sont poussés dans Harpocrate ; la DB stocke un ref."""
-    # 1. INSERT row sans tokens, RETURNING id pour stabiliser le path vault.
-    row = await fetch_one(
-        """
-        INSERT INTO infra_swarm_clusters (name, manager_addr)
-        VALUES ($1, $2)
-        RETURNING id, name, manager_addr, created_at, updated_at
-        """,
-        name, manager_addr,
-    )
-    assert row is not None
-    cluster_id: UUID = row["id"]
+    """Create a cluster. Tokens sont poussés dans Harpocrate ; la DB stocke un ref.
 
-    # 2. Push secrets puis UPDATE row avec les refs.
+    Les colonnes `join_token_*_encrypted` sont NOT NULL (cf. migration 087) :
+    on génère l'id en Python, on push les secrets puis on fait un seul INSERT.
+    """
+    cluster_id = uuid4()
     created_paths: list[str] = []
     try:
         worker_path = _vault_path_worker(cluster_id)
@@ -142,22 +134,24 @@ async def create(
         await vault_client.create_secret(manager_path, join_token_manager)
         created_paths.append(manager_path)
 
-        await execute(
+        row = await fetch_one(
             """
-            UPDATE infra_swarm_clusters
-               SET join_token_worker_encrypted = $2,
-                   join_token_manager_encrypted = $3
-             WHERE id = $1
+            INSERT INTO infra_swarm_clusters
+                (id, name, manager_addr,
+                 join_token_worker_encrypted, join_token_manager_encrypted)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, name, manager_addr, created_at, updated_at
             """,
-            cluster_id, _vault_ref(worker_path), _vault_ref(manager_path),
+            cluster_id, name, manager_addr,
+            _vault_ref(worker_path), _vault_ref(manager_path),
         )
+        assert row is not None
     except Exception:
         for path in created_paths:
             try:
                 await vault_client.delete_secret(path)
             except Exception:
                 _log.warning("swarm_cluster.vault_rollback_failed", path=path)
-        await execute("DELETE FROM infra_swarm_clusters WHERE id = $1", cluster_id)
         raise
 
     _log.info("swarm_cluster.created", cluster_id=str(cluster_id), name=name)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 from cryptography.hazmat.primitives import serialization
@@ -185,20 +185,13 @@ async def create(
     passphrase: str | None = None,
     key_type: str = "rsa",
 ) -> CertificateSummary:
-    """Crée un certificat. La clé privée et la passphrase sont stockées dans Harpocrate."""
-    # 1. Insert sans secrets pour obtenir un id stable.
-    row = await fetch_one(
-        f"""
-        INSERT INTO infra_certificates (name, key_type, public_key)
-        VALUES ($1, $2, $3)
-        RETURNING {_COLS}
-        """,
-        name, key_type, public_key,
-    )
-    assert row is not None
-    cert_id: UUID = row["id"]
+    """Crée un certificat. La clé privée et la passphrase sont stockées dans Harpocrate.
 
-    # 2. Push secrets dans le vault, puis UPDATE row avec les refs.
+    Les colonnes DB `private_key` / `passphrase` sont NOT NULL pour private_key
+    (cf. migration 001) : on génère l'id en Python, on push les secrets dans
+    Harpocrate, puis on fait un seul INSERT avec les vault refs.
+    """
+    cert_id = uuid4()
     created_paths: list[str] = []
     try:
         priv_path = _vault_path_private_key(cert_id)
@@ -213,28 +206,26 @@ async def create(
             created_paths.append(pass_path)
             pass_ref = _vault_ref(pass_path)
 
-        updated = await fetch_one(
+        row = await fetch_one(
             f"""
-            UPDATE infra_certificates
-               SET private_key = $2, passphrase = $3
-             WHERE id = $1
+            INSERT INTO infra_certificates
+                (id, name, key_type, private_key, public_key, passphrase)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING {_COLS}
             """,
-            cert_id, priv_ref, pass_ref,
+            cert_id, name, key_type, priv_ref, public_key, pass_ref,
         )
-        assert updated is not None
+        assert row is not None
     except Exception:
-        # Rollback : supprime les secrets créés et la row.
         for path in created_paths:
             try:
                 await vault_client.delete_secret(path)
             except Exception:
                 _log.warning("infra_certificates.vault_rollback_failed", path=path)
-        await execute("DELETE FROM infra_certificates WHERE id = $1", cert_id)
         raise
 
     _log.info("infra_certificates.create", name=name, key_type=key_type)
-    return _to_summary(updated)
+    return _to_summary(row)
 
 
 async def generate(

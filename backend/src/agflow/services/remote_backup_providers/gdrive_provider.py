@@ -45,7 +45,45 @@ class GoogleDriveProvider:
     async def upload_stream(
         self, path: str, filename: str, source: AsyncIterator[bytes],
     ) -> int:
-        raise NotImplementedError("Implemented in next task")
+        import os
+        import tempfile
+
+        from googleapiclient.http import MediaFileUpload
+
+        # Streame le source dans un tmpfile (le SDK Google n'accepte qu'un FS path).
+        bytes_written = 0
+        with tempfile.NamedTemporaryFile(delete=False, suffix="-" + filename) as tmp:
+            tmp_path = tmp.name
+            async for chunk in source:
+                tmp.write(chunk)
+                bytes_written += len(chunk)
+
+        def _sync_upload() -> None:
+            service = gdrive_client.build_drive_service(self._creds)
+            media = MediaFileUpload(tmp_path, resumable=True)
+            service.files().create(
+                body={"name": filename, "parents": [self._folder_id]},
+                media_body=media,
+                fields="id",
+            ).execute()
+
+        try:
+            await asyncio.to_thread(_sync_upload)
+        except HttpError as exc:
+            raise RemoteBackupProviderError(
+                f"gdrive upload_stream failed: {exc.resp.status} {exc.reason}",
+            ) from exc
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                _log.warning("gdrive.upload_stream.tmpfile_cleanup_failed", path=tmp_path)
+
+        _log.info(
+            "gdrive.upload_stream.ok",
+            filename=filename, bytes=bytes_written, folder=self._folder_id,
+        )
+        return bytes_written
 
     async def list_remote(self, path: str) -> list[RemoteFile]:
         raise NotImplementedError("Implemented in next task")

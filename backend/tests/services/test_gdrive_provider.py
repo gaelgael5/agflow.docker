@@ -56,3 +56,43 @@ async def test_test_connection_raises_on_http_error() -> None:
         pytest.raises(RemoteBackupProviderError, match="404"),
     ):
         await provider.test_connection(path="")
+
+
+@pytest.mark.asyncio
+async def test_upload_stream_writes_to_drive_and_returns_size() -> None:
+    async def _source():
+        yield b"chunk1-"
+        yield b"chunk2"
+
+    provider = GoogleDriveProvider(config=_CONFIG, credentials=_CREDS)
+    fake_service = MagicMock()
+    fake_service.files().create().execute.return_value = {"id": "fileXYZ"}
+    with patch(
+        "agflow.services.remote_backup_providers.gdrive_provider.gdrive_client.build_drive_service",
+        return_value=fake_service,
+    ):
+        size = await provider.upload_stream(
+            path="", filename="backup.sql.gz", source=_source(),
+        )
+    assert size == len(b"chunk1-chunk2")
+    fake_service.files().create.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_upload_stream_maps_http_error_to_provider_error() -> None:
+    from googleapiclient.errors import HttpError
+
+    async def _source():
+        yield b"data"
+
+    provider = GoogleDriveProvider(config=_CONFIG, credentials=_CREDS)
+    fake_service = MagicMock()
+    fake_resp = MagicMock(status=403, reason="Quota Exceeded")
+    fake_service.files().create().execute.side_effect = HttpError(
+        resp=fake_resp, content=b'{"error": "quota"}',
+    )
+    with patch(
+        "agflow.services.remote_backup_providers.gdrive_provider.gdrive_client.build_drive_service",
+        return_value=fake_service,
+    ), pytest.raises(RemoteBackupProviderError, match="403"):
+        await provider.upload_stream(path="", filename="b.sql", source=_source())

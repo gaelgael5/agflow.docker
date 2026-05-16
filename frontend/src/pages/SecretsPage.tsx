@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { Copy, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useSecrets } from "@/hooks/useSecrets";
+import { useHarpocrateVaults } from "@/hooks/useHarpocrateVaults";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,8 @@ type FormMode = "vault" | "env" | null;
 export function SecretsPage() {
   const { t } = useTranslation();
   const { secrets, isLoading, createVaultMutation, createEnvMutation, updateMutation, deleteMutation } = useSecrets();
+  const { defaultVault, isLoading: vaultsLoading } = useHarpocrateVaults();
+  const noDefaultVault = !vaultsLoading && !defaultVault;
   const [formMode, setFormMode] = useState<FormMode>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PlatformSecretSummary | null>(null);
@@ -65,7 +69,12 @@ export function SecretsPage() {
         subtitle={t("secrets.page_subtitle")}
         actions={
           <div className="flex gap-2">
-            <Button onClick={() => openForm("vault")} disabled={formMode !== null} variant="outline">
+            <Button
+              onClick={() => openForm("vault")}
+              disabled={formMode !== null || noDefaultVault}
+              variant="outline"
+              title={noDefaultVault ? t("secrets.no_vault_configured") : undefined}
+            >
               {t("secrets.add_vault_button")}
             </Button>
             <Button onClick={() => openForm("env")} disabled={formMode !== null} variant="outline">
@@ -74,6 +83,15 @@ export function SecretsPage() {
           </div>
         }
       />
+
+      {noDefaultVault && (
+        <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          {t("secrets.no_vault_configured")}{" "}
+          <Link to="/settings" className="font-medium underline">
+            {t("secrets.no_vault_link")}
+          </Link>
+        </div>
+      )}
 
       {formMode === "vault" && (
         <SecretFormCard

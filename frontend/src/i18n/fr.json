@@ -106,6 +106,7 @@
     "section_infra": "Infrastructure",
     "section_orchestration": "Orchestration",
     "section_backups": "Sauvegardes",
+    "section_settings": "Paramètres",
     "api_public": "API publique",
     "supervision": "Supervision",
     "theme_dark": "Thème sombre"
@@ -155,6 +156,8 @@
     "page_subtitle": "Clés API, tokens d'intégration et variables injectées dans les conteneurs",
     "add_vault_button": "+ Ajouter un secret",
     "add_env_button": "+ Ajouter une variable",
+    "no_vault_configured": "Aucun coffre Harpocrate par défaut n'est configuré : impossible de créer un secret de type vault.",
+    "no_vault_link": "Initialiser un coffre dans les paramètres →",
     "col_name": "Nom",
     "col_type": "Type",
     "col_key": "Référence",
@@ -1464,6 +1467,39 @@
     "pull": {
       "success": "« {{filename}} » récupéré en local",
       "error": "Échec du pull : {{message}}"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "description": "Configuration de la plateforme",
+    "sidebar": "Paramètres",
+    "tabs": {
+      "harpocrate": "Harpocrate"
+    },
+    "harpocrate": {
+      "title": "Coffres Harpocrate",
+      "add": "Ajouter un coffre",
+      "empty": "Aucun coffre configuré. Ajoute-en un pour pouvoir créer des secrets de type vault.",
+      "col_name": "Nom logique",
+      "col_url": "URL",
+      "col_api_key_id": "API Key ID",
+      "col_default": "Défaut",
+      "is_default": "Défaut",
+      "set_default": "Marquer comme coffre par défaut",
+      "test_connection": "Tester la connexion",
+      "test_ok": "Connexion à « {{name}} » réussie",
+      "test_failed": "Échec : {{error}}",
+      "create_title": "Nouveau coffre Harpocrate",
+      "edit_title": "Modifier le coffre",
+      "api_key": "Clé API (hrpv_1_…)",
+      "api_key_optional": "Clé API (laisser vide pour ne pas changer)",
+      "api_key_required": "La clé API est obligatoire à la création.",
+      "created": "Coffre créé",
+      "updated": "Coffre mis à jour",
+      "deleted": "Coffre « {{name}} » supprimé",
+      "default_set": "« {{name}} » est maintenant le coffre par défaut",
+      "delete_title": "Supprimer ce coffre",
+      "delete_description": "Supprimer « {{name}} » ? Les refs `${{'{{'}}vault://{{name}}:…{{'}}'}}` existants ne pourront plus être résolus."
     }
   }
 }

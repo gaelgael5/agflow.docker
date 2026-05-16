@@ -16,6 +16,7 @@ import {
   Package,
   Palette,
   Server,
+  Settings,
   LogOut,
   Moon,
   ExternalLink,
@@ -124,6 +125,12 @@ export function Sidebar({ open = false, onClose }: Props) {
             items: [
               { to: "/backups", label: t("backups.sidebar"), icon: Archive },
               { to: "/backup-remotes", label: t("backup_remotes.title"), icon: Cloud },
+            ],
+          },
+          {
+            title: t("sidebar.section_settings"),
+            items: [
+              { to: "/settings", label: t("settings.sidebar"), icon: Settings },
             ],
           },
         ]

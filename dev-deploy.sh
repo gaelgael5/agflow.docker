@@ -285,6 +285,19 @@ ensure_admin_credentials() {
     echo "      ✓ ADMIN_PASSWORD régénéré (était vide)"
   fi
 
+  # Cas legacy : hash présent mais pas échappé pour docker compose. Détection :
+  # commence par `$2` (un seul `$`) sans commencer par `$$2` (forme échappée).
+  # On le réécrit échappé en place — sans regénérer un nouveau hash — pour
+  # réparer les `.env` produits par d'anciennes versions de ce script.
+  if [ -n "$current_hash" ] \
+     && [ "${current_hash#\$2}" != "$current_hash" ] \
+     && [ "${current_hash#\$\$2}" = "$current_hash" ]; then
+    local escaped_legacy="${current_hash//\$/\$\$}"
+    set_env_value "$file" "ADMIN_PASSWORD_HASH" "$escaped_legacy"
+    current_hash="$escaped_legacy"
+    echo "      ✓ ADMIN_PASSWORD_HASH legacy échappé pour docker compose (\$ → \$\$)"
+  fi
+
   if [ -z "$current_hash" ]; then
     if ! ensure_bcrypt_available; then
       echo "      ✗ python3-bcrypt indisponible et installation automatique échouée." >&2
@@ -299,16 +312,25 @@ ensure_admin_credentials() {
       echo "         (un hash bcrypt commence par \$2a/\$2b/\$2y)" >&2
       exit 1
     fi
-    set_env_value "$file" "ADMIN_PASSWORD_HASH" "$new_hash"
+    # docker compose interpole les $X dans les valeurs des .env chargés via
+    # env_file:. Un hash bcrypt contient typiquement plusieurs `$<lettre>` (ex.
+    # `$2b$12$D.fdbx…`) qui se font grignoter au load (warning visible :
+    # `The "D" variable is not set`) → backend reçoit un hash tronqué et lève
+    # "Invalid salt" sur le login. On double les `$` pour qu'ils soient
+    # considérés comme littéraux (`$$` → `$`).
+    local escaped_hash="${new_hash//\$/\$\$}"
+    set_env_value "$file" "ADMIN_PASSWORD_HASH" "$escaped_hash"
 
-    # Sanity check : on relit la valeur écrite. Si elle ne ressemble plus
-    # à un bcrypt, on a un bug dans set_env_value et il faut planter
-    # immédiatement plutôt que de produire un .env inutilisable.
+    # Sanity check : on relit la valeur écrite et on vérifie qu'elle a bien la
+    # forme échappée attendue (préfixe littéral `$$2`). Toute autre forme
+    # signifie un bug de `set_env_value` qu'il faut faire remonter immédiatement
+    # plutôt que de produire un .env inutilisable.
     local readback
     readback="$(read_env_var ADMIN_PASSWORD_HASH)"
-    if [ -z "$readback" ] || [ "${readback#\$2}" = "$readback" ]; then
+    if [ -z "$readback" ] || [ "${readback#\$\$2}" = "$readback" ]; then
       echo "      ✗ Hash relu depuis .env corrompu : '${readback}'" >&2
-      echo "         Le hash a été calculé correctement mais l'écriture .env l'a abîmé." >&2
+      echo "         Le hash a été calculé correctement mais l'écriture .env l'a abîmé," >&2
+      echo "         ou n'a pas été doublé ($ → $$) pour docker compose." >&2
       exit 1
     fi
     echo "      ✓ ADMIN_PASSWORD_HASH régénéré (bcrypt depuis ADMIN_PASSWORD)"

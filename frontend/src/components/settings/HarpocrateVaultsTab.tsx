@@ -31,7 +31,6 @@ interface FormState {
   id?: string;
   name: string;
   base_url: string;
-  api_key_id: string;
   api_key: string;
   is_default: boolean;
 }
@@ -39,7 +38,6 @@ interface FormState {
 const EMPTY: FormState = {
   name: "",
   base_url: "https://vault.yoops.org",
-  api_key_id: "default",
   api_key: "",
   is_default: false,
 };
@@ -62,7 +60,6 @@ export function HarpocrateVaultsTab() {
       id: v.id,
       name: v.name,
       base_url: v.base_url,
-      api_key_id: v.api_key_id,
       api_key: "",
       is_default: v.is_default,
     });
@@ -75,7 +72,6 @@ export function HarpocrateVaultsTab() {
         const payload = {
           name: form.name,
           base_url: form.base_url,
-          api_key_id: form.api_key_id,
           is_default: form.is_default,
           ...(form.api_key ? { api_key: form.api_key } : {}),
         };
@@ -89,7 +85,6 @@ export function HarpocrateVaultsTab() {
         await create({
           name: form.name,
           base_url: form.base_url,
-          api_key_id: form.api_key_id,
           api_key: form.api_key,
           is_default: form.is_default,
         });
@@ -160,7 +155,6 @@ export function HarpocrateVaultsTab() {
               <TableRow>
                 <TableHead>{t("settings.harpocrate.col_name")}</TableHead>
                 <TableHead>{t("settings.harpocrate.col_url")}</TableHead>
-                <TableHead>{t("settings.harpocrate.col_api_key_id")}</TableHead>
                 <TableHead>{t("settings.harpocrate.col_default")}</TableHead>
                 <TableHead className="text-right">{t("common.actions")}</TableHead>
               </TableRow>
@@ -170,7 +164,6 @@ export function HarpocrateVaultsTab() {
                 <TableRow key={v.id}>
                   <TableCell className="font-medium">{v.name}</TableCell>
                   <TableCell className="font-mono text-xs">{v.base_url}</TableCell>
-                  <TableCell className="font-mono text-xs">{v.api_key_id}</TableCell>
                   <TableCell>
                     {v.is_default ? (
                       <Badge variant="default" className="gap-1">
@@ -252,17 +245,6 @@ export function HarpocrateVaultsTab() {
                 value={form.base_url}
                 onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
                 placeholder="https://vault.example.com"
-              />
-            </div>
-            <div>
-              <Label htmlFor="vault-api-key-id">
-                {t("settings.harpocrate.col_api_key_id")}
-              </Label>
-              <Input
-                id="vault-api-key-id"
-                value={form.api_key_id}
-                onChange={(e) => setForm((f) => ({ ...f, api_key_id: e.target.value }))}
-                placeholder="default"
               />
             </div>
             <div>

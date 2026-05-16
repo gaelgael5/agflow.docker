@@ -20,7 +20,6 @@ class VaultSummary(BaseModel):
     id: UUID
     name: str
     base_url: str
-    api_key_id: str
     is_default: bool
     created_at: datetime
     updated_at: datetime
@@ -31,7 +30,6 @@ class VaultCreateRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=128)
     base_url: HttpUrl
-    api_key_id: str = Field(min_length=1, max_length=128)
     api_key: str = Field(min_length=1)
     is_default: bool = False
 
@@ -45,7 +43,6 @@ class VaultUpdateRequest(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=128)
     base_url: HttpUrl | None = None
-    api_key_id: str | None = Field(default=None, min_length=1, max_length=128)
     api_key: str | None = Field(default=None, min_length=1)
     is_default: bool | None = None
 

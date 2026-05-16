@@ -36,7 +36,6 @@ def _summary(name: str = "default", is_default: bool = True) -> VaultSummary:
         id=uuid4(),
         name=name,
         base_url="https://vault.example.com",
-        api_key_id="default",
         is_default=is_default,
         created_at=datetime(2026, 5, 16, tzinfo=UTC),
         updated_at=datetime(2026, 5, 16, tzinfo=UTC),
@@ -86,7 +85,6 @@ def test_create_returns_201(client: TestClient) -> None:
             json={
                 "name": "created",
                 "base_url": "https://vault.example.com",
-                "api_key_id": "default",
                 "api_key": "hrpv_1_secret_value",
                 "is_default": True,
             },
@@ -109,7 +107,6 @@ def test_create_returns_409_on_duplicate(client: TestClient) -> None:
             json={
                 "name": "x",
                 "base_url": "https://vault.example.com",
-                "api_key_id": "default",
                 "api_key": "hrpv_1_x",
             },
         )
@@ -129,7 +126,6 @@ def test_create_returns_503_when_no_dek(client: TestClient) -> None:
             json={
                 "name": "x",
                 "base_url": "https://vault.example.com",
-                "api_key_id": "default",
                 "api_key": "hrpv_1_x",
             },
         )

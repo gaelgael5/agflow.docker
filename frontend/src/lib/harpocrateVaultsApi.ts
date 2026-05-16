@@ -4,7 +4,6 @@ export interface HarpocrateVaultSummary {
   id: string;
   name: string;
   base_url: string;
-  api_key_id: string;
   is_default: boolean;
   created_at: string;
   updated_at: string;
@@ -13,7 +12,6 @@ export interface HarpocrateVaultSummary {
 export interface CreateVaultPayload {
   name: string;
   base_url: string;
-  api_key_id: string;
   api_key: string;
   is_default?: boolean;
 }
@@ -21,7 +19,6 @@ export interface CreateVaultPayload {
 export interface UpdateVaultPayload {
   name?: string;
   base_url?: string;
-  api_key_id?: string;
   api_key?: string;
   is_default?: boolean;
 }

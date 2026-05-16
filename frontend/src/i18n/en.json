@@ -1475,7 +1475,6 @@
       "empty": "No vault configured. Add one to be able to create vault-type secrets.",
       "col_name": "Logical name",
       "col_url": "URL",
-      "col_api_key_id": "API Key ID",
       "col_default": "Default",
       "is_default": "Default",
       "set_default": "Set as default vault",

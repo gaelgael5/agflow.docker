@@ -26,7 +26,7 @@ from agflow.schemas.harpocrate_vaults import (
 
 _log = structlog.get_logger(__name__)
 
-_COLS = "id, name, base_url, api_key_id, is_default, created_at, updated_at"
+_COLS = "id, name, base_url, is_default, created_at, updated_at"
 
 
 class VaultNotFoundError(Exception):
@@ -55,7 +55,6 @@ def _to_summary(row: dict[str, Any]) -> VaultSummary:
         id=row["id"],
         name=row["name"],
         base_url=row["base_url"],
-        api_key_id=row["api_key_id"],
         is_default=row["is_default"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -126,11 +125,11 @@ async def create(payload: VaultCreateRequest) -> VaultSummary:
         row = await conn.fetchrow(
             f"""
                 INSERT INTO harpocrate_vaults
-                    (name, base_url, api_key_id, api_key_encrypted, is_default)
-                VALUES ($1, $2, $3, PGP_SYM_ENCRYPT($4, $5), $6)
+                    (name, base_url, api_key_encrypted, is_default)
+                VALUES ($1, $2, PGP_SYM_ENCRYPT($3, $4), $5)
                 RETURNING {_COLS}
                 """,
-            payload.name, str(payload.base_url), payload.api_key_id,
+            payload.name, str(payload.base_url),
             payload.api_key, dek, payload.is_default,
         )
     assert row is not None
@@ -175,10 +174,6 @@ async def update(vault_id: UUID, payload: VaultUpdateRequest) -> VaultSummary:
         if payload.base_url is not None:
             sets.append(f"base_url = ${i}")
             args.append(str(payload.base_url))
-            i += 1
-        if payload.api_key_id is not None:
-            sets.append(f"api_key_id = ${i}")
-            args.append(payload.api_key_id)
             i += 1
         if payload.api_key is not None:
             sets.append(f"api_key_encrypted = PGP_SYM_ENCRYPT(${i}, ${i + 1})")

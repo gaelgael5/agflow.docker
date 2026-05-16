@@ -33,14 +33,12 @@ def _payload(
     name: str = "default",
     base_url: str = "https://vault.example.com",
     api_key: str = "hrpv_1_test_token_value",
-    api_key_id: str = "default",
     is_default: bool = False,
 ) -> VaultCreateRequest:
     return VaultCreateRequest(
         name=name,
         base_url=base_url,  # type: ignore[arg-type]
         api_key=api_key,
-        api_key_id=api_key_id,
         is_default=is_default,
     )
 

@@ -1482,7 +1482,6 @@
       "empty": "Aucun coffre configuré. Ajoute-en un pour pouvoir créer des secrets de type vault.",
       "col_name": "Nom logique",
       "col_url": "URL",
-      "col_api_key_id": "API Key ID",
       "col_default": "Défaut",
       "is_default": "Défaut",
       "set_default": "Marquer comme coffre par défaut",

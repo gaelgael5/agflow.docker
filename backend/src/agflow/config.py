@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     harpocrate_key: str = ""
     harpocrate_url: str = ""
     harpocrate_vault_api_key_id: str = "default"
+    # Data Encryption Key (passphrase pgcrypto) utilisée pour chiffrer la
+    # colonne `harpocrate_vaults.api_key_encrypted`. Doit être identique sur
+    # tous les nœuds qui partagent la même base. Si vide, la table
+    # harpocrate_vaults est inutilisable (lecture/écriture refusée par le
+    # service côté Python).
+    harpocrate_dek: str = ""
     agflow_data_dir: str = "/app/data"
 
     google_client_id: str = ""

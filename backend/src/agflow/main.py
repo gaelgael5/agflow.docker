@@ -21,6 +21,7 @@ from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
 from agflow.api.admin.generations import router as admin_generations_router
 from agflow.api.admin.group_scripts import router as admin_group_scripts_router
 from agflow.api.admin.groups import router as admin_groups_router
+from agflow.api.admin.harpocrate_vaults import router as admin_harpocrate_vaults_router
 from agflow.api.admin.image_registries import router as admin_image_registries_router
 from agflow.api.admin.local_backups import router as admin_local_backups_router
 from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
@@ -296,6 +297,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(admin_auth_router)
     app.include_router(admin_secrets_router)
+    app.include_router(admin_harpocrate_vaults_router)
     app.include_router(admin_service_types_router)
     app.include_router(admin_roles_router)
     app.include_router(admin_dockerfiles_router)

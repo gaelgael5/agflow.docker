@@ -94,36 +94,49 @@ def vault_mock(monkeypatch: pytest.MonkeyPatch) -> _Store:
 
     store = _Store()
 
-    async def _get_secret(name: str) -> str:
+    async def _get_secret(name: str, vault_name: str | None = None) -> str:
         return store.get(name)
 
-    async def _list_secrets(limit: int = 200) -> list:
+    async def _list_secrets(limit: int = 200, vault_name: str | None = None) -> list:
         return store.list()[:limit]
 
     async def _create_secret(
-        name: str, value: str, description: str | None = None
+        name: str,
+        value: str,
+        description: str | None = None,
+        vault_name: str | None = None,
     ) -> str:
         return store.create(name, value, description)
 
-    async def _update_secret(name: str, value: str) -> None:
+    async def _update_secret(
+        name: str, value: str, vault_name: str | None = None,
+    ) -> None:
         store.update(name, value)
 
-    async def _delete_secret(name: str) -> None:
+    async def _delete_secret(name: str, vault_name: str | None = None) -> None:
         store.delete(name)
+
+    async def _resolve_ref(ref: str) -> str:
+        parsed = vault_client.parse_ref(ref)
+        if parsed is None:
+            raise vault_client.InvalidVaultRefError(f"Invalid vault ref: {ref!r}")
+        _vault_name, path = parsed
+        return store.get(path)
 
     monkeypatch.setattr(vault_client, "get_secret", _get_secret)
     monkeypatch.setattr(vault_client, "list_secrets", _list_secrets)
     monkeypatch.setattr(vault_client, "create_secret", _create_secret)
     monkeypatch.setattr(vault_client, "update_secret", _update_secret)
     monkeypatch.setattr(vault_client, "delete_secret", _delete_secret)
+    monkeypatch.setattr(vault_client, "resolve_ref", _resolve_ref)
 
-    # Patche aussi les builders internes : si un autre code de l'app
-    # (ex: bootstrap, vérif de santé) tente d'instancier le VaultClient
-    # réel via _sync_client/_build_client, on retourne un objet sentinel
-    # plutôt que de laisser harpocrate lever InvalidTokenError sur le
-    # token "dummy" du .env de test. Les méthodes du sentinel ne doivent
-    # jamais être appelées (toute la surface I/O passe par les 5
-    # fonctions patchées ci-dessus).
+    # Patche le builder bas-niveau et vide le cache de clients : si un autre
+    # code de l'app (ex: bootstrap, vérif de santé) tente d'instancier le
+    # VaultClient réel via _build_vault_client, on retourne un objet sentinel
+    # plutôt que de laisser harpocrate lever InvalidTokenError sur le token
+    # "dummy" du .env de test. Les méthodes du sentinel ne doivent jamais
+    # être appelées (toute la surface I/O passe par les fonctions patchées
+    # ci-dessus).
     class _SentinelClient:
         def __getattr__(self, name: str):  # type: ignore[no-untyped-def]
             raise AssertionError(
@@ -132,8 +145,9 @@ def vault_mock(monkeypatch: pytest.MonkeyPatch) -> _Store:
                 "dans tests/_vault_mock.py"
             )
 
-    monkeypatch.setattr(vault_client, "_build_client", lambda: _SentinelClient())
-    monkeypatch.setattr(vault_client, "_sync_client", lambda: _SentinelClient())
-    monkeypatch.setattr(vault_client, "_client", None, raising=False)
+    monkeypatch.setattr(
+        vault_client, "_build_vault_client", lambda *_a, **_k: _SentinelClient(),
+    )
+    vault_client._clients.clear()
 
     return store

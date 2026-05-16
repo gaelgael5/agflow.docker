@@ -360,12 +360,14 @@ if [ ! -f ".env" ]; then
     JWT_SECRET="$(gen_urlsafe 48)"
     API_SALT="$(gen_urlsafe 32)"
     INFRA_KEY="$(gen_fernet_key)"
+    HARPO_DEK="$(gen_urlsafe 48)"
 
     # POSTGRES_PASSWORD apparaît dans DATABASE_URL et en variable propre.
     sed -i "s#REPLACE_ME_WITH_STRONG_PASSWORD#${PG_PASS}#g" .env
     set_env_value .env "JWT_SECRET" "$JWT_SECRET"
     set_env_value .env "API_KEY_SALT" "$API_SALT"
     set_env_value .env "${PROJECT_NAME_UPPER}_INFRA_KEY" "$INFRA_KEY"
+    set_env_value .env "HARPOCRATE_DEK" "$HARPO_DEK"
 
     # ADMIN_PASSWORD + ADMIN_PASSWORD_HASH : générés via la routine partagée
     # (idempotente). À ce stade les deux sont vides → génération complète.
@@ -378,10 +380,11 @@ if [ ! -f ".env" ]; then
     echo "      ✓ JWT_SECRET                           : généré ($(echo -n "$JWT_SECRET" | wc -c) chars)"
     echo "      ✓ API_KEY_SALT                         : généré ($(echo -n "$API_SALT" | wc -c) chars)"
     echo "      ✓ ${PROJECT_NAME_UPPER}_INFRA_KEY      : généré (clé Fernet)"
+    echo "      ✓ HARPOCRATE_DEK                       : généré ($(echo -n "$HARPO_DEK" | wc -c) chars)"
     echo
     echo "      ⚠  À RENSEIGNER MANUELLEMENT dans .env :"
     echo "         - ADMIN_EMAIL                (si autre que admin@${PROJECT_NAME}.example.com)"
-    echo "         - HARPOCRATE_KEY / URL        (token hrpv_1_* fourni par le coffre)"
+    echo "         - HARPOCRATE_KEY / URL        (legacy : configurer plutôt via UI /settings → Harpocrate)"
     echo "         - KEYCLOAK_* + AUTH_MODE      (si auth OIDC Keycloak)"
   else
     echo "[2/6] ⚠  .env absent et .env.example introuvable — config requise pour démarrer"

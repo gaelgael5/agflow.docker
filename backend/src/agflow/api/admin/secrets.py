@@ -12,7 +12,7 @@ from agflow.schemas.platform_secrets import (
     PlatformSecretSummary,
     PlatformSecretUpdate,
 )
-from agflow.services import platform_secrets_service
+from agflow.services import platform_secrets_service, vault_client
 from agflow.services.platform_secrets_service import (
     DuplicatePlatformSecretError,
     PlatformSecretNotFoundError,
@@ -36,6 +36,11 @@ async def create_vault_secret(payload: PlatformSecretCreateVault) -> PlatformSec
         return await platform_secrets_service.create_vault(payload.name, payload.value)
     except DuplicatePlatformSecretError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except vault_client.VaultNotFoundError as exc:
+        # Aucun coffre Harpocrate configuré : l'UI doit guider vers /settings.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc),
+        ) from exc
 
 
 @router.post("/env", response_model=PlatformSecretSummary, status_code=status.HTTP_201_CREATED)

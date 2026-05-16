@@ -6,7 +6,6 @@ Table unifiée (ex-infra_servers + ex-infra_machines depuis la migration 064).
 from __future__ import annotations
 
 import json as _json
-import re
 import uuid as _uuid
 from typing import Any
 from uuid import UUID
@@ -15,28 +14,23 @@ import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.schemas.infra import MachineSummary, RequiredActionStatus
-from agflow.services import vault_client
+from agflow.services import harpocrate_vaults_service, vault_client
 
 _log = structlog.get_logger(__name__)
-
-_VAULT_REF_RE = re.compile(r"^\$\{vault://([^:]+):(.+)\}$")
-_VAULT_KEY_NAME = "HARPOCRATE_KEY"
 
 
 def _vault_path(machine_id: _uuid.UUID) -> str:
     return f"machines/{machine_id}/password"
 
 
-def _vault_ref(machine_id: _uuid.UUID) -> str:
-    return f"${{vault://{_VAULT_KEY_NAME}:{_vault_path(machine_id)}}}"
-
-
-def _parse_vault_ref(value: str | None) -> str | None:
-    """Retourne le chemin vault si value est un vault ref valide, sinon None."""
-    if not value:
-        return None
-    m = _VAULT_REF_RE.match(value)
-    return m.group(2) if (m and m.group(1) == _VAULT_KEY_NAME) else None
+async def _require_default_vault_name() -> str:
+    """Résout le nom du coffre Harpocrate par défaut. Lève si aucun configuré."""
+    default = await harpocrate_vaults_service.get_default()
+    if default is None:
+        raise vault_client.VaultNotFoundError(
+            "No default Harpocrate vault configured — see /settings"
+        )
+    return default.name
 
 
 _LIST_SQL = """
@@ -141,9 +135,12 @@ async def get_credentials(machine_id: UUID) -> dict[str, Any]:
         raise MachineNotFoundError(f"Machine {machine_id} not found")
 
     plain_password: str | None = None
-    path = _parse_vault_ref(row["password"])
-    if path:
-        plain_password = await vault_client.get_secret(path)
+    raw_pw = row["password"]
+    if raw_pw and vault_client.parse_ref(raw_pw) is not None:
+        plain_password = await vault_client.resolve_ref(raw_pw)
+    elif raw_pw:
+        # Valeur en clair (legacy avant migration vault). Acceptable en lecture.
+        plain_password = raw_pw
 
     return {
         "host": row["host"],
@@ -185,18 +182,20 @@ async def create(
     machine_id: _uuid.UUID = row["id"]
 
     if password is not None:
+        vault_name = await _require_default_vault_name()
+        path = _vault_path(machine_id)
         secret_created = False
         try:
-            await vault_client.create_secret(_vault_path(machine_id), password)
+            await vault_client.create_secret(path, password, vault_name=vault_name)
             secret_created = True
             await execute(
                 "UPDATE infra_machines SET password = $1 WHERE id = $2",
-                _vault_ref(machine_id), machine_id,
+                vault_client.build_ref(vault_name, path), machine_id,
             )
         except Exception:
             if secret_created:
                 try:
-                    await vault_client.delete_secret(_vault_path(machine_id))
+                    await vault_client.delete_secret(path, vault_name=vault_name)
                 except Exception:
                     _log.warning(
                         "infra_machines.vault_rollback_failed",
@@ -217,14 +216,18 @@ async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:
         pw_row = await fetch_one(
             "SELECT password FROM infra_machines WHERE id = $1", machine_id
         )
-        existing_path = _parse_vault_ref(pw_row["password"] if pw_row else None)
-        if existing_path:
-            await vault_client.update_secret(existing_path, new_password)
+        existing_ref = pw_row["password"] if pw_row else None
+        existing_parsed = vault_client.parse_ref(existing_ref) if existing_ref else None
+        if existing_parsed is not None:
+            existing_vault, existing_path = existing_parsed
+            await vault_client.update_secret(existing_path, new_password, vault_name=existing_vault)
         else:
-            await vault_client.create_secret(_vault_path(machine_id), new_password)
+            vault_name = await _require_default_vault_name()
+            path = _vault_path(machine_id)
+            await vault_client.create_secret(path, new_password, vault_name=vault_name)
             await execute(
                 "UPDATE infra_machines SET password = $1 WHERE id = $2",
-                _vault_ref(machine_id), machine_id,
+                vault_client.build_ref(vault_name, path), machine_id,
             )
 
     updates: dict[str, Any] = {}
@@ -264,7 +267,7 @@ async def delete(machine_id: UUID) -> None:
     pw_row = await fetch_one(
         "SELECT password FROM infra_machines WHERE id = $1", machine_id
     )
-    path = _parse_vault_ref(pw_row["password"] if pw_row else None)
+    parsed = vault_client.parse_ref(pw_row["password"] if pw_row else None)
 
     row = await fetch_one(
         "DELETE FROM infra_machines WHERE id = $1 RETURNING id", machine_id,
@@ -272,11 +275,15 @@ async def delete(machine_id: UUID) -> None:
     if row is None:
         raise MachineNotFoundError(f"Machine {machine_id} not found")
 
-    if path:
+    if parsed is not None:
+        vname, path = parsed
         try:
-            await vault_client.delete_secret(path)
+            await vault_client.delete_secret(path, vault_name=vname)
         except Exception:
-            _log.warning("infra_machines.vault_delete_failed", id=str(machine_id), path=path)
+            _log.warning(
+                "infra_machines.vault_delete_failed",
+                id=str(machine_id), vault=vname, path=path,
+            )
 
     _log.info("infra_machines.delete", id=str(machine_id))
 

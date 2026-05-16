@@ -244,3 +244,73 @@ async def test_consume_session_appends_date_suffix_if_folder_name_exists(
     created_name = create_call.kwargs["body"]["name"]
     assert created_name.startswith("agflow-backups (")
     assert created_name.endswith(")")
+
+
+@pytest.mark.asyncio
+async def test_get_session_returns_pending_status(fresh_db, vault_mock) -> None:
+    actor = await _create_admin_user()
+    fake_flow = MagicMock()
+    fake_flow.authorization_url.return_value = ("https://x", "x")
+    with patch(
+        "agflow.services.gdrive_oauth_session.gdrive_client.build_flow",
+        return_value=fake_flow,
+    ):
+        state, _ = await gdrive_oauth_session.start_session(
+            actor_user_id=actor, name="n", folder_name="f",
+            client_id="c", client_secret="s", redirect_uri="r",
+        )
+
+    info = await gdrive_oauth_session.get_session(state)
+    assert info is not None
+    assert info["status"] == "pending"
+    assert info["connection_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_session_returns_none_for_unknown_state(fresh_db) -> None:
+    assert await gdrive_oauth_session.get_session("unknown") is None
+
+
+@pytest.mark.asyncio
+async def test_reauthorize_starts_new_pending_for_existing_connection(
+    fresh_db, vault_mock,
+) -> None:
+    actor = await _create_admin_user()
+    await _create_default_vault()
+    # Setup : crée une connexion via consume_session
+    fake_flow = MagicMock()
+    fake_flow.authorization_url.return_value = ("https://x", "x")
+    fake_flow.credentials = MagicMock(
+        refresh_token="rt", token_uri="https://x", client_id="c", client_secret="s-original",
+        scopes=["https://www.googleapis.com/auth/drive.file"],
+    )
+    fake_drive = MagicMock()
+    fake_drive.files().list().execute.return_value = {"files": []}
+    fake_drive.files().create().execute.return_value = {"id": "f"}
+
+    with (
+        patch("agflow.services.gdrive_oauth_session.gdrive_client.build_flow", return_value=fake_flow),
+        patch("agflow.services.gdrive_oauth_session.gdrive_client.build_drive_service", return_value=fake_drive),
+        patch("agflow.services.gdrive_oauth_session.gdrive_client.fetch_user_email", return_value="u@x"),
+    ):
+        state, _ = await gdrive_oauth_session.start_session(
+            actor_user_id=actor, name="n", folder_name="f",
+            client_id="c", client_secret="s-original", redirect_uri="r",
+        )
+        result = await gdrive_oauth_session.consume_session(state=state, code="c")
+        # Maintenant reauthorize
+        new_state, new_url = await gdrive_oauth_session.reauthorize(
+            connection_id=result["connection_id"], actor_user_id=actor,
+        )
+
+    assert len(new_state) >= 32
+    assert "https" in new_url
+
+    pending = await fetch_one(
+        "SELECT state, form_data FROM oauth_pending_session WHERE state = $1",
+        new_state,
+    )
+    fd = pending["form_data"]
+    if isinstance(fd, str):
+        fd = json.loads(fd)
+    assert fd["client_id"] == "c"  # Réutilise le client_id existant

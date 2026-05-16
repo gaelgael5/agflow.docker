@@ -242,8 +242,79 @@ async def _create_drive_folder(*, creds: object, folder_name: str) -> str:
 
 
 async def get_session(state: str) -> dict | None:
-    raise NotImplementedError("Task 12")
+    """Retourne le status d'un pending session (pour polling frontend)."""
+    row = await fetch_one(
+        """
+        SELECT consumed_at, expires_at, form_data
+        FROM oauth_pending_session WHERE state = $1
+        """,
+        state,
+    )
+    if row is None:
+        return None
+
+    connection_id = None
+    user_email = None
+    folder_id = None
+    if row["consumed_at"] is not None:
+        fd = row["form_data"] if isinstance(row["form_data"], dict) else json.loads(row["form_data"])
+        conn = await fetch_one(
+            """
+            SELECT id, config
+            FROM remote_backup_connections
+            WHERE kind = 'gdrive' AND name = $1 AND deleted_at IS NULL
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            fd.get("name"),
+        )
+        if conn is not None:
+            connection_id = conn["id"]
+            cfg = conn["config"] if isinstance(conn["config"], dict) else json.loads(conn["config"])
+            user_email = cfg.get("user_email")
+            folder_id = cfg.get("folder_id")
+
+    return {
+        "status": "completed" if row["consumed_at"] else "pending",
+        "connection_id": connection_id,
+        "user_email": user_email,
+        "folder_id": folder_id,
+    }
 
 
-async def reauthorize(*, connection_id: UUID, actor_user_id: UUID) -> tuple[str, str]:
-    raise NotImplementedError("Task 13")
+async def reauthorize(
+    *, connection_id: UUID, actor_user_id: UUID,
+) -> tuple[str, str]:
+    """Re-démarre le flow OAuth pour une connexion gdrive existante.
+
+    Le `client_id` est récupéré depuis `config`, le `client_secret` est
+    déchiffré depuis Harpocrate puis ré-encrypté dans la pending row.
+    """
+    row = await fetch_one(
+        "SELECT name, kind, config FROM remote_backup_connections WHERE id = $1",
+        connection_id,
+    )
+    if row is None:
+        raise PendingSessionError(f"Connection {connection_id} not found")
+    if row["kind"] != "gdrive":
+        raise PendingSessionError(
+            f"Connection {connection_id} has kind {row['kind']!r}, not gdrive"
+        )
+    cfg = row["config"] if isinstance(row["config"], dict) else json.loads(row["config"])
+
+    creds_ref = cfg.get("credentials_ref")
+    if not creds_ref:
+        raise PendingSessionError(
+            f"Connection {connection_id} missing credentials_ref in config"
+        )
+    creds_raw = await vault_client.resolve_ref(creds_ref)
+    creds_data = json.loads(creds_raw)
+    client_secret = creds_data["client_secret"]
+
+    return await start_session(
+        actor_user_id=actor_user_id,
+        name=row["name"],
+        folder_name=cfg["folder_name"],
+        client_id=cfg["client_id"],
+        client_secret=client_secret,
+        redirect_uri=cfg["redirect_uri"],
+    )

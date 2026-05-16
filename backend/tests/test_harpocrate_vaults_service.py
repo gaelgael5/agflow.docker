@@ -151,15 +151,9 @@ async def test_delete_missing_raises(fresh_db: None) -> None:
 async def test_reveal_without_dek_raises(fresh_db: None, monkeypatch: pytest.MonkeyPatch) -> None:
     created = await vaults.create(_payload(name="dektest"))
 
-    # Force le settings à voir un DEK vide → reveal doit lever
-    from agflow import config
-
-    def _no_dek_settings() -> config.Settings:
-        s = config.Settings()  # type: ignore[call-arg]
-        s.harpocrate_dek = ""  # type: ignore[assignment]
-        return s
-
-    monkeypatch.setattr(config, "get_settings", _no_dek_settings)
+    # `get_settings()` re-lit l'env à chaque appel — il suffit de vider HARPOCRATE_DEK
+    # via monkeypatch.setenv pour que `_require_dek()` lève proprement.
+    monkeypatch.setenv("HARPOCRATE_DEK", "")
 
     with pytest.raises(vaults.NoDekConfiguredError):
         await vaults.reveal_api_key(created.id)

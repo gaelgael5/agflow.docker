@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,12 +13,18 @@ _NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
 MACHINE_ID = uuid.uuid4()
 TYPE_ID = uuid.uuid4()
+_VAULT_NAME = "default"
+
+
+def _ref(path: str) -> str:
+    return f"${{vault://{_VAULT_NAME}:{path}}}"
+
 
 _ROW = {
     "id": MACHINE_ID, "name": "test", "type_id": TYPE_ID,
     "type_name": "lxc", "category": "lxc",
     "host": "192.168.1.1", "port": 22, "username": "root",
-    "password": f"${{vault://HARPOCRATE_KEY:machines/{MACHINE_ID}/password}}",
+    "password": _ref(f"machines/{MACHINE_ID}/password"),
     "certificate_id": None, "parent_id": None, "user_id": None,
     "environment": None, "children_count": 0,
     "metadata": {}, "status": "not_initialized",
@@ -25,15 +32,25 @@ _ROW = {
 }
 
 
+def _patch_default_vault():
+    """Patch le lookup du coffre default pour retourner un coffre nommé 'default'."""
+    fake = SimpleNamespace(id=uuid.uuid4(), name=_VAULT_NAME)
+    return patch(
+        "agflow.services.infra_machines_service.harpocrate_vaults_service.get_default",
+        AsyncMock(return_value=fake),
+    )
+
+
 @pytest.mark.asyncio
-async def test_create_stores_vault_ref():
-    """create() doit stocker un vault ref dans la colonne password."""
+async def test_create_stores_vault_ref() -> None:
+    """create() doit pousser le secret puis stocker un vault ref dans la colonne password."""
     with (
-        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        _patch_default_vault(),
+        patch("agflow.services.infra_machines_service.vault_client.create_secret") as mock_create,
         patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
         patch("agflow.services.infra_machines_service.execute") as mock_exec,
     ):
-        mock_vault.create_secret = AsyncMock(return_value="secret-id-123")
+        mock_create.return_value = "secret-id-123"
         mock_fetch.side_effect = [
             {"id": MACHINE_ID},  # INSERT RETURNING
             _ROW,                # get_by_id
@@ -41,61 +58,60 @@ async def test_create_stores_vault_ref():
         mock_exec.return_value = None
 
         result = await svc.create(
-            type_id=TYPE_ID, host="192.168.1.1", password="s3cr3t"
+            type_id=TYPE_ID, host="192.168.1.1", password="s3cr3t",
         )
 
-        mock_vault.create_secret.assert_called_once_with(
-            f"machines/{MACHINE_ID}/password", "s3cr3t"
+        mock_create.assert_called_once_with(
+            f"machines/{MACHINE_ID}/password", "s3cr3t", vault_name=_VAULT_NAME,
         )
         call_args = mock_exec.call_args[0]
-        assert f"machines/{MACHINE_ID}/password" in call_args[1]
+        assert _ref(f"machines/{MACHINE_ID}/password") == call_args[1]
         assert result.has_password is True
 
 
 @pytest.mark.asyncio
-async def test_create_rolls_back_on_vault_failure():
+async def test_create_rolls_back_on_vault_failure() -> None:
     """create() doit supprimer la machine si vault.create_secret échoue."""
     with (
-        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        _patch_default_vault(),
+        patch("agflow.services.infra_machines_service.vault_client.create_secret") as mock_create,
         patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
         patch("agflow.services.infra_machines_service.execute") as mock_exec,
     ):
-        mock_vault.create_secret = AsyncMock(side_effect=RuntimeError("vault down"))
+        mock_create.side_effect = RuntimeError("vault down")
         mock_fetch.return_value = {"id": MACHINE_ID}
         mock_exec.return_value = None
 
         with pytest.raises(RuntimeError, match="vault down"):
             await svc.create(type_id=TYPE_ID, host="192.168.1.1", password="s3cr3t")
 
-        # La machine doit être supprimée (rollback)
         delete_calls = [c for c in mock_exec.call_args_list if "DELETE" in str(c)]
         assert len(delete_calls) == 1
 
 
 @pytest.mark.asyncio
-async def test_get_credentials_reads_from_vault():
-    """get_credentials() doit lire le password depuis Harpocrate."""
+async def test_get_credentials_reads_from_vault() -> None:
+    """get_credentials() doit lire le password depuis Harpocrate via resolve_ref."""
+    vault_ref = _ref(f"machines/{MACHINE_ID}/password")
     with (
-        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.vault_client.resolve_ref") as mock_resolve,
         patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
     ):
-        mock_vault.get_secret = AsyncMock(return_value="s3cr3t")
+        mock_resolve.return_value = "s3cr3t"
         mock_fetch.return_value = {
             "host": "192.168.1.1", "port": 22, "username": "root",
-            "password": f"${{vault://HARPOCRATE_KEY:machines/{MACHINE_ID}/password}}",
+            "password": vault_ref,
             "certificate_id": None,
         }
 
         creds = await svc.get_credentials(MACHINE_ID)
 
-        mock_vault.get_secret.assert_called_once_with(
-            f"machines/{MACHINE_ID}/password"
-        )
+        mock_resolve.assert_called_once_with(vault_ref)
         assert creds["password"] == "s3cr3t"
 
 
 @pytest.mark.asyncio
-async def test_get_credentials_no_password():
+async def test_get_credentials_no_password() -> None:
     """get_credentials() retourne None si pas de vault ref."""
     with patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch:
         mock_fetch.return_value = {
@@ -107,76 +123,75 @@ async def test_get_credentials_no_password():
 
 
 @pytest.mark.asyncio
-async def test_update_password_calls_update_secret_when_path_exists():
-    """update() avec password existant → vault.update_secret, pas de UPDATE DB password."""
+async def test_update_password_calls_update_secret_when_path_exists() -> None:
+    """update() avec ref existant → vault.update_secret sur le même (vault, path)."""
     with (
-        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.vault_client.update_secret") as mock_update,
         patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
         patch("agflow.services.infra_machines_service.execute") as mock_exec,
     ):
-        vault_ref = f"${{vault://HARPOCRATE_KEY:machines/{MACHINE_ID}/password}}"
-        mock_vault.update_secret = AsyncMock()
-        # get_by_id (check existence) + SELECT password + get_by_id (return)
-        mock_fetch.side_effect = [_ROW, {"password": vault_ref}, _ROW]
+        existing_ref = _ref(f"machines/{MACHINE_ID}/password")
+        mock_update.return_value = None
+        mock_fetch.side_effect = [_ROW, {"password": existing_ref}, _ROW]
         mock_exec.return_value = None
 
         await svc.update(MACHINE_ID, password="new_secret")
 
-        mock_vault.update_secret.assert_called_once_with(
-            f"machines/{MACHINE_ID}/password", "new_secret"
+        mock_update.assert_called_once_with(
+            f"machines/{MACHINE_ID}/password", "new_secret", vault_name=_VAULT_NAME,
         )
 
 
 @pytest.mark.asyncio
-async def test_update_password_calls_create_secret_when_no_path():
-    """update() avec password absent en DB → vault.create_secret + UPDATE DB."""
+async def test_update_password_calls_create_secret_when_no_path() -> None:
+    """update() avec password absent en DB → lookup default + vault.create_secret + UPDATE DB."""
     with (
-        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        _patch_default_vault(),
+        patch("agflow.services.infra_machines_service.vault_client.create_secret") as mock_create,
         patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
         patch("agflow.services.infra_machines_service.execute") as mock_exec,
     ):
-        mock_vault.create_secret = AsyncMock(return_value="secret-id")
+        mock_create.return_value = "secret-id"
         no_pw_row = {**_ROW, "password": None}
         mock_fetch.side_effect = [no_pw_row, {"password": None}, _ROW]
         mock_exec.return_value = None
 
         await svc.update(MACHINE_ID, password="new_secret")
 
-        mock_vault.create_secret.assert_called_once_with(
-            f"machines/{MACHINE_ID}/password", "new_secret"
+        mock_create.assert_called_once_with(
+            f"machines/{MACHINE_ID}/password", "new_secret", vault_name=_VAULT_NAME,
         )
 
 
 @pytest.mark.asyncio
-async def test_delete_removes_vault_secret():
+async def test_delete_removes_vault_secret() -> None:
     """delete() doit supprimer le secret Harpocrate après la suppression DB."""
     with (
-        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.vault_client.delete_secret") as mock_delete,
         patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
     ):
-        vault_ref = f"${{vault://HARPOCRATE_KEY:machines/{MACHINE_ID}/password}}"
-        mock_vault.delete_secret = AsyncMock()
-        # SELECT password + DELETE RETURNING id
+        existing_ref = _ref(f"machines/{MACHINE_ID}/password")
+        mock_delete.return_value = None
         mock_fetch.side_effect = [
-            {"password": vault_ref},
+            {"password": existing_ref},
             {"id": MACHINE_ID},
         ]
 
         await svc.delete(MACHINE_ID)
 
-        mock_vault.delete_secret.assert_called_once_with(
-            f"machines/{MACHINE_ID}/password"
+        mock_delete.assert_called_once_with(
+            f"machines/{MACHINE_ID}/password", vault_name=_VAULT_NAME,
         )
 
 
 @pytest.mark.asyncio
-async def test_delete_no_vault_ref_skips_vault():
+async def test_delete_no_vault_ref_skips_vault() -> None:
     """delete() ne doit pas appeler vault si la machine n'a pas de password."""
     with (
-        patch("agflow.services.infra_machines_service.vault_client") as mock_vault,
+        patch("agflow.services.infra_machines_service.vault_client.delete_secret") as mock_delete,
         patch("agflow.services.infra_machines_service.fetch_one") as mock_fetch,
     ):
-        mock_vault.delete_secret = AsyncMock()
+        mock_delete.return_value = None
         mock_fetch.side_effect = [
             {"password": None},
             {"id": MACHINE_ID},
@@ -184,4 +199,4 @@ async def test_delete_no_vault_ref_skips_vault():
 
         await svc.delete(MACHINE_ID)
 
-        mock_vault.delete_secret.assert_not_called()
+        mock_delete.assert_not_called()

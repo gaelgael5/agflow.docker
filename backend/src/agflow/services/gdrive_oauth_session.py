@@ -47,7 +47,7 @@ async def start_session(
     """Crée une pending row + retourne (state, authorize_url Google)."""
     dek = _require_dek()
     state = secrets.token_urlsafe(32)
-    expires_at = datetime.now(datetime.UTC) + _PENDING_TTL
+    expires_at = datetime.now(UTC) + _PENDING_TTL
 
     flow = gdrive_client.build_flow(
         client_id=client_id,

@@ -26,8 +26,10 @@ class RemoteBackupConnectionCreate(BaseModel):
     @field_validator("kind")
     @classmethod
     def validate_kind(cls, v: str) -> str:
-        if v not in ("sftp", "s3", "ftps"):
-            raise ValueError("kind must be one of: sftp, s3, ftps")
+        # "gdrive" est accepté ici pour retourner un 400 métier (pas 422 Pydantic)
+        # depuis l'endpoint, qui redirige vers le flow OAuth dédié.
+        if v not in ("sftp", "s3", "ftps", "gdrive"):
+            raise ValueError("kind must be one of: sftp, s3, ftps, gdrive")
         return v
 
 

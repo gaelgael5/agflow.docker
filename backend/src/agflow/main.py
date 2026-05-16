@@ -32,6 +32,9 @@ from agflow.api.admin.project_deployments import router as admin_deployments_rou
 from agflow.api.admin.project_runtimes import router as admin_runtimes_router
 from agflow.api.admin.projects import router as admin_projects_router
 from agflow.api.admin.remote_backup_connections import (
+    gdrive_public_router as admin_gdrive_public_router,
+)
+from agflow.api.admin.remote_backup_connections import (
     router as admin_remote_backup_connections_router,
 )
 from agflow.api.admin.roles import router as admin_roles_router
@@ -331,6 +334,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_users_router)
     app.include_router(admin_api_keys_router)
     app.include_router(admin_apps_router)
+    app.include_router(admin_gdrive_public_router)
     app.include_router(admin_remote_backup_connections_router)
     app.include_router(admin_local_backups_router)
     app.include_router(infra_categories_router)

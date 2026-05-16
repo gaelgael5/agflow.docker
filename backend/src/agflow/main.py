@@ -73,13 +73,12 @@ from agflow.api.public.scopes import router as public_scopes_router
 from agflow.api.public.sessions import router as public_sessions_router
 from agflow.config import get_settings
 from agflow.logging_setup import configure_logging
+from agflow.services.backup_scheduler import start as _backup_scheduler_start
+from agflow.services.backup_scheduler import stop as _backup_scheduler_stop
 from agflow.services.oauth_pending_reaper import run_reaper_loop as _run_oauth_pending_reaper_loop
 from agflow.workers.agent_reaper import run_agent_reaper_loop as _run_agent_reaper_loop
 from agflow.workers.docker_reconciler import run_docker_reconciliation
 from agflow.workers.mom_reclaimer import run_mom_reclaimer_loop as _run_mom_reclaimer_loop
-from agflow.workers.remote_backup_pusher import (
-    run_remote_backup_pusher_loop as _run_remote_backup_pusher_loop,
-)
 from agflow.workers.session_expiry import run_expiry_loop as _run_expiry_loop
 from agflow.workers.session_idle_reaper import (
     run_session_idle_reaper_loop as _run_session_idle_reaper_loop,
@@ -195,18 +194,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.warning("docker_reconciler.startup_failed", error=str(exc))
 
     # Démarrage des workers de fond
-    _stops = [_asyncio.Event() for _ in range(6)]
+    _stops = [_asyncio.Event() for _ in range(5)]
     _tasks = [
         _asyncio.create_task(_run_expiry_loop(_stops[0])),
         _asyncio.create_task(_run_agent_reaper_loop(_stops[1])),
         _asyncio.create_task(_run_session_idle_reaper_loop(_stops[2])),
         _asyncio.create_task(_run_mom_reclaimer_loop(_stops[3])),
-        _asyncio.create_task(_run_remote_backup_pusher_loop(_stops[4])),
         # OAuth pending reaper (purge des sessions expirées/consumed)
-        _asyncio.create_task(_run_oauth_pending_reaper_loop(_stops[5])),
+        _asyncio.create_task(_run_oauth_pending_reaper_loop(_stops[4])),
     ]
+    # Backup scheduler (APScheduler gère son propre shutdown)
+    await _backup_scheduler_start()
     yield
     log.info("app.shutdown")
+    # Arrêt du backup scheduler en premier (avant la fermeture des autres ressources)
+    await _backup_scheduler_stop()
     for _stop in _stops:
         _stop.set()
     for _task in _tasks:

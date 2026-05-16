@@ -65,11 +65,16 @@ def test_create_connection_returns_409_on_duplicate_name(client):
     import asyncpg
 
     fake_pool = _make_fake_pool()
+    fake_user = MagicMock(id="user-uuid")
 
     with (
         patch(
             "agflow.api.admin.remote_backup_connections.get_pool",
             AsyncMock(return_value=fake_pool),
+        ),
+        patch(
+            "agflow.api.admin.remote_backup_connections.users_service.get_by_email",
+            new=AsyncMock(return_value=fake_user),
         ),
         patch(
             "agflow.api.admin.remote_backup_connections.rbc_service.create_connection",

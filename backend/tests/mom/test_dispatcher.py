@@ -5,7 +5,7 @@ import json
 import pytest
 import pytest_asyncio
 
-from agflow.db.pool import close_pool, fetch_all, get_pool
+from agflow.db.pool import fetch_all, get_pool
 from agflow.mom.adapters.generic import GenericAdapter
 from agflow.mom.consumer import MomConsumer
 from agflow.mom.dispatcher import AgentDispatcher
@@ -34,7 +34,6 @@ class FakeContainer:
 async def pool():
     p = await get_pool()
     yield p
-    await close_pool()
 
 
 @pytest_asyncio.fixture

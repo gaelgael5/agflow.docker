@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from agflow.db.pool import close_pool, execute, fetch_one, get_pool
+from agflow.db.pool import execute, fetch_one, get_pool
 from agflow.mom.consumer import MomConsumer
 from agflow.mom.envelope import Direction, Kind
 from agflow.mom.publisher import MomPublisher
@@ -14,7 +14,6 @@ from agflow.workers.mom_reclaimer import reclaim_once
 async def pool():
     p = await get_pool()
     yield p
-    await close_pool()
 
 
 @pytest_asyncio.fixture(autouse=True)

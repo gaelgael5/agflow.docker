@@ -7,7 +7,7 @@ import pytest
 
 os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
-from agflow.db.pool import close_pool
+
 from agflow.services import dockerfile_files_service as files
 from agflow.services import dockerfiles_service
 from tests._db_reset import reset_schema_and_migrate
@@ -18,7 +18,6 @@ async def _clean():
     await reset_schema_and_migrate()
     await dockerfiles_service.create(dockerfile_id="test", display_name="Test")
     yield
-    await close_pool()
 
 
 @pytest.mark.asyncio
@@ -110,7 +109,10 @@ async def test_update_content() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_file() -> None:
-    f = await files.create(dockerfile_id="test", path="x", content="")
+    # Path avec extension `.txt` → résolu comme storage kind=1 (texte) qui
+    # accepte un content str. Sans extension, le storage SDK route vers
+    # storage_bin (bytea) et asyncpg refuse la str vide.
+    f = await files.create(dockerfile_id="test", path="x.txt", content="")
     await files.delete(f.id)
 
     remaining = await files.list_for_dockerfile("test")

@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 import yaml
 from jinja2 import StrictUndefined
 from jinja2.sandbox import SandboxedEnvironment
@@ -13,6 +14,23 @@ from jinja2.sandbox import SandboxedEnvironment
 from agflow.services.compose_renderer_service import (
     _build_group_context,
     _to_yaml_filter,
+)
+
+# Les deux tests `test_seed_default_compose_template_*` ci-dessous lisent un
+# template à `scripts/_prompts/seed-default-compose.sh.j2`, qui vit hors du
+# build context backend/ — donc absent du container test. Le marker s'active
+# seulement quand le template est trouvable (= en checkout repo local), pas
+# quand on tourne pytest depuis l'image agflow-backend dans le LXC.
+_TEMPLATE_PATH = (
+    Path(__file__).parent.parent.parent
+    / "scripts" / "_prompts" / "seed-default-compose.sh.j2"
+)
+_skip_if_template_missing = pytest.mark.skipif(
+    not _TEMPLATE_PATH.exists(),
+    reason=(
+        "scripts/_prompts/seed-default-compose.sh.j2 hors build context "
+        "backend/ — test pertinent uniquement en checkout repo local."
+    ),
 )
 
 
@@ -125,6 +143,7 @@ def _render_template(template_path: Path, context: dict) -> str:
     return template.render(**context)
 
 
+@_skip_if_template_missing
 def test_seed_default_compose_template_produces_valid_swarm_stack() -> None:
     """Le template seed-default-compose doit produire un YAML Swarm-stack valide."""
     template_path = (
@@ -199,6 +218,7 @@ def test_seed_default_compose_template_produces_valid_swarm_stack() -> None:
     assert "api-data" in parsed["volumes"]
 
 
+@_skip_if_template_missing
 def test_seed_default_compose_template_excludes_legacy_fields() -> None:
     """Le template ne doit PLUS contenir les directives compose-v1 obsoletes."""
     template_path = (

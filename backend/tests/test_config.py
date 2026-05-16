@@ -33,12 +33,3 @@ def test_settings_default_values(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.jwt_expire_hours == 24
 
 
-def test_settings_requires_secrets_master_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/test")
-    monkeypatch.setenv("JWT_SECRET", "x")
-    monkeypatch.setenv("ADMIN_EMAIL", "a@b.c")
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "x")
-    monkeypatch.setenv("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
-
-    settings = Settings()
-    assert settings.secrets_master_key == "test-master-key-phrase-32chars-ok"

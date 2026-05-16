@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from agflow.db.pool import close_pool
 from agflow.main import create_app
 from agflow.services import prompt_generator
 from tests._db_reset import reset_schema_and_migrate
@@ -21,7 +20,6 @@ async def client() -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
-    await close_pool()
 
 
 async def _token(client: AsyncClient) -> dict[str, str]:

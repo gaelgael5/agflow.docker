@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from agflow.db.pool import close_pool, execute, fetch_one
+from agflow.db.pool import execute, fetch_one
 from agflow.schemas.agents import (
     AgentCreate,
     AgentMCPBinding,
@@ -34,7 +34,6 @@ async def db() -> AsyncIterator[None]:
         """
     )
     yield
-    await close_pool()
 
 
 async def _seed_mcp(name: str = "Filesystem") -> str:
@@ -139,11 +138,12 @@ async def test_preview_includes_skills(db: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_preview_resolves_env_vars_from_secrets(db: None) -> None:
-    # Seed a secret (global scope). Uses SECRETS_MASTER_KEY from conftest env.
+async def test_preview_resolves_env_vars_from_secrets(db: None, vault_mock) -> None:
+    # Le secret est posé dans le vault mocké ; le composition_builder le résout
+    # via secrets_service.resolve_env qui passe par vault_client.
     from agflow.services import secrets_service
 
-    await secrets_service.create(var_name="OPENAI_API_KEY", value="sk-test-123")
+    await secrets_service.create("OPENAI_API_KEY", "sk-test-123")
     agent = await agents_service.create(
         AgentCreate(
             slug="env",
@@ -166,7 +166,7 @@ async def test_preview_resolves_env_vars_from_secrets(db: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_preview_reports_missing_secret(db: None) -> None:
+async def test_preview_reports_missing_secret(db: None, vault_mock) -> None:
     agent = await agents_service.create(
         AgentCreate(
             slug="miss",

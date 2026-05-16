@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from agflow.db.pool import close_pool
 from agflow.services import template_storage_service
 from agflow.services.template_storage_service import (
     DuplicateTemplateError,
@@ -15,7 +14,6 @@ from tests._db_reset import reset_schema_and_migrate
 async def _clean():
     await reset_schema_and_migrate()
     yield
-    await close_pool()
 
 
 @pytest.mark.asyncio

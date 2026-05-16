@@ -1,3 +1,13 @@
+"""Tests API admin des secrets plateforme.
+
+Les routes `POST /api/admin/secrets/vault` et `POST /api/admin/secrets/env`
+gèrent les deux types de secrets : `vault` (valeur stockée dans Harpocrate,
+référencée via `${vault://KEY:NAME}`) ou `env` (valeur en clair en DB,
+référencée via `${env://NAME}`).
+
+Les tests utilisent la fixture `vault_mock` pour court-circuiter
+Harpocrate (cf. `tests/_vault_mock.py`).
+"""
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -5,7 +15,6 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from agflow.db.pool import close_pool
 from agflow.main import create_app
 from tests._db_reset import reset_schema_and_migrate
 
@@ -13,13 +22,11 @@ from tests._db_reset import reset_schema_and_migrate
 @pytest.fixture
 async def async_client() -> AsyncIterator[AsyncClient]:
     await reset_schema_and_migrate()
-
     app = create_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
-
-    await close_pool()
+    # PAS de close_pool() : cf commentaire dans tests/admin/test_admin_sessions_api.py
 
 
 async def _auth_header(client: AsyncClient) -> dict[str, str]:
@@ -31,55 +38,92 @@ async def _auth_header(client: AsyncClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+# ─── Auth ──────────────────────────────────────────────────────────────────
+
+
 @pytest.mark.asyncio
 async def test_list_requires_auth(async_client: AsyncClient) -> None:
     res = await async_client.get("/api/admin/secrets")
     assert res.status_code == 401
 
 
+# ─── Secret vault (valeur dans Harpocrate) ─────────────────────────────────
+
+
 @pytest.mark.asyncio
-async def test_create_list_reveal_delete_secret(async_client: AsyncClient) -> None:
+async def test_create_vault_secret_lists_and_reveals(
+    async_client: AsyncClient, vault_mock
+) -> None:
     headers = await _auth_header(async_client)
 
     create_res = await async_client.post(
-        "/api/admin/secrets",
+        "/api/admin/secrets/vault",
         headers=headers,
-        json={"var_name": "test_key_e2e", "value": "abc123", "scope": "global"},
+        json={"name": "anthropic_api_key", "value": "sk-ant-xyz"},
     )
     assert create_res.status_code == 201, create_res.text
     body = create_res.json()
-    assert body["var_name"] == "TEST_KEY_E2E"
+    assert body["name"] == "ANTHROPIC_API_KEY"
+    assert body["type"] == "vault"
+    assert body["has_value"] is True
     assert "value" not in body
     secret_id = body["id"]
 
+    # Listage
     list_res = await async_client.get("/api/admin/secrets", headers=headers)
     assert list_res.status_code == 200
-    names = [s["var_name"] for s in list_res.json()]
-    assert "TEST_KEY_E2E" in names
+    names = [s["name"] for s in list_res.json()]
+    assert "ANTHROPIC_API_KEY" in names
 
+    # Reveal
     reveal_res = await async_client.get(
         f"/api/admin/secrets/{secret_id}/reveal", headers=headers
     )
     assert reveal_res.status_code == 200
-    assert reveal_res.json()["value"] == "abc123"
+    assert reveal_res.json()["value"] == "sk-ant-xyz"
 
+    # Delete (204)
     del_res = await async_client.delete(
         f"/api/admin/secrets/{secret_id}", headers=headers
     )
     assert del_res.status_code == 204
 
+    # Plus dans le listing
     list_res2 = await async_client.get("/api/admin/secrets", headers=headers)
-    assert "TEST_KEY_E2E" not in [s["var_name"] for s in list_res2.json()]
+    assert "ANTHROPIC_API_KEY" not in [s["name"] for s in list_res2.json()]
 
 
 @pytest.mark.asyncio
-async def test_update_replaces_value(async_client: AsyncClient) -> None:
+async def test_create_vault_rejects_duplicate(
+    async_client: AsyncClient, vault_mock
+) -> None:
+    headers = await _auth_header(async_client)
+
+    first = await async_client.post(
+        "/api/admin/secrets/vault",
+        headers=headers,
+        json={"name": "DUP_TEST", "value": "a"},
+    )
+    assert first.status_code == 201
+
+    second = await async_client.post(
+        "/api/admin/secrets/vault",
+        headers=headers,
+        json={"name": "DUP_TEST", "value": "b"},
+    )
+    assert second.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_update_replaces_vault_value(
+    async_client: AsyncClient, vault_mock
+) -> None:
     headers = await _auth_header(async_client)
 
     create_res = await async_client.post(
-        "/api/admin/secrets",
+        "/api/admin/secrets/vault",
         headers=headers,
-        json={"var_name": "update_test", "value": "old"},
+        json={"name": "UPDATE_TEST", "value": "old"},
     )
     secret_id = create_res.json()["id"]
 
@@ -88,7 +132,7 @@ async def test_update_replaces_value(async_client: AsyncClient) -> None:
         headers=headers,
         json={"value": "new"},
     )
-    assert update_res.status_code == 200
+    assert update_res.status_code == 204
 
     reveal = await async_client.get(
         f"/api/admin/secrets/{secret_id}/reveal", headers=headers
@@ -96,19 +140,46 @@ async def test_update_replaces_value(async_client: AsyncClient) -> None:
     assert reveal.json()["value"] == "new"
 
 
+# ─── Secret env (valeur en DB) ─────────────────────────────────────────────
+
+
 @pytest.mark.asyncio
-async def test_resolve_status(async_client: AsyncClient) -> None:
+async def test_create_env_secret_is_listed(
+    async_client: AsyncClient, vault_mock
+) -> None:
     headers = await _auth_header(async_client)
 
-    await async_client.post(
-        "/api/admin/secrets",
+    create_res = await async_client.post(
+        "/api/admin/secrets/env",
         headers=headers,
-        json={"var_name": "resolve_ok", "value": "value"},
+        json={"name": "AGFLOW_DEBUG", "value": "true"},
     )
+    assert create_res.status_code == 201, create_res.text
+    body = create_res.json()
+    assert body["name"] == "AGFLOW_DEBUG"
+    assert body["type"] == "env"
+    assert body["has_value"] is True
+
+
+# ─── resolve-status (indicateur 🔴🟠🟢) ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_resolve_status(async_client: AsyncClient, vault_mock) -> None:
+    headers = await _auth_header(async_client)
+
+    # Crée un vault (set avec value) → "ok" attendu
     await async_client.post(
-        "/api/admin/secrets",
+        "/api/admin/secrets/vault",
         headers=headers,
-        json={"var_name": "resolve_empty", "value": " "},
+        json={"name": "RESOLVE_OK", "value": "the-value"},
+    )
+    # Crée un env vide → "empty" attendu. NB: value="" est stocké comme NULL
+    # côté DB (via `value or None`), et resolve_all() retourne "" pour ce cas.
+    await async_client.post(
+        "/api/admin/secrets/env",
+        headers=headers,
+        json={"name": "RESOLVE_EMPTY", "value": ""},
     )
 
     res = await async_client.get(
@@ -121,20 +192,3 @@ async def test_resolve_status(async_client: AsyncClient) -> None:
     assert data["RESOLVE_OK"] == "ok"
     assert data["RESOLVE_EMPTY"] == "empty"
     assert data["RESOLVE_MISSING"] == "missing"
-
-
-@pytest.mark.asyncio
-async def test_create_rejects_duplicate(async_client: AsyncClient) -> None:
-    headers = await _auth_header(async_client)
-
-    await async_client.post(
-        "/api/admin/secrets",
-        headers=headers,
-        json={"var_name": "dup_test", "value": "a"},
-    )
-    res = await async_client.post(
-        "/api/admin/secrets",
-        headers=headers,
-        json={"var_name": "dup_test", "value": "b"},
-    )
-    assert res.status_code == 409

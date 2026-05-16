@@ -4,7 +4,6 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from agflow.db.pool import close_pool
 from agflow.services import (
     role_documents_service,
     role_sections_service,
@@ -17,7 +16,6 @@ from tests._db_reset import reset_schema_and_migrate
 async def db() -> AsyncIterator[None]:
     await reset_schema_and_migrate()
     yield
-    await close_pool()
 
 
 @pytest.mark.asyncio

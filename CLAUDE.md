@@ -50,9 +50,18 @@ cd frontend && npm run format                             # Prettier
 # Migrations DB
 cd backend && uv run python -m agflow.db.migrations       # Applique migrations en attente
 
-# Build & déploiement LXC 201
-./scripts/deploy.sh                                       # Build images + push + compose up -d
+
+**Test d'intégration LXC (création + clone + déploiement + smoke)** — une seule
+commande depuis le poste local :
+
+```bash
+./scripts/run-test.sh                # config par défaut: scripts/.env.test.docker
+CLEANUP=1 ./scripts/run-test.sh      # purge le LXC créé après les tests
 ```
+
+`run-test.sh` pousse `scripts/test-create-lxc.sh` et le fichier de paramètres
+vers `pve:/opt/scripts/`, puis lance le test sur l'hôte Proxmox. Procédure
+complète, paramètres et liste des 7 assertions dans `@docs/test.md`.
 
 ## Layout du code
 
@@ -90,13 +99,14 @@ agflow.docker/
 │   ├── python-dev-rules.md      # Règles Python SOLID
 │   ├── tests-python.md          # Couverture tests
 │   ├── sonarQube.md             # Qualité code
+│   ├── test.md                  # comment executer les tests necessitant un environement de test
 │   └── superpowers/plans/       # Plans de développement exécutés
 ├── specs/
 │   ├── home.md                  # Spec produit complète (541 lignes, 7 modules)
 │   └── plans/                   # Plans techniques (brainstorm, archi)
 ├── scripts/
 │   ├── infra/                   # LXC Proxmox setup (00-create-lxc.sh, 01-install-docker.sh)
-│   └── deploy.sh                # Déploiement LXC 201
+│   └── deploy.sh                # Déploiement LXC
 ├── docker-compose.yml           # Dev : postgres + redis (exécuté sur LXC 201)
 └── docker-compose.prod.yml      # Prod : stack complète
 ```
@@ -143,6 +153,9 @@ Partout où un secret est référencé par nom de variable d'env, afficher son s
 
 ### Cycle de l'architecte
 **Cadrer → Comprendre → Planifier → Agir.** L'utilisateur est architecte. Une question n'est pas une commande d'exécution. Une discussion n'est pas un feu vert. Ne JAMAIS sauter d'étape.
+
+### Branche de développement
+**Tout le code se fait sur la branche `dev`. Jamais `feat/*`, jamais sur `main` directement, jamais ailleurs.** Avant toute édition de code, vérifier `git branch --show-current` ; si autre branche, `git checkout dev`. Si `dev` n'existe pas localement, la créer depuis `main` à jour. Ne propose **jamais** `git checkout -b feat/...` — même si un workflow superpowers le suggère, la consigne utilisateur prime.
 
 ### Livraison
 - Ne livre **jamais** le code ni en test ni sur git sans demande explicite

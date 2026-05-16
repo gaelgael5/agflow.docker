@@ -1,31 +1,38 @@
-"""Tests purs (pas de DB) pour les helpers chiffrement/decoding tokens."""
+"""Tests purs (pas de DB, pas de vault) pour les helpers vault refs."""
 from __future__ import annotations
 
-import os
-
-# Fix la cle Fernet pour la reproductibilite (32 bytes url-safe base64)
-os.environ["AGFLOW_INFRA_KEY"] = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="
+from uuid import UUID
 
 from agflow.services.infra_swarm_clusters_service import (
-    decrypt_tokens,
-    encrypt_tokens,
+    _parse_vault_ref,
+    _vault_path_manager,
+    _vault_path_worker,
+    _vault_ref,
 )
 
-
-def test_encrypt_tokens_returns_two_distinct_ciphertexts() -> None:
-    enc = encrypt_tokens(worker="SWMTKN-1-worker-...", manager="SWMTKN-1-manager-...")
-    assert "worker_encrypted" in enc
-    assert "manager_encrypted" in enc
-    assert enc["worker_encrypted"] != enc["manager_encrypted"]
-    # Token clairs jamais retournes
-    assert "SWMTKN-1-worker" not in str(enc)
+_CLUSTER_ID = UUID("12345678-1234-5678-1234-567812345678")
 
 
-def test_decrypt_tokens_round_trip() -> None:
-    enc = encrypt_tokens(worker="WT-abc", manager="MT-xyz")
-    dec = decrypt_tokens(
-        worker_encrypted=enc["worker_encrypted"],
-        manager_encrypted=enc["manager_encrypted"],
-    )
-    assert dec["worker"] == "WT-abc"
-    assert dec["manager"] == "MT-xyz"
+def test_vault_paths_are_distinct_per_role() -> None:
+    worker = _vault_path_worker(_CLUSTER_ID)
+    manager = _vault_path_manager(_CLUSTER_ID)
+    assert worker != manager
+    assert str(_CLUSTER_ID) in worker
+    assert str(_CLUSTER_ID) in manager
+
+
+def test_vault_ref_format_round_trips_through_parser() -> None:
+    path = _vault_path_worker(_CLUSTER_ID)
+    ref = _vault_ref(path)
+    assert ref.startswith("${vault://HARPOCRATE_KEY:")
+    assert _parse_vault_ref(ref) == path
+
+
+def test_parse_vault_ref_rejects_unknown_key_name() -> None:
+    assert _parse_vault_ref("${vault://OTHER_KEY:foo/bar}") is None
+
+
+def test_parse_vault_ref_rejects_non_refs() -> None:
+    assert _parse_vault_ref(None) is None
+    assert _parse_vault_ref("") is None
+    assert _parse_vault_ref("plain-text-token") is None

@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from agflow.db.pool import close_pool, execute
+from agflow.db.pool import execute
 from agflow.main import create_app
 from agflow.services import roles_service
 from tests._db_reset import reset_schema_and_migrate
@@ -28,7 +28,6 @@ async def client() -> AsyncIterator[AsyncClient]:
         transport=ASGITransport(app=app), base_url="http://test"
     ) as c:
         yield c
-    await close_pool()
 
 
 async def _token(c: AsyncClient) -> dict[str, str]:

@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 import pytest_asyncio
 
-from agflow.db.pool import close_pool, execute, fetch_one, get_pool
+from agflow.db.pool import execute, fetch_one, get_pool
 from agflow.services import (
     agents_catalog_service,
     agents_instances_service,
@@ -20,7 +20,6 @@ from agflow.workers.agent_reaper import reap_once, run_agent_reaper_loop
 async def pool():
     p = await get_pool()
     yield p
-    await close_pool()
 
 
 @pytest_asyncio.fixture

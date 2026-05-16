@@ -24,10 +24,25 @@
 # PAS le dossier `data/` (backups, dockerfiles, roles) ni `.env`.
 #
 # Pour la PROD (pull GHCR, pas de build local), utiliser scripts/refresh.sh.
+#
+# ─── Réutilisabilité ────────────────────────────────────────────────────────
+# Ce script est conçu comme un template. Pour le reprendre dans un autre
+# projet, modifier UNIQUEMENT la section « Configuration du projet » ci-dessous
+# (PROJECT_NAME, REPO_URL et éventuellement APP_DIR). Tous les noms dérivés —
+# images Docker, env vars préfixées, message clé SSH — sont calculés à partir
+# de PROJECT_NAME.
 
 set -euo pipefail
 
+# ─── Configuration du projet (À MODIFIER lors d'une réutilisation) ──────────
+PROJECT_NAME="agflow"
+PROJECT_NAME_UPPER="$(echo "$PROJECT_NAME" | tr '[:lower:]' '[:upper:]')"
 REPO_URL="${REPO_URL:-git@github.com:gaelgael5/agflow.docker.git}"
+# Nom du dossier local de clone. Pour agflow.docker on garde le nom historique
+# du repo (sinon le clone tomberait dans `./agflow/` et casserait les
+# scripts qui assument `agflow.docker/`).
+APP_DIR_NAME="agflow.docker"
+
 COMPOSE_FILE="docker-compose.dev.yml"
 
 # Parse args : on accepte un mix « branche optionnelle » + « flags --xxx ».
@@ -57,7 +72,7 @@ done
 # ─── 0) Pré-requis : Docker installé ─────────────────────────────────────────
 
 if ! command -v docker >/dev/null 2>&1; then
-  cat >&2 <<'EOF'
+  cat >&2 <<EOF
 ✗ Docker n'est pas installé sur ce serveur.
 
 Installer Docker sur Debian/Ubuntu :
@@ -65,7 +80,7 @@ Installer Docker sur Debian/Ubuntu :
     sudo systemctl enable --now docker
 
 Ou si tu utilises un LXC Proxmox, le recréer avec le flag --docker :
-    bash <(wget -qO- .../create-lxc.sh) <CTID> agflow-docker-dev --docker
+    bash <(wget -qO- .../create-lxc.sh) <CTID> ${PROJECT_NAME}-dev --docker
 
 Puis relancer ./dev-deploy.sh.
 EOF
@@ -92,7 +107,7 @@ if [ -d ".git" ]; then
     git pull --ff-only
   fi
 else
-  APP_DIR="agflow.docker"
+  APP_DIR="$APP_DIR_NAME"
   if [ -d "$APP_DIR/.git" ]; then
     if [ -n "$TARGET_BRANCH" ]; then
       echo "[1/6] Repo dans ./${APP_DIR} — switch vers ${TARGET_BRANCH}..."
@@ -328,7 +343,7 @@ if [ ! -f ".env" ]; then
     sed -i "s#REPLACE_ME_WITH_STRONG_PASSWORD#${PG_PASS}#g" .env
     set_env_value .env "JWT_SECRET" "$JWT_SECRET"
     set_env_value .env "API_KEY_SALT" "$API_SALT"
-    set_env_value .env "AGFLOW_INFRA_KEY" "$INFRA_KEY"
+    set_env_value .env "${PROJECT_NAME_UPPER}_INFRA_KEY" "$INFRA_KEY"
 
     # ADMIN_PASSWORD + ADMIN_PASSWORD_HASH : générés via la routine partagée
     # (idempotente). À ce stade les deux sont vides → génération complète.
@@ -337,13 +352,13 @@ if [ ! -f ".env" ]; then
     # `.env` contient des secrets : restreindre les permissions.
     chmod 600 .env
 
-    echo "      ✓ POSTGRES_PASSWORD : généré ($(echo -n "$PG_PASS" | wc -c) chars)"
-    echo "      ✓ JWT_SECRET        : généré ($(echo -n "$JWT_SECRET" | wc -c) chars)"
-    echo "      ✓ API_KEY_SALT      : généré ($(echo -n "$API_SALT" | wc -c) chars)"
-    echo "      ✓ AGFLOW_INFRA_KEY  : généré (clé Fernet)"
+    echo "      ✓ POSTGRES_PASSWORD                    : généré ($(echo -n "$PG_PASS" | wc -c) chars)"
+    echo "      ✓ JWT_SECRET                           : généré ($(echo -n "$JWT_SECRET" | wc -c) chars)"
+    echo "      ✓ API_KEY_SALT                         : généré ($(echo -n "$API_SALT" | wc -c) chars)"
+    echo "      ✓ ${PROJECT_NAME_UPPER}_INFRA_KEY      : généré (clé Fernet)"
     echo
     echo "      ⚠  À RENSEIGNER MANUELLEMENT dans .env :"
-    echo "         - ADMIN_EMAIL                (si autre que admin@agflow.example.com)"
+    echo "         - ADMIN_EMAIL                (si autre que admin@${PROJECT_NAME}.example.com)"
     echo "         - HARPOCRATE_KEY / URL        (token hrpv_1_* fourni par le coffre)"
     echo "         - KEYCLOAK_* + AUTH_MODE      (si auth OIDC Keycloak)"
   else
@@ -368,7 +383,7 @@ chown -R 1001:1001 data 2>/dev/null || true
 if [ ! -f /root/.ssh/backend_key ]; then
   echo "[4/6] Génération de la clé SSH backend (/root/.ssh/backend_key)..."
   mkdir -p /root/.ssh
-  ssh-keygen -t ed25519 -f /root/.ssh/backend_key -N "" -C "agflow-backend" -q
+  ssh-keygen -t ed25519 -f /root/.ssh/backend_key -N "" -C "${PROJECT_NAME}-backend" -q
   chmod 600 /root/.ssh/backend_key
   echo "      ✓ Clé générée."
   echo "      Clé publique à ajouter sur les machines infra cibles :"
@@ -381,11 +396,11 @@ fi
 
 # ─── 5) Build images locales ─────────────────────────────────────────────────
 
-echo "[5/6] Build de agflow-backend:latest..."
-docker build -t agflow-backend:latest backend/
+echo "[5/6] Build de ${PROJECT_NAME}-backend:latest..."
+docker build -t "${PROJECT_NAME}-backend:latest" backend/
 
-echo "      Build de agflow-frontend:latest..."
-docker build -t agflow-frontend:latest frontend/
+echo "      Build de ${PROJECT_NAME}-frontend:latest..."
+docker build -t "${PROJECT_NAME}-frontend:latest" frontend/
 
 # ─── 6) Stop + cleanup orphelins + pull registry + up ────────────────────────
 
@@ -402,6 +417,13 @@ else
 fi
 
 echo "      Pull images registry (postgres, redis, caddy, pgweb)..."
+# Listing EXPLICITE des services à pull — on NE PEUT PAS faire
+# `docker compose pull` (sans argument) car le compose agflow.docker
+# déclare `image: agflow-backend:latest` et `image: agflow-frontend:latest`
+# SANS `build:` (le build est fait hors compose, juste au-dessus). Le pull
+# sans arg essaierait donc de les puller depuis Docker Hub → access denied
+# → erreur. Si tu ajoutes un nouveau service registry au compose, l'ajouter
+# explicitement ici aussi.
 docker compose -f "$COMPOSE_FILE" pull postgres redis caddy pgweb || true
 
 echo "      Démarrage de la stack..."

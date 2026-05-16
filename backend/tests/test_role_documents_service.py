@@ -7,7 +7,7 @@ import pytest
 
 os.environ.setdefault("SECRETS_MASTER_KEY", "test-master-key-phrase-32chars-ok")
 
-from agflow.db.pool import close_pool
+
 from agflow.services import role_documents_service as docs
 from agflow.services import roles_service
 from tests._db_reset import reset_schema_and_migrate
@@ -18,7 +18,6 @@ async def _clean():
     await reset_schema_and_migrate()
     await roles_service.create(role_id="test_role", display_name="Test")
     yield
-    await close_pool()
 
 
 @pytest.mark.asyncio

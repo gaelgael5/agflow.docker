@@ -1,19 +1,49 @@
-"""Infra swarm clusters service — CRUD + tokens Fernet.
+"""Infra swarm clusters service — CRUD + tokens via Harpocrate.
 
-Tokens Worker/Manager sont chiffres au repos via crypto_service (Fernet).
-Decrypt uniquement en memoire au moment d'un swarm_join.
+Les tokens worker/manager sont stockés dans Harpocrate ; les colonnes DB
+`join_token_worker_encrypted` / `join_token_manager_encrypted` conservent
+un vault ref (`${vault://HARPOCRATE_KEY:swarm_clusters/<id>/<role>}`).
+
+Le déchiffrement n'a lieu qu'en mémoire dans `get_with_tokens()`, appelée
+uniquement par l'orchestration swarm_join. NE JAMAIS persister ni logger
+les valeurs claires.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
-from agflow.services import crypto_service
+from agflow.services import vault_client
 
 _log = structlog.get_logger(__name__)
+
+_VAULT_REF_RE = re.compile(r"^\$\{vault://([^:]+):(.+)\}$")
+_VAULT_KEY_NAME = "HARPOCRATE_KEY"
+
+
+def _vault_path_worker(cluster_id: UUID) -> str:
+    return f"swarm_clusters/{cluster_id}/worker"
+
+
+def _vault_path_manager(cluster_id: UUID) -> str:
+    return f"swarm_clusters/{cluster_id}/manager"
+
+
+def _vault_ref(path: str) -> str:
+    return f"${{vault://{_VAULT_KEY_NAME}:{path}}}"
+
+
+def _parse_vault_ref(value: str | None) -> str | None:
+    """Retourne le chemin vault si value est un vault ref valide, sinon None."""
+    if not value:
+        return None
+    m = _VAULT_REF_RE.match(value)
+    return m.group(2) if (m and m.group(1) == _VAULT_KEY_NAME) else None
+
 
 _LIST_SQL = """
     SELECT
@@ -26,25 +56,6 @@ _LIST_SQL = """
     GROUP BY c.id
     ORDER BY c.name
 """
-
-
-# ── Tokens helpers (purs, testables sans DB) ─────────────────────────────
-
-
-def encrypt_tokens(*, worker: str, manager: str) -> dict[str, str]:
-    """Encrypt worker + manager tokens via Fernet. Returns dict with the 2 ciphertexts."""
-    return {
-        "worker_encrypted": crypto_service.encrypt(worker) or "",
-        "manager_encrypted": crypto_service.encrypt(manager) or "",
-    }
-
-
-def decrypt_tokens(*, worker_encrypted: str, manager_encrypted: str) -> dict[str, str]:
-    """Decrypt tokens. Returns clear-text tokens. NEVER persist or log results."""
-    return {
-        "worker": crypto_service.decrypt(worker_encrypted) or "",
-        "manager": crypto_service.decrypt(manager_encrypted) or "",
-    }
 
 
 # ── CRUD (DB-bound, integration tested via endpoints) ────────────────────
@@ -66,12 +77,12 @@ async def get_by_id(cluster_id: UUID) -> dict[str, Any] | None:
 
 
 async def get_with_tokens(cluster_id: UUID) -> dict[str, Any] | None:
-    """Internal-only : returns cluster row + ENCRYPTED tokens.
+    """Internal-only : returns cluster row + CLEAR tokens (fetched from vault).
 
-    Used by swarm_join orchestration. Caller is responsible for decryption
-    via decrypt_tokens() and must NOT persist or log the clear values.
+    Utilisé par swarm_actions_service.join_cluster. NE JAMAIS persister ni
+    logger les valeurs `join_token_worker` / `join_token_manager`.
     """
-    return await fetch_one(
+    row = await fetch_one(
         """
         SELECT id, name, manager_addr,
                join_token_worker_encrypted, join_token_manager_encrypted,
@@ -80,6 +91,24 @@ async def get_with_tokens(cluster_id: UUID) -> dict[str, Any] | None:
         """,
         cluster_id,
     )
+    if row is None:
+        return None
+
+    worker_path = _parse_vault_ref(row["join_token_worker_encrypted"])
+    manager_path = _parse_vault_ref(row["join_token_manager_encrypted"])
+
+    worker_clear = await vault_client.get_secret(worker_path) if worker_path else ""
+    manager_clear = await vault_client.get_secret(manager_path) if manager_path else ""
+
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "manager_addr": row["manager_addr"],
+        "join_token_worker": worker_clear,
+        "join_token_manager": manager_clear,
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
 
 
 async def create(
@@ -89,25 +118,75 @@ async def create(
     join_token_worker: str,
     join_token_manager: str,
 ) -> dict[str, Any]:
-    """Create a cluster. Tokens are encrypted Fernet before storage."""
-    enc = encrypt_tokens(worker=join_token_worker, manager=join_token_manager)
-    row = await fetch_one(
-        """
-        INSERT INTO infra_swarm_clusters
-            (name, manager_addr, join_token_worker_encrypted, join_token_manager_encrypted)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, name, manager_addr, created_at, updated_at
-        """,
-        name, manager_addr, enc["worker_encrypted"], enc["manager_encrypted"],
-    )
-    _log.info("swarm_cluster.created", cluster_id=str(row["id"]) if row else None, name=name)
-    assert row is not None  # RETURNING garanti
+    """Create a cluster. Tokens sont poussés dans Harpocrate ; la DB stocke un ref.
+
+    Les colonnes `join_token_*_encrypted` sont NOT NULL (cf. migration 087) :
+    on génère l'id en Python, on push les secrets puis on fait un seul INSERT.
+    """
+    cluster_id = uuid4()
+    created_paths: list[str] = []
+    try:
+        worker_path = _vault_path_worker(cluster_id)
+        await vault_client.create_secret(worker_path, join_token_worker)
+        created_paths.append(worker_path)
+
+        manager_path = _vault_path_manager(cluster_id)
+        await vault_client.create_secret(manager_path, join_token_manager)
+        created_paths.append(manager_path)
+
+        row = await fetch_one(
+            """
+            INSERT INTO infra_swarm_clusters
+                (id, name, manager_addr,
+                 join_token_worker_encrypted, join_token_manager_encrypted)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, name, manager_addr, created_at, updated_at
+            """,
+            cluster_id, name, manager_addr,
+            _vault_ref(worker_path), _vault_ref(manager_path),
+        )
+        assert row is not None
+    except Exception:
+        for path in created_paths:
+            try:
+                await vault_client.delete_secret(path)
+            except Exception:
+                _log.warning("swarm_cluster.vault_rollback_failed", path=path)
+        raise
+
+    _log.info("swarm_cluster.created", cluster_id=str(cluster_id), name=name)
     return dict(row)
 
 
 async def delete(cluster_id: UUID) -> None:
-    """Delete a cluster. FK ON DELETE SET NULL on infra_machines."""
+    """Delete a cluster + supprime les secrets vault. FK ON DELETE SET NULL sur machines."""
+    existing = await fetch_one(
+        """
+        SELECT join_token_worker_encrypted, join_token_manager_encrypted
+        FROM infra_swarm_clusters WHERE id = $1
+        """,
+        cluster_id,
+    )
+
     await execute("DELETE FROM infra_swarm_clusters WHERE id = $1", cluster_id)
+
+    if existing is not None:
+        paths = [
+            p for p in (
+                _parse_vault_ref(existing["join_token_worker_encrypted"]),
+                _parse_vault_ref(existing["join_token_manager_encrypted"]),
+            )
+            if p
+        ]
+        for path in paths:
+            try:
+                await vault_client.delete_secret(path)
+            except Exception:
+                _log.warning(
+                    "swarm_cluster.vault_delete_failed",
+                    cluster_id=str(cluster_id), path=path,
+                )
+
     _log.info("swarm_cluster.deleted", cluster_id=str(cluster_id))
 
 

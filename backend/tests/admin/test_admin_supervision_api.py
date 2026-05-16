@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from agflow.db.pool import close_pool, execute, fetch_one
+from agflow.db.pool import execute, fetch_one
 from agflow.main import create_app
 from agflow.services import agents_catalog_service
 
@@ -19,7 +19,10 @@ async def async_client() -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
-    await close_pool()
+    # Pas de close_pool() — voir explication détaillée dans
+    # test_admin_sessions_api.py (même cause : double-close du pool via
+    # ASGITransport + create_app, qui casse l'event loop pour les tests
+    # asyncio suivants, notamment tests/mom/*).
 
 
 async def _auth_header(client: AsyncClient) -> dict[str, str]:

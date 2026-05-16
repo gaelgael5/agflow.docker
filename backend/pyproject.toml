@@ -34,6 +34,7 @@ dependencies = [
     "boto3>=1.35",
     "aiodocker>=0.24",
     "anthropic>=0.40",
+    "apscheduler>=3.10,<4",
     "jinja2>=3.1",
     "stream-zip>=0.0.83",
     "harpocrate",

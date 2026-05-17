@@ -24,19 +24,6 @@ interface Props {
   onRetry: () => void;
 }
 
-function formatRelative(iso: string): string {
-  const d = new Date(iso).getTime();
-  const diffMs = Date.now() - d;
-  const sec = Math.floor(diffMs / 1000);
-  if (sec < 60) return `il y a ${sec}s`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `il y a ${min} min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `il y a ${h} h`;
-  const d2 = Math.floor(h / 24);
-  return `il y a ${d2} j`;
-}
-
 function StatusBadge({ status }: { status: string }) {
   const tone =
     status === "busy"
@@ -62,7 +49,24 @@ export function SupervisionInstancesTable({
   onSelect,
   onRetry,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+
+  const rtf = useMemo(
+    () => new Intl.RelativeTimeFormat(i18n.language, { numeric: "auto" }),
+    [i18n.language],
+  );
+
+  const formatRelative = (iso: string): string => {
+    const diffMs = new Date(iso).getTime() - Date.now();
+    const diffSec = Math.round(diffMs / 1000);
+    if (Math.abs(diffSec) < 60) return rtf.format(diffSec, "second");
+    const diffMin = Math.round(diffSec / 60);
+    if (Math.abs(diffMin) < 60) return rtf.format(diffMin, "minute");
+    const diffH = Math.round(diffMin / 60);
+    if (Math.abs(diffH) < 24) return rtf.format(diffH, "hour");
+    const diffD = Math.round(diffH / 24);
+    return rtf.format(diffD, "day");
+  };
 
   const filtered = useMemo(() => {
     if (!instances) return [];

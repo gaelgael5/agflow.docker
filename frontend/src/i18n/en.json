@@ -1752,14 +1752,7 @@
         "exited": "exited",
         "none": "—"
       },
-      "not_found": "Instance not found (likely destroyed)",
-      "close": "Close"
-    },
-    "status": {
-      "idle": "Idle",
-      "busy": "Busy",
-      "error": "Error",
-      "destroyed": "Destroyed"
+      "not_found": "Instance not found (likely destroyed)"
     }
   }
 }

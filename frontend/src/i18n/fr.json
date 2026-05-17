@@ -1759,14 +1759,7 @@
         "exited": "exited",
         "none": "—"
       },
-      "not_found": "Instance introuvable (probablement détruite)",
-      "close": "Fermer"
-    },
-    "status": {
-      "idle": "Idle",
-      "busy": "Occupé",
-      "error": "Erreur",
-      "destroyed": "Détruit"
+      "not_found": "Instance introuvable (probablement détruite)"
     }
   }
 }

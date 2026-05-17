@@ -24,6 +24,7 @@ from agflow.api.admin.git_sync import router as admin_git_sync_router
 from agflow.api.admin.group_scripts import router as admin_group_scripts_router
 from agflow.api.admin.groups import router as admin_groups_router
 from agflow.api.admin.harpocrate_vaults import router as admin_harpocrate_vaults_router
+from agflow.api.admin.hmac_keys import router as admin_hmac_keys_router
 from agflow.api.admin.image_registries import router as admin_image_registries_router
 from agflow.api.admin.local_backups import router as admin_local_backups_router
 from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
@@ -350,6 +351,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_backup_schedules_router)
     app.include_router(admin_local_backups_router)
     app.include_router(admin_git_sync_router)
+    app.include_router(admin_hmac_keys_router)
     app.include_router(infra_categories_router)
     app.include_router(infra_named_types_router)
     app.include_router(infra_named_type_actions_router)

@@ -123,3 +123,59 @@ async def delete_project(project_id: UUID):
         await projects_service.delete(project_id)
     except projects_service.ProjectNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# ── Endpoints v5 contract-shaped (workflow contracts) ─────────────
+
+from agflow.schemas.workflow import ProjectSummaryV5, ResourceSummary  # noqa: E402
+
+
+@router.get("/v5/list", response_model=list[ProjectSummaryV5])
+async def list_projects_v5() -> list[ProjectSummaryV5]:
+    """Endpoint v5 contract-shaped : liste avec resources_summary."""
+    projects = await projects_service.list_all()
+    result: list[ProjectSummaryV5] = []
+    for p in projects:
+        groups = await groups_service.list_by_project(p.id)
+        resources_summary: list[ResourceSummary] = []
+        for g in groups:
+            instances = await product_instances_service.list_by_group(g.id)
+            for i in instances:
+                resources_summary.append(
+                    ResourceSummary(type=i.catalog_id, label=i.instance_name)
+                )
+        result.append(
+            ProjectSummaryV5(
+                project_id=p.id,
+                name=p.display_name,
+                description=p.description,
+                resources_summary=resources_summary,
+            )
+        )
+    return result
+
+
+@router.get("/v5/{project_id}", response_model=ProjectSummaryV5)
+async def get_project_v5(project_id: UUID) -> ProjectSummaryV5:
+    """Endpoint v5 contract-shaped : détail avec resources_summary."""
+    try:
+        project = await projects_service.get_by_id(project_id)
+    except projects_service.ProjectNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    groups = await groups_service.list_by_project(project.id)
+    resources_summary: list[ResourceSummary] = []
+    for g in groups:
+        instances = await product_instances_service.list_by_group(g.id)
+        for i in instances:
+            resources_summary.append(
+                ResourceSummary(type=i.catalog_id, label=i.instance_name)
+            )
+    return ProjectSummaryV5(
+        project_id=project.id,
+        name=project.display_name,
+        description=project.description,
+        resources_summary=resources_summary,
+    )

@@ -1626,7 +1626,61 @@
         "harpocrateOk": "Secret resolved successfully",
         "harpocrateFailed": "Resolution failed: {{error}}",
         "configSaved": "Configuration saved",
-        "configDeleted": "Configuration deleted"
+        "configDeleted": "Configuration deleted",
+        "exportSuccess": "Export OK: commit {{sha}} ({{count}} tables)",
+        "exportFailed": "Export failed: {{error}}",
+        "importSuccess": "Import done: {{ins}} inserted, {{upd}} updated, {{del}} deleted",
+        "importFailed": "Import failed: {{error}}"
+      },
+      "actions": {
+        "title": "Actions",
+        "exportNow": "Export now",
+        "previewImport": "Preview import",
+        "runImport": "Import from Git",
+        "importWarning": "This action irreversibly modifies the database. Make a backup first."
+      },
+      "lastExport": {
+        "title": "Last export",
+        "never": "Never run",
+        "ok": "OK",
+        "failed": "Failed",
+        "tablesCount_one": "{{count}} table",
+        "tablesCount_other": "{{count}} tables",
+        "sha": "SHA"
+      },
+      "lastImport": {
+        "title": "Last import",
+        "never": "Never run",
+        "ok": "OK",
+        "failed": "Failed",
+        "inserted": "Inserted",
+        "updated": "Updated",
+        "deleted": "Deleted"
+      },
+      "history": {
+        "title": "GitHub history",
+        "unsupportedHost": "Listing not supported for this host. See repo: ",
+        "empty": "No commits",
+        "refresh": "Refresh",
+        "openOnGitHub": "View on GitHub",
+        "loading": "Loading…",
+        "loadError": "Could not load commits: {{error}}",
+        "colSha": "SHA",
+        "colAuthor": "Author",
+        "colMessage": "Message",
+        "colDate": "Date"
+      },
+      "preview": {
+        "title": "Import preview",
+        "table": "Table",
+        "toInsert": "To insert",
+        "toUpdate": "To update",
+        "toDelete": "To delete",
+        "empty": "No changes detected",
+        "cancel": "Cancel",
+        "confirmImport": "Run import",
+        "loading": "Computing…",
+        "total": "Total"
       }
     }
   }

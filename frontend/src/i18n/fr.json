@@ -1633,7 +1633,61 @@
         "harpocrateOk": "Secret résolu avec succès",
         "harpocrateFailed": "Résolution échouée : {{error}}",
         "configSaved": "Configuration enregistrée",
-        "configDeleted": "Configuration supprimée"
+        "configDeleted": "Configuration supprimée",
+        "exportSuccess": "Export réussi : commit {{sha}} ({{count}} tables)",
+        "exportFailed": "Échec de l'export : {{error}}",
+        "importSuccess": "Import terminé : {{ins}} ajoutées, {{upd}} modifiées, {{del}} supprimées",
+        "importFailed": "Échec de l'import : {{error}}"
+      },
+      "actions": {
+        "title": "Actions",
+        "exportNow": "Exporter maintenant",
+        "previewImport": "Aperçu de l'import",
+        "runImport": "Importer depuis Git",
+        "importWarning": "Cette action modifie irréversiblement la base. Faites un backup avant."
+      },
+      "lastExport": {
+        "title": "Dernier export",
+        "never": "Jamais exécuté",
+        "ok": "OK",
+        "failed": "Échec",
+        "tablesCount_one": "{{count}} table",
+        "tablesCount_other": "{{count}} tables",
+        "sha": "SHA"
+      },
+      "lastImport": {
+        "title": "Dernier import",
+        "never": "Jamais exécuté",
+        "ok": "OK",
+        "failed": "Échec",
+        "inserted": "Insérées",
+        "updated": "Modifiées",
+        "deleted": "Supprimées"
+      },
+      "history": {
+        "title": "Historique GitHub",
+        "unsupportedHost": "Listing non supporté pour cet hôte. Voir le dépôt : ",
+        "empty": "Aucun commit",
+        "refresh": "Rafraîchir",
+        "openOnGitHub": "Voir sur GitHub",
+        "loading": "Chargement…",
+        "loadError": "Impossible de charger les commits : {{error}}",
+        "colSha": "SHA",
+        "colAuthor": "Auteur",
+        "colMessage": "Message",
+        "colDate": "Date"
+      },
+      "preview": {
+        "title": "Aperçu de l'import",
+        "table": "Table",
+        "toInsert": "À insérer",
+        "toUpdate": "À modifier",
+        "toDelete": "À supprimer",
+        "empty": "Aucun changement détecté",
+        "cancel": "Annuler",
+        "confirmImport": "Lancer l'import",
+        "loading": "Calcul en cours…",
+        "total": "Total"
       }
     }
   }

@@ -6,9 +6,6 @@ import pytest
 
 from agflow.services import git_sync_github_client as gh
 
-pytestmark = pytest.mark.asyncio
-
-
 # ─── parse_repo_url ─────────────────────────────────────────────────────
 
 def test_parse_https_url():
@@ -37,6 +34,7 @@ def test_parse_unsupported_host():
 
 # ─── list_commits (mocked httpx) ────────────────────────────────────────
 
+@pytest.mark.asyncio
 async def test_list_commits_returns_parsed_data(monkeypatch):
     payload = [
         {
@@ -73,6 +71,7 @@ async def test_list_commits_returns_parsed_data(monkeypatch):
     assert commits[0].html_url == "https://github.com/owner/repo/commit/abc1234567890"
 
 
+@pytest.mark.asyncio
 async def test_list_commits_raises_on_404(monkeypatch):
     class _MockClient:
         def __init__(self, *a, **kw): pass
@@ -90,6 +89,7 @@ async def test_list_commits_raises_on_404(monkeypatch):
         )
 
 
+@pytest.mark.asyncio
 async def test_list_commits_raises_unsupported_for_gitlab():
     with pytest.raises(gh.UnsupportedHostError):
         await gh.list_commits(

@@ -51,8 +51,8 @@ async def test_default_values_applied(fresh_db):
     assert row["branch"] == "main"
     assert row["commit_author_name"] == "agflow bot"
     assert row["commit_author_email"] == "bot@agflow.local"
-    assert row["excluded_columns"] == "{}"
-    assert row["selected_tables"] == "[]"
+    assert row["excluded_columns"] == {}
+    assert row["selected_tables"] == []
     assert row["cron_enabled"] is False
     assert row["created_at"] is not None
     assert row["updated_at"] is not None

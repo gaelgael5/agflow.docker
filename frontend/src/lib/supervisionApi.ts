@@ -51,13 +51,6 @@ export type SupervisionOverview = z.infer<typeof SupervisionOverviewSchema>;
 export type SupervisedInstance = z.infer<typeof SupervisedInstanceSchema>;
 export type InstanceDetail = z.infer<typeof InstanceDetailSchema>;
 
-export type InstanceStatusFilter =
-  | "all"
-  | "idle"
-  | "busy"
-  | "error"
-  | "destroyed";
-
 export interface ListInstancesParams {
   status?: "idle" | "busy" | "error" | "destroyed";
   limit?: number;

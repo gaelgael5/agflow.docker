@@ -58,7 +58,7 @@ describe("supervisionApi schemas", () => {
   });
 });
 
-describe("supervisionApi.listInstances", () => {
+describe("supervisionApi", () => {
   it("construit les bons query params", async () => {
     vi.mocked(api.get).mockResolvedValueOnce({ data: [] });
 
@@ -67,5 +67,50 @@ describe("supervisionApi.listInstances", () => {
     expect(api.get).toHaveBeenCalledWith(
       "/admin/supervision/instances?status=busy&limit=50",
     );
+  });
+
+  it("getOverview appelle l'endpoint et parse la réponse via Zod", async () => {
+    const overview = {
+      sessions: { active: 1, closed: 0, expired: 0 },
+      agents: { idle: 2, busy: 0, error: 0, destroyed_total: 0 },
+      containers_running: null,
+      mom: { pending: 0, claimed: 0, failed: 0 },
+    };
+    vi.mocked(api.get).mockResolvedValueOnce({ data: overview });
+    const result = await supervisionApi.getOverview();
+    expect(api.get).toHaveBeenCalledWith("/admin/supervision/overview");
+    expect(result).toEqual(overview);
+  });
+
+  it("getInstance interpole l'id dans l'URL", async () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const detail = {
+      id,
+      session_id: "22222222-2222-4222-8222-222222222222",
+      agent_id: "claude-r1",
+      mission: null,
+      status: "idle",
+      last_activity_at: "2026-05-17T10:00:00Z",
+      created_at: "2026-05-17T09:00:00Z",
+      destroyed_at: null,
+      error_message: null,
+      last_container_name: null,
+      container_status: null,
+      labels: {},
+      mom_counts: { pending: 0, claimed: 0, failed: 0 },
+      recent_messages: [],
+    };
+    vi.mocked(api.get).mockResolvedValueOnce({ data: detail });
+    const result = await supervisionApi.getInstance(id);
+    expect(api.get).toHaveBeenCalledWith(
+      `/admin/supervision/instances/${id}`,
+    );
+    expect(result.id).toBe(id);
+  });
+
+  it("listInstances sans params ne met pas de query string", async () => {
+    vi.mocked(api.get).mockResolvedValueOnce({ data: [] });
+    await supervisionApi.listInstances();
+    expect(api.get).toHaveBeenCalledWith("/admin/supervision/instances");
   });
 });

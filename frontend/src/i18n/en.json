@@ -1554,7 +1554,8 @@
     "description": "Platform configuration",
     "sidebar": "Settings",
     "tabs": {
-      "harpocrate": "Harpocrate"
+      "harpocrate": "Harpocrate",
+      "gitSync": "Git Sync"
     },
     "harpocrate": {
       "title": "Harpocrate vaults",
@@ -1579,6 +1580,54 @@
       "default_set": "\"{{name}}\" is now the default vault",
       "delete_title": "Delete this vault",
       "delete_description": "Delete \"{{name}}\"? Existing refs `${{'{{'}}vault://{{name}}:…{{'}}'}}` will no longer resolve."
+    },
+    "gitSync": {
+      "empty": {
+        "title": "Not configured yet",
+        "subtitle": "Set up a remote Git repository to sync your configuration.",
+        "cta": "Configure Git Sync"
+      },
+      "config": {
+        "title": "Configuration",
+        "repoUrl": "Repository URL",
+        "branch": "Branch",
+        "authMode": "Authentication mode",
+        "authMode_ssh_key": "SSH key",
+        "authMode_pat_https": "HTTPS token (PAT)",
+        "authMode_basic_https": "Basic HTTPS",
+        "authSecretRef": "Harpocrate secret reference",
+        "authSecretRefHint": "Format: ${vault://<vault>:<path>}",
+        "testHarpocrate": "Test Harpocrate resolution",
+        "commitAuthorName": "Commit author (name)",
+        "commitAuthorEmail": "Commit author (email)",
+        "selectedTables": "Tables to sync",
+        "selectedTablesPlaceholder": "+ Add a table",
+        "selectedTablesEmpty": "No table selected",
+        "excludedColumns": "Excluded columns (JSON)",
+        "excludedColumnsHint": "Format: {\"users\": [\"password_hash\"]}",
+        "excludedColumnsInvalid": "Invalid JSON or unexpected format (object mapping table → columns expected)",
+        "cron": "Schedule",
+        "cronEnabled": "Enable automatic scheduling",
+        "cronExpr": "Cron expression",
+        "cronPresets_hourly": "Every hour",
+        "cronPresets_daily4am": "Daily at 4am",
+        "cronPresets_weeklySun2am": "Weekly Sunday 2am",
+        "save": "Save",
+        "cancel": "Cancel",
+        "edit": "Edit",
+        "delete": "Delete configuration",
+        "deleteConfirm": "Confirm deletion of Git Sync configuration?",
+        "deleteConfirmTitle": "Delete configuration",
+        "createTitle": "Configure Git Sync",
+        "editTitle": "Edit Git Sync configuration",
+        "cronDisabled": "Disabled"
+      },
+      "toast": {
+        "harpocrateOk": "Secret resolved successfully",
+        "harpocrateFailed": "Resolution failed: {{error}}",
+        "configSaved": "Configuration saved",
+        "configDeleted": "Configuration deleted"
+      }
     }
   }
 }

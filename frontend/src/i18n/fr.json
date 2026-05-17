@@ -1561,7 +1561,8 @@
     "description": "Configuration de la plateforme",
     "sidebar": "Paramètres",
     "tabs": {
-      "harpocrate": "Harpocrate"
+      "harpocrate": "Harpocrate",
+      "gitSync": "Git Sync"
     },
     "harpocrate": {
       "title": "Coffres Harpocrate",
@@ -1586,6 +1587,54 @@
       "default_set": "« {{name}} » est maintenant le coffre par défaut",
       "delete_title": "Supprimer ce coffre",
       "delete_description": "Supprimer « {{name}} » ? Les refs `${{'{{'}}vault://{{name}}:…{{'}}'}}` existants ne pourront plus être résolus."
+    },
+    "gitSync": {
+      "empty": {
+        "title": "Pas encore configuré",
+        "subtitle": "Configurez un dépôt Git distant pour synchroniser la configuration.",
+        "cta": "Configurer Git Sync"
+      },
+      "config": {
+        "title": "Configuration",
+        "repoUrl": "URL du dépôt",
+        "branch": "Branche",
+        "authMode": "Mode d'authentification",
+        "authMode_ssh_key": "Clé SSH",
+        "authMode_pat_https": "Token HTTPS (PAT)",
+        "authMode_basic_https": "Basic HTTPS",
+        "authSecretRef": "Référence Harpocrate du secret",
+        "authSecretRefHint": "Format : ${vault://<coffre>:<chemin>}",
+        "testHarpocrate": "Tester la résolution Harpocrate",
+        "commitAuthorName": "Auteur (nom)",
+        "commitAuthorEmail": "Auteur (email)",
+        "selectedTables": "Tables à synchroniser",
+        "selectedTablesPlaceholder": "+ Ajouter une table",
+        "selectedTablesEmpty": "Aucune table sélectionnée",
+        "excludedColumns": "Colonnes exclues (JSON)",
+        "excludedColumnsHint": "Format : {\"users\": [\"password_hash\"]}",
+        "excludedColumnsInvalid": "JSON invalide ou format inattendu (objet mapping table → colonnes attendu)",
+        "cron": "Planification",
+        "cronEnabled": "Activer la planification automatique",
+        "cronExpr": "Expression cron",
+        "cronPresets_hourly": "Toutes les heures",
+        "cronPresets_daily4am": "Quotidien à 4h",
+        "cronPresets_weeklySun2am": "Hebdomadaire dimanche 2h",
+        "save": "Enregistrer",
+        "cancel": "Annuler",
+        "edit": "Modifier",
+        "delete": "Supprimer la configuration",
+        "deleteConfirm": "Confirmer la suppression de la configuration Git Sync ?",
+        "deleteConfirmTitle": "Supprimer la configuration",
+        "createTitle": "Configurer Git Sync",
+        "editTitle": "Modifier la configuration Git Sync",
+        "cronDisabled": "Désactivé"
+      },
+      "toast": {
+        "harpocrateOk": "Secret résolu avec succès",
+        "harpocrateFailed": "Résolution échouée : {{error}}",
+        "configSaved": "Configuration enregistrée",
+        "configDeleted": "Configuration supprimée"
+      }
     }
   }
 }

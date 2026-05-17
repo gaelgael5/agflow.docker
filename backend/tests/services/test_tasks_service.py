@@ -33,6 +33,14 @@ async def mock_session_and_agent(fresh_db: Connection) -> tuple[UUID, UUID]:
         """,
         api_key_id,
     )
+    # Agents catalog entry (FK)
+    await fresh_db.execute(
+        """
+        INSERT INTO agents_catalog (slug)
+        VALUES ('claude-r1')
+        ON CONFLICT DO NOTHING
+        """,
+    )
     # Session
     session_id = uuid4()
     await fresh_db.execute(

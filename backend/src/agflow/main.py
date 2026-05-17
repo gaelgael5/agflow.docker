@@ -20,6 +20,7 @@ from agflow.api.admin.contracts import router as admin_contracts_router
 from agflow.api.admin.discovery_services import router as admin_discovery_router
 from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
 from agflow.api.admin.generations import router as admin_generations_router
+from agflow.api.admin.git_sync import router as admin_git_sync_router
 from agflow.api.admin.group_scripts import router as admin_group_scripts_router
 from agflow.api.admin.groups import router as admin_groups_router
 from agflow.api.admin.harpocrate_vaults import router as admin_harpocrate_vaults_router
@@ -76,6 +77,8 @@ from agflow.config import get_settings
 from agflow.logging_setup import configure_logging
 from agflow.services.backup_scheduler import start as _backup_scheduler_start
 from agflow.services.backup_scheduler import stop as _backup_scheduler_stop
+from agflow.services.git_sync_scheduler import start as _git_sync_scheduler_start
+from agflow.services.git_sync_scheduler import stop as _git_sync_scheduler_stop
 from agflow.services.oauth_pending_reaper import run_reaper_loop as _run_oauth_pending_reaper_loop
 from agflow.workers.agent_reaper import run_agent_reaper_loop as _run_agent_reaper_loop
 from agflow.workers.docker_reconciler import run_docker_reconciliation
@@ -206,9 +209,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ]
     # Backup scheduler (APScheduler gère son propre shutdown)
     await _backup_scheduler_start()
+    # Git Sync scheduler (APScheduler dédié, séparé du backup_scheduler)
+    await _git_sync_scheduler_start()
     yield
     log.info("app.shutdown")
-    # Arrêt du backup scheduler en premier (avant la fermeture des autres ressources)
+    # Arrêt des schedulers en premier (avant la fermeture des autres ressources)
+    await _git_sync_scheduler_stop()
     await _backup_scheduler_stop()
     for _stop in _stops:
         _stop.set()
@@ -341,6 +347,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_remote_backup_connections_router)
     app.include_router(admin_backup_schedules_router)
     app.include_router(admin_local_backups_router)
+    app.include_router(admin_git_sync_router)
     app.include_router(infra_categories_router)
     app.include_router(infra_named_types_router)
     app.include_router(infra_named_type_actions_router)

@@ -9,7 +9,9 @@ import { SupervisionKpiCards } from "@/components/supervision/SupervisionKpiCard
 import { SupervisionFilters, type Filters } from "@/components/supervision/SupervisionFilters";
 import { SupervisionInstancesTable } from "@/components/supervision/SupervisionInstancesTable";
 import { SupervisionInstanceDrawer } from "@/components/supervision/SupervisionInstanceDrawer";
+import { SupervisionStreamIndicator } from "@/components/supervision/SupervisionStreamIndicator";
 import { useOverview, useInstances } from "@/hooks/useSupervision";
+import { useSupervisionStream } from "@/hooks/useSupervisionStream";
 
 export function SupervisionPage() {
   const { t } = useTranslation();
@@ -29,6 +31,7 @@ export function SupervisionPage() {
     status: filters.status === "all" ? undefined : filters.status,
     includeDestroyed: filters.includeDestroyed,
   });
+  const streamStatus = useSupervisionStream();
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["supervision"] });
@@ -52,14 +55,17 @@ export function SupervisionPage() {
         title={t("supervision.page_title")}
         subtitle={t("supervision.subtitle")}
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={refresh}
-            aria-label={t("supervision.refresh")}
-          >
-            <RotateCw className="h-4 w-4 mr-1" /> {t("supervision.refresh")}
-          </Button>
+          <div className="flex items-center gap-3">
+            <SupervisionStreamIndicator status={streamStatus} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refresh}
+              aria-label={t("supervision.refresh")}
+            >
+              <RotateCw className="h-4 w-4 mr-1" /> {t("supervision.refresh")}
+            </Button>
+          </div>
         }
       />
 

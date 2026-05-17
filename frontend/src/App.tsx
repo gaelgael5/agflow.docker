@@ -25,6 +25,7 @@ import { AgentEditorPage } from "./pages/AgentEditorPage";
 import { SessionsPage } from "./pages/SessionsPage";
 import { SessionDetailPage } from "./pages/SessionDetailPage";
 import { SessionAgentTimelinePage } from "./pages/SessionAgentTimelinePage";
+import { SupervisionPage } from "@/pages/SupervisionPage";
 import { ServiceTypesPage } from "./pages/ServiceTypesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
@@ -259,6 +260,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <SessionAgentTimelinePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/supervision"
+        element={
+          <ProtectedRoute>
+            <SupervisionPage />
           </ProtectedRoute>
         }
       />

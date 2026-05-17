@@ -113,7 +113,7 @@ export function Sidebar({ open = false, onClose }: Props) {
               { to: "/roles", label: t("roles.page_title"), icon: UserRoundCog },
               { to: "/agents", label: t("agents.page_title"), icon: Bot },
               { to: "/api-docs", label: t("sidebar.api_public"), icon: Globe },
-              { to: "/supervision", label: t("sidebar.supervision"), icon: Activity, disabled: true },
+              { to: "/supervision", label: t("sidebar.supervision"), icon: Activity },
             ],
           },
         ]

@@ -1690,5 +1690,83 @@
         "total": "Total"
       }
     }
+  },
+  "supervision": {
+    "page_title": "Supervision",
+    "subtitle": "État temps réel des sessions, agents, containers et MOM",
+    "refresh": "Rafraîchir",
+    "kpi": {
+      "sessions": {
+        "title": "Sessions",
+        "active": "Actives",
+        "closed": "Fermées",
+        "expired": "Expirées"
+      },
+      "agents": {
+        "title": "Agents",
+        "idle": "Idle",
+        "busy": "Occupés",
+        "error": "Erreur",
+        "destroyed": "Détruits"
+      },
+      "containers": {
+        "title": "Containers",
+        "running": "Up",
+        "unavailable": "Indisponible"
+      },
+      "mom": {
+        "title": "MOM Delivery",
+        "pending": "Pending",
+        "claimed": "Claimed",
+        "failed": "Failed"
+      }
+    },
+    "filters": {
+      "status": {
+        "label": "Status",
+        "all": "Tous",
+        "idle": "Idle",
+        "busy": "Occupés",
+        "error": "Erreur"
+      },
+      "search_placeholder": "Mission, agent, session...",
+      "include_destroyed": "Inclure les détruites"
+    },
+    "table": {
+      "col": {
+        "status": "Status",
+        "mission": "Mission",
+        "agent": "Agent",
+        "session": "Session",
+        "last_activity": "Dernière activité"
+      },
+      "empty": "Aucune instance active. Lance une session pour voir des agents apparaître.",
+      "error": "Erreur de chargement",
+      "retry": "Réessayer",
+      "no_mission": "—"
+    },
+    "drawer": {
+      "section": {
+        "mission": "Mission",
+        "container": "Container",
+        "labels": "Labels",
+        "mom": "MOM Delivery",
+        "messages": "Derniers messages",
+        "error": "Erreur"
+      },
+      "container_status": {
+        "running": "running",
+        "exited": "exited",
+        "none": "—"
+      },
+      "not_found": "Instance introuvable (probablement détruite)",
+      "close": "Fermer"
+    },
+    "status": {
+      "idle": "Idle",
+      "busy": "Occupé",
+      "error": "Erreur",
+      "destroyed": "Détruit"
+    }
   }
 }

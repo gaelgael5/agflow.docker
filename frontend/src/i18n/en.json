@@ -1683,5 +1683,83 @@
         "total": "Total"
       }
     }
+  },
+  "supervision": {
+    "page_title": "Supervision",
+    "subtitle": "Real-time state of sessions, agents, containers and MOM",
+    "refresh": "Refresh",
+    "kpi": {
+      "sessions": {
+        "title": "Sessions",
+        "active": "Active",
+        "closed": "Closed",
+        "expired": "Expired"
+      },
+      "agents": {
+        "title": "Agents",
+        "idle": "Idle",
+        "busy": "Busy",
+        "error": "Error",
+        "destroyed": "Destroyed"
+      },
+      "containers": {
+        "title": "Containers",
+        "running": "Up",
+        "unavailable": "Unavailable"
+      },
+      "mom": {
+        "title": "MOM Delivery",
+        "pending": "Pending",
+        "claimed": "Claimed",
+        "failed": "Failed"
+      }
+    },
+    "filters": {
+      "status": {
+        "label": "Status",
+        "all": "All",
+        "idle": "Idle",
+        "busy": "Busy",
+        "error": "Error"
+      },
+      "search_placeholder": "Mission, agent, session...",
+      "include_destroyed": "Include destroyed"
+    },
+    "table": {
+      "col": {
+        "status": "Status",
+        "mission": "Mission",
+        "agent": "Agent",
+        "session": "Session",
+        "last_activity": "Last activity"
+      },
+      "empty": "No active instance. Start a session to see agents appear.",
+      "error": "Load error",
+      "retry": "Retry",
+      "no_mission": "—"
+    },
+    "drawer": {
+      "section": {
+        "mission": "Mission",
+        "container": "Container",
+        "labels": "Labels",
+        "mom": "MOM Delivery",
+        "messages": "Recent messages",
+        "error": "Error"
+      },
+      "container_status": {
+        "running": "running",
+        "exited": "exited",
+        "none": "—"
+      },
+      "not_found": "Instance not found (likely destroyed)",
+      "close": "Close"
+    },
+    "status": {
+      "idle": "Idle",
+      "busy": "Busy",
+      "error": "Error",
+      "destroyed": "Destroyed"
+    }
   }
 }

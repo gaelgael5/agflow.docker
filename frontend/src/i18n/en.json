@@ -1753,6 +1753,12 @@
         "none": "—"
       },
       "not_found": "Instance not found (likely destroyed)"
+    },
+    "ws": {
+      "title": "Real-time",
+      "connected": "Real-time active",
+      "reconnecting": "Reconnecting...",
+      "disconnected": "Offline (5s polling)"
     }
   }
 }

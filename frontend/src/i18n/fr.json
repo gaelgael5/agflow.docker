@@ -1760,6 +1760,12 @@
         "none": "—"
       },
       "not_found": "Instance introuvable (probablement détruite)"
+    },
+    "ws": {
+      "title": "Temps-réel",
+      "connected": "Temps-réel actif",
+      "reconnecting": "Reconnexion...",
+      "disconnected": "Hors-ligne (polling 5s)"
     }
   }
 }

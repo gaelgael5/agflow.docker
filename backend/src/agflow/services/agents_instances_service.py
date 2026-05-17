@@ -7,6 +7,7 @@ from uuid import UUID
 import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
+from agflow.services import supervision_events
 
 _log = structlog.get_logger(__name__)
 
@@ -36,6 +37,9 @@ async def create(
             mission,
         )
         ids.append(row["id"])
+        await supervision_events.publish_instance_created(
+            instance_id=row["id"], session_id=session_id
+        )
     _log.info(
         "agents_instances.created",
         session_id=str(session_id),
@@ -115,6 +119,7 @@ async def destroy(*, session_id: UUID, instance_id: UUID) -> bool:
     )
     ok = result.endswith(" 1")
     if ok:
+        await supervision_events.publish_instance_destroyed(instance_id=instance_id)
         _log.info(
             "agents_instances.destroyed",
             session_id=str(session_id),
@@ -144,20 +149,26 @@ async def touch_activity(
             """,
             instance_id,
         )
-    else:
-        result = await execute(
-            """
-            UPDATE agents_instances
-            SET last_activity_at = now(),
-                status = $2,
-                error_message = $3
-            WHERE id = $1 AND destroyed_at IS NULL
-            """,
-            instance_id,
-            status,
-            error_message,
+        return result.endswith(" 1")
+
+    result = await execute(
+        """
+        UPDATE agents_instances
+        SET last_activity_at = now(),
+            status = $2,
+            error_message = $3
+        WHERE id = $1 AND destroyed_at IS NULL
+        """,
+        instance_id,
+        status,
+        error_message,
+    )
+    ok = result.endswith(" 1")
+    if ok:
+        await supervision_events.publish_instance_status_changed(
+            instance_id=instance_id
         )
-    return result.endswith(" 1")
+    return ok
 
 
 async def set_last_container(

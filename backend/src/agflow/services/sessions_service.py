@@ -5,6 +5,7 @@ from uuid import UUID
 import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
+from agflow.services import supervision_events
 
 _log = structlog.get_logger(__name__)
 
@@ -29,6 +30,7 @@ async def create(
         project_id,
         str(duration_seconds),
     )
+    await supervision_events.publish_session_created(session_id=row["id"])
     _log.info(
         "sessions.created",
         session_id=str(row["id"]),
@@ -132,20 +134,28 @@ async def close(
         )
     closed = result.endswith(" 1")
     if closed:
+        await supervision_events.publish_session_closed(
+            session_id=session_id, status="closed"
+        )
         _log.info("sessions.closed", session_id=str(session_id))
     return closed
 
 
 async def expire_stale() -> int:
-    result = await execute(
+    rows = await fetch_all(
         """
         UPDATE sessions
         SET status = 'expired', closed_at = now()
         WHERE status = 'active' AND expires_at < now()
+        RETURNING id
         """,
     )
-    count = int(result.split()[-1]) if result else 0
+    count = len(rows)
     if count > 0:
+        for r in rows:
+            await supervision_events.publish_session_closed(
+                session_id=r["id"], status="expired"
+            )
         _log.info("sessions.expired", count=count)
     return count
 

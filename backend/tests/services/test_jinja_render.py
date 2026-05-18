@@ -49,3 +49,9 @@ def test_sandbox_blocks_dunder_access():
             "{{ runtime.__class__.__name__ }}",
             {"runtime": {"x": 1}},
         )
+
+
+def test_malformed_template_raises_jinja_render_error():
+    """Une syntaxe Jinja invalide doit être convertie en JinjaRenderError."""
+    with pytest.raises(JinjaRenderError):
+        render_jsonb_jinja("{{ unclosed", {"runtime": {"x": 1}})

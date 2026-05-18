@@ -26,7 +26,12 @@ _env = SandboxedEnvironment(
 
 
 def render_jsonb_jinja(value: Any, context: dict[str, Any]) -> Any:
-    """Render récursif. Strings → Jinja. Autres types → passthrough."""
+    """Render récursif. Strings → Jinja. Dict et list → récursion sur les valeurs.
+
+    Les clés de dict ne sont PAS rendues : on suppose que les clés jsonb sont
+    statiques (noms de paramètres figés). Tout autre type (int, bool, None) →
+    passthrough sans modification.
+    """
     if isinstance(value, str):
         try:
             return _env.from_string(value).render(**context)

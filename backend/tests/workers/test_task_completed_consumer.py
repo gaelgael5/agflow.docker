@@ -1,10 +1,11 @@
 """Tests du consumer MOM task_completed (workflow tranche 3)."""
 from __future__ import annotations
 
-import json
 from uuid import uuid4
 
 import pytest
+
+from tests.workers._mom_helpers import publish_mom_result
 
 pytestmark = pytest.mark.asyncio
 
@@ -23,7 +24,7 @@ async def test_consumer_marks_task_completed_and_enqueues_hook(
         agflow_correlation_id=uuid4(),
         instruction={"text": "x"},
     )
-    await _publish_mom_result(
+    await publish_mom_result(
         fresh_db,
         session_id=sid,
         instance_id=aid,
@@ -60,7 +61,7 @@ async def test_consumer_marks_task_failed_on_error_kind(
         agflow_correlation_id=uuid4(),
         instruction={},
     )
-    await _publish_mom_result(
+    await publish_mom_result(
         fresh_db,
         session_id=sid,
         instance_id=aid,
@@ -84,7 +85,7 @@ async def test_consumer_ignores_message_without_agflow_task_id(
 
     sid = mock_session_with_callback["session_id"]
     aid = mock_session_with_callback["agent_instance_id"]
-    await _publish_mom_result(
+    await publish_mom_result(
         fresh_db,
         session_id=sid,
         instance_id=aid,
@@ -110,7 +111,7 @@ async def test_consumer_skips_session_without_callback_url(
         agflow_correlation_id=uuid4(),
         instruction={},
     )
-    await _publish_mom_result(
+    await publish_mom_result(
         fresh_db,
         session_id=sid,
         instance_id=aid,
@@ -144,7 +145,7 @@ async def test_consumer_idempotent_on_double_claim(
         agflow_correlation_id=uuid4(),
         instruction={},
     )
-    await _publish_mom_result(
+    await publish_mom_result(
         fresh_db,
         session_id=sid,
         instance_id=aid,
@@ -167,34 +168,3 @@ async def test_consumer_idempotent_on_double_claim(
         "SELECT COUNT(*) FROM outbound_hooks WHERE task_id = $1", task["task_id"]
     )
     assert count == 1  # idempotence : pas de 2e hook
-
-
-async def _publish_mom_result(
-    fresh_db,
-    *,
-    session_id,
-    instance_id,
-    task_id,
-    payload: dict,
-    kind: str = "result",
-) -> None:
-    """Insère manuellement un message agent_messages OUT + agent_message_delivery
-    pour simuler la publication par un agent.
-    """
-    msg_id = await fresh_db.fetchval(
-        """
-        INSERT INTO agent_messages
-        (session_id, instance_id, direction, kind, payload, source)
-        VALUES ($1::text, $2::text, 'out', $3, $4::jsonb, 'test')
-        RETURNING msg_id
-        """,
-        str(session_id),
-        str(instance_id),
-        kind,
-        json.dumps(payload),
-    )
-    await fresh_db.execute(
-        "INSERT INTO agent_message_delivery (group_name, msg_id, status) "
-        "VALUES ('workflow_task_completed', $1, 'pending')",
-        msg_id,
-    )

@@ -17,7 +17,7 @@ import structlog
 
 from agflow.db.pool import fetch_one, get_pool
 from agflow.mom.consumer import MomConsumer
-from agflow.mom.envelope import Direction, Kind
+from agflow.mom.envelope import Direction, Envelope, Kind
 from agflow.services import (
     hook_payload_builder,
     outbound_hooks_service,
@@ -51,7 +51,7 @@ async def process_batch() -> None:
             )
 
 
-async def _process_envelope(env) -> None:
+async def _process_envelope(env: Envelope) -> None:
     payload = env.payload or {}
     raw_task_id = payload.get("_agflow_task_id")
     if not raw_task_id:
@@ -141,12 +141,27 @@ async def _process_envelope(env) -> None:
         )
         return
 
+    # Validate required _agflow_* fields are present in the task row
+    action_exec_id = row["agflow_action_execution_id"]
+    corr_id = row["agflow_correlation_id"]
+    if action_exec_id is None or corr_id is None:
+        _log.error(
+            "workflow.task_completed.missing_agflow_ids",
+            task_id=str(task_id),
+            action_execution_id=str(action_exec_id) if action_exec_id else None,
+            correlation_id=str(corr_id) if corr_id else None,
+        )
+        raise RuntimeError(
+            f"task {task_id} is missing _agflow_action_execution_id or "
+            f"_agflow_correlation_id (data bug upstream)"
+        )
+
     hook_id = uuid4()
     payload_body = hook_payload_builder.build_task_completed_payload(
         hook_id=hook_id,
         task_id=task_id,
-        action_execution_id=row["agflow_action_execution_id"] or uuid4(),
-        correlation_id=row["agflow_correlation_id"] or uuid4(),
+        action_execution_id=action_exec_id,
+        correlation_id=corr_id,
         project_runtime_id=row["project_runtime_id"],
         session_id=row["session_id"],
         agent_uuid=row["agent_instance_id"],

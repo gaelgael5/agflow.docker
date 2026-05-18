@@ -57,7 +57,12 @@ class ResourceState(BaseModel):
 
 class RuntimeResourcesResponse(BaseModel):
     runtime_id: UUID
-    status: str = Field(description='provisioning | ready | failed (mapped from pending|deployed|failed)')
+    status: str = Field(
+        description=(
+            "provisioning | ready | partially_ready | failed "
+            "(mapping v5 §3.4 calculé depuis le status DB + statuts des resources)"
+        )
+    )
     resources: list[ResourceState]
 
 

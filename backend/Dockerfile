@@ -50,6 +50,6 @@ CMD ["uvicorn", "agflow.main:app", "--host", "0.0.0.0", "--port", "8000"]
 # ──────────────────────────────────────────────────────────────────────────────
 FROM runtime AS dev
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-RUN uv pip install --system --no-cache pytest pytest-asyncio
+RUN uv pip install --system --no-cache pytest pytest-asyncio respx
 COPY pyproject.toml /app/pyproject.toml
 COPY tests /app/tests

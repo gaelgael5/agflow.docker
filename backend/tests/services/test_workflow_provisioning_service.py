@@ -71,3 +71,8 @@ async def test_get_resources_returns_resource_id_stable_per_runtime(
     ids_b = {r["resource_id"] for r in res_b}
     assert ids_a.isdisjoint(ids_b)
     assert len(ids_a) == mock_project_with_resources["resources_count"]
+
+    # resource_ids are stable between two GETs of the same runtime
+    res_a_second = await wp.get_resources(runtime_id=runtime_id_a)
+    ids_a_second = {r["resource_id"] for r in res_a_second}
+    assert ids_a_second == ids_a, "resource_ids must be stable between GETs"

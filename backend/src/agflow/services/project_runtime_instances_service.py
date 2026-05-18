@@ -10,6 +10,7 @@ import json
 from typing import Any
 from uuid import UUID
 
+import asyncpg
 import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
@@ -21,25 +22,46 @@ async def create_bulk(
     *,
     project_runtime_id: UUID,
     instance_ids: list[UUID],
+    conn: asyncpg.Connection | None = None,
 ) -> list[dict]:
-    """Insère 1 row par instance_id avec status='provisioning'."""
+    """Insère 1 row par instance_id avec status='provisioning'.
+
+    Si `conn` est fourni, utilise cette connexion (mode transactionnel,
+    appelé par provision_runtime). Sinon, acquiert une connexion via le
+    pool pour chaque INSERT.
+    """
     if not instance_ids:
         return []
 
-    # asyncpg ne supporte pas executemany RETURNING — on boucle.
     created: list[dict] = []
     for instance_id in instance_ids:
-        row = await fetch_one(
-            """
-            INSERT INTO project_runtime_instances
-            (project_runtime_id, instance_id, provisioning_status)
-            VALUES ($1, $2, 'provisioning')
-            RETURNING id, project_runtime_id, instance_id, provisioning_status
-            """,
-            project_runtime_id,
-            instance_id,
-        )
-        assert row is not None
+        if conn is not None:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO project_runtime_instances
+                (project_runtime_id, instance_id, provisioning_status)
+                VALUES ($1, $2, 'provisioning')
+                RETURNING id, project_runtime_id, instance_id, provisioning_status
+                """,
+                project_runtime_id,
+                instance_id,
+            )
+        else:
+            row = await fetch_one(
+                """
+                INSERT INTO project_runtime_instances
+                (project_runtime_id, instance_id, provisioning_status)
+                VALUES ($1, $2, 'provisioning')
+                RETURNING id, project_runtime_id, instance_id, provisioning_status
+                """,
+                project_runtime_id,
+                instance_id,
+            )
+        if row is None:
+            raise RuntimeError(
+                f"INSERT INTO project_runtime_instances failed for "
+                f"runtime={project_runtime_id} instance={instance_id}"
+            )
         created.append(
             {
                 "id": row["id"],

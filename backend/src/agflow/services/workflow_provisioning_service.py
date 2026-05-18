@@ -63,21 +63,19 @@ async def provision_runtime(*, project_id: UUID) -> UUID:
             """,
             project_id,
         )
-        assert runtime_row is not None
+        if runtime_row is None:
+            raise RuntimeError(
+                f"INSERT INTO project_runtimes failed for project {project_id}"
+            )
         runtime_id: UUID = runtime_row["id"]
 
         # Bulk INSERT des rows par instance avec status='provisioning'
         # (utilise la même connexion → atomic avec l'INSERT runtime)
-        for instance_id in instance_ids:
-            await conn.execute(
-                """
-                INSERT INTO project_runtime_instances
-                (project_runtime_id, instance_id, provisioning_status)
-                VALUES ($1, $2, 'provisioning')
-                """,
-                runtime_id,
-                instance_id,
-            )
+        await pri_service.create_bulk(
+            project_runtime_id=runtime_id,
+            instance_ids=instance_ids,
+            conn=conn,
+        )
 
     _log.info(
         "workflow.runtime.provisioned",

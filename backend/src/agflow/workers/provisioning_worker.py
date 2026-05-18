@@ -148,15 +148,24 @@ def _build_jinja_context(
     }
 
 
-async def provisioning_worker_loop() -> None:
-    """Boucle infinie — invoquée par lifespan FastAPI via asyncio.create_task."""
+async def run_provisioning_worker_loop(stop_event: asyncio.Event) -> None:
+    """Boucle worker — invoquée par lifespan FastAPI avec un stop_event.
+
+    Pattern uniforme avec les autres workers (run_session_idle_reaper_loop,
+    run_agent_reaper_loop) : while not stop_event.is_set() + wait_for sur
+    stop_event pour permettre une cancellation propre via lifespan shutdown.
+    """
     _log.info("workflow.provisioning_worker.started")
-    while True:
+    while not stop_event.is_set():
         try:
             await process_pending_runtimes()
-        except asyncio.CancelledError:
-            _log.info("workflow.provisioning_worker.cancelled")
-            raise
         except Exception:
             _log.exception("workflow.provisioning_worker.loop_error")
-        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+        try:
+            await asyncio.wait_for(
+                stop_event.wait(), timeout=_POLL_INTERVAL_SECONDS
+            )
+            break  # stop_event was set during wait
+        except TimeoutError:
+            pass  # interval elapsed, continue loop
+    _log.info("workflow.provisioning_worker.stopped")

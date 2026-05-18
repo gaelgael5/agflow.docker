@@ -169,6 +169,78 @@ async def mock_pending_workflow_runtime_with_bad_jinja(fresh_db: Connection) -> 
 
 
 @pytest_asyncio.fixture
+async def mock_pending_workflow_runtime_with_pending_setup(fresh_db: Connection) -> dict:
+    """Crée 1 projet + 1 group + 1 instance avec setup_steps non-completed.
+
+    connection_params : simple, pas de Jinja.
+    setup_steps : [{"action": "run_init_script", "status": "pending"}]
+    → l'instance doit être marquée 'pending_setup' par le worker.
+    Retourne {'runtime_id': UUID, 'project_id': UUID, 'instance_ids': [UUID]}.
+    """
+    project_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO projects (id, display_name, description, network)
+        VALUES ($1, 'Test Pending Setup Project', 'fixture with pending setup steps', 'agflow')
+        """,
+        project_id,
+    )
+
+    group_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO groups (id, project_id, name, max_agents)
+        VALUES ($1, $2, 'main', 5)
+        """,
+        group_id,
+        project_id,
+    )
+
+    iid = uuid4()
+    simple_params = json.dumps({"url": "https://x.example.com"})
+    pending_steps = json.dumps([{"action": "run_init_script", "status": "pending"}])
+    await fresh_db.execute(
+        """
+        INSERT INTO instances (
+            id, group_id, instance_name, catalog_id,
+            status, provisioning_status, connection_params, setup_steps
+        )
+        VALUES ($1, $2, 'setup-1', 'setup', 'active', 'ready', $3::jsonb, $4::jsonb)
+        """,
+        iid,
+        group_id,
+        simple_params,
+        pending_steps,
+    )
+
+    runtime_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO project_runtimes (id, project_id, user_id, status)
+        VALUES ($1, $2, NULL, 'pending')
+        """,
+        runtime_id,
+        project_id,
+    )
+
+    await fresh_db.execute(
+        """
+        INSERT INTO project_runtime_instances
+            (project_runtime_id, instance_id, provisioning_status)
+        VALUES ($1, $2, 'provisioning')
+        """,
+        runtime_id,
+        iid,
+    )
+
+    return {
+        "runtime_id": runtime_id,
+        "project_id": project_id,
+        "instance_ids": [iid],
+    }
+
+
+@pytest_asyncio.fixture
 async def mock_pending_saas_runtime(fresh_db: Connection) -> dict:
     """Crée 1 projet + 1 group + 1 instance + 1 project_runtime (user_id=<uuid>).
 

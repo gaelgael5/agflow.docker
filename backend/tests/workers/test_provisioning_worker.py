@@ -97,3 +97,30 @@ async def test_process_pending_skips_deleted_runtimes(
         "SELECT status FROM project_runtimes WHERE id = $1", runtime_id
     )
     assert row["status"] == "pending"  # inchangé
+
+
+async def test_process_pending_sets_pending_setup_when_setup_steps_not_completed(
+    fresh_db, mock_pending_workflow_runtime_with_pending_setup
+):
+    """Si setup_steps contient des steps non-completed, instance.status='pending_setup'."""
+    from agflow.workers import provisioning_worker
+
+    runtime_id = mock_pending_workflow_runtime_with_pending_setup["runtime_id"]
+    await provisioning_worker.process_pending_runtimes()
+
+    # Runtime passe à 'deployed' (le pending_setup ne bloque pas)
+    runtime_row = await fresh_db.fetchrow(
+        "SELECT status FROM project_runtimes WHERE id = $1", runtime_id
+    )
+    assert runtime_row["status"] == "deployed"
+
+    # L'instance a status='pending_setup'
+    pri_rows = await fresh_db.fetch(
+        """
+        SELECT provisioning_status
+        FROM project_runtime_instances
+        WHERE project_runtime_id = $1
+        """,
+        runtime_id,
+    )
+    assert any(r["provisioning_status"] == "pending_setup" for r in pri_rows)

@@ -25,9 +25,8 @@ CREATE TABLE project_runtime_instances (
     UNIQUE (project_runtime_id, instance_id)
 );
 
-CREATE INDEX idx_pri_runtime ON project_runtime_instances(project_runtime_id);
 CREATE INDEX idx_pri_status ON project_runtime_instances(provisioning_status);
 
-CREATE TRIGGER set_updated_at_project_runtime_instances
+CREATE TRIGGER trg_project_runtime_instances_updated_at
     BEFORE UPDATE ON project_runtime_instances
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();

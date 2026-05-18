@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+import asyncpg
 import pytest
 from asyncpg import Connection
 
@@ -55,8 +56,6 @@ async def test_columns_present(fresh_db):
 
 async def test_check_constraint_provisioning_status(fresh_db):
     """Le CHECK constraint doit rejeter une valeur invalide."""
-    import asyncpg
-
     # Crée un projet + runtime + group + instance valides pour test FK
     project_id = await fresh_db.fetchval(
         """

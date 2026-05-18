@@ -50,7 +50,7 @@ async def create_bulk(
         )
 
     _log.info(
-        "workflow.runtime_instances.created_bulk",
+        "workflow.runtime_instance.created_bulk",
         runtime_id=str(project_runtime_id),
         count=len(created),
     )
@@ -103,7 +103,12 @@ async def mark_status(
     container_id: str | None = None,
     service_url: str | None = None,
 ) -> None:
-    """Marque le statut + écrit les champs rendus. status ∈ {ready, pending_setup}."""
+    """Transition de status='provisioning' vers 'ready' ou 'pending_setup'.
+
+    Écrit aussi connection_params/setup_steps/container_id/service_url (rendus
+    par le worker provisioning). Pour status='failed', utiliser mark_failed
+    qui enregistre l'error_message.
+    """
     await execute(
         """
         UPDATE project_runtime_instances

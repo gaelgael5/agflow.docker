@@ -166,6 +166,7 @@ async def post_work(
         session_id=session_id,
         agent_instance_id=agent_instance_id,
         agflow_correlation_id=payload.agflow_correlation_id,
+        agflow_action_execution_id=payload.agflow_action_execution_id,
         instruction=payload.instruction,
     )
     if task["was_existing"]:
@@ -204,6 +205,7 @@ async def post_work(
     return WorkResponse(
         task_id=task["task_id"],
         agflow_correlation_id=payload.agflow_correlation_id,
+        agflow_action_execution_id=payload.agflow_action_execution_id,
     )
 
 

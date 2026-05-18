@@ -17,6 +17,7 @@ async def create_session_work(
     session_id: UUID,
     agent_instance_id: UUID,
     agflow_correlation_id: UUID,
+    agflow_action_execution_id: UUID | None = None,
     instruction: dict[str, Any],
 ) -> dict:
     """Crée une tâche kind='session_work' avec idempotence applicative.
@@ -27,7 +28,7 @@ async def create_session_work(
     """
     existing = await fetch_one(
         """
-        SELECT id, kind, status, agflow_correlation_id
+        SELECT id, kind, status, agflow_correlation_id, agflow_action_execution_id
         FROM tasks
         WHERE session_id = $1
           AND agflow_correlation_id = $2
@@ -42,6 +43,7 @@ async def create_session_work(
             "kind": existing["kind"],
             "status": existing["status"],
             "agflow_correlation_id": existing["agflow_correlation_id"],
+            "agflow_action_execution_id": existing["agflow_action_execution_id"],
             "was_existing": True,
         }
 
@@ -49,15 +51,17 @@ async def create_session_work(
         """
         INSERT INTO tasks (
             id, kind, session_id, agent_instance_id,
-            agflow_correlation_id, status, result
+            agflow_correlation_id, agflow_action_execution_id,
+            status, result
         )
-        VALUES ($1, 'session_work', $2, $3, $4, 'pending', $5::jsonb)
-        RETURNING id, kind, status, agflow_correlation_id
+        VALUES ($1, 'session_work', $2, $3, $4, $5, 'pending', $6::jsonb)
+        RETURNING id, kind, status, agflow_correlation_id, agflow_action_execution_id
         """,
         uuid4(),
         session_id,
         agent_instance_id,
         agflow_correlation_id,
+        agflow_action_execution_id,
         json.dumps({"instruction": instruction}),
     )
     assert row is not None  # INSERT RETURNING always returns a row
@@ -67,12 +71,14 @@ async def create_session_work(
         session_id=str(session_id),
         agent_instance_id=str(agent_instance_id),
         agflow_correlation_id=str(agflow_correlation_id),
+        agflow_action_execution_id=str(agflow_action_execution_id) if agflow_action_execution_id else None,
     )
     return {
         "task_id": row["id"],
         "kind": row["kind"],
         "status": row["status"],
         "agflow_correlation_id": row["agflow_correlation_id"],
+        "agflow_action_execution_id": row["agflow_action_execution_id"],
         "was_existing": False,
     }
 

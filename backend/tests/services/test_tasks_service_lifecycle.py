@@ -19,6 +19,7 @@ async def test_mark_completed_sets_status_result_completed_at(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=cid,
+        agflow_action_execution_id=uuid4(),
         instruction={"text": "x"},
     )
 
@@ -45,6 +46,7 @@ async def test_mark_failed_sets_status_error_completed_at(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=cid,
+        agflow_action_execution_id=uuid4(),
         instruction={"text": "x"},
     )
 

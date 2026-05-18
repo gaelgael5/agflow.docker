@@ -15,7 +15,7 @@ async def test_enqueue_creates_pending_row(fresh_db, mock_hmac_key):
     hook_id = uuid4()
     await oh.enqueue(
         hook_id=hook_id,
-        task_id=uuid4(),
+        task_id=None,
         callback_url="https://ag.flow/hooks",
         hmac_key_id=mock_hmac_key,
         payload={"status": "completed"},

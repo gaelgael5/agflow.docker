@@ -22,6 +22,7 @@ async def test_consumer_marks_task_completed_and_enqueues_hook(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=uuid4(),
+        agflow_action_execution_id=uuid4(),
         instruction={"text": "x"},
     )
     await publish_mom_result(
@@ -59,6 +60,7 @@ async def test_consumer_marks_task_failed_on_error_kind(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=uuid4(),
+        agflow_action_execution_id=uuid4(),
         instruction={},
     )
     await publish_mom_result(
@@ -109,6 +111,7 @@ async def test_consumer_skips_session_without_callback_url(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=uuid4(),
+        agflow_action_execution_id=uuid4(),
         instruction={},
     )
     await publish_mom_result(
@@ -143,6 +146,7 @@ async def test_consumer_idempotent_on_double_claim(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=uuid4(),
+        agflow_action_execution_id=uuid4(),
         instruction={},
     )
     await publish_mom_result(

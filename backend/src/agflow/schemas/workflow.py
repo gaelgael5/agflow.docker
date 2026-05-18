@@ -98,6 +98,7 @@ class WorkRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     agflow_correlation_id: UUID = Field(alias="_agflow_correlation_id")
+    agflow_action_execution_id: UUID = Field(alias="_agflow_action_execution_id")
     instruction: dict[str, Any]
 
 
@@ -106,6 +107,7 @@ class WorkResponse(BaseModel):
 
     task_id: UUID
     agflow_correlation_id: UUID = Field(alias="_agflow_correlation_id")
+    agflow_action_execution_id: UUID = Field(alias="_agflow_action_execution_id")
 
 
 # ── HMAC keys (#9) ─────────────────────────────────────────────────

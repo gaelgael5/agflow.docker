@@ -29,7 +29,7 @@ async def _cleanup_test_messages(pool):
 @pytest.mark.asyncio
 async def test_reclaim_once_returns_counts_per_group(pool) -> None:
     counts = await reclaim_once()
-    assert set(counts.keys()) == {"dispatcher", "router", "ws_push"}
+    assert set(counts.keys()) == {"dispatcher", "router", "ws_push", "workflow_task_completed"}
     for v in counts.values():
         assert v >= 0
 

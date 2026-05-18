@@ -352,7 +352,7 @@ async def mock_pending_hook(fresh_db: Connection, mock_hmac_key: str) -> dict:
     hook_id = uuid4()
     await outbound_hooks_service.enqueue(
         hook_id=hook_id,
-        task_id=uuid4(),
+        task_id=None,
         callback_url="http://test.local/hook",
         hmac_key_id=mock_hmac_key,
         payload={"status": "completed", "summary": "test"},

@@ -20,6 +20,7 @@ async def test_create_session_work_inserts_pending(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=cid,
+        agflow_action_execution_id=uuid4(),
         instruction={"text": "do something"},
     )
     assert task["status"] == "pending"
@@ -35,16 +36,19 @@ async def test_create_session_work_idempotent(
 
     sid, aid = mock_session_and_agent
     cid = uuid4()
+    exec_id = uuid4()
     first = await tasks_service.create_session_work(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=cid,
+        agflow_action_execution_id=exec_id,
         instruction={"text": "first"},
     )
     second = await tasks_service.create_session_work(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=cid,
+        agflow_action_execution_id=exec_id,
         instruction={"text": "second"},  # ignored
     )
     assert first["task_id"] == second["task_id"]
@@ -62,6 +66,7 @@ async def test_get_by_id_returns_task(
         session_id=sid,
         agent_instance_id=aid,
         agflow_correlation_id=cid,
+        agflow_action_execution_id=uuid4(),
         instruction={"x": 1},
     )
     got = await tasks_service.get_by_id(created["task_id"])

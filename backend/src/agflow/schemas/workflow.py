@@ -45,11 +45,14 @@ class RuntimeProvisionResponse(BaseModel):
 
 
 class ResourceState(BaseModel):
-    instance_id: UUID
+    resource_id: UUID = Field(description="UUID v4 stable par runtime")
     type: str
     name: str
     status: str = Field(description="provisioning | ready | failed | pending_setup")
     connection_params: dict[str, Any] | None = None
+    mcp_bindings: list[dict[str, Any]] = Field(default_factory=list)
+    setup_steps: list[dict[str, Any]] = Field(default_factory=list)
+    error_message: str | None = None
 
 
 class RuntimeResourcesResponse(BaseModel):

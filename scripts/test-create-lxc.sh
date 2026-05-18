@@ -571,7 +571,7 @@ if [ -n "${ADMIN_JWT}" ]; then
         || echo "00000000-0000-4000-8000-000000000e2e")
     INSERT_SQL="INSERT INTO outbound_hooks (hook_id, task_id, callback_url, hmac_key_id, payload, status, attempt_number, next_retry_at) VALUES ('${HOOK_ID}', NULL, 'http://mock-receiver:8001/api/v1/hooks/docker/task-completed', 'e2e-test', '{\"status\":\"completed\",\"summary\":\"e2e test\"}'::jsonb, 'pending', 0, now())"
     pct exec "${CREATED_CTID}" -- bash -c \
-        "docker exec agflow-postgres psql -U postgres -d agflow -c \"${INSERT_SQL}\"" \
+        "docker exec agflow-postgres psql -U agflow -d agflow -c \"${INSERT_SQL}\"" \
         > /dev/null 2>&1 || true
 
     # Attendre le hook_dispatcher (cycle 2s + marge 4s)
@@ -593,7 +593,7 @@ if [ -n "${ADMIN_JWT}" ]; then
 
     # Vérifier que la row outbound_hooks est marquée delivered
     HOOK_STATUS=$(pct exec "${CREATED_CTID}" -- bash -c \
-        "docker exec agflow-postgres psql -U postgres -d agflow -tAc \"SELECT status FROM outbound_hooks WHERE hook_id = '${HOOK_ID}'\"" \
+        "docker exec agflow-postgres psql -U agflow -d agflow -tAc \"SELECT status FROM outbound_hooks WHERE hook_id = '${HOOK_ID}'\"" \
         2>/dev/null | tr -d '[:space:]')
 
     if [ "${HOOK_STATUS}" = "delivered" ]; then

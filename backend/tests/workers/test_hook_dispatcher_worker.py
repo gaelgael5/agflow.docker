@@ -42,8 +42,8 @@ async def test_dispatcher_5xx_schedules_retry(fresh_db, mock_pending_hook):
     hook_id = mock_pending_hook["hook_id"]
     url = mock_pending_hook["callback_url"]
 
-    with respx.mock():
-        respx.post(url).mock(return_value=Response(500))
+    with respx.mock() as router:
+        router.post(url).mock(return_value=Response(500))
         await hook_dispatcher_worker.process_batch()
 
     row = await fresh_db.fetchrow(
@@ -62,8 +62,8 @@ async def test_dispatcher_401_marks_dead_non_retryable(
     hook_id = mock_pending_hook["hook_id"]
     url = mock_pending_hook["callback_url"]
 
-    with respx.mock():
-        respx.post(url).mock(return_value=Response(401))
+    with respx.mock() as router:
+        router.post(url).mock(return_value=Response(401))
         await hook_dispatcher_worker.process_batch()
 
     row = await fresh_db.fetchrow(
@@ -80,8 +80,8 @@ async def test_dispatcher_timeout_schedules_retry(fresh_db, mock_pending_hook):
     hook_id = mock_pending_hook["hook_id"]
     url = mock_pending_hook["callback_url"]
 
-    with respx.mock():
-        respx.post(url).mock(side_effect=httpx.TimeoutException("timeout"))
+    with respx.mock() as router:
+        router.post(url).mock(side_effect=httpx.TimeoutException("timeout"))
         await hook_dispatcher_worker.process_batch()
 
     row = await fresh_db.fetchrow(
@@ -125,8 +125,8 @@ async def test_dispatcher_max_attempts_marks_dead(fresh_db, mock_pending_hook):
         hook_id,
     )
 
-    with respx.mock():
-        respx.post(url).mock(return_value=Response(503))
+    with respx.mock() as router:
+        router.post(url).mock(return_value=Response(503))
         await hook_dispatcher_worker.process_batch()
 
     row = await fresh_db.fetchrow(

@@ -509,6 +509,106 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ÉTAPE 7.9 : Validation E2E workflow hook
+# ══════════════════════════════════════════════════════════════════════════════
+log ""
+log "=== ÉTAPE 7.9 : Validation E2E workflow hook ==="
+
+WORKFLOW_HMAC_SECRET="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+# Test 9 : health check mock-receiver
+if pct exec "${CREATED_CTID}" -- bash -c \
+    "cd '${APP_DIR}' && docker compose -f docker-compose.dev.yml exec -T mock-receiver curl -sf 'http://localhost:8001/health'" \
+    > /dev/null 2>&1; then
+    log_pass "mock-receiver health OK"
+else
+    log_fail "mock-receiver health check (service absent ou unhealthy)"
+fi
+
+# Reset état mock entre runs (idempotent — on tolère l'échec si absent)
+pct exec "${CREATED_CTID}" -- bash -c \
+    "cd '${APP_DIR}' && docker compose -f docker-compose.dev.yml exec -T mock-receiver curl -sX DELETE 'http://localhost:8001/hooks'" \
+    > /dev/null 2>&1 || true
+
+# Récupérer le mot de passe admin depuis le .env du LXC
+ADMIN_PASS_PLAIN=$(pct exec "${CREATED_CTID}" -- bash -c \
+    "awk -F'=' '\$1==\"ADMIN_PASSWORD\"{sub(/^[^=]*=/,\"\");print;exit}' '${APP_DIR}/.env' | tr -d '\r'" \
+    2>/dev/null || echo "")
+
+# Test 10 : login admin et récupération du JWT
+ADMIN_JWT=""
+if [ -n "${ADMIN_PASS_PLAIN}" ]; then
+    ADMIN_JWT=$(pct exec "${CREATED_CTID}" -- curl -sS -X POST "http://localhost/api/admin/auth/login" \
+        -H 'Content-Type: application/json' \
+        -d "{\"email\":\"admin@agflow.example.com\",\"password\":\"${ADMIN_PASS_PLAIN}\"}" \
+        2>/dev/null \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" \
+        2>/dev/null || echo "")
+fi
+
+if [ -n "${ADMIN_JWT}" ]; then
+    log_pass "admin login OK (JWT obtenu)"
+else
+    log_fail "admin login (ADMIN_PASSWORD vide ou endpoint indisponible)"
+fi
+
+if [ -n "${ADMIN_JWT}" ]; then
+    # Test 11 : créer la hmac_key e2e-test
+    HMAC_BODY="{\"key_id\":\"e2e-test\",\"secret_hex\":\"${WORKFLOW_HMAC_SECRET}\",\"description\":\"E2E\"}"
+    HMAC_RESP=$(pct exec "${CREATED_CTID}" -- curl -sS -X POST "http://localhost/api/admin/hmac-keys" \
+        -H "Authorization: Bearer ${ADMIN_JWT}" \
+        -H 'Content-Type: application/json' \
+        -d "${HMAC_BODY}" 2>/dev/null || echo "")
+
+    if echo "${HMAC_RESP}" | grep -q "e2e-test"; then
+        log_pass "POST /hmac-keys e2e-test créée"
+    else
+        log_fail "POST /hmac-keys : ${HMAC_RESP}"
+    fi
+
+    # Insérer directement une row outbound_hooks pour simuler un hook pending
+    HOOK_ID=$(pct exec "${CREATED_CTID}" -- uuidgen 2>/dev/null \
+        || echo "00000000-0000-4000-8000-000000000e2e")
+    INSERT_SQL="INSERT INTO outbound_hooks (hook_id, task_id, callback_url, hmac_key_id, payload, status, attempt_number, next_retry_at) VALUES ('${HOOK_ID}', NULL, 'http://mock-receiver:8001/api/v1/hooks/docker/task-completed', 'e2e-test', '{\"status\":\"completed\",\"summary\":\"e2e test\"}'::jsonb, 'pending', 0, now())"
+    pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U postgres -d agflow -c \"${INSERT_SQL}\"" \
+        > /dev/null 2>&1 || true
+
+    # Attendre le hook_dispatcher (cycle 2s + marge 4s)
+    sleep 6
+
+    # Test 12 : mock-receiver a reçu exactement 1 hook signé
+    HOOKS_JSON=$(pct exec "${CREATED_CTID}" -- bash -c \
+        "cd '${APP_DIR}' && docker compose -f docker-compose.dev.yml exec -T mock-receiver curl -sS 'http://localhost:8001/hooks'" \
+        2>/dev/null || echo "{}")
+    HOOK_COUNT=$(echo "${HOOKS_JSON}" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('count', 0))" \
+        2>/dev/null || echo "0")
+
+    if [ "${HOOK_COUNT}" = "1" ]; then
+        log_pass "mock-receiver a reçu 1 hook signé HMAC validé"
+    else
+        log_fail "mock-receiver count=${HOOK_COUNT} (attendu 1)"
+    fi
+
+    # Vérifier que la row outbound_hooks est marquée delivered
+    HOOK_STATUS=$(pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U postgres -d agflow -tAc \"SELECT status FROM outbound_hooks WHERE hook_id = '${HOOK_ID}'\"" \
+        2>/dev/null | tr -d '[:space:]')
+
+    if [ "${HOOK_STATUS}" = "delivered" ]; then
+        log_pass "outbound_hooks row marquée delivered"
+    else
+        log_fail "outbound_hooks status=${HOOK_STATUS} (attendu delivered)"
+    fi
+else
+    # JWT non obtenu : les 3 tests suivants échouent automatiquement
+    log_fail "POST /hmac-keys (JWT absent — dépendance test 10)"
+    log_fail "mock-receiver hook reçu (JWT absent — dépendance test 10)"
+    log_fail "outbound_hooks delivered (JWT absent — dépendance test 10)"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ÉTAPE 8 : Nettoyage (optionnel)
 # ══════════════════════════════════════════════════════════════════════════════
 log ""

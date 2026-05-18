@@ -75,6 +75,18 @@ services:
     depends_on: [frontend, backend]
     networks: [agflow]
 
+  mock-receiver:
+    build:
+      context: ./tools/mock-receiver
+      dockerfile: Dockerfile
+    container_name: agflow-mock-receiver
+    restart: unless-stopped
+    environment:
+      HOOK_HMAC_KEY: "${WORKFLOW_TEST_HMAC_SECRET:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
+    expose:
+      - "8001"
+    networks: [agflow]
+
 # http://192.168.10.158:8081/
   pgweb:
     image: sosedoff/pgweb:latest

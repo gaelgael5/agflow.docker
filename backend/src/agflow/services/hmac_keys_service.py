@@ -87,3 +87,30 @@ async def exists(key_id: str) -> bool:
         key_id,
     )
     return row is not None
+
+
+async def mark_rotated(*, key_id: str) -> None:
+    """Marque une hmac_key comme rotated (soft-delete).
+
+    Idempotent : si déjà rotated, ne fait rien (préserve la date originale).
+    Raise HmacKeyNotFoundError si la clé n'existe pas du tout.
+    """
+    row = await fetch_one(
+        """
+        UPDATE hmac_keys
+        SET rotated_at = now()
+        WHERE key_id = $1 AND rotated_at IS NULL
+        RETURNING key_id
+        """,
+        key_id,
+    )
+    if row is None:
+        # Soit clé inexistante, soit déjà rotated → distinguer
+        existing = await fetch_one(
+            "SELECT key_id FROM hmac_keys WHERE key_id = $1", key_id
+        )
+        if existing is None:
+            raise HmacKeyNotFoundError(f"hmac key '{key_id}' not found")
+        # Déjà rotated → idempotence, pas d'erreur
+        return
+    _log.info("workflow.hmac_key.rotated", key_id=key_id)

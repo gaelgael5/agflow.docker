@@ -84,6 +84,49 @@ async def mock_runtime_with_instances(fresh_db: Connection) -> dict:
 
 
 @pytest_asyncio.fixture
+async def mock_session_and_agent(fresh_db: Connection) -> tuple[UUID, UUID]:
+    """Crée une api_key + session + agent_instance valides via INSERT direct."""
+    # API key
+    api_key_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO api_keys (id, name, prefix, key_hash, scopes)
+        VALUES ($1, 'test', 'agfd_test', 'bcrypt-hash', '{m2m:orchestrate}')
+        """,
+        api_key_id,
+    )
+    # Agents catalog entry (FK)
+    await fresh_db.execute(
+        """
+        INSERT INTO agents_catalog (slug)
+        VALUES ('claude-r1')
+        ON CONFLICT (slug) DO NOTHING
+        """,
+    )
+    # Session
+    session_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO sessions (id, api_key_id, expires_at)
+        VALUES ($1, $2, now() + interval '1 hour')
+        """,
+        session_id,
+        api_key_id,
+    )
+    # Agent instance
+    agent_instance_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO agents_instances (id, session_id, agent_id, labels)
+        VALUES ($1, $2, 'claude-r1', '{}'::jsonb)
+        """,
+        agent_instance_id,
+        session_id,
+    )
+    return session_id, agent_instance_id
+
+
+@pytest_asyncio.fixture
 async def mock_project_with_resources(fresh_db: Connection) -> dict:
     """Crée un projet + 1 group + 2 instances (wiki, repo).
 

@@ -102,3 +102,47 @@ async def get_by_id(task_id: UUID) -> dict | None:
         "created_at": row["created_at"],
         "completed_at": row["completed_at"],
     }
+
+
+class TaskNotFoundError(Exception):
+    pass
+
+
+async def mark_completed(*, task_id: UUID, result: dict[str, Any]) -> None:
+    """Transition vers status='completed' + écrit result + completed_at=now()."""
+    updated = await fetch_one(
+        """
+        UPDATE tasks
+        SET status = 'completed',
+            result = $2::jsonb,
+            error = NULL,
+            completed_at = now()
+        WHERE id = $1
+        RETURNING id
+        """,
+        task_id,
+        json.dumps(result),
+    )
+    if updated is None:
+        raise TaskNotFoundError(f"task {task_id} not found")
+    _log.info("workflow.task.completed", task_id=str(task_id))
+
+
+async def mark_failed(*, task_id: UUID, error: dict[str, Any]) -> None:
+    """Transition vers status='failed' + écrit error + completed_at=now()."""
+    updated = await fetch_one(
+        """
+        UPDATE tasks
+        SET status = 'failed',
+            error = $2::jsonb,
+            result = NULL,
+            completed_at = now()
+        WHERE id = $1
+        RETURNING id
+        """,
+        task_id,
+        json.dumps(error),
+    )
+    if updated is None:
+        raise TaskNotFoundError(f"task {task_id} not found")
+    _log.warning("workflow.task.failed", task_id=str(task_id))

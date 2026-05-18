@@ -518,7 +518,7 @@ WORKFLOW_HMAC_SECRET="0123456789abcdef0123456789abcdef0123456789abcdef0123456789
 
 # Test 9 : health check mock-receiver
 if pct exec "${CREATED_CTID}" -- bash -c \
-    "cd '${APP_DIR}' && docker compose -f docker-compose.dev.yml exec -T mock-receiver curl -sf 'http://localhost:8001/health'" \
+    "cd '${APP_DIR}' && docker compose -f docker-compose.dev.yml exec -T backend curl -sf 'http://mock-receiver:8001/health'" \
     > /dev/null 2>&1; then
     log_pass "mock-receiver health OK"
 else
@@ -527,7 +527,7 @@ fi
 
 # Reset état mock entre runs (idempotent — on tolère l'échec si absent)
 pct exec "${CREATED_CTID}" -- bash -c \
-    "cd '${APP_DIR}' && docker compose -f docker-compose.dev.yml exec -T mock-receiver curl -sX DELETE 'http://localhost:8001/hooks'" \
+    "cd '${APP_DIR}' && docker compose -f docker-compose.dev.yml exec -T backend curl -sX DELETE 'http://mock-receiver:8001/hooks'" \
     > /dev/null 2>&1 || true
 
 # Récupérer le mot de passe admin depuis le .env du LXC
@@ -579,7 +579,7 @@ if [ -n "${ADMIN_JWT}" ]; then
 
     # Test 12 : mock-receiver a reçu exactement 1 hook signé
     HOOKS_JSON=$(pct exec "${CREATED_CTID}" -- bash -c \
-        "cd '${APP_DIR}' && docker compose -f docker-compose.dev.yml exec -T mock-receiver curl -sS 'http://localhost:8001/hooks'" \
+        "cd '${APP_DIR}' && docker compose -f docker-compose.dev.yml exec -T backend curl -sS 'http://mock-receiver:8001/hooks'" \
         2>/dev/null || echo "{}")
     HOOK_COUNT=$(echo "${HOOKS_JSON}" \
         | python3 -c "import sys,json; print(json.load(sys.stdin).get('count', 0))" \

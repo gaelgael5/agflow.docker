@@ -42,3 +42,22 @@ async def post_hmac_key(payload: HmacKeyCreateRequest) -> HmacKeyCreateResponse:
         description=payload.description,
         created_at=datetime.now(UTC).isoformat(),
     )
+
+
+@router.delete(
+    "/{key_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_hmac_key(key_id: str) -> None:
+    """Soft-delete : marque la clé comme rotated (préserve l'historique).
+
+    Idempotent : 204 même si déjà rotated.
+    404 uniquement si la clé n'existe pas du tout.
+    """
+    try:
+        await hmac_keys_service.mark_rotated(key_id=key_id)
+    except hmac_keys_service.HmacKeyNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "hmac_key_not_found", "message": str(exc)},
+        ) from exc

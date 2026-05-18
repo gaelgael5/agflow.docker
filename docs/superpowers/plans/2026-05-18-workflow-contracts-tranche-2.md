@@ -24,6 +24,16 @@
 - Tests pytest API peuvent retourner DONE_WITH_CONCERNS sur dev Windows (LXC injoignable), même politique que T1.
 - Validation finale via `./scripts/run-test.sh` à T9.
 
+**Politique git (décision 2026-05-18) :** chaque tâche se termine par `git commit` **suivi de `git push origin dev`** (push immédiat après chaque commit, pas de push groupé). Le bloc commit affiché à la fin de chaque tâche doit être interprété comme :
+
+```bash
+git add <fichiers>
+git commit -m "..."
+git push origin dev
+```
+
+Même si le plan n'affiche pas `git push` à chaque tâche, il est implicite.
+
 **Note Jinja sécurité** : le worker rend du Jinja à partir de strings stockées en DB par l'admin (via l'éditeur de produits). Pas d'input utilisateur final. SandboxedEnvironment recommandé pour la défense en profondeur.
 
 ---
@@ -205,6 +215,7 @@ async def test_check_constraint_provisioning_status(fresh_db):
 git add backend/migrations/002_project_runtime_instances.sql \
         backend/tests/db/test_project_runtime_instances_present.py
 git commit -m "feat(workflow-t2): migration 002 project_runtime_instances + test de présence"
+git push origin dev
 ```
 
 ---

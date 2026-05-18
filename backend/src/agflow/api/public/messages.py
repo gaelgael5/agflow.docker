@@ -31,7 +31,7 @@ router = APIRouter()
 
 _GROUPS_CONFIG = {
     Direction.IN: ["dispatcher"],
-    Direction.OUT: ["ws_push", "router"],
+    Direction.OUT: ["ws_push", "router", "workflow_task_completed"],
 }
 
 

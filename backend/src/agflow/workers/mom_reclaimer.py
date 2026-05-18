@@ -14,7 +14,7 @@ _log = structlog.get_logger(__name__)
 _DEFAULT_INTERVAL_S = 15
 _DEFAULT_STALE_THRESHOLD_S = 30
 
-_RECLAIMED_GROUPS = ("dispatcher", "router", "ws_push")
+_RECLAIMED_GROUPS = ("dispatcher", "router", "ws_push", "workflow_task_completed")
 
 
 async def reclaim_once() -> dict[str, int]:

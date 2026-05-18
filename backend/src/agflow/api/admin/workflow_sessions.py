@@ -30,7 +30,7 @@ _log = structlog.get_logger(__name__)
 
 _GROUPS_CONFIG = {
     Direction.IN: ["dispatcher"],
-    Direction.OUT: ["ws_push", "router"],
+    Direction.OUT: ["ws_push", "router", "workflow_task_completed"],
 }
 
 router = APIRouter(

@@ -1012,7 +1012,7 @@ async def run_task(
         pool=_mom_pool,
         groups_config={
             Direction.IN: ["dispatcher"],
-            Direction.OUT: ["ws_push", "router"],
+            Direction.OUT: ["ws_push", "router", "workflow_task_completed"],
         },
     )
     _in_msg_id = await _mom_publisher.publish(
@@ -1328,7 +1328,7 @@ async def publish_instruction_via_mom(
         pool=pool,
         groups_config={
             Direction.IN: ["dispatcher"],
-            Direction.OUT: ["ws_push", "router"],
+            Direction.OUT: ["ws_push", "router", "workflow_task_completed"],
         },
     )
     msg_id = await publisher.publish(

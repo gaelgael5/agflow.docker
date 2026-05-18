@@ -13,6 +13,108 @@ from tests._db_reset import reset_schema_and_migrate
 
 
 @pytest_asyncio.fixture
+async def mock_hmac_key(fresh_db: Connection) -> str:
+    """Crée une vraie hmac_keys row pour les tests workflow. Retourne le key_id."""
+    from agflow.services import hmac_keys_service
+
+    key_id = f"test-hmac-{uuid4().hex[:8]}"
+    await hmac_keys_service.create(
+        key_id=key_id,
+        secret_hex="0123456789abcdef" * 4,
+        description="test fixture",
+    )
+    return key_id
+
+
+@pytest_asyncio.fixture
+async def mock_session_with_callback(fresh_db: Connection, mock_hmac_key: str) -> dict:
+    """Crée api_key + session AVEC callback_url + hmac_key_id + agent_instance.
+
+    Pattern FK-valid issu de T2.9 fix (989746d).
+    Retourne {"session_id": UUID, "agent_instance_id": UUID}.
+    """
+    api_key_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO api_keys (id, name, prefix, key_hash, scopes)
+        VALUES ($1, 'test-cb', 'agfd_cb', 'bcrypt-hash-cb', '{m2m:orchestrate}')
+        """,
+        api_key_id,
+    )
+    await fresh_db.execute(
+        """
+        INSERT INTO agents_catalog (slug)
+        VALUES ('claude-workflow')
+        ON CONFLICT (slug) DO NOTHING
+        """,
+    )
+    session_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO sessions
+            (id, api_key_id, expires_at, callback_url, callback_hmac_key_id)
+        VALUES ($1, $2, now() + interval '1 hour', $3, $4)
+        """,
+        session_id,
+        api_key_id,
+        "https://example.com/hooks/task-done",
+        mock_hmac_key,
+    )
+    agent_instance_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO agents_instances (id, session_id, agent_id, labels)
+        VALUES ($1, $2, 'claude-workflow', '{}'::jsonb)
+        """,
+        agent_instance_id,
+        session_id,
+    )
+    return {"session_id": session_id, "agent_instance_id": agent_instance_id}
+
+
+@pytest_asyncio.fixture
+async def mock_session_without_callback(fresh_db: Connection) -> dict:
+    """Crée api_key + session SANS callback_url + agent_instance.
+
+    Retourne {"session_id": UUID, "agent_instance_id": UUID}.
+    """
+    api_key_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO api_keys (id, name, prefix, key_hash, scopes)
+        VALUES ($1, 'test-nocb', 'agfd_nc', 'bcrypt-hash-nc', '{m2m:orchestrate}')
+        """,
+        api_key_id,
+    )
+    await fresh_db.execute(
+        """
+        INSERT INTO agents_catalog (slug)
+        VALUES ('claude-workflow')
+        ON CONFLICT (slug) DO NOTHING
+        """,
+    )
+    session_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO sessions (id, api_key_id, expires_at)
+        VALUES ($1, $2, now() + interval '1 hour')
+        """,
+        session_id,
+        api_key_id,
+    )
+    agent_instance_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO agents_instances (id, session_id, agent_id, labels)
+        VALUES ($1, $2, 'claude-workflow', '{}'::jsonb)
+        """,
+        agent_instance_id,
+        session_id,
+    )
+    return {"session_id": session_id, "agent_instance_id": agent_instance_id}
+
+
+@pytest_asyncio.fixture
 async def fresh_db() -> AsyncIterator[Connection]:
     await reset_schema_and_migrate()
     pool = await get_pool()

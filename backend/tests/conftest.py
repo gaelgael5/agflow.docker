@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import AsyncIterator
+from uuid import UUID, uuid4
 
 import bcrypt
 import pytest
+import pytest_asyncio
+from asyncpg import Connection
 from fastapi.testclient import TestClient
 
 # Compute a real bcrypt hash of "correct-password" for the test admin
@@ -31,7 +35,10 @@ os.environ.setdefault(
     os.path.join(tempfile.gettempdir(), "agflow_test_data"),
 )
 
+from agflow.db.pool import get_pool  # noqa: E402
 from agflow.main import create_app  # noqa: E402
+from tests._db_reset import reset_schema_and_migrate  # noqa: E402
+from tests._vault_mock import vault_mock  # noqa: E402, F401
 
 
 @pytest.fixture
@@ -58,8 +65,56 @@ async def _close_pool_at_session_end():
     yield
 
 
-# Re-export `vault_mock` au niveau conftest : auto-disponible dans tous
-# les tests qui font `def test_xxx(vault_mock):` sans avoir besoin
-# d'importer la fixture dans chaque fichier (cf. pattern pytest standard).
-from tests._vault_mock import vault_mock  # noqa: E402, F401
+# ── Fixtures DB partagées (services/ et api/) ──────────────────────
+
+
+@pytest_asyncio.fixture
+async def fresh_db() -> AsyncIterator[Connection]:
+    await reset_schema_and_migrate()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        yield conn
+
+
+@pytest_asyncio.fixture
+async def mock_session_and_agent(fresh_db: Connection) -> tuple[UUID, UUID]:
+    """Crée une api_key + session + agent_instance valides via INSERT direct."""
+    # API key
+    api_key_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO api_keys (id, name, prefix, key_hash, scopes)
+        VALUES ($1, 'test', 'agfd_test', 'bcrypt-hash', '{m2m:orchestrate}')
+        """,
+        api_key_id,
+    )
+    # Agents catalog entry (FK)
+    await fresh_db.execute(
+        """
+        INSERT INTO agents_catalog (slug)
+        VALUES ('claude-r1')
+        ON CONFLICT (slug) DO NOTHING
+        """,
+    )
+    # Session
+    session_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO sessions (id, api_key_id, expires_at)
+        VALUES ($1, $2, now() + interval '1 hour')
+        """,
+        session_id,
+        api_key_id,
+    )
+    # Agent instance
+    agent_instance_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO agents_instances (id, session_id, agent_id, labels)
+        VALUES ($1, $2, 'claude-r1', '{}'::jsonb)
+        """,
+        agent_instance_id,
+        session_id,
+    )
+    return session_id, agent_instance_id
 

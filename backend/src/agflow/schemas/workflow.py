@@ -123,3 +123,23 @@ class HmacKeyCreateResponse(BaseModel):
     key_id: str
     description: str
     created_at: str
+
+
+# ── Task status (#10) ──────────────────────────────────────────────
+
+
+class TaskStatusResponse(BaseModel):
+    """Shape conforme contrat v5 §3.7 + champs de corrélation pour ag.flow recovery."""
+
+    task_id: UUID
+    kind: str
+    status: str = Field(description="pending | running | completed | failed | cancelled")
+    session_id: UUID | None = None
+    agent_instance_id: UUID | None = None
+    agflow_correlation_id: UUID | None = None
+    agflow_action_execution_id: UUID | None = None
+    result: dict[str, Any] | None = None
+    error: dict[str, Any] | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    created_at: str

@@ -87,8 +87,9 @@ async def get_by_id(task_id: UUID) -> dict | None:
     row = await fetch_one(
         """
         SELECT id, kind, status, session_id, agent_instance_id,
-               agflow_correlation_id, result, error,
-               created_at, completed_at
+               agflow_correlation_id, agflow_action_execution_id,
+               result, error,
+               created_at, started_at, completed_at
         FROM tasks
         WHERE id = $1
         """,
@@ -103,9 +104,11 @@ async def get_by_id(task_id: UUID) -> dict | None:
         "session_id": row["session_id"],
         "agent_instance_id": row["agent_instance_id"],
         "agflow_correlation_id": row["agflow_correlation_id"],
+        "agflow_action_execution_id": row["agflow_action_execution_id"],
         "result": row["result"],
         "error": row["error"],
         "created_at": row["created_at"],
+        "started_at": row["started_at"],
         "completed_at": row["completed_at"],
     }
 

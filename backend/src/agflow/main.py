@@ -55,6 +55,7 @@ from agflow.api.admin.user_secrets import router as admin_user_secrets_router
 from agflow.api.admin.users import router as admin_users_router
 from agflow.api.admin.workflow_runtimes import router as admin_workflow_runtimes_router
 from agflow.api.admin.workflow_sessions import router as admin_workflow_sessions_router
+from agflow.api.admin.workflow_tasks import router as admin_workflow_tasks_router
 from agflow.api.health import router as health_router
 from agflow.api.infra.categories import router as infra_categories_router
 from agflow.api.infra.certificates import router as infra_certificates_router
@@ -370,6 +371,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_hmac_keys_router)
     app.include_router(admin_workflow_runtimes_router)
     app.include_router(admin_workflow_sessions_router)
+    app.include_router(admin_workflow_tasks_router)
     app.include_router(infra_categories_router)
     app.include_router(infra_named_types_router)
     app.include_router(infra_named_type_actions_router)

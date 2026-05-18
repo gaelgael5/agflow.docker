@@ -86,6 +86,9 @@ from agflow.services.git_sync_scheduler import stop as _git_sync_scheduler_stop
 from agflow.services.oauth_pending_reaper import run_reaper_loop as _run_oauth_pending_reaper_loop
 from agflow.workers.agent_reaper import run_agent_reaper_loop as _run_agent_reaper_loop
 from agflow.workers.docker_reconciler import run_docker_reconciliation
+from agflow.workers.hook_dispatcher_worker import (
+    run_hook_dispatcher_loop as _run_hook_dispatcher_loop,
+)
 from agflow.workers.mom_reclaimer import run_mom_reclaimer_loop as _run_mom_reclaimer_loop
 from agflow.workers.provisioning_worker import (
     run_provisioning_worker_loop as _run_provisioning_worker_loop,
@@ -93,6 +96,9 @@ from agflow.workers.provisioning_worker import (
 from agflow.workers.session_expiry import run_expiry_loop as _run_expiry_loop
 from agflow.workers.session_idle_reaper import (
     run_session_idle_reaper_loop as _run_session_idle_reaper_loop,
+)
+from agflow.workers.task_completed_consumer import (
+    run_task_completed_consumer_loop as _run_task_completed_consumer_loop,
 )
 
 
@@ -205,7 +211,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.warning("docker_reconciler.startup_failed", error=str(exc))
 
     # Démarrage des workers de fond
-    _stops = [_asyncio.Event() for _ in range(6)]
+    _stops = [_asyncio.Event() for _ in range(8)]
     _tasks = [
         _asyncio.create_task(_run_expiry_loop(_stops[0])),
         _asyncio.create_task(_run_agent_reaper_loop(_stops[1])),
@@ -215,6 +221,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _asyncio.create_task(_run_oauth_pending_reaper_loop(_stops[4])),
         # Provisioning worker (traitement des runtimes en attente)
         _asyncio.create_task(_run_provisioning_worker_loop(_stops[5])),
+        # T3 nouveaux workers :
+        _asyncio.create_task(_run_task_completed_consumer_loop(_stops[6])),
+        _asyncio.create_task(_run_hook_dispatcher_loop(_stops[7])),
     ]
     # Backup scheduler (APScheduler gère son propre shutdown)
     await _backup_scheduler_start()

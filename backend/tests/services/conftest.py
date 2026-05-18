@@ -13,6 +13,20 @@ from tests._db_reset import reset_schema_and_migrate
 
 
 @pytest_asyncio.fixture
+async def mock_hmac_key(fresh_db: Connection) -> str:
+    """Crée une hmac_key Fernet-chiffrée réelle. Retourne le key_id (str)."""
+    from agflow.services import hmac_keys_service
+
+    key_id = f"test-key-{uuid4().hex[:8]}"
+    await hmac_keys_service.create(
+        key_id=key_id,
+        secret_hex="0123456789abcdef" * 4,
+        description="fixture",
+    )
+    return key_id
+
+
+@pytest_asyncio.fixture
 async def fresh_db() -> AsyncIterator[Connection]:
     await reset_schema_and_migrate()
     pool = await get_pool()

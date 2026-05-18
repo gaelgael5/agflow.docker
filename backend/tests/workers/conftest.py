@@ -280,7 +280,14 @@ async def mock_pending_saas_runtime(fresh_db: Connection) -> dict:
         group_id,
     )
 
-    user_id = uuid4()
+    user_id = await fresh_db.fetchval(
+        """
+        INSERT INTO users (email, role, status)
+        VALUES ($1, 'admin', 'active')
+        RETURNING id
+        """,
+        f"saas-fixture-{uuid4()}@test.local",
+    )
     runtime_id = uuid4()
     await fresh_db.execute(
         """

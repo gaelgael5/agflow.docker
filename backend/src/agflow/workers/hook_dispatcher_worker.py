@@ -33,6 +33,19 @@ _HTTP_TIMEOUT_S = 10.0
 _NON_RETRYABLE_4XX = frozenset({400, 401, 403, 404, 422})  # 408/429 sont retryables
 
 
+def _safe_response_excerpt(response: httpx.Response, limit: int = 200) -> str:
+    """Extrait jusqu'à `limit` octets du corps de la réponse en mode tolérant.
+
+    Évite UnicodeDecodeError si le corps n'est pas UTF-8 valide (ex: HTML mal
+    encodé, binaire). Toujours retourne un string même sur corps non décodable.
+    """
+    try:
+        content = response.content[:limit]
+        return content.decode("utf-8", errors="replace")
+    except Exception:
+        return f"<unreadable response body, {len(response.content)} bytes>"
+
+
 async def process_batch() -> None:
     hooks = await outbound_hooks_service.claim_pending(limit=10)
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S) as client:
@@ -43,8 +56,21 @@ async def process_batch() -> None:
 async def _process_hook(client: httpx.AsyncClient, hook: dict) -> None:
     hook_id: UUID = hook["hook_id"]
 
-    # Charge le secret HMAC
-    key = await hmac_keys_service.get_by_key_id(hook["hmac_key_id"])
+    # Charge le secret HMAC (peut lever si Fernet token corrompu)
+    try:
+        key = await hmac_keys_service.get_by_key_id(hook["hmac_key_id"])
+    except Exception as exc:
+        _log.exception(
+            "workflow.hook_dispatcher.hmac_key_load_failed",
+            hook_id=str(hook_id),
+            hmac_key_id=hook["hmac_key_id"],
+        )
+        await outbound_hooks_service.mark_dead(
+            hook_id=hook_id,
+            error_message=f"hmac key load failed: {exc!s}",
+        )
+        return
+
     if key is None:
         await outbound_hooks_service.mark_dead(
             hook_id=hook_id,
@@ -97,14 +123,14 @@ async def _process_hook(client: httpx.AsyncClient, hook: dict) -> None:
     if status_code in _NON_RETRYABLE_4XX:
         await outbound_hooks_service.mark_dead(
             hook_id=hook_id,
-            error_message=f"non-retryable {status_code}: {response.text[:200]}",
+            error_message=f"non-retryable {status_code}: {_safe_response_excerpt(response)}",
         )
         return
     # 5xx, 408, 429 → retry
     await outbound_hooks_service.schedule_retry(
         hook_id=hook_id,
         response_code=status_code,
-        error_message=f"{status_code}: {response.text[:200]}",
+        error_message=f"{status_code}: {_safe_response_excerpt(response)}",
     )
 
 

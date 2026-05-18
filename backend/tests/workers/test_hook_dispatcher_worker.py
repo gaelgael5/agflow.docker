@@ -133,3 +133,27 @@ async def test_dispatcher_max_attempts_marks_dead(fresh_db, mock_pending_hook):
         "SELECT status FROM outbound_hooks WHERE hook_id = $1", hook_id
     )
     assert row["status"] == "dead"
+
+
+async def test_dispatcher_marks_dead_on_unknown_hmac_key(
+    fresh_db, mock_pending_hook
+):
+    """Si la hmac_key référencée par le hook a été supprimée, le hook est mark_dead."""
+    from agflow.workers import hook_dispatcher_worker
+
+    hook_id = mock_pending_hook["hook_id"]
+    # Supprime la hmac_key référencée par le hook → get_by_key_id retournera None
+    await fresh_db.execute(
+        "DELETE FROM hmac_keys WHERE key_id = $1",
+        mock_pending_hook["hmac_key_id"],
+    )
+
+    # Pas besoin de respx — le worker ne POSTera pas car la clé manque
+    await hook_dispatcher_worker.process_batch()
+
+    row = await fresh_db.fetchrow(
+        "SELECT status, error_message FROM outbound_hooks WHERE hook_id = $1",
+        hook_id,
+    )
+    assert row["status"] == "dead"
+    assert "not found" in row["error_message"]

@@ -81,3 +81,42 @@ async def mock_runtime_with_instances(fresh_db: Connection) -> dict:
         "project_id": project_id,
         "instance_ids": instance_ids,
     }
+
+
+@pytest_asyncio.fixture
+async def mock_project_with_resources(fresh_db: Connection) -> dict:
+    """Crée un projet + 1 group + 2 instances (wiki, repo).
+
+    Ne crée PAS de project_runtime — provision_runtime le fera dans les tests.
+    Retourne {'project_id': UUID, 'resources_count': 2}.
+    """
+    project_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO projects (id, display_name, description, network)
+        VALUES ($1, 'Test Project', 'desc', 'agflow')
+        """,
+        project_id,
+    )
+    group_id = uuid4()
+    await fresh_db.execute(
+        """
+        INSERT INTO groups (id, project_id, name, max_agents)
+        VALUES ($1, $2, 'main', 5)
+        """,
+        group_id,
+        project_id,
+    )
+    for name in ["wiki", "repo"]:
+        await fresh_db.execute(
+            """
+            INSERT INTO instances (
+                id, group_id, instance_name, catalog_id, status, provisioning_status
+            )
+            VALUES (gen_random_uuid(), $1, $2, $3, 'active', 'ready')
+            """,
+            group_id,
+            f"{name}-1",
+            name,
+        )
+    return {"project_id": project_id, "resources_count": 2}

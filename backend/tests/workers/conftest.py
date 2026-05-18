@@ -343,6 +343,28 @@ async def mock_pending_workflow_runtime_with_pending_setup(fresh_db: Connection)
 
 
 @pytest_asyncio.fixture
+async def mock_pending_hook(fresh_db: Connection, mock_hmac_key: str) -> dict:
+    """Crée une outbound_hooks row pending pour les tests dispatcher."""
+    from uuid import uuid4
+
+    from agflow.services import outbound_hooks_service
+
+    hook_id = uuid4()
+    await outbound_hooks_service.enqueue(
+        hook_id=hook_id,
+        task_id=uuid4(),
+        callback_url="http://test.local/hook",
+        hmac_key_id=mock_hmac_key,
+        payload={"status": "completed", "summary": "test"},
+    )
+    return {
+        "hook_id": hook_id,
+        "callback_url": "http://test.local/hook",
+        "hmac_key_id": mock_hmac_key,
+    }
+
+
+@pytest_asyncio.fixture
 async def mock_pending_saas_runtime(fresh_db: Connection) -> dict:
     """Crée 1 projet + 1 group + 1 instance + 1 project_runtime (user_id=<uuid>).
 

@@ -53,6 +53,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.7",
     "mypy>=1.13",
+    "respx>=0.21",
 ]
 
 [tool.pytest.ini_options]

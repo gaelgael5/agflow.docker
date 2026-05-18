@@ -7,6 +7,12 @@ Conforme docs/contracts/hook-docker-task-completed.md §3.1 :
     header_value  = "hmac-sha256=" + signature_hex
 
 Le secret arrive ici en clair hex (déchiffré par hmac_keys_service.get_by_key_id).
+
+**Convention secret = `secret_hex.encode()` (UTF-8 du string hex)**, PAS
+`bytes.fromhex(secret_hex)`. Cette convention est figée par le code de
+référence côté ag.flow (mock receiver `docs/contracts/mock-docker/`,
+3 fichiers cohérents). Toute modification doit être coordonnée avec ag.flow
+pour préserver l'interopérabilité.
 """
 from __future__ import annotations
 

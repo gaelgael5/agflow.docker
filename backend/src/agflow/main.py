@@ -85,6 +85,9 @@ from agflow.services.backup_scheduler import stop as _backup_scheduler_stop
 from agflow.services.git_sync_scheduler import start as _git_sync_scheduler_start
 from agflow.services.git_sync_scheduler import stop as _git_sync_scheduler_stop
 from agflow.services.oauth_pending_reaper import run_reaper_loop as _run_oauth_pending_reaper_loop
+from agflow.services.pitr_basebackup_service import ensure_stanza as _pitr_ensure_stanza
+from agflow.services.pitr_scheduler import start as _pitr_scheduler_start
+from agflow.services.pitr_scheduler import stop as _pitr_scheduler_stop
 from agflow.workers.agent_reaper import run_agent_reaper_loop as _run_agent_reaper_loop
 from agflow.workers.docker_reconciler import run_docker_reconciliation
 from agflow.workers.hook_dispatcher_worker import (
@@ -230,9 +233,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await _backup_scheduler_start()
     # Git Sync scheduler (APScheduler dédié, séparé du backup_scheduler)
     await _git_sync_scheduler_start()
+    # PITR : init pgBackRest stanza puis démarre le scheduler dédié.
+    # ensure_stanza peut échouer si pgBackRest n'est pas encore disponible (LXC en cours
+    # de build, image custom pas encore déployée) — on n'empêche pas le boot dans ce cas,
+    # le scheduler rétentera via le job basebackup quotidien.
+    try:
+        await _pitr_ensure_stanza()
+    except Exception as _exc:
+        log.warning("pitr.ensure_stanza_failed_at_startup", error=str(_exc))
+    await _pitr_scheduler_start()
     yield
     log.info("app.shutdown")
     # Arrêt des schedulers en premier (avant la fermeture des autres ressources)
+    await _pitr_scheduler_stop()
     await _git_sync_scheduler_stop()
     await _backup_scheduler_stop()
     for _stop in _stops:

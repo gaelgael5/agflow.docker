@@ -3,11 +3,17 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import httpx
 import structlog
 from harpocrate.exceptions import VaultHttpError
 
 from agflow.db.pool import execute, fetch_one
-from agflow.schemas.auth_config import AuthConfigOut, AuthConfigUpdate
+from agflow.schemas.auth_config import (
+    AuthConfigOut,
+    AuthConfigUpdate,
+    AuthTestRequest,
+    AuthTestResult,
+)
 from agflow.services import harpocrate_vaults_service, vault_client
 
 log = structlog.get_logger(__name__)
@@ -149,3 +155,93 @@ async def update_config(
         actor_user_id=str(actor_user_id) if actor_user_id else None,
     )
     return await get_config()
+
+
+async def test_connection(payload: AuthTestRequest) -> AuthTestResult:
+    """Teste la connexion Keycloak en 2 étapes : discovery + client_credentials grant.
+
+    Si payload.keycloak_client_secret est vide, lit le secret actuel via le
+    ref stocké en DB (permet de tester une modif partielle, ex: changer juste l'URL).
+    """
+    # Résolution du secret
+    secret = payload.keycloak_client_secret
+    if not secret:
+        cfg_internal = await get_config_internal()
+        ref = cfg_internal["keycloak_client_secret_ref"]
+        if ref:
+            try:
+                secret = await vault_client.resolve_ref(ref)
+            except Exception as exc:
+                return AuthTestResult(
+                    ok=False,
+                    step="discovery",
+                    discovery_ok=False,
+                    token_ok=False,
+                    detail=f"impossible de récupérer le secret depuis le vault : {exc}",
+                )
+        else:
+            return AuthTestResult(
+                ok=False,
+                step="discovery",
+                discovery_ok=False,
+                token_ok=False,
+                detail="client_secret non fourni et aucun secret enregistré en DB",
+            )
+
+    base = f"{payload.keycloak_url.rstrip('/')}/realms/{payload.keycloak_realm}"
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        # Step 1 : discovery
+        try:
+            r = await client.get(f"{base}/.well-known/openid-configuration")
+            if r.status_code != 200:
+                return AuthTestResult(
+                    ok=False,
+                    step="discovery",
+                    discovery_ok=False,
+                    token_ok=False,
+                    detail=f"discovery HTTP {r.status_code} : {r.text[:200]}",
+                )
+        except httpx.RequestError as exc:
+            return AuthTestResult(
+                ok=False,
+                step="discovery",
+                discovery_ok=False,
+                token_ok=False,
+                detail=f"discovery unreachable : {exc}",
+            )
+
+        # Step 2 : token
+        try:
+            r = await client.post(
+                f"{base}/protocol/openid-connect/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": payload.keycloak_client_id,
+                    "client_secret": secret,
+                },
+            )
+            if r.status_code != 200:
+                return AuthTestResult(
+                    ok=False,
+                    step="token",
+                    discovery_ok=True,
+                    token_ok=False,
+                    detail=f"token HTTP {r.status_code} : {r.text[:200]}",
+                )
+        except httpx.RequestError as exc:
+            return AuthTestResult(
+                ok=False,
+                step="token",
+                discovery_ok=True,
+                token_ok=False,
+                detail=f"token unreachable : {exc}",
+            )
+
+    return AuthTestResult(
+        ok=True,
+        step="done",
+        discovery_ok=True,
+        token_ok=True,
+        detail="connexion OK : discovery + client_credentials grant validés",
+    )

@@ -28,6 +28,7 @@ from agflow.api.admin.hmac_keys import router as admin_hmac_keys_router
 from agflow.api.admin.image_registries import router as admin_image_registries_router
 from agflow.api.admin.local_backups import router as admin_local_backups_router
 from agflow.api.admin.mcp_catalog import router as admin_mcp_catalog_router
+from agflow.api.admin.pitr import router as admin_pitr_router
 from agflow.api.admin.platform_config import router as admin_platform_config_router
 from agflow.api.admin.product_instances import router as admin_product_instances_router
 from agflow.api.admin.products import router as admin_products_router
@@ -360,6 +361,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_ai_providers_router)
     app.include_router(admin_image_registries_router)
     app.include_router(admin_platform_config_router)
+    app.include_router(admin_pitr_router)
     app.include_router(admin_products_router)
     app.include_router(admin_projects_router)
     app.include_router(admin_groups_router)

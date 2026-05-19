@@ -13,12 +13,20 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 
 from agflow.auth.dependencies import require_admin
-from agflow.schemas.pitr import BasebackupSummary, PitrConfigOut, PitrConfigUpdate
+from agflow.schemas.pitr import (
+    BasebackupSummary,
+    PitrConfigOut,
+    PitrConfigUpdate,
+    RestoreWindow,
+    WalStatus,
+)
 from agflow.services import (
     pitr_basebackup_pushes_service,
     pitr_basebackup_service,
     pitr_config_service,
+    pitr_restore_service,
     pitr_scheduler,
+    pitr_wal_archive_service,
 )
 
 router = APIRouter(
@@ -123,3 +131,26 @@ async def push_basebackup_endpoint(
     except pitr_basebackup_service.BasebackupNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "queued"}
+
+
+# ---------------------------------------------------------------------------
+# WAL status + restore window
+# ---------------------------------------------------------------------------
+
+
+@router.get("/wal-status", response_model=WalStatus)
+async def get_wal_status() -> WalStatus:
+    """Current WAL archiving state, last archive timestamp, disk usage."""
+    return await pitr_wal_archive_service.get_wal_status()
+
+
+@router.get("/restore-window", response_model=RestoreWindow)
+async def get_restore_window() -> RestoreWindow:
+    """[earliest, latest] window of restorable points in time."""
+    try:
+        return await pitr_restore_service.get_restore_window()
+    except pitr_restore_service.RestoreWindowEmptyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="no basebackup with a valid recovery window",
+        ) from exc

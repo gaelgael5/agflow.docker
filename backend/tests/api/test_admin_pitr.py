@@ -1,4 +1,4 @@
-"""Tests pour /api/admin/pitr/config endpoints (GET + PUT) + basebackups (5 endpoints)."""
+"""Tests pour /api/admin/pitr/config endpoints (GET + PUT) + basebackups (5 endpoints) + WAL + restore-window."""
 from __future__ import annotations
 
 import os
@@ -331,4 +331,63 @@ def test_push_basebackup_404_basebackup_not_found(client: TestClient) -> None:
             f"/api/admin/pitr/basebackups/{uuid4()}/push/{uuid4()}",
             headers=_auth(_admin_token()),
         )
+    assert r.status_code == 404
+
+
+# ── WAL status + restore window ───────────────────────────────────────────
+
+
+def test_wal_status_returns_payload(client: TestClient) -> None:
+    from agflow.schemas.pitr import WalStatus
+
+    fake_status = WalStatus(
+        archiving_enabled=True,
+        last_archived_at=None,
+        archive_lag_seconds=None,
+        wal_disk_used_bytes=1_000_000,
+        wal_disk_free_bytes=50_000_000_000,
+    )
+    with patch(
+        "agflow.api.admin.pitr.pitr_wal_archive_service.get_wal_status",
+        new=AsyncMock(return_value=fake_status),
+    ):
+        r = client.get("/api/admin/pitr/wal-status", headers=_auth(_admin_token()))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["archiving_enabled"] is True
+    assert body["wal_disk_used_bytes"] == 1_000_000
+
+
+def test_wal_status_viewer_403(client: TestClient) -> None:
+    r = client.get("/api/admin/pitr/wal-status", headers=_auth(_viewer_token()))
+    assert r.status_code == 403
+
+
+def test_restore_window_returns_bounds(client: TestClient) -> None:
+    from datetime import timedelta
+
+    from agflow.schemas.pitr import RestoreWindow
+
+    earliest = datetime.now(UTC) - timedelta(days=7)
+    latest = datetime.now(UTC) - timedelta(hours=1)
+    fake_win = RestoreWindow(earliest=earliest, latest=latest)
+    with patch(
+        "agflow.api.admin.pitr.pitr_restore_service.get_restore_window",
+        new=AsyncMock(return_value=fake_win),
+    ):
+        r = client.get("/api/admin/pitr/restore-window", headers=_auth(_admin_token()))
+    assert r.status_code == 200
+    body = r.json()
+    assert "earliest" in body
+    assert "latest" in body
+
+
+def test_restore_window_404_when_empty(client: TestClient) -> None:
+    from agflow.services.pitr_restore_service import RestoreWindowEmptyError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_restore_service.get_restore_window",
+        new=AsyncMock(side_effect=RestoreWindowEmptyError("nope")),
+    ):
+        r = client.get("/api/admin/pitr/restore-window", headers=_auth(_admin_token()))
     assert r.status_code == 404

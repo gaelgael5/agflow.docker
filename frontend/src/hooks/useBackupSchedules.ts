@@ -5,6 +5,7 @@ import {
   type CreateFullPayload,
   type CreateSnapshotPayload,
   type FullScheduleSummary,
+  type ScheduleHistoryEntry,
   type SnapshotScheduleSummary,
   type UpdateFullPayload,
   type UpdateSnapshotPayload,
@@ -108,4 +109,26 @@ export function useSnapshotSchedules() {
     runNow: runNowMutation.mutateAsync,
     setEnabled: setEnabledMutation.mutateAsync,
   };
+}
+
+export function useFullScheduleHistory(scheduleId: string | undefined, enabled = true) {
+  return useQuery<ScheduleHistoryEntry[]>({
+    queryKey: ["backup-schedules", "full", scheduleId, "history"],
+    queryFn: () => {
+      if (!scheduleId) throw new Error("scheduleId required");
+      return backupSchedulesApi.listFullHistory(scheduleId);
+    },
+    enabled: enabled && !!scheduleId,
+  });
+}
+
+export function useSnapshotScheduleHistory(scheduleId: string | undefined, enabled = true) {
+  return useQuery<ScheduleHistoryEntry[]>({
+    queryKey: ["backup-schedules", "snapshot", scheduleId, "history"],
+    queryFn: () => {
+      if (!scheduleId) throw new Error("scheduleId required");
+      return backupSchedulesApi.listSnapshotHistory(scheduleId);
+    },
+    enabled: enabled && !!scheduleId,
+  });
 }

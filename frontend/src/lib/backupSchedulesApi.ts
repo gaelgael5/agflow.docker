@@ -65,6 +65,16 @@ export interface UpdateSnapshotPayload {
   enabled?: boolean;
 }
 
+export interface ScheduleHistoryEntry {
+  id: string;
+  filename: string;
+  file_path: string;
+  size_bytes: number | null;
+  status: "in_progress" | "completed" | "failed";
+  created_at: string;
+  created_by_user_id: string | null;
+}
+
 export const backupSchedulesApi = {
   // Full
   async listFull(): Promise<FullScheduleSummary[]> {
@@ -92,6 +102,12 @@ export const backupSchedulesApi = {
     );
     return r.data;
   },
+  async listFullHistory(id: string, limit = 50): Promise<ScheduleHistoryEntry[]> {
+    const r = await api.get<ScheduleHistoryEntry[]>(
+      `/admin/backup-schedules/full/${id}/history?limit=${limit}`,
+    );
+    return r.data;
+  },
 
   // Snapshot
   async listSnapshot(): Promise<SnapshotScheduleSummary[]> {
@@ -116,6 +132,12 @@ export const backupSchedulesApi = {
     const r = await api.post<SnapshotScheduleSummary>(
       `/admin/backup-schedules/snapshot/${id}/set-enabled`,
       { enabled },
+    );
+    return r.data;
+  },
+  async listSnapshotHistory(id: string, limit = 50): Promise<ScheduleHistoryEntry[]> {
+    const r = await api.get<ScheduleHistoryEntry[]>(
+      `/admin/backup-schedules/snapshot/${id}/history?limit=${limit}`,
     );
     return r.data;
   },

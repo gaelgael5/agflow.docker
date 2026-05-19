@@ -42,11 +42,20 @@ class GitSyncNotConfiguredError(Exception):
 
 
 class _ResolvedVaultClient:
-    """Wrapper trivial : la valeur est déjà résolue par le runner, le SDK
-    ne devrait jamais appeler .get() puisqu'on lui passe une valeur littérale."""
+    """Wrapper trivial : la valeur est déjà résolue par le runner.
+
+    Le SDK appelle `.resolve(ref)` via _VaultClientProtocol (cf.
+    sdk/git_sync/git_service.py:38 et sdk/git_sync/auth/factory.py:21).
+    Comme la valeur est déjà résolue, on retourne le secret littéral en
+    ignorant le `ref` passé.
+    """
 
     def __init__(self, resolved_value: str) -> None:
         self._value = resolved_value
+
+    async def resolve(self, ref: str) -> str:
+        # Valeur déjà résolue par le runner — ref ignoré.
+        return self._value
 
     def get(self, name: str) -> str:
         # Compat défensive — ne devrait jamais être appelé.

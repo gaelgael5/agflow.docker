@@ -1559,6 +1559,18 @@
       "historyColSize": "Taille",
       "historyColFilename": "Fichier"
     },
+    "restore": {
+      "button": "Restaurer cette sauvegarde",
+      "success": "Restauration terminée (exit code {{exit_code}}). Recharger l'application.",
+      "error": "Échec de la restauration : {{msg}}",
+      "dialog": {
+        "title": "Restaurer une sauvegarde",
+        "warning": "⚠ Cette opération écrasera la base de données actuelle. Toutes les données non sauvegardées seront perdues.",
+        "instructions": "Pour confirmer, retape le nom du fichier : {{filename}}",
+        "filenameLabel": "Nom du fichier",
+        "confirm": "Restaurer définitivement"
+      }
+    },
     "backupNow": {
       "button": "Sauvegarder maintenant",
       "running": "Création en cours…",

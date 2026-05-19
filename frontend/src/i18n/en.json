@@ -1552,6 +1552,18 @@
       "historyColSize": "Size",
       "historyColFilename": "File"
     },
+    "restore": {
+      "button": "Restore this backup",
+      "success": "Restore completed (exit code {{exit_code}}). Reload the application.",
+      "error": "Restore failed: {{msg}}",
+      "dialog": {
+        "title": "Restore a backup",
+        "warning": "⚠ This will overwrite the current database. Any unsaved data will be lost.",
+        "instructions": "To confirm, retype the filename: {{filename}}",
+        "filenameLabel": "Filename",
+        "confirm": "Restore definitively"
+      }
+    },
     "backupNow": {
       "button": "Backup now",
       "running": "Creating...",

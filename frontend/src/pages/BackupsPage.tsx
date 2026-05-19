@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 
 import { BackupNowButton } from "@/components/backups/BackupNowButton";
 import { FullSchedulesSection } from "@/components/backups/FullSchedulesSection";
-import { SnapshotSchedulesSection } from "@/components/backups/SnapshotSchedulesSection";
+import { PitrSection } from "@/components/backups/PitrSection";
 
 export function BackupsPage() {
   const { t } = useTranslation();
@@ -19,7 +19,7 @@ export function BackupsPage() {
       </div>
 
       <FullSchedulesSection />
-      <SnapshotSchedulesSection />
+      <PitrSection />
     </div>
   );
 }

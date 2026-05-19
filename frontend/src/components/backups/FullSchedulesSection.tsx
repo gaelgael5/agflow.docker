@@ -1,15 +1,18 @@
 import type { JSX } from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pencil, Play, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Pencil, Play, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
-import { useFullSchedules } from "@/hooks/useBackupSchedules";
+import { useFullScheduleHistory, useFullSchedules } from "@/hooks/useBackupSchedules";
 import type {
   FullScheduleSummary,
   CreateFullPayload,
   UpdateFullPayload,
 } from "@/lib/backupSchedulesApi";
+import type { Connection } from "@/components/backup-remotes/ConnectionModal";
+import { api } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +27,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -31,6 +41,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ScheduleHistoryTable } from "./ScheduleHistoryTable";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const PRESETS = [
   { key: "daily3am", expr: "0 3 * * *" },
@@ -39,12 +52,16 @@ const PRESETS = [
   { key: "weekly", expr: "0 4 * * 0" },
 ] as const;
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface FormState {
   id?: string;
   name: string;
   cron_expr: string;
   retention_count: number;
   enabled: boolean;
+  destination: "local" | "remote";
+  remote_connection_id: string | null;
 }
 
 const EMPTY: FormState = {
@@ -52,7 +69,11 @@ const EMPTY: FormState = {
   cron_expr: "0 3 * * *",
   retention_count: 10,
   enabled: true,
+  destination: "local",
+  remote_connection_id: null,
 };
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatLastRun(s: FullScheduleSummary, t: (k: string) => string): JSX.Element {
   if (!s.last_run_at) {
@@ -79,13 +100,29 @@ function formatLastRun(s: FullScheduleSummary, t: (k: string) => string): JSX.El
   );
 }
 
+// ─── Inner components ─────────────────────────────────────────────────────────
+
+function FullHistoryPanel({ scheduleId }: { scheduleId: string }) {
+  const { data, isLoading } = useFullScheduleHistory(scheduleId, true);
+  return <ScheduleHistoryTable entries={data} isLoading={isLoading} />;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export function FullSchedulesSection() {
   const { t } = useTranslation();
   const { schedules, isLoading, create, update, remove, runNow, setEnabled } =
     useFullSchedules();
+
+  const { data: connections = [] } = useQuery<Connection[]>({
+    queryKey: ["backup-remotes"],
+    queryFn: () => api.get<Connection[]>("/admin/backup-remotes").then((r) => r.data),
+  });
+
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [confirmDelete, setConfirmDelete] = useState<FullScheduleSummary | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const openCreate = () => {
     setForm(EMPTY);
@@ -99,6 +136,8 @@ export function FullSchedulesSection() {
       cron_expr: s.cron_expr,
       retention_count: s.retention_count,
       enabled: s.enabled,
+      destination: s.remote_connection_id ? "remote" : "local",
+      remote_connection_id: s.remote_connection_id,
     });
     setOpen(true);
   };
@@ -108,6 +147,8 @@ export function FullSchedulesSection() {
       toast.error(t("backups.schedules.runNowError", { msg: "name + cron required" }));
       return;
     }
+    const remote_connection_id =
+      form.destination === "remote" ? form.remote_connection_id : null;
     try {
       if (form.id) {
         const payload: UpdateFullPayload = {
@@ -115,6 +156,7 @@ export function FullSchedulesSection() {
           cron_expr: form.cron_expr,
           retention_count: form.retention_count,
           enabled: form.enabled,
+          remote_connection_id,
         };
         await update({ id: form.id, payload });
         toast.success(t("backups.schedules.updated"));
@@ -124,6 +166,7 @@ export function FullSchedulesSection() {
           cron_expr: form.cron_expr,
           retention_count: form.retention_count,
           enabled: form.enabled,
+          remote_connection_id,
         };
         await create(payload);
         toast.success(t("backups.schedules.created"));
@@ -162,6 +205,12 @@ export function FullSchedulesSection() {
     }
   };
 
+  const isSubmitDisabled =
+    !form.name ||
+    !form.cron_expr ||
+    (form.destination === "remote" && !form.remote_connection_id) ||
+    (form.destination === "remote" && connections.length === 0);
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -182,6 +231,7 @@ export function FullSchedulesSection() {
                 <TableHead>{t("backups.schedules.colName")}</TableHead>
                 <TableHead>{t("backups.schedules.colCron")}</TableHead>
                 <TableHead>{t("backups.schedules.colRetention")}</TableHead>
+                <TableHead>{t("backups.schedules.colDestination")}</TableHead>
                 <TableHead>{t("backups.schedules.colLastRun")}</TableHead>
                 <TableHead>{t("backups.schedules.enabled")}</TableHead>
                 <TableHead className="text-right">
@@ -191,47 +241,86 @@ export function FullSchedulesSection() {
             </TableHeader>
             <TableBody>
               {schedules.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-medium">{s.name}</TableCell>
-                  <TableCell className="font-mono text-xs">{s.cron_expr}</TableCell>
-                  <TableCell>{s.retention_count}</TableCell>
-                  <TableCell>{formatLastRun(s, t)}</TableCell>
-                  <TableCell>
-                    <input
-                      type="checkbox"
-                      checked={s.enabled}
-                      onChange={() => handleToggleEnabled(s)}
-                      className="h-4 w-4 rounded border-input"
-                      title={t("backups.schedules.toggleEnabled")}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right space-x-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRunNow(s)}
-                      title={t("backups.schedules.runNow")}
-                    >
-                      <Play className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEdit(s)}
-                      title={t("common.edit")}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setConfirmDelete(s)}
-                      title={t("common.delete")}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                <>
+                  <TableRow key={s.id}>
+                    <TableCell className="font-medium">{s.name}</TableCell>
+                    <TableCell className="font-mono text-xs">{s.cron_expr}</TableCell>
+                    <TableCell>{s.retention_count}</TableCell>
+                    <TableCell>
+                      {s.remote_connection_id ? (
+                        <Badge variant="outline">
+                          {connections.find((c) => c.id === s.remote_connection_id)?.name ??
+                            "—"}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">
+                          {t("backups.schedules.destinationLocal")}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{formatLastRun(s, t)}</TableCell>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={s.enabled}
+                        onChange={() => handleToggleEnabled(s)}
+                        className="h-4 w-4 rounded border-input"
+                        title={t("backups.schedules.toggleEnabled")}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right space-x-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setExpandedId(expandedId === s.id ? null : s.id)
+                        }
+                        title={
+                          expandedId === s.id
+                            ? t("backups.schedules.hideHistory")
+                            : t("backups.schedules.viewHistory")
+                        }
+                      >
+                        {expandedId === s.id ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRunNow(s)}
+                        title={t("backups.schedules.runNow")}
+                      >
+                        <Play className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(s)}
+                        title={t("common.edit")}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmDelete(s)}
+                        title={t("common.delete")}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                  {expandedId === s.id && (
+                    <TableRow key={`${s.id}-history`}>
+                      <TableCell colSpan={7} className="bg-muted/30 p-2">
+                        <FullHistoryPanel scheduleId={s.id} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </>
               ))}
             </TableBody>
           </Table>
@@ -303,6 +392,65 @@ export function FullSchedulesSection() {
                 {t("backups.schedules.formRetentionHint")}
               </p>
             </div>
+            <div>
+              <Label htmlFor="full-destination">
+                {t("backups.schedules.formDestinationLabel")}
+              </Label>
+              <Select
+                value={form.destination}
+                onValueChange={(v) =>
+                  setForm((f) => ({
+                    ...f,
+                    destination: v as "local" | "remote",
+                    remote_connection_id: v === "local" ? null : f.remote_connection_id,
+                  }))
+                }
+              >
+                <SelectTrigger id="full-destination">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="local">
+                    {t("backups.schedules.destinationLocal")}
+                  </SelectItem>
+                  <SelectItem value="remote">
+                    {t("backups.schedules.destinationRemote")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {form.destination === "remote" && (
+              <div>
+                <Label htmlFor="full-remote-conn">
+                  {t("backups.schedules.formRemoteConnectionLabel")}
+                </Label>
+                {connections.length === 0 ? (
+                  <p className="text-xs text-destructive mt-1">
+                    {t("backups.schedules.formRemoteConnectionNone")}
+                  </p>
+                ) : (
+                  <Select
+                    value={form.remote_connection_id ?? ""}
+                    onValueChange={(v) =>
+                      setForm((f) => ({ ...f, remote_connection_id: v || null }))
+                    }
+                  >
+                    <SelectTrigger id="full-remote-conn">
+                      <SelectValue
+                        placeholder={t("backups.schedules.formRemoteConnectionPlaceholder")}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {connections.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <input
                 id="full-enabled"
@@ -322,10 +470,7 @@ export function FullSchedulesSection() {
             <Button variant="ghost" onClick={() => setOpen(false)}>
               {t("backups.schedules.cancel")}
             </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={!form.name || !form.cron_expr}
-            >
+            <Button onClick={handleSubmit} disabled={isSubmitDisabled}>
               {t("backups.schedules.save")}
             </Button>
           </DialogFooter>

@@ -90,3 +90,18 @@ class SnapshotScheduleUpdate(BaseModel):
     remote_connection_id: UUID | None = None
     retention_count: int | None = Field(default=None, ge=1)
     enabled: bool | None = None
+
+
+# ── History ────────────────────────────────────────────────────────────
+
+
+class ScheduleHistoryEntry(BaseModel):
+    """One backup row attached to a schedule — for the history view."""
+
+    id: UUID
+    filename: str
+    file_path: str
+    size_bytes: int | None
+    status: str  # 'in_progress' | 'completed' | 'failed'
+    created_at: datetime
+    created_by_user_id: UUID | None

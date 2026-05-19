@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from agflow.auth.dependencies import require_admin
@@ -14,6 +14,7 @@ from agflow.schemas.backup_schedules import (
     FullScheduleCreate,
     FullScheduleSummary,
     FullScheduleUpdate,
+    ScheduleHistoryEntry,
     SnapshotScheduleCreate,
     SnapshotScheduleSummary,
     SnapshotScheduleUpdate,
@@ -101,6 +102,21 @@ async def run_now_full(schedule_id: UUID) -> dict:
     return {"triggered": True}
 
 
+@router.get(
+    "/full/{schedule_id}/history",
+    response_model=list[ScheduleHistoryEntry],
+)
+async def get_full_history(
+    schedule_id: UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[ScheduleHistoryEntry]:
+    try:
+        await svc.get_full_schedule(schedule_id)
+    except svc.ScheduleNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return await svc.list_history_full(schedule_id, limit=limit)
+
+
 @router.post("/full/{schedule_id}/set-enabled", response_model=FullScheduleSummary)
 async def set_full_enabled(
     schedule_id: UUID, payload: SetEnabledRequest,
@@ -164,6 +180,21 @@ async def run_now_snapshot(schedule_id: UUID) -> dict:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     await backup_scheduler.trigger_now(schedule_id=schedule_id, kind="snapshot")
     return {"triggered": True}
+
+
+@router.get(
+    "/snapshot/{schedule_id}/history",
+    response_model=list[ScheduleHistoryEntry],
+)
+async def get_snapshot_history(
+    schedule_id: UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[ScheduleHistoryEntry]:
+    try:
+        await svc.get_snapshot_schedule(schedule_id)
+    except svc.ScheduleNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return await svc.list_history_snapshot(schedule_id, limit=limit)
 
 
 @router.post("/snapshot/{schedule_id}/set-enabled", response_model=SnapshotScheduleSummary)

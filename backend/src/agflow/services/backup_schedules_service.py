@@ -17,6 +17,7 @@ from agflow.schemas.backup_schedules import (
     FullScheduleCreate,
     FullScheduleSummary,
     FullScheduleUpdate,
+    ScheduleHistoryEntry,
     SnapshotScheduleCreate,
     SnapshotScheduleSummary,
     SnapshotScheduleUpdate,
@@ -369,3 +370,40 @@ async def prune_old_backups(
             schedule_id=str(schedule_id), kind=kind, deleted=deleted,
         )
     return deleted
+
+
+# ── History ────────────────────────────────────────────────────────────
+
+
+async def list_history_full(schedule_id: UUID, limit: int = 50) -> list[ScheduleHistoryEntry]:
+    """Liste les runs (local_backups) attachés à une full schedule."""
+    rows = await fetch_all(
+        """
+        SELECT id, filename, file_path, size_bytes, status,
+               created_at, created_by_user_id
+        FROM local_backups
+        WHERE source_schedule_full_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        schedule_id,
+        limit,
+    )
+    return [ScheduleHistoryEntry(**dict(r)) for r in rows]
+
+
+async def list_history_snapshot(schedule_id: UUID, limit: int = 50) -> list[ScheduleHistoryEntry]:
+    """Liste les runs (local_backups) attachés à une snapshot schedule."""
+    rows = await fetch_all(
+        """
+        SELECT id, filename, file_path, size_bytes, status,
+               created_at, created_by_user_id
+        FROM local_backups
+        WHERE source_schedule_snapshot_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        schedule_id,
+        limit,
+    )
+    return [ScheduleHistoryEntry(**dict(r)) for r in rows]

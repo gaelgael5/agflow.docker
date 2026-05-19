@@ -1,7 +1,7 @@
-"""PITR basebackup service — stanza init + list/get/trigger operations.
+"""PITR basebackup service — stanza init + list/get/trigger + delete.
 
-Operations for delete/push/prune come in later tasks (T10+) to keep
-this file under 300 lines per CLAUDE.md.
+Push/prune operations live in pitr_basebackup_pushes_service.py to keep
+both files under 300 lines per CLAUDE.md.
 """
 from __future__ import annotations
 
@@ -36,6 +36,10 @@ class BasebackupRunningError(RuntimeError):
 
 class BasebackupNotFoundError(LookupError):
     """Raised when a basebackup UUID doesn't exist."""
+
+
+class BasebackupIsLastError(RuntimeError):
+    """Raised when trying to delete the only OK basebackup remaining."""
 
 
 # ---------------------------------------------------------------------------
@@ -244,3 +248,49 @@ async def trigger_basebackup_now(*, actor_user_id: UUID | None = None) -> UUID:
 
     await _seed_pushes_for_basebackup(bid)
     return bid
+
+
+# ---------------------------------------------------------------------------
+# Delete
+# ---------------------------------------------------------------------------
+
+
+async def delete_basebackup(basebackup_id: UUID) -> None:
+    """Delete a basebackup row. Refuses if it's the only OK one remaining.
+
+    Pushes are deleted first because the FK on pitr_basebackup_pushes.basebackup_id
+    is RESTRICT (not CASCADE). The caller (API) may also delete pushes beforehand
+    if needed; the DELETE below is idempotent if pushes are already gone.
+    """
+    bb = await fetch_one(
+        "SELECT id, pgbackrest_label FROM pitr_basebackups "
+        "WHERE id = $1 AND status = 'ok'",
+        basebackup_id,
+    )
+    if bb is None:
+        raise BasebackupNotFoundError(str(basebackup_id))
+
+    count_row = await fetch_one(
+        "SELECT count(*)::int AS n FROM pitr_basebackups WHERE status = 'ok'"
+    )
+    if count_row is None or count_row["n"] <= 1:
+        raise BasebackupIsLastError(str(basebackup_id))
+
+    # Remove dependent pushes first (FK is RESTRICT — not CASCADE)
+    await execute(
+        "DELETE FROM pitr_basebackup_pushes WHERE basebackup_id = $1",
+        basebackup_id,
+    )
+
+    code, _, err = await _pg_exec(
+        ["--stanza=" + STANZA, "expire", f"--set={bb['pgbackrest_label']}"]
+    )
+    if code != 0:
+        raise RuntimeError(f"pgbackrest expire failed: {err}")
+
+    await execute("DELETE FROM pitr_basebackups WHERE id = $1", basebackup_id)
+    log.info(
+        "pitr.basebackup.deleted",
+        basebackup_id=str(basebackup_id),
+        label=bb["pgbackrest_label"],
+    )

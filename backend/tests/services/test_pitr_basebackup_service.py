@@ -1,4 +1,4 @@
-"""Tests pour pitr_basebackup_service — ensure_stanza + list/get/trigger."""
+"""Tests pour pitr_basebackup_service — ensure_stanza + list/get/trigger + delete."""
 from __future__ import annotations
 
 import json
@@ -7,8 +7,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from agflow.db.pool import fetch_one as _fetch_one
 from agflow.services import pitr_basebackup_service
 from agflow.services.pitr_basebackup_service import (
+    BasebackupIsLastError,
     BasebackupNotFoundError,
     BasebackupRunningError,
 )
@@ -112,3 +114,53 @@ async def test_trigger_basebackup_now_raises_if_already_running():
 
     with pytest.raises(BasebackupRunningError):
         await pitr_basebackup_service.trigger_basebackup_now(actor_user_id=None)
+
+
+# ---------------------------------------------------------------------------
+# delete_basebackup
+# ---------------------------------------------------------------------------
+
+
+async def _insert_ok_basebackup(label: str) -> UUID:
+    """Insert a single OK basebackup row and return its UUID."""
+    row = await _fetch_one(
+        "INSERT INTO pitr_basebackups (pgbackrest_label, started_at, completed_at, status) "
+        "VALUES ($1, now(), now(), 'ok') RETURNING id",
+        label,
+    )
+    assert row is not None
+    return row["id"]
+
+
+async def test_delete_basebackup_refuses_if_only_one():
+    """delete_basebackup doit lever BasebackupIsLastError s'il ne reste qu'un OK."""
+    await reset_schema_and_migrate()
+    bb_id = await _insert_ok_basebackup("20260520-030000F")
+
+    with pytest.raises(BasebackupIsLastError):
+        await pitr_basebackup_service.delete_basebackup(bb_id)
+
+
+async def test_delete_basebackup_ok_when_multiple():
+    """delete_basebackup doit supprimer le plus ancien quand il en reste >= 2."""
+    await reset_schema_and_migrate()
+    older_id = await _insert_ok_basebackup("20260518-030000F")
+    newer_id = await _insert_ok_basebackup("20260519-030000F")
+
+    mock_exec = AsyncMock(return_value=(0, "", ""))
+    with patch("agflow.services.pitr_basebackup_service._pg_exec", mock_exec):
+        await pitr_basebackup_service.delete_basebackup(older_id)
+
+    remaining = await pitr_basebackup_service.list_basebackups()
+    assert {b.id for b in remaining} == {newer_id}
+    # pgbackrest expire must have been called with the correct label
+    expire_call_args = mock_exec.call_args_list[0].args[0]
+    assert "expire" in expire_call_args
+    assert any("20260518-030000F" in a for a in expire_call_args)
+
+
+async def test_delete_basebackup_404_if_missing():
+    """delete_basebackup doit lever BasebackupNotFoundError pour un UUID inconnu."""
+    await reset_schema_and_migrate()
+    with pytest.raises(BasebackupNotFoundError):
+        await pitr_basebackup_service.delete_basebackup(uuid4())

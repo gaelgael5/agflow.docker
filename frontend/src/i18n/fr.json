@@ -1636,7 +1636,8 @@
     "sidebar": "Paramètres",
     "tabs": {
       "harpocrate": "Harpocrate",
-      "gitSync": "Git Sync"
+      "gitSync": "Git Sync",
+      "auth": "Authentification"
     },
     "harpocrate": {
       "title": "Coffres Harpocrate",
@@ -1763,6 +1764,32 @@
         "loading": "Calcul en cours…",
         "total": "Total"
       }
+    },
+    "auth": {
+      "title": "Authentification",
+      "subtitle": "Mode d'authentification de la plateforme (local ou Keycloak OIDC)",
+      "mode_label": "Mode",
+      "mode_local": "Local (JWT interne)",
+      "mode_keycloak": "Keycloak",
+      "keycloak_section": "Configuration Keycloak",
+      "keycloak_url": "URL Keycloak",
+      "keycloak_realm": "Realm",
+      "keycloak_client_id": "Client ID",
+      "keycloak_client_secret": "Client Secret",
+      "vault_name": "Coffre Harpocrate",
+      "secret_keep": "Conserver le secret existant",
+      "secret_required": "Secret requis",
+      "secret_hint_vault": "Le secret est stocké dans le coffre Harpocrate sélectionné",
+      "test_button": "Tester la connexion",
+      "save_button": "Enregistrer",
+      "test_result_title": "Résultat du test",
+      "test_discovery_ok": "Découverte OIDC réussie",
+      "test_discovery_ko": "Découverte OIDC échouée",
+      "test_token_ok": "Récupération du token réussie",
+      "test_token_ko": "Récupération du token échouée",
+      "test_done": "Connexion validée",
+      "toast_saved": "Configuration d'authentification enregistrée",
+      "toast_save_error": "Erreur lors de l'enregistrement"
     }
   },
   "supervision": {

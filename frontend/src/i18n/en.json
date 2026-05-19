@@ -1629,7 +1629,8 @@
     "sidebar": "Settings",
     "tabs": {
       "harpocrate": "Harpocrate",
-      "gitSync": "Git Sync"
+      "gitSync": "Git Sync",
+      "auth": "Authentication"
     },
     "harpocrate": {
       "title": "Harpocrate vaults",
@@ -1756,6 +1757,32 @@
         "loading": "Computing…",
         "total": "Total"
       }
+    },
+    "auth": {
+      "title": "Authentication",
+      "subtitle": "Platform authentication mode (local or Keycloak OIDC)",
+      "mode_label": "Mode",
+      "mode_local": "Local (internal JWT)",
+      "mode_keycloak": "Keycloak",
+      "keycloak_section": "Keycloak configuration",
+      "keycloak_url": "Keycloak URL",
+      "keycloak_realm": "Realm",
+      "keycloak_client_id": "Client ID",
+      "keycloak_client_secret": "Client Secret",
+      "vault_name": "Harpocrate vault",
+      "secret_keep": "Keep existing secret",
+      "secret_required": "Secret required",
+      "secret_hint_vault": "The secret is stored in the selected Harpocrate vault",
+      "test_button": "Test connection",
+      "save_button": "Save",
+      "test_result_title": "Test result",
+      "test_discovery_ok": "OIDC discovery succeeded",
+      "test_discovery_ko": "OIDC discovery failed",
+      "test_token_ok": "Token retrieval succeeded",
+      "test_token_ko": "Token retrieval failed",
+      "test_done": "Connection validated",
+      "toast_saved": "Authentication configuration saved",
+      "toast_save_error": "Error saving configuration"
     }
   },
   "supervision": {

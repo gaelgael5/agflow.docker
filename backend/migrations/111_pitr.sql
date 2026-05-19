@@ -1,4 +1,4 @@
--- 110_pitr.sql — PITR (Point-In-Time Recovery via pgBackRest)
+-- 111_pitr.sql — PITR (Point-In-Time Recovery via pgBackRest)
 
 CREATE TABLE pitr_basebackups (
     id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),

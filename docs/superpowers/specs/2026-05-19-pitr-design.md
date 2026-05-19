@@ -95,10 +95,10 @@ Les snapshots `pg_dump` à intervalle court ne permettent pas une restauration f
 
 ## Modèle de données
 
-### Migration 110 — `backend/migrations/110_pitr.sql`
+### Migration 111 — `backend/migrations/111_pitr.sql`
 
 ```sql
--- 110_pitr.sql — PITR (Point-In-Time Recovery via pgBackRest)
+-- 111_pitr.sql — PITR (Point-In-Time Recovery via pgBackRest)
 
 CREATE TABLE pitr_basebackups (
     id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -190,7 +190,7 @@ VALUES (1, true, '0 3 * * *', 7)
 ON CONFLICT (id) DO NOTHING;
 ```
 
-### Migration 111 — `backend/migrations/111_drop_snapshot_schedules.sql`
+### Migration 112 — `backend/migrations/112_drop_snapshot_schedules.sql`
 
 ```sql
 ALTER TABLE local_backups DROP CONSTRAINT IF EXISTS local_backups_source_single;
@@ -616,7 +616,7 @@ Dialog shadcn (jamais `window.confirm` — cf. memory `feedback_no_system_prompt
 | `tests/services/test_pitr_wal_archive_service.py` | mock aiodocker.exec | ~85% |
 | `tests/services/test_pitr_scheduler.py` | mock AsyncIOScheduler | ~80% |
 | `tests/api/test_admin_pitr.py` | integration HTTP | ~95% |
-| `tests/db/test_migration_111_drop_snapshot.py` | unit migration | 100% |
+| `tests/db/test_migration_112_drop_snapshot.py` | unit migration | 100% |
 
 ### Frontend (~25 tests Vitest)
 
@@ -657,7 +657,7 @@ Séquence chronologique (préparation + 9 assertions `fail`) :
 | Phase | Périmètre | Livrables | Effort |
 |---|---|---|---|
 | **P1 — Image custom Postgres** | Dockerfile + configs + entrypoint + modif compose + volume | Build OK, archiving actif | 3-4j |
-| **P2 — Migrations + services backend** | Migrations 110, 111 + 4 services Python + tests unit | Services SRP <200 LoC chacun, ~50 tests verts | 5-6j |
+| **P2 — Migrations + services backend** | Migrations 111, 112 + 4 services Python + tests unit | Services SRP <200 LoC chacun, ~50 tests verts | 5-6j |
 | **P3 — Worker + API REST** | pitr_scheduler.py + api/admin/pitr.py + lifespan + tests intégration | 13 endpoints, ~25 tests HTTP verts | 2-3j |
 | **P4 — Frontend** | API client + hooks + 8 composants + dialogs + i18n | Page Backups refondue, picker fonctionnel | 3-4j |
 | **P5 — Nettoyage** | Retrait code snapshot, tests obsolètes, i18n keys | No dead code | 1-2j |
@@ -706,7 +706,7 @@ Séquence chronologique (préparation + 9 assertions `fail`) :
 ## Conventions de commit
 
 - `feat(pitr-infra):` — Dockerfile, configs pgBackRest, compose
-- `feat(pitr-db):` — migrations 110, 111
+- `feat(pitr-db):` — migrations 111, 112
 - `feat(pitr-services):` — services Python
 - `feat(pitr-scheduler):` — worker APScheduler
 - `feat(pitr-api):` — router admin

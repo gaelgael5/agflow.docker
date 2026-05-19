@@ -13,6 +13,7 @@ from agflow.api.admin.ai_providers import router as admin_ai_providers_router
 from agflow.api.admin.api_keys import router as admin_api_keys_router
 from agflow.api.admin.apps import router as admin_apps_router
 from agflow.api.admin.auth import router as admin_auth_router
+from agflow.api.admin.auth_config import router as admin_auth_config_router
 from agflow.api.admin.avatars import router as admin_avatars_router
 from agflow.api.admin.backup_schedules import router as admin_backup_schedules_router
 from agflow.api.admin.containers import router as admin_containers_router
@@ -344,6 +345,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(health_router)
     app.include_router(admin_auth_router)
+    app.include_router(admin_auth_config_router)
     app.include_router(admin_secrets_router)
     app.include_router(admin_harpocrate_vaults_router)
     app.include_router(admin_service_types_router)

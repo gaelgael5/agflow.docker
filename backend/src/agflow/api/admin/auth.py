@@ -15,7 +15,7 @@ from agflow.auth.jwt import encode_token
 from agflow.config import get_settings
 from agflow.db.pool import execute, fetch_one
 from agflow.schemas.auth import LoginRequest, LoginResponse, Me
-from agflow.services import users_service
+from agflow.services import auth_config_service, users_service, vault_client
 
 _log = structlog.get_logger(__name__)
 
@@ -180,8 +180,8 @@ async def me(admin_email: str = Depends(require_admin)) -> Me:
 
 @router.get("/mode", summary="Get authentication mode")
 async def auth_mode():
-    settings = get_settings()
-    return {"mode": settings.auth_mode}
+    cfg = await auth_config_service.get_config_internal()
+    return {"mode": cfg["mode"]}
 
 
 # ── Keycloak OIDC ───────────────────────────────────────────────────────────
@@ -197,18 +197,19 @@ def _build_oidc_redirect_uri(request: Request) -> str:
 
 @router.get("/oidc/login", summary="Initiate Keycloak OIDC login")
 async def oidc_login(request: Request) -> RedirectResponse:
-    settings = get_settings()
-    if not settings.keycloak_url:
+    cfg = await auth_config_service.get_config_internal()
+    if not cfg["keycloak_url"]:
         raise HTTPException(400, "Keycloak OIDC not configured")
 
     state = secrets.token_urlsafe(32)
     _oidc_states[state] = True
 
     redirect_uri = _build_oidc_redirect_uri(request)
-    authorize_url = f"{settings.keycloak_base}/protocol/openid-connect/auth"
+    keycloak_base = f"{cfg['keycloak_url'].rstrip('/')}/realms/{cfg['keycloak_realm']}"
+    authorize_url = f"{keycloak_base}/protocol/openid-connect/auth"
 
     params = {
-        "client_id": settings.keycloak_client_id,
+        "client_id": cfg["keycloak_client_id"],
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "openid email profile",
@@ -223,10 +224,16 @@ async def oidc_callback(request: Request, code: str = "", state: str = "") -> Re
         raise HTTPException(400, "Invalid OAuth state")
     del _oidc_states[state]
 
-    settings = get_settings()
+    cfg = await auth_config_service.get_config_internal()
+    keycloak_base = f"{cfg['keycloak_url'].rstrip('/')}/realms/{cfg['keycloak_realm']}"
     redirect_uri = _build_oidc_redirect_uri(request)
-    token_url = f"{settings.keycloak_base}/protocol/openid-connect/token"
-    userinfo_url = f"{settings.keycloak_base}/protocol/openid-connect/userinfo"
+    token_url = f"{keycloak_base}/protocol/openid-connect/token"
+    userinfo_url = f"{keycloak_base}/protocol/openid-connect/userinfo"
+
+    # Résoudre le client_secret depuis Harpocrate
+    if not cfg["keycloak_client_secret_ref"]:
+        raise HTTPException(500, "Keycloak client_secret not configured")
+    client_secret_value = await vault_client.resolve_ref(cfg["keycloak_client_secret_ref"])
 
     async with httpx.AsyncClient() as client:
         # Exchange code for tokens
@@ -234,8 +241,8 @@ async def oidc_callback(request: Request, code: str = "", state: str = "") -> Re
             token_url,
             data={
                 "code": code,
-                "client_id": settings.keycloak_client_id,
-                "client_secret": settings.keycloak_client_secret,
+                "client_id": cfg["keycloak_client_id"],
+                "client_secret": client_secret_value,
                 "redirect_uri": redirect_uri,
                 "grant_type": "authorization_code",
             },
@@ -273,7 +280,7 @@ async def oidc_callback(request: Request, code: str = "", state: str = "") -> Re
         client_roles = (
             kc_payload
             .get("resource_access", {})
-            .get(settings.keycloak_client_id, {})
+            .get(cfg["keycloak_client_id"], {})
             .get("roles", [])
         )
     except Exception:

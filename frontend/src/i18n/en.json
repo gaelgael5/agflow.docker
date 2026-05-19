@@ -1571,6 +1571,14 @@
       "error": "Failed: {{msg}}"
     },
     "pitr": {
+      "config": {
+        "title": "PITR Config",
+        "cron": "Basebackup cron",
+        "retention": "Retention (backup count)",
+        "remotes": "Remote destinations",
+        "enabled": "PITR enabled",
+        "save": "Save"
+      },
       "restore": {
         "title": "Point-in-time restore",
         "dateLabel": "Date",

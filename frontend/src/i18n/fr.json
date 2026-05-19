@@ -1578,6 +1578,14 @@
       "error": "Échec : {{msg}}"
     },
     "pitr": {
+      "config": {
+        "title": "Config PITR",
+        "cron": "Cron basebackup",
+        "retention": "Rétention (nombre de backups)",
+        "remotes": "Destinations distantes",
+        "enabled": "PITR activé",
+        "save": "Enregistrer"
+      },
       "restore": {
         "title": "Restauration point-dans-le-temps",
         "dateLabel": "Date",

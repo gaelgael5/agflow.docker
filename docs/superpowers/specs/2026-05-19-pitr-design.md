@@ -118,7 +118,7 @@ CREATE INDEX idx_pitr_basebackups_status ON pitr_basebackups (status) WHERE stat
 
 CREATE TABLE pitr_basebackup_pushes (
     id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    basebackup_id           uuid NOT NULL REFERENCES pitr_basebackups(id) ON DELETE CASCADE,
+    basebackup_id           uuid NOT NULL REFERENCES pitr_basebackups(id) ON DELETE RESTRICT,
     remote_connection_id    uuid NOT NULL REFERENCES remote_backup_connections(id) ON DELETE CASCADE,
     status                  text NOT NULL CHECK (status IN ('pending', 'pushing', 'ok', 'failed')),
     pushed_at               timestamptz,
@@ -166,7 +166,7 @@ CREATE TABLE pitr_clones (
 );
 
 CREATE UNIQUE INDEX idx_pitr_clones_one_active
-    ON pitr_clones (id)
+    ON pitr_clones ((1))
     WHERE status IN ('restoring', 'ready', 'terminating');
 
 CREATE INDEX idx_pitr_clones_status ON pitr_clones (status);
@@ -216,7 +216,7 @@ Router `backend/src/agflow/api/admin/pitr.py`, préfixe `/api/admin/pitr`, `requ
 | GET | `/basebackups` | liste basebackups avec pushes agrégés + fenêtre globale | 401/403 |
 | GET | `/basebackups/{id}` | détail basebackup + tous ses pushes | 404 |
 | POST | `/basebackups` | déclenche un basebackup immédiat | 409 si déjà en cours |
-| DELETE | `/basebackups/{id}` | supprime (pgbackrest expire + pushes cascade) | 404, 409 si seul restant |
+| DELETE | `/basebackups/{id}` | supprime (DELETE pushes explicite + pgbackrest expire + DELETE basebackup) | 404, 409 si seul restant |
 | POST | `/basebackups/{id}/push/{remote_id}` | re-push manuel | 404, 409 |
 | GET | `/wal-status` | archiving actif, last archived, disk used/free | 401/403 |
 | GET | `/restore-window` | borne `[earliest, latest]` UTC | 404 si aucun basebackup OK |

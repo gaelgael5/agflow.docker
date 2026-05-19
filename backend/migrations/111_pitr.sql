@@ -18,7 +18,7 @@ CREATE INDEX idx_pitr_basebackups_status ON pitr_basebackups (status) WHERE stat
 
 CREATE TABLE pitr_basebackup_pushes (
     id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    basebackup_id           uuid NOT NULL REFERENCES pitr_basebackups(id) ON DELETE CASCADE,
+    basebackup_id           uuid NOT NULL REFERENCES pitr_basebackups(id) ON DELETE RESTRICT,
     remote_connection_id    uuid NOT NULL REFERENCES remote_backup_connections(id) ON DELETE CASCADE,
     status                  text NOT NULL CHECK (status IN ('pending', 'pushing', 'ok', 'failed')),
     pushed_at               timestamptz,
@@ -66,7 +66,7 @@ CREATE TABLE pitr_clones (
 );
 
 CREATE UNIQUE INDEX idx_pitr_clones_one_active
-    ON pitr_clones (id)
+    ON pitr_clones ((1))
     WHERE status IN ('restoring', 'ready', 'terminating');
 
 CREATE INDEX idx_pitr_clones_status ON pitr_clones (status);

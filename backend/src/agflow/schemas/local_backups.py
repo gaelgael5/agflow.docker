@@ -14,4 +14,4 @@ class LocalBackupSummary(BaseModel):
     status: str
     created_at: datetime
     source_remote_connection_id: UUID | None = None
-    source_kind: Literal["manual", "full", "snapshot"] = "manual"
+    source_kind: Literal["manual", "full"] = "manual"

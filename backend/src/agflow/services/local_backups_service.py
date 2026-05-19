@@ -27,7 +27,6 @@ def _backups_dir() -> Path:
 def _to_dto(row: dict) -> LocalBackupSummary:
     source_kind = (
         "full" if row.get("source_schedule_full_id") is not None
-        else "snapshot" if row.get("source_schedule_snapshot_id") is not None
         else "manual"
     )
     return LocalBackupSummary(
@@ -44,7 +43,7 @@ def _to_dto(row: dict) -> LocalBackupSummary:
 async def list_backups() -> list[LocalBackupSummary]:
     rows = await fetch_all(
         "SELECT id, filename, size_bytes, status, created_at, source_remote_connection_id, "
-        "       source_schedule_full_id, source_schedule_snapshot_id "
+        "       source_schedule_full_id "
         "FROM local_backups ORDER BY created_at DESC LIMIT 100"
     )
     return [_to_dto(r) for r in rows]
@@ -53,7 +52,7 @@ async def list_backups() -> list[LocalBackupSummary]:
 async def get_backup(backup_id: UUID) -> LocalBackupSummary | None:
     row = await fetch_one(
         "SELECT id, filename, size_bytes, status, created_at, source_remote_connection_id, "
-        "       source_schedule_full_id, source_schedule_snapshot_id "
+        "       source_schedule_full_id "
         "FROM local_backups WHERE id = $1",
         backup_id,
     )
@@ -64,7 +63,6 @@ async def create_backup(
     *,
     created_by_user_id: UUID | None = None,
     source_schedule_full_id: UUID | None = None,
-    source_schedule_snapshot_id: UUID | None = None,
 ) -> LocalBackupSummary:
     """Stream pg_dump vers disque, enregistre en DB. Sérialise via backup_lock."""
     async with backup_lock:
@@ -75,14 +73,13 @@ async def create_backup(
         await execute(
             "INSERT INTO local_backups "
             "  (id, filename, file_path, status, created_by_user_id, "
-            "   source_schedule_full_id, source_schedule_snapshot_id) "
-            "VALUES ($1, $2, $3, 'in_progress', $4, $5, $6)",
+            "   source_schedule_full_id) "
+            "VALUES ($1, $2, $3, 'in_progress', $4, $5)",
             backup_id,
             filename,
             str(file_path),
             created_by_user_id,
             source_schedule_full_id,
-            source_schedule_snapshot_id,
         )
         try:
             written = 0
@@ -103,7 +100,7 @@ async def create_backup(
 
     row = await fetch_one(
         "SELECT id, filename, size_bytes, status, created_at, source_remote_connection_id, "
-        "       source_schedule_full_id, source_schedule_snapshot_id "
+        "       source_schedule_full_id "
         "FROM local_backups WHERE id=$1",
         backup_id,
     )
@@ -170,7 +167,7 @@ async def pull_remote_to_local(
 
     row = await fetch_one(
         "SELECT id, filename, size_bytes, status, created_at, source_remote_connection_id, "
-        "       source_schedule_full_id, source_schedule_snapshot_id "
+        "       source_schedule_full_id "
         "FROM local_backups WHERE id=$1",
         backup_id,
     )

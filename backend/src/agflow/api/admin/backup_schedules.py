@@ -1,6 +1,6 @@
-"""Router admin pour les planifications de backups (full cron + snapshot interval).
+"""Router admin pour les planifications de backups full (cron).
 
-12 endpoints sous /api/admin/backup-schedules — require_admin global.
+6 endpoints sous /api/admin/backup-schedules — require_admin global.
 """
 from __future__ import annotations
 
@@ -15,9 +15,6 @@ from agflow.schemas.backup_schedules import (
     FullScheduleSummary,
     FullScheduleUpdate,
     ScheduleHistoryEntry,
-    SnapshotScheduleCreate,
-    SnapshotScheduleSummary,
-    SnapshotScheduleUpdate,
 )
 from agflow.services import (
     backup_scheduler,
@@ -98,7 +95,7 @@ async def run_now_full(schedule_id: UUID) -> dict:
         await svc.get_full_schedule(schedule_id)  # 404 check
     except svc.ScheduleNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    await backup_scheduler.trigger_now(schedule_id=schedule_id, kind="full")
+    await backup_scheduler.trigger_now(schedule_id=schedule_id)
     return {"triggered": True}
 
 
@@ -127,81 +124,3 @@ async def set_full_enabled(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-# ── Snapshot schedules ─────────────────────────────────────────────────
-
-
-@router.get("/snapshot", response_model=list[SnapshotScheduleSummary])
-async def list_snapshot() -> list[SnapshotScheduleSummary]:
-    return await svc.list_snapshot_schedules()
-
-
-@router.post(
-    "/snapshot",
-    response_model=SnapshotScheduleSummary,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_snapshot(
-    payload: SnapshotScheduleCreate,
-    admin_email: str = Depends(require_admin),
-) -> SnapshotScheduleSummary:
-    admin_user = await users_service.get_by_email(admin_email)
-    actor_id = admin_user.id if admin_user else None
-    return await svc.create_snapshot_schedule(payload, actor_user_id=actor_id)
-
-
-@router.put("/snapshot/{schedule_id}", response_model=SnapshotScheduleSummary)
-async def update_snapshot(
-    schedule_id: UUID, payload: SnapshotScheduleUpdate,
-) -> SnapshotScheduleSummary:
-    try:
-        return await svc.update_snapshot_schedule(schedule_id, payload)
-    except svc.ScheduleNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-
-@router.delete(
-    "/snapshot/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT,
-)
-async def delete_snapshot(schedule_id: UUID) -> None:
-    try:
-        await svc.delete_snapshot_schedule(schedule_id)
-    except svc.ScheduleNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-
-@router.post(
-    "/snapshot/{schedule_id}/run-now",
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def run_now_snapshot(schedule_id: UUID) -> dict:
-    try:
-        await svc.get_snapshot_schedule(schedule_id)
-    except svc.ScheduleNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    await backup_scheduler.trigger_now(schedule_id=schedule_id, kind="snapshot")
-    return {"triggered": True}
-
-
-@router.get(
-    "/snapshot/{schedule_id}/history",
-    response_model=list[ScheduleHistoryEntry],
-)
-async def get_snapshot_history(
-    schedule_id: UUID,
-    limit: int = Query(default=50, ge=1, le=200),
-) -> list[ScheduleHistoryEntry]:
-    try:
-        await svc.get_snapshot_schedule(schedule_id)
-    except svc.ScheduleNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return await svc.list_history_snapshot(schedule_id, limit=limit)
-
-
-@router.post("/snapshot/{schedule_id}/set-enabled", response_model=SnapshotScheduleSummary)
-async def set_snapshot_enabled(
-    schedule_id: UUID, payload: SetEnabledRequest,
-) -> SnapshotScheduleSummary:
-    try:
-        return await svc.set_snapshot_enabled(schedule_id, payload.enabled)
-    except svc.ScheduleNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

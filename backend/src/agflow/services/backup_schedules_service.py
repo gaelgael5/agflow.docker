@@ -1,7 +1,4 @@
-"""Service backup_schedules — CRUD planifications + validation cron.
-
-Snapshot CRUD + record_run + prune_old_backups dans Task 6.
-"""
+"""Service backup_schedules — CRUD planifications full + validation cron."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -18,20 +15,12 @@ from agflow.schemas.backup_schedules import (
     FullScheduleSummary,
     FullScheduleUpdate,
     ScheduleHistoryEntry,
-    SnapshotScheduleCreate,
-    SnapshotScheduleSummary,
-    SnapshotScheduleUpdate,
 )
 
 _log = structlog.get_logger(__name__)
 
 _FULL_COLS = (
     "id, name, cron_expr, remote_connection_id, retention_count, enabled, "
-    "last_run_at, last_run_status, last_run_error, created_at, updated_at"
-)
-
-_SNAPSHOT_COLS = (
-    "id, name, interval_amount, interval_unit, remote_connection_id, retention_count, enabled, "
     "last_run_at, last_run_status, last_run_error, created_at, updated_at"
 )
 
@@ -74,23 +63,6 @@ def _to_full_summary(row: dict[str, Any]) -> FullScheduleSummary:
         id=row["id"],
         name=row["name"],
         cron_expr=row["cron_expr"],
-        remote_connection_id=row["remote_connection_id"],
-        retention_count=row["retention_count"],
-        enabled=row["enabled"],
-        last_run_at=row["last_run_at"],
-        last_run_status=row["last_run_status"],
-        last_run_error=row["last_run_error"],
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-    )
-
-
-def _to_snapshot_summary(row: dict[str, Any]) -> SnapshotScheduleSummary:
-    return SnapshotScheduleSummary(
-        id=row["id"],
-        name=row["name"],
-        interval_amount=row["interval_amount"],
-        interval_unit=row["interval_unit"],
         remote_connection_id=row["remote_connection_id"],
         retention_count=row["retention_count"],
         enabled=row["enabled"],
@@ -204,117 +176,13 @@ async def set_full_enabled(
     return _to_full_summary(row)
 
 
-# ── Snapshot schedules CRUD ────────────────────────────────────────────
-
-
-async def list_snapshot_schedules() -> list[SnapshotScheduleSummary]:
-    rows = await fetch_all(
-        f"SELECT {_SNAPSHOT_COLS} FROM backup_schedules_snapshot ORDER BY name",
-    )
-    return [_to_snapshot_summary(r) for r in rows]
-
-
-async def get_snapshot_schedule(schedule_id: UUID) -> SnapshotScheduleSummary:
-    row = await fetch_one(
-        f"SELECT {_SNAPSHOT_COLS} FROM backup_schedules_snapshot WHERE id = $1",
-        schedule_id,
-    )
-    if row is None:
-        raise ScheduleNotFoundError(f"Snapshot schedule {schedule_id} not found")
-    return _to_snapshot_summary(row)
-
-
-async def create_snapshot_schedule(
-    payload: SnapshotScheduleCreate,
-    *,
-    actor_user_id: UUID | None = None,
-) -> SnapshotScheduleSummary:
-    row = await fetch_one(
-        f"""
-        INSERT INTO backup_schedules_snapshot
-            (name, interval_amount, interval_unit, remote_connection_id,
-             retention_count, enabled, created_by_user_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING {_SNAPSHOT_COLS}
-        """,
-        payload.name, payload.interval_amount, payload.interval_unit,
-        payload.remote_connection_id, payload.retention_count,
-        payload.enabled, actor_user_id,
-    )
-    assert row is not None
-    _log.info(
-        "backup_schedules.snapshot.created",
-        id=str(row["id"]), name=payload.name,
-        interval=f"{payload.interval_amount} {payload.interval_unit}",
-    )
-    return _to_snapshot_summary(row)
-
-
-async def update_snapshot_schedule(
-    schedule_id: UUID, payload: SnapshotScheduleUpdate,
-) -> SnapshotScheduleSummary:
-    await get_snapshot_schedule(schedule_id)  # 404 check
-
-    sets: list[str] = []
-    args: list[Any] = [schedule_id]
-    i = 2
-    for field in (
-        "name", "interval_amount", "interval_unit",
-        "remote_connection_id", "retention_count", "enabled",
-    ):
-        val = getattr(payload, field)
-        if val is not None:
-            sets.append(f"{field} = ${i}")
-            args.append(val)
-            i += 1
-
-    if not sets:
-        return await get_snapshot_schedule(schedule_id)
-
-    row = await fetch_one(
-        f"UPDATE backup_schedules_snapshot SET {', '.join(sets)} "
-        f"WHERE id = $1 RETURNING {_SNAPSHOT_COLS}",
-        *args,
-    )
-    assert row is not None
-    _log.info("backup_schedules.snapshot.updated", id=str(schedule_id))
-    return _to_snapshot_summary(row)
-
-
-async def delete_snapshot_schedule(schedule_id: UUID) -> None:
-    row = await fetch_one(
-        "DELETE FROM backup_schedules_snapshot WHERE id = $1 RETURNING id",
-        schedule_id,
-    )
-    if row is None:
-        raise ScheduleNotFoundError(f"Snapshot schedule {schedule_id} not found")
-    _log.info("backup_schedules.snapshot.deleted", id=str(schedule_id))
-
-
-async def set_snapshot_enabled(
-    schedule_id: UUID, enabled: bool,
-) -> SnapshotScheduleSummary:
-    row = await fetch_one(
-        f"UPDATE backup_schedules_snapshot SET enabled = $2 "
-        f"WHERE id = $1 RETURNING {_SNAPSHOT_COLS}",
-        schedule_id, enabled,
-    )
-    if row is None:
-        raise ScheduleNotFoundError(f"Snapshot schedule {schedule_id} not found")
-    _log.info(
-        "backup_schedules.snapshot.set_enabled",
-        id=str(schedule_id), enabled=enabled,
-    )
-    return _to_snapshot_summary(row)
-
-
 # ── Cross-kind helpers ─────────────────────────────────────────────────
 
 
 async def record_run(
     *,
     schedule_id: UUID,
-    kind: Literal["full", "snapshot"],
+    kind: Literal["full"],
     status: Literal["ok", "failed"],
     error: str | None = None,
 ) -> None:
@@ -333,7 +201,7 @@ async def record_run(
 async def prune_old_backups(
     *,
     schedule_id: UUID,
-    kind: Literal["full", "snapshot"],
+    kind: Literal["full"],
     retention_count: int,
 ) -> int:
     """Supprime les backups les plus anciens du schedule au-delà de retention_count.
@@ -392,18 +260,3 @@ async def list_history_full(schedule_id: UUID, limit: int = 50) -> list[Schedule
     return [ScheduleHistoryEntry(**dict(r)) for r in rows]
 
 
-async def list_history_snapshot(schedule_id: UUID, limit: int = 50) -> list[ScheduleHistoryEntry]:
-    """Liste les runs (local_backups) attachés à une snapshot schedule."""
-    rows = await fetch_all(
-        """
-        SELECT id, filename, file_path, size_bytes, status,
-               created_at, created_by_user_id
-        FROM local_backups
-        WHERE source_schedule_snapshot_id = $1
-        ORDER BY created_at DESC
-        LIMIT $2
-        """,
-        schedule_id,
-        limit,
-    )
-    return [ScheduleHistoryEntry(**dict(r)) for r in rows]

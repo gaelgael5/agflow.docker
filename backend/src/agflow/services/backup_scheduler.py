@@ -1,14 +1,13 @@
-"""Wrapper APScheduler pour les schedules backups.
+"""Wrapper APScheduler pour les schedules backups full.
 
 Charge les schedules depuis DB au start, sync périodiquement (tick 30s).
-Délègue l'exécution à backup_job_runner.run_full_job / run_snapshot_job.
+Délègue l'exécution à backup_job_runner.run_full_job.
 
-Pattern d'id de job APScheduler : "full:<schedule_uuid>" / "snapshot:<schedule_uuid>".
+Pattern d'id de job APScheduler : "full:<schedule_uuid>".
 """
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Literal
 from uuid import UUID
 
 import structlog
@@ -65,16 +64,9 @@ async def reload_schedules() -> None:
         return
 
     full_schedules = await schedules_svc.list_full_schedules()
-    snapshot_schedules = await schedules_svc.list_snapshot_schedules()
 
     # IDs attendus côté APScheduler (uniquement les enabled)
-    expected_ids = set()
-    for s in full_schedules:
-        if s.enabled:
-            expected_ids.add(f"full:{s.id}")
-    for s in snapshot_schedules:
-        if s.enabled:
-            expected_ids.add(f"snapshot:{s.id}")
+    expected_ids = {f"full:{s.id}" for s in full_schedules if s.enabled}
 
     # IDs actuels dans APScheduler (hors le job de re-sync)
     current_ids = {
@@ -109,47 +101,15 @@ async def reload_schedules() -> None:
         except Exception as exc:
             _log.warning("backup_scheduler.job_add_failed", id=job_id, error=str(exc))
 
-    for s in snapshot_schedules:
-        if not s.enabled:
-            continue
-        job_id = f"snapshot:{s.id}"
-        if job_id in current_ids:
-            continue
-        try:
-            kwargs = {s.interval_unit: s.interval_amount}
-            trigger = IntervalTrigger(**kwargs)
-            _scheduler.add_job(
-                backup_job_runner.run_snapshot_job,
-                trigger,
-                args=[s.id],
-                id=job_id,
-                max_instances=1,
-                coalesce=True,
-                replace_existing=True,
-            )
-            _log.info(
-                "backup_scheduler.job_added",
-                id=job_id,
-                interval=f"{s.interval_amount} {s.interval_unit}",
-            )
-        except Exception as exc:
-            _log.warning("backup_scheduler.job_add_failed", id=job_id, error=str(exc))
 
-
-async def trigger_now(
-    *, schedule_id: UUID, kind: Literal["full", "snapshot"],
-) -> None:
-    """Déclenche immédiatement un job, indépendant du schedule régulier."""
+async def trigger_now(*, schedule_id: UUID) -> None:
+    """Déclenche immédiatement un job full, indépendant du schedule régulier."""
     if _scheduler is None:
         raise RuntimeError("backup_scheduler not started")
 
-    runner = (
-        backup_job_runner.run_full_job if kind == "full"
-        else backup_job_runner.run_snapshot_job
-    )
-    eph_id = f"trigger-now:{kind}:{schedule_id}:{datetime.now(UTC).timestamp()}"
+    eph_id = f"trigger-now:full:{schedule_id}:{datetime.now(UTC).timestamp()}"
     _scheduler.add_job(
-        runner,
+        backup_job_runner.run_full_job,
         DateTrigger(run_date=datetime.now(UTC)),
         args=[schedule_id],
         id=eph_id,
@@ -157,5 +117,5 @@ async def trigger_now(
     )
     _log.info(
         "backup_scheduler.trigger_now",
-        schedule_id=str(schedule_id), kind=kind, ephemeral_id=eph_id,
+        schedule_id=str(schedule_id), kind="full", ephemeral_id=eph_id,
     )

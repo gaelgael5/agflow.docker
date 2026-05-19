@@ -238,6 +238,56 @@ async def test_provision_clone_happy_path_marks_ready() -> None:
     assert row["pgweb_container_name"].startswith("agflow-pitr-pgweb-")
 
 
+async def test_provision_clone_port_discovery_retries_on_empty_ports():
+    """If pgweb's NetworkSettings.Ports is empty on first show(), retry succeeds."""
+    await reset_schema_and_migrate()
+    base = datetime.now(UTC).replace(microsecond=0)
+    bb_id = await _seed_basebackup_with_window(
+        "bb-1", base - timedelta(days=2), base - timedelta(hours=1)
+    )
+    clone_row = await fetch_one(
+        "INSERT INTO pitr_clones (basebackup_id, target_time, status, expires_at) "
+        "VALUES ($1, $2, 'restoring', $3) RETURNING id",
+        bb_id, base - timedelta(minutes=30), base + timedelta(hours=24),
+    )
+    cid = clone_row["id"]
+
+    # Build a fake docker where pgweb.show() returns empty Ports on the 1st & 2nd calls,
+    # then populated on the 3rd. Verifies the retry loop works.
+    pg_container = _make_fake_container(exec_exit=0, container_id="pg-id")
+    pgweb_container = _make_fake_container(container_id="pgweb-id", port="32768")
+
+    # Override show() with a side_effect list: 2 empty responses, then populated
+    pgweb_container.show = AsyncMock(side_effect=[
+        {"NetworkSettings": {"Ports": {}}},
+        {"NetworkSettings": {"Ports": {"8081/tcp": []}}},
+        {"NetworkSettings": {"Ports": {"8081/tcp": [{"HostPort": "32768"}]}}},
+    ])
+
+    docker = AsyncMock()
+    docker.networks.create = AsyncMock(return_value=AsyncMock())
+    docker.volumes.create = AsyncMock(return_value=AsyncMock())
+    docker.containers.create_or_replace = AsyncMock(side_effect=[pg_container, pgweb_container])
+    docker.containers.get = AsyncMock(side_effect=[pgweb_container, pg_container])
+    docker.volumes.get = AsyncMock(return_value=AsyncMock(delete=AsyncMock()))
+    docker.networks.get = AsyncMock(return_value=AsyncMock(delete=AsyncMock()))
+    docker.close = AsyncMock()
+
+    with patch(
+        "agflow.services.pitr_restore_service._aiodocker",
+        return_value=docker,
+    ), patch(
+        "agflow.services.pitr_restore_service.asyncio.sleep",
+        new=AsyncMock(),
+    ):
+        await pitr_restore_service._provision_clone(cid)
+
+    row = await fetch_one("SELECT status, pgweb_port FROM pitr_clones WHERE id = $1", cid)
+    assert row["status"] == "ready"
+    assert row["pgweb_port"] == 32768
+    assert pgweb_container.show.call_count == 3
+
+
 async def test_provision_clone_marks_failed_on_pg_not_ready() -> None:
     await reset_schema_and_migrate()
     base = datetime.now(UTC).replace(microsecond=0)

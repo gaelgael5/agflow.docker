@@ -100,18 +100,14 @@ async def start_clone(target_time: datetime, *, actor_user_id: UUID | None) -> U
         actor_user_id=str(actor_user_id) if actor_user_id else None,
     )
 
-    # RUF006: keep ref so task isn't GC'd before completion; errors handled inside
-    _task = asyncio.create_task(_provision_clone(clone_id))
+    _task = asyncio.create_task(_provision_clone(clone_id))  # RUF006: keep ref
     del _task  # fire-and-forget
     return clone_id
 
 
 async def _provision_clone(clone_id: UUID) -> None:
-    """Create network + volume + postgres + pgweb containers for an active clone.
-
-    Background task. On any failure marks the row 'failed' and cleans up artefacts.
-    """
-    short = secrets.token_hex(4)  # 8 hex chars
+    """Background task: network + volume + postgres + pgweb for a clone. Marks failed on error."""
+    short = secrets.token_hex(4)
     clone_pg_name = f"agflow-pitr-clone-{short}"
     clone_pgweb_name = f"agflow-pitr-pgweb-{short}"
     network_name = f"pitr-clone-net-{short}"
@@ -124,7 +120,6 @@ async def _provision_clone(clone_id: UUID) -> None:
         log.error("pitr.clone.provision_no_row", clone_id=str(clone_id))
         return
 
-    # pgBackRest expects target time in format "YYYY-MM-DD HH:MM:SS+00"
     target_str = clone_row["target_time"].strftime("%Y-%m-%d %H:%M:%S+00")
 
     docker = _aiodocker()
@@ -175,7 +170,7 @@ async def _provision_clone(clone_id: UUID) -> None:
             container_id=pg_container.id,
         )
 
-        # 4. Wait for postgres ready (pg_isready)
+        # 4. Wait for postgres ready
         if not await _wait_pg_ready(pg_container, timeout_s=HEALTHCHECK_TIMEOUT_S):
             raise RuntimeError(
                 f"postgres clone {clone_pg_name} did not become ready within "
@@ -204,16 +199,8 @@ async def _provision_clone(clone_id: UUID) -> None:
             container_id=pgweb_container.id,
         )
 
-        # 6. Discover the host port assigned to pgweb's 8081
-        info = await pgweb_container.show()
-        port_bindings = (
-            info.get("NetworkSettings", {}).get("Ports", {}).get("8081/tcp")
-        )
-        if not port_bindings or not port_bindings[0].get("HostPort"):
-            raise RuntimeError(
-                f"could not discover pgweb host port for {clone_pgweb_name}"
-            )
-        pgweb_port = int(port_bindings[0]["HostPort"])
+        # 6. Discover pgweb's host port (retry: Docker may not have populated Ports yet)
+        pgweb_port = await _discover_host_port(pgweb_container, port_proto="8081/tcp")
 
         # 7. Mark ready
         await execute(
@@ -242,10 +229,7 @@ async def _provision_clone(clone_id: UUID) -> None:
 
 
 async def _wait_pg_ready(
-    container: object,
-    *,
-    timeout_s: int,
-    interval_s: int = 2,
+    container: object, *, timeout_s: int, interval_s: int = 2
 ) -> bool:
     """Poll `pg_isready` inside the container until success or timeout."""
     elapsed = 0
@@ -267,6 +251,25 @@ async def _wait_pg_ready(
         await asyncio.sleep(interval_s)
         elapsed += interval_s
     return False
+
+
+async def _discover_host_port(
+    container: object, *, port_proto: str, attempts: int = 6, interval_s: float = 0.5
+) -> int:
+    """Return the host port bound to `port_proto`, retrying until Docker populates NetworkSettings."""
+    last_err: Exception | None = None
+    for _ in range(attempts):
+        try:
+            info = await container.show()  # type: ignore[attr-defined]
+            bindings = info.get("NetworkSettings", {}).get("Ports", {}).get(port_proto)
+            if bindings and bindings[0].get("HostPort"):
+                return int(bindings[0]["HostPort"])
+        except Exception as exc:
+            last_err = exc
+        await asyncio.sleep(interval_s)
+    raise RuntimeError(
+        f"could not discover host port for {port_proto} after {attempts} attempts: {last_err}"
+    )
 
 
 async def _cleanup_clone_artifacts(

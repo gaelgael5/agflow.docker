@@ -255,20 +255,23 @@ async def test_connection(payload: AuthTestRequest) -> AuthTestResult
 
 Exceptions :
 - `InvalidUrlError(ValueError)` → 422 dans le router
-- `VaultNotFoundError(LookupError)` → 404 dans le router
+- `VaultNameUnknownError(LookupError)` → 404 dans le router (à ne pas confondre avec `vault_client.VaultNotFoundError` qui signale un coffre absent côté SDK)
 
 Constantes :
 - `CLIENT_SECRET_PATH = "auth/keycloak/client_secret"` — chemin standard dans Harpocrate
 
 **`update_config` flow** :
 1. Valide URL si fournie
-2. Valide `vault_name` existe (via `harpocrate_vaults_service.get_by_name`)
-3. Si `keycloak_client_secret` (clair) fourni → push dans Harpocrate AVANT l'UPDATE DB → compose la nouvelle ref
+2. Valide `vault_name` existe (via `harpocrate_vaults_service.get_by_name`) — sinon `VaultNameUnknownError`
+3. Si `keycloak_client_secret` (clair) fourni → upsert dans Harpocrate :
+   - Try `vault_client.update_secret(CLIENT_SECRET_PATH, value, vault_name=vault_name)`
+   - On `VaultHttpError(404)` → fallback `vault_client.create_secret(CLIENT_SECRET_PATH, value, description="Keycloak OIDC client_secret", vault_name=vault_name)`
+   - Compose la nouvelle ref via `vault_client.build_ref(vault_name, CLIENT_SECRET_PATH)`
 4. UPDATE conditionnel champ par champ (SETs construits dynamiquement)
 5. Log structuré : `log.info("auth_config.updated", mode=..., keycloak_url=..., actor_user_id=...)` — **JAMAIS** le secret
 
 **`test_connection` flow** :
-1. Si secret pas dans payload → résoudre via `vault_client.resolve(ref_de_la_DB)`
+1. Si secret pas dans payload → résoudre via `vault_client.resolve_ref(ref_de_la_DB)`
 2. Si pas de secret nulle part → retourne `AuthTestResult(ok=False, step=discovery, ...)`
 3. Step 1 (discovery) via `httpx.AsyncClient` timeout 5s → si HTTP != 200 ou exception → retourne échec
 4. Step 2 (token) idem → si HTTP != 200 ou exception → retourne échec
@@ -292,7 +295,7 @@ async def auth_mode():
     return {"mode": cfg.mode}
 ```
 
-Idem pour `oidc_login` (lit `cfg.keycloak_url`, `cfg.keycloak_client_id`) et `oidc_callback` (lit `cfg.keycloak_client_secret_ref` → résout via `vault_client.resolve()` pour obtenir la valeur du secret au moment de l'appel à Keycloak).
+Idem pour `oidc_login` (lit `cfg.keycloak_url`, `cfg.keycloak_client_id`) et `oidc_callback` (lit `cfg.keycloak_client_secret_ref` → résout via `vault_client.resolve_ref()` pour obtenir la valeur du secret au moment de l'appel à Keycloak).
 
 ### Cleanup `config.py`
 

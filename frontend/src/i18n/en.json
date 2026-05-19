@@ -94,6 +94,7 @@
     "none": "None",
     "close": "Close",
     "edit": "Edit",
+    "delete": "Delete",
     "save": "Save",
     "loading": "Loading…",
     "error_loading": "Error loading data.",

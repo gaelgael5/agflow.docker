@@ -94,6 +94,7 @@
     "none": "Aucun",
     "close": "Fermer",
     "edit": "Éditer",
+    "delete": "Supprimer",
     "save": "Enregistrer",
     "loading": "Chargement…",
     "error_loading": "Erreur lors du chargement.",

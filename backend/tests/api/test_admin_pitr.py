@@ -1,9 +1,10 @@
-"""Tests pour /api/admin/pitr/config endpoints (GET + PUT)."""
+"""Tests pour /api/admin/pitr/config endpoints (GET + PUT) + basebackups (5 endpoints)."""
 from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import jwt
 from fastapi.testclient import TestClient
@@ -201,3 +202,133 @@ def test_put_config_no_reload_when_only_retention_changes(client: TestClient) ->
         )
     assert r.status_code == 200
     mock_reload.assert_not_awaited()
+
+
+# ── Basebackups ───────────────────────────────────────────────────────────
+
+
+def test_list_basebackups_returns_empty(client: TestClient) -> None:
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_service.list_basebackups",
+        new=AsyncMock(return_value=[]),
+    ):
+        r = client.get("/api/admin/pitr/basebackups", headers=_auth(_admin_token()))
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_get_basebackup_404(client: TestClient) -> None:
+    from agflow.services.pitr_basebackup_service import BasebackupNotFoundError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_service.get_basebackup",
+        new=AsyncMock(side_effect=BasebackupNotFoundError("not-found")),
+    ):
+        r = client.get(
+            f"/api/admin/pitr/basebackups/{uuid4()}",
+            headers=_auth(_admin_token()),
+        )
+    assert r.status_code == 404
+
+
+def test_trigger_basebackup_returns_id(client: TestClient) -> None:
+    fake_id = uuid4()
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_service.trigger_basebackup_now",
+        new=AsyncMock(return_value=fake_id),
+    ):
+        r = client.post("/api/admin/pitr/basebackups", headers=_auth(_admin_token()))
+    assert r.status_code == 202
+    assert r.json() == {"id": str(fake_id)}
+
+
+def test_trigger_basebackup_409_when_already_running(client: TestClient) -> None:
+    from agflow.services.pitr_basebackup_service import BasebackupRunningError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_service.trigger_basebackup_now",
+        new=AsyncMock(side_effect=BasebackupRunningError("already-running")),
+    ):
+        r = client.post("/api/admin/pitr/basebackups", headers=_auth(_admin_token()))
+    assert r.status_code == 409
+
+
+def test_delete_basebackup_204(client: TestClient) -> None:
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_service.delete_basebackup",
+        new=AsyncMock(),
+    ):
+        r = client.delete(
+            f"/api/admin/pitr/basebackups/{uuid4()}",
+            headers=_auth(_admin_token()),
+        )
+    assert r.status_code == 204
+
+
+def test_delete_basebackup_404(client: TestClient) -> None:
+    from agflow.services.pitr_basebackup_service import BasebackupNotFoundError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_service.delete_basebackup",
+        new=AsyncMock(side_effect=BasebackupNotFoundError("not-found")),
+    ):
+        r = client.delete(
+            f"/api/admin/pitr/basebackups/{uuid4()}",
+            headers=_auth(_admin_token()),
+        )
+    assert r.status_code == 404
+
+
+def test_delete_basebackup_409_if_last(client: TestClient) -> None:
+    from agflow.services.pitr_basebackup_service import BasebackupIsLastError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_service.delete_basebackup",
+        new=AsyncMock(side_effect=BasebackupIsLastError("last-one")),
+    ):
+        r = client.delete(
+            f"/api/admin/pitr/basebackups/{uuid4()}",
+            headers=_auth(_admin_token()),
+        )
+    assert r.status_code == 409
+
+
+def test_push_basebackup_202(client: TestClient) -> None:
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_pushes_service.push_basebackup",
+        new=AsyncMock(),
+    ):
+        r = client.post(
+            f"/api/admin/pitr/basebackups/{uuid4()}/push/{uuid4()}",
+            headers=_auth(_admin_token()),
+        )
+    assert r.status_code == 202
+    assert r.json() == {"status": "queued"}
+
+
+def test_push_basebackup_404_push_not_found(client: TestClient) -> None:
+    from agflow.services.pitr_basebackup_pushes_service import PushNotFoundError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_pushes_service.push_basebackup",
+        new=AsyncMock(side_effect=PushNotFoundError("not-found")),
+    ):
+        r = client.post(
+            f"/api/admin/pitr/basebackups/{uuid4()}/push/{uuid4()}",
+            headers=_auth(_admin_token()),
+        )
+    assert r.status_code == 404
+
+
+def test_push_basebackup_404_basebackup_not_found(client: TestClient) -> None:
+    from agflow.services.pitr_basebackup_service import BasebackupNotFoundError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_basebackup_pushes_service.push_basebackup",
+        new=AsyncMock(side_effect=BasebackupNotFoundError("not-found")),
+    ):
+        r = client.post(
+            f"/api/admin/pitr/basebackups/{uuid4()}/push/{uuid4()}",
+            headers=_auth(_admin_token()),
+        )
+    assert r.status_code == 404

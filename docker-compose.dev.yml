@@ -6,7 +6,10 @@ services:
     networks: [agflow]
 
   postgres:
-    image: postgres:16-alpine
+    image: agflow-postgres:16-pitr
+    build:
+      context: ./infra/postgres-pitr
+      dockerfile: Dockerfile
     container_name: agflow-postgres
     restart: unless-stopped
     environment:
@@ -19,6 +22,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - pgbackrest_repo:/var/lib/pgbackrest
+      - pgbackrest_logs:/var/log/pgbackrest
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -104,6 +109,8 @@ services:
 
 volumes:
   postgres_data:
+  pgbackrest_repo:
+  pgbackrest_logs:
   caddy_data:
   caddy_config:
 

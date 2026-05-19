@@ -68,6 +68,37 @@ async def test_resolve_ignores_edges_to_tables_not_in_list():
     assert len(graph.edges) == 1
 
 
+async def test_resolve_skips_self_referencing_fk():
+    """Régression : les self-FK (parent_id → self) ne sont pas comptées
+    comme edges inter-tables — Kahn ne doit pas y voir un cycle.
+
+    Cas réel : infra_named_types.sub_type_id → infra_named_types.id
+    (tree structure). Sans le skip, in_degree=1 jamais résolu → faux cycle.
+    """
+    fake_rows = [
+        # 3 vraies FK inter-tables
+        {"dependent_table": "public.b", "depends_on": "public.a"},
+        {"dependent_table": "public.c", "depends_on": "public.b"},
+        # 2 self-FK (doivent être ignorées)
+        {"dependent_table": "public.a", "depends_on": "public.a"},
+        {"dependent_table": "public.c", "depends_on": "public.c"},
+    ]
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=fake_rows)
+    resolver = DependencyResolver(conn)
+
+    a, b, c = _t("a"), _t("b"), _t("c")
+    graph = await resolver.resolve([a, b, c])
+
+    # Les 2 self-FK sont droppées, seules les 2 inter-tables restent
+    assert len(graph.edges) == 2
+    assert (b, a) in graph.edges
+    assert (c, b) in graph.edges
+    # Et le tri topologique fonctionne (pas de cycle détecté)
+    ordered = graph.ordered
+    assert ordered == [a, b, c]
+
+
 async def test_resolve_empty_tables_returns_empty_graph():
     conn = AsyncMock()
     conn.fetch = AsyncMock(return_value=[])

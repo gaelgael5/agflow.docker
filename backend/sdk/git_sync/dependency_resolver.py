@@ -64,6 +64,13 @@ class DependencyResolver:
         for row in rows:
             dep_name = row["dependent_table"]
             ref_name = row["depends_on"]
+            # Skip les self-FK (parent_id, sub_type_id, parent_msg_id…) :
+            # ils ne sont pas des contraintes inter-tables et produiraient
+            # un in_degree=1 jamais résolu dans Kahn → faux cycle.
+            # L'ordre intra-table des rows est géré par l'export/import
+            # row-par-row, pas par le graphe des tables.
+            if dep_name == ref_name:
+                continue
             # Garde uniquement les edges où LES DEUX extrémités sont dans
             # la liste demandée. Les FK vers une table hors-scope sont
             # ignorées (l'import s'assurera de la cohérence en chargeant

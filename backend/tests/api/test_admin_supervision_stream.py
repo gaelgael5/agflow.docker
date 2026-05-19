@@ -12,9 +12,8 @@ def _admin_token() -> str:
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client():
     from agflow.main import app
-    monkeypatch.setenv("AUTH_MODE", "local")
     return TestClient(app)
 
 

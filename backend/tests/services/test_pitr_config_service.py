@@ -58,9 +58,9 @@ async def sample_remote_connection_id():
       - config JSONB NOT NULL DEFAULT '{}'
     Les colonnes vault_api_key_id / vault_secret_path sont nullables.
     """
-    from agflow.db import pool as _pool
+    from agflow.db.pool import fetch_one
 
-    row = await _pool.fetch_one(
+    row = await fetch_one(
         "INSERT INTO remote_backup_connections (name, kind, config) "
         "VALUES ('test-remote', 'sftp', '{}'::jsonb) RETURNING id"
     )

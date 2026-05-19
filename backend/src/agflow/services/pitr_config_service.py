@@ -6,7 +6,7 @@ from uuid import UUID
 import structlog
 from apscheduler.triggers.cron import CronTrigger
 
-from agflow.db import pool
+from agflow.db.pool import fetch_all, fetch_one, get_pool
 from agflow.schemas.pitr import PitrConfigOut
 
 log = structlog.get_logger(__name__)
@@ -29,7 +29,7 @@ def _validate_cron(expr: str) -> None:
 
 async def get_config() -> PitrConfigOut:
     """Retourne la configuration PITR (singleton row id=1) avec les remotes associés."""
-    row = await pool.fetch_one(
+    row = await fetch_one(
         "SELECT enabled, basebackup_cron, retention_count, updated_at "
         "FROM pitr_config WHERE id = 1"
     )
@@ -37,7 +37,7 @@ async def get_config() -> PitrConfigOut:
         raise RuntimeError(
             "pitr_config singleton row missing — migration 111 not applied"
         )
-    remote_rows = await pool.fetch_all(
+    remote_rows = await fetch_all(
         "SELECT remote_connection_id FROM pitr_config_remotes "
         "WHERE config_id = 1 ORDER BY remote_connection_id"
     )
@@ -69,7 +69,7 @@ async def update_config(
     if basebackup_cron is not None:
         _validate_cron(basebackup_cron)
 
-    db_pool = await pool.get_pool()
+    db_pool = await get_pool()
     async with db_pool.acquire() as conn, conn.transaction():
         sets: list[str] = []
         params: list[object] = []
@@ -101,4 +101,11 @@ async def update_config(
                     rid,
                 )
 
+    log.info(
+        "pitr.config.updated",
+        enabled=enabled,
+        basebackup_cron=basebackup_cron,
+        retention_count=retention_count,
+        remote_count=len(remote_connection_ids) if remote_connection_ids is not None else None,
+    )
     return await get_config()

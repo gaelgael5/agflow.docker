@@ -1542,7 +1542,21 @@
       "cancel": "Annuler",
       "created": "Planification créée",
       "updated": "Planification mise à jour",
-      "deleted": "Planification supprimée"
+      "deleted": "Planification supprimée",
+      "formDestinationLabel": "Destination",
+      "destinationLocal": "Locale",
+      "destinationRemote": "Distante",
+      "formRemoteConnectionLabel": "Connexion distante",
+      "formRemoteConnectionPlaceholder": "Choisir une connexion…",
+      "formRemoteConnectionNone": "Aucune connexion distante configurée — créez-en une dans Paramètres.",
+      "colDestination": "Destination",
+      "viewHistory": "Voir l'historique",
+      "hideHistory": "Masquer l'historique",
+      "historyEmpty": "Aucune sauvegarde générée pour cette planification.",
+      "historyColDate": "Date",
+      "historyColStatus": "Statut",
+      "historyColSize": "Taille",
+      "historyColFilename": "Fichier"
     },
     "backupNow": {
       "button": "Sauvegarder maintenant",

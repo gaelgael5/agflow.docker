@@ -1535,7 +1535,21 @@
       "cancel": "Cancel",
       "created": "Schedule created",
       "updated": "Schedule updated",
-      "deleted": "Schedule deleted"
+      "deleted": "Schedule deleted",
+      "formDestinationLabel": "Destination",
+      "destinationLocal": "Local",
+      "destinationRemote": "Remote",
+      "formRemoteConnectionLabel": "Remote connection",
+      "formRemoteConnectionPlaceholder": "Select a connection…",
+      "formRemoteConnectionNone": "No remote connection configured — create one in Settings.",
+      "colDestination": "Destination",
+      "viewHistory": "View history",
+      "hideHistory": "Hide history",
+      "historyEmpty": "No backups generated for this schedule.",
+      "historyColDate": "Date",
+      "historyColStatus": "Status",
+      "historyColSize": "Size",
+      "historyColFilename": "File"
     },
     "backupNow": {
       "button": "Backup now",

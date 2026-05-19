@@ -1570,6 +1570,19 @@
       "success": "Backup created",
       "error": "Failed: {{msg}}"
     },
+    "pitr": {
+      "restore": {
+        "title": "Point-in-time restore",
+        "dateLabel": "Date",
+        "timeLabel": "Time (local)",
+        "button": "Restore to this point",
+        "timezoneHint": "Times are in your local timezone ({{tz}})",
+        "utcPreview": "UTC:",
+        "confirmTitle": "Restore to {{date}} {{time}}?",
+        "confirmDescription": "A temporary clone of the database will be created at the selected point in time. The current database is not affected.",
+        "launch": "Launch restore"
+      }
+    },
     "filterSource": "Filter",
     "filterAll": "All",
     "filterManual": "Manual",

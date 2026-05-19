@@ -1577,6 +1577,19 @@
       "success": "Sauvegarde créée",
       "error": "Échec : {{msg}}"
     },
+    "pitr": {
+      "restore": {
+        "title": "Restauration point-dans-le-temps",
+        "dateLabel": "Date",
+        "timeLabel": "Heure (locale)",
+        "button": "Restaurer à ce point",
+        "timezoneHint": "Les heures sont dans votre fuseau horaire local ({{tz}})",
+        "utcPreview": "UTC :",
+        "confirmTitle": "Restaurer au {{date}} {{time}} ?",
+        "confirmDescription": "Un clone temporaire de la base de données sera créé au point dans le temps sélectionné. La base de données actuelle n'est pas affectée.",
+        "launch": "Lancer la restauration"
+      }
+    },
     "filterSource": "Filtre",
     "filterAll": "Toutes",
     "filterManual": "Manuelles",

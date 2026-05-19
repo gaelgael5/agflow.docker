@@ -9,7 +9,7 @@ from agflow.services.local_backups_service import _to_dto
 _NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
 
-def _row(*, source_full: UUID | None = None, source_snapshot: UUID | None = None) -> dict:
+def _row(*, source_full: UUID | None = None) -> dict:
     return {
         "id": uuid4(),
         "filename": "b.sql.gz",
@@ -19,7 +19,6 @@ def _row(*, source_full: UUID | None = None, source_snapshot: UUID | None = None
         "created_at": _NOW,
         "created_by_user_id": None,
         "source_schedule_full_id": source_full,
-        "source_schedule_snapshot_id": source_snapshot,
         "source_remote_connection_id": None,
     }
 
@@ -34,6 +33,3 @@ def test_source_kind_full_when_full_id_set() -> None:
     assert dto.source_kind == "full"
 
 
-def test_source_kind_snapshot_when_snapshot_id_set() -> None:
-    dto = _to_dto(_row(source_snapshot=uuid4()))
-    assert dto.source_kind == "snapshot"

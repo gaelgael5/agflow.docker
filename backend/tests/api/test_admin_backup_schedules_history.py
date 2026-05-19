@@ -43,9 +43,3 @@ def test_get_full_history_unknown_schedule_returns_404(client, fresh_db):
     assert r.status_code == 404
 
 
-def test_get_snapshot_history_unknown_schedule_returns_404(client, fresh_db):
-    r = client.get(
-        f"/api/admin/backup-schedules/snapshot/{uuid4()}/history",
-        headers=_admin_header(),
-    )
-    assert r.status_code == 404

@@ -54,31 +54,25 @@ async def test_stop_shutdowns_scheduler() -> None:
 
 @pytest.mark.asyncio
 async def test_reload_schedules_adds_new_jobs_from_db() -> None:
-    """Si DB contient un schedule full + un snapshot, scheduler.add_job est appelé 2 fois."""
+    """Si DB contient 2 schedules full, scheduler.add_job est appelé 2 fois."""
     from agflow.services import backup_scheduler
 
     fake_scheduler = MagicMock()
     fake_scheduler.get_jobs.return_value = []  # pas de jobs existants
     backup_scheduler._scheduler = fake_scheduler
 
-    full_id = uuid.uuid4()
-    snap_id = uuid.uuid4()
-    fake_full = MagicMock(id=full_id, enabled=True, cron_expr="0 * * * *", updated_at=MagicMock())
-    fake_snap = MagicMock(id=snap_id, enabled=True, interval_amount=15, interval_unit="minutes", updated_at=MagicMock())
+    full_id_a = uuid.uuid4()
+    full_id_b = uuid.uuid4()
+    fake_full_a = MagicMock(id=full_id_a, enabled=True, cron_expr="0 * * * *", updated_at=MagicMock())
+    fake_full_b = MagicMock(id=full_id_b, enabled=True, cron_expr="0 3 * * *", updated_at=MagicMock())
 
-    with (
-        patch(
-            "agflow.services.backup_scheduler.schedules_svc.list_full_schedules",
-            AsyncMock(return_value=[fake_full]),
-        ),
-        patch(
-            "agflow.services.backup_scheduler.schedules_svc.list_snapshot_schedules",
-            AsyncMock(return_value=[fake_snap]),
-        ),
+    with patch(
+        "agflow.services.backup_scheduler.schedules_svc.list_full_schedules",
+        AsyncMock(return_value=[fake_full_a, fake_full_b]),
     ):
         await backup_scheduler.reload_schedules()
 
-    # 2 add_job calls (un pour full, un pour snapshot)
+    # 2 add_job calls (un par schedule full)
     assert fake_scheduler.add_job.call_count == 2
 
 
@@ -92,15 +86,9 @@ async def test_reload_schedules_skips_disabled() -> None:
 
     fake_full = MagicMock(id=uuid.uuid4(), enabled=False, cron_expr="0 * * * *", updated_at=MagicMock())
 
-    with (
-        patch(
-            "agflow.services.backup_scheduler.schedules_svc.list_full_schedules",
-            AsyncMock(return_value=[fake_full]),
-        ),
-        patch(
-            "agflow.services.backup_scheduler.schedules_svc.list_snapshot_schedules",
-            AsyncMock(return_value=[]),
-        ),
+    with patch(
+        "agflow.services.backup_scheduler.schedules_svc.list_full_schedules",
+        AsyncMock(return_value=[fake_full]),
     ):
         await backup_scheduler.reload_schedules()
 
@@ -118,15 +106,9 @@ async def test_reload_schedules_removes_orphan_jobs() -> None:
     fake_scheduler.get_jobs.return_value = [orphan_job]
     backup_scheduler._scheduler = fake_scheduler
 
-    with (
-        patch(
-            "agflow.services.backup_scheduler.schedules_svc.list_full_schedules",
-            AsyncMock(return_value=[]),
-        ),
-        patch(
-            "agflow.services.backup_scheduler.schedules_svc.list_snapshot_schedules",
-            AsyncMock(return_value=[]),
-        ),
+    with patch(
+        "agflow.services.backup_scheduler.schedules_svc.list_full_schedules",
+        AsyncMock(return_value=[]),
     ):
         await backup_scheduler.reload_schedules()
 
@@ -142,7 +124,7 @@ async def test_trigger_now_calls_add_job_with_immediate_run() -> None:
     backup_scheduler._scheduler = fake_scheduler
 
     schedule_id = uuid.uuid4()
-    await backup_scheduler.trigger_now(schedule_id=schedule_id, kind="full")
+    await backup_scheduler.trigger_now(schedule_id=schedule_id)
 
     fake_scheduler.add_job.assert_called_once()
     # Vérifie que c'est marqué pour exécution immédiate

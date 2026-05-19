@@ -9,10 +9,7 @@ from uuid import uuid4
 import jwt
 from fastapi.testclient import TestClient
 
-from agflow.schemas.backup_schedules import (
-    FullScheduleSummary,
-    SnapshotScheduleSummary,
-)
+from agflow.schemas.backup_schedules import FullScheduleSummary
 
 
 def _admin_token() -> str:
@@ -33,16 +30,6 @@ def _full_summary(name: str = "s", enabled: bool = True) -> FullScheduleSummary:
     return FullScheduleSummary(
         id=uuid4(), name=name, cron_expr="0 * * * *",
         remote_connection_id=None, retention_count=10, enabled=enabled,
-        last_run_at=None, last_run_status=None, last_run_error=None,
-        created_at=datetime(2026, 5, 16, tzinfo=UTC),
-        updated_at=datetime(2026, 5, 16, tzinfo=UTC),
-    )
-
-
-def _snapshot_summary(name: str = "s", enabled: bool = True) -> SnapshotScheduleSummary:
-    return SnapshotScheduleSummary(
-        id=uuid4(), name=name, interval_amount=15, interval_unit="minutes",
-        remote_connection_id=None, retention_count=24, enabled=enabled,
         last_run_at=None, last_run_status=None, last_run_error=None,
         created_at=datetime(2026, 5, 16, tzinfo=UTC),
         updated_at=datetime(2026, 5, 16, tzinfo=UTC),
@@ -193,54 +180,3 @@ def test_set_full_enabled_toggles(client: TestClient) -> None:
     assert r.json()["enabled"] is False
 
 
-# ── Snapshot CRUD (3 tests représentatifs) ─────────────────────────────
-
-
-def test_list_snapshot_returns_summaries(client: TestClient) -> None:
-    with patch(
-        "agflow.api.admin.backup_schedules.svc.list_snapshot_schedules",
-        AsyncMock(return_value=[_snapshot_summary("s1")]),
-    ):
-        r = client.get(
-            "/api/admin/backup-schedules/snapshot",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
-        )
-    assert r.status_code == 200
-    assert len(r.json()) == 1
-
-
-def test_create_snapshot_returns_201(client: TestClient) -> None:
-    with (
-        patch(
-            "agflow.api.admin.backup_schedules.users_service.get_by_email",
-            AsyncMock(return_value=type("U", (), {"id": uuid4()})()),
-        ),
-        patch(
-            "agflow.api.admin.backup_schedules.svc.create_snapshot_schedule",
-            AsyncMock(return_value=_snapshot_summary("snap")),
-        ),
-    ):
-        r = client.post(
-            "/api/admin/backup-schedules/snapshot",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
-            json={"name": "snap", "interval_amount": 15, "interval_unit": "minutes"},
-        )
-    assert r.status_code == 201
-
-
-def test_run_now_snapshot_returns_202(client: TestClient) -> None:
-    with (
-        patch(
-            "agflow.api.admin.backup_schedules.svc.get_snapshot_schedule",
-            AsyncMock(return_value=_snapshot_summary("x")),
-        ),
-        patch(
-            "agflow.api.admin.backup_schedules.backup_scheduler.trigger_now",
-            AsyncMock(return_value=None),
-        ),
-    ):
-        r = client.post(
-            f"/api/admin/backup-schedules/snapshot/{uuid4()}/run-now",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
-        )
-    assert r.status_code == 202

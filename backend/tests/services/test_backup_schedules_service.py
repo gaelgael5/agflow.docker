@@ -122,80 +122,6 @@ async def test_set_full_enabled_toggles(fresh_db: None) -> None:
     assert disabled.enabled is False
 
 
-# ── Snapshot CRUD ──────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_create_snapshot_schedule(fresh_db: None) -> None:
-    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
-    actor = await _create_admin()
-    out = await svc.create_snapshot_schedule(
-        SnapshotScheduleCreate(
-            name="rapide", interval_amount=15, interval_unit="minutes",
-            retention_count=20,
-        ),
-        actor_user_id=actor,
-    )
-    assert out.name == "rapide"
-    assert out.interval_amount == 15
-    assert out.interval_unit == "minutes"
-    assert out.retention_count == 20
-    assert out.enabled is True
-
-
-@pytest.mark.asyncio
-async def test_list_snapshot_schedules(fresh_db: None) -> None:
-    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
-    actor = await _create_admin()
-    await svc.create_snapshot_schedule(
-        SnapshotScheduleCreate(name="s1", interval_amount=5, interval_unit="minutes"),
-        actor_user_id=actor,
-    )
-    items = await svc.list_snapshot_schedules()
-    assert len(items) == 1
-    assert items[0].name == "s1"
-
-
-@pytest.mark.asyncio
-async def test_update_snapshot(fresh_db: None) -> None:
-    from agflow.schemas.backup_schedules import SnapshotScheduleCreate, SnapshotScheduleUpdate
-    actor = await _create_admin()
-    created = await svc.create_snapshot_schedule(
-        SnapshotScheduleCreate(name="s", interval_amount=10, interval_unit="minutes"),
-        actor_user_id=actor,
-    )
-    updated = await svc.update_snapshot_schedule(
-        created.id, SnapshotScheduleUpdate(interval_amount=30, interval_unit="hours"),
-    )
-    assert updated.interval_amount == 30
-    assert updated.interval_unit == "hours"
-
-
-@pytest.mark.asyncio
-async def test_delete_snapshot(fresh_db: None) -> None:
-    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
-    actor = await _create_admin()
-    created = await svc.create_snapshot_schedule(
-        SnapshotScheduleCreate(name="s", interval_amount=10, interval_unit="minutes"),
-        actor_user_id=actor,
-    )
-    await svc.delete_snapshot_schedule(created.id)
-    with pytest.raises(svc.ScheduleNotFoundError):
-        await svc.get_snapshot_schedule(created.id)
-
-
-@pytest.mark.asyncio
-async def test_set_snapshot_enabled(fresh_db: None) -> None:
-    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
-    actor = await _create_admin()
-    created = await svc.create_snapshot_schedule(
-        SnapshotScheduleCreate(name="s", interval_amount=10, interval_unit="minutes"),
-        actor_user_id=actor,
-    )
-    disabled = await svc.set_snapshot_enabled(created.id, False)
-    assert disabled.enabled is False
-
-
 # ── record_run (cross-kind) ────────────────────────────────────────────
 
 
@@ -213,24 +139,7 @@ async def test_record_run_full_updates_last_run_fields(fresh_db: None) -> None:
     assert refreshed.last_run_error is None
 
 
-@pytest.mark.asyncio
-async def test_record_run_snapshot_failed_with_error(fresh_db: None) -> None:
-    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
-    actor = await _create_admin()
-    created = await svc.create_snapshot_schedule(
-        SnapshotScheduleCreate(name="s", interval_amount=10, interval_unit="minutes"),
-        actor_user_id=actor,
-    )
-    await svc.record_run(
-        schedule_id=created.id, kind="snapshot",
-        status="failed", error="S3 upload timeout",
-    )
-    refreshed = await svc.get_snapshot_schedule(created.id)
-    assert refreshed.last_run_status == "failed"
-    assert refreshed.last_run_error == "S3 upload timeout"
-
-
-# ── prune_old_backups (cross-kind) ─────────────────────────────────────
+# ── prune_old_backups ─────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -281,28 +190,3 @@ async def test_prune_old_backups_keeps_n_latest(fresh_db: None, tmp_path) -> Non
     assert len(remaining) == 2
 
 
-@pytest.mark.asyncio
-async def test_prune_old_backups_noop_when_under_retention(fresh_db: None, tmp_path) -> None:
-    from agflow.db.pool import execute
-    from agflow.schemas.backup_schedules import SnapshotScheduleCreate
-
-    actor = await _create_admin()
-    created = await svc.create_snapshot_schedule(
-        SnapshotScheduleCreate(name="s", interval_amount=5, interval_unit="minutes", retention_count=10),
-        actor_user_id=actor,
-    )
-
-    # 3 backups, retention=10 → rien à supprimer
-    for i in range(3):
-        f = tmp_path / f"b-{i}.sql.gz"
-        f.write_bytes(b"x")
-        await execute(
-            "INSERT INTO local_backups (id, filename, file_path, status, source_schedule_snapshot_id) "
-            "VALUES ($1, $2, $3, 'completed', $4)",
-            uuid.uuid4(), f.name, str(f), created.id,
-        )
-
-    pruned = await svc.prune_old_backups(
-        schedule_id=created.id, kind="snapshot", retention_count=10,
-    )
-    assert pruned == 0

@@ -90,9 +90,7 @@ export function RemoteBackupConnectionsPage() {
               </td>
               <td className="pr-4 text-xs text-muted-foreground">
                 {[
-                  c.config["remote_path_snapshots"],
                   c.config["remote_path_full"],
-                  c.config["prefix_snapshots"],
                   c.config["prefix_full"],
                 ]
                   .filter(Boolean)

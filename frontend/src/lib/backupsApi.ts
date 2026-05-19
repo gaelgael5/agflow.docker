@@ -15,7 +15,7 @@ export interface LocalBackup {
   status: LocalBackupStatus;
   created_at: string;
   source_remote_connection_id: string | null;
-  source_kind: "manual" | "full" | "snapshot";
+  source_kind: "manual" | "full";
 }
 
 export interface RestoreResult {

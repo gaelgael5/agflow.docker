@@ -131,15 +131,9 @@ export function ConnectionModal({
     }
   };
 
-  const pathKeys =
-    kind === "s3"
-      ? ["prefix_snapshots", "prefix_full"]
-      : ["remote_path_snapshots", "remote_path_full"];
+  const pathKeys = kind === "s3" ? ["prefix_full"] : ["remote_path_full"];
 
-  const pathLabelKey = (key: string): string =>
-    key === "prefix_snapshots" || key === "remote_path_snapshots"
-      ? "path_snapshots"
-      : "path_full";
+  const pathLabelKey = (_key: string): string => "path_full";
 
   const handleConfigChange = (key: string, value: string) =>
     setConfig((c) => ({ ...c, [key]: value }));

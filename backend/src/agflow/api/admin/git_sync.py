@@ -16,7 +16,7 @@ from agflow.schemas.git_sync import (
     GitSyncTestSecretRefResult,
 )
 from agflow.services import git_sync_github_client as gh
-from agflow.services import git_sync_runner, git_sync_scheduler
+from agflow.services import git_sync_runner, git_sync_scheduler, vault_client
 from agflow.services import git_sync_service as svc
 
 _log = structlog.get_logger(__name__)
@@ -120,11 +120,23 @@ async def get_commits(
     config = await svc.get_config()
     if config is None:
         raise HTTPException(status_code=404, detail="Git sync not configured")
+
+    # Résout le PAT (auth_secret_ref) pour appeler l'API GitHub en mode
+    # authentifié. Sans ça, un repo privé renvoie 404 (sécurité par obscurité).
+    # En mode SSH_KEY le secret est une clé SSH, pas un PAT — on saute l'auth.
+    auth_token: str | None = None
+    if config.auth_mode != "ssh_key":
+        try:
+            auth_token = await vault_client.resolve_ref(config.auth_secret_ref)
+        except Exception as exc:
+            _log.warning("git_sync.api.commits_secret_resolve_failed", error=str(exc))
+
     try:
         commits = await gh.list_commits(
             repo_url=config.repo_url,
             branch=config.branch,
             limit=limit,
+            auth_token=auth_token,
         )
     except gh.UnsupportedHostError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

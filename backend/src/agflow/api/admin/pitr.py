@@ -15,6 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from agflow.auth.dependencies import require_admin
 from agflow.schemas.pitr import (
     BasebackupSummary,
+    CloneRequest,
+    CloneStatus,
     PitrConfigOut,
     PitrConfigUpdate,
     RestoreWindow,
@@ -23,6 +25,7 @@ from agflow.schemas.pitr import (
 from agflow.services import (
     pitr_basebackup_pushes_service,
     pitr_basebackup_service,
+    pitr_clone_service,
     pitr_config_service,
     pitr_restore_service,
     pitr_scheduler,
@@ -154,3 +157,58 @@ async def get_restore_window() -> RestoreWindow:
             status_code=404,
             detail="no basebackup with a valid recovery window",
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Clones
+# ---------------------------------------------------------------------------
+
+
+@router.post("/clones", status_code=202)
+async def start_clone_endpoint(
+    payload: CloneRequest,
+    actor_user_id: str = Depends(require_admin),
+) -> dict[str, str]:
+    """Start a PITR clone at target_time. Returns the clone UUID immediately; the
+    actual provisioning happens in background."""
+    actor_uuid: UUID | None
+    try:
+        actor_uuid = UUID(actor_user_id) if actor_user_id else None
+    except ValueError:
+        actor_uuid = None
+
+    try:
+        clone_id = await pitr_restore_service.start_clone(
+            payload.target_time, actor_user_id=actor_uuid
+        )
+    except pitr_restore_service.RestoreWindowEmptyError as exc:
+        raise HTTPException(status_code=404, detail="no basebackup available") from exc
+    except pitr_restore_service.InvalidTargetTimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except pitr_restore_service.CloneAlreadyActiveError as exc:
+        raise HTTPException(status_code=409, detail=f"clone already active: {exc}") from exc
+    return {"id": str(clone_id)}
+
+
+@router.get("/clones/active", response_model=CloneStatus | None)
+async def get_active_clone_endpoint() -> CloneStatus | None:
+    """Return the current active clone, or null if none."""
+    return await pitr_clone_service.get_active_clone()
+
+
+@router.post("/clones/active/extend", response_model=CloneStatus)
+async def extend_active_clone_endpoint() -> CloneStatus:
+    """Extend the active clone TTL by 24 h."""
+    try:
+        return await pitr_clone_service.extend_active_clone()
+    except pitr_clone_service.NoActiveCloneError as exc:
+        raise HTTPException(status_code=404, detail="no active clone") from exc
+
+
+@router.delete("/clones/active", status_code=204)
+async def terminate_active_clone_endpoint() -> None:
+    """Stop and clean up the active clone."""
+    try:
+        await pitr_clone_service.terminate_active_clone()
+    except pitr_clone_service.NoActiveCloneError as exc:
+        raise HTTPException(status_code=404, detail="no active clone") from exc

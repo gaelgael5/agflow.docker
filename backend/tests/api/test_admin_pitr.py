@@ -1,10 +1,10 @@
-"""Tests pour /api/admin/pitr/config endpoints (GET + PUT) + basebackups (5 endpoints) + WAL + restore-window."""
+"""Tests pour /api/admin/pitr/config endpoints (GET + PUT) + basebackups (5 endpoints) + WAL + restore-window + clones."""
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import jwt
 from fastapi.testclient import TestClient
@@ -390,4 +390,158 @@ def test_restore_window_404_when_empty(client: TestClient) -> None:
         new=AsyncMock(side_effect=RestoreWindowEmptyError("nope")),
     ):
         r = client.get("/api/admin/pitr/restore-window", headers=_auth(_admin_token()))
+    assert r.status_code == 404
+
+
+# ── Clones ────────────────────────────────────────────────────────────────
+
+
+def _now_utc() -> datetime:
+    return datetime.now(UTC).replace(microsecond=0)
+
+
+def _make_clone_status(*, status: str = "ready", clone_id: UUID | None = None):  # type: ignore[return]
+    from agflow.schemas.pitr import CloneStatus
+
+    cid = clone_id or uuid4()
+    now = _now_utc()
+    return CloneStatus(
+        id=cid,
+        basebackup_id=uuid4(),
+        basebackup_label="20260520-030000F",
+        target_time=now - timedelta(hours=1),
+        status=status,
+        error=None,
+        pgweb_url="http://192.168.10.158:32768" if status == "ready" else None,
+        started_at=now - timedelta(minutes=5),
+        ready_at=now - timedelta(minutes=4) if status == "ready" else None,
+        expires_at=now + timedelta(hours=24),
+        expires_in_seconds=86400,
+    )
+
+
+def test_start_clone_returns_id(client: TestClient) -> None:
+    fake_id = uuid4()
+    with patch(
+        "agflow.api.admin.pitr.pitr_restore_service.start_clone",
+        new=AsyncMock(return_value=fake_id),
+    ):
+        r = client.post(
+            "/api/admin/pitr/clones",
+            headers=_auth(_admin_token()),
+            json={"target_time": _now_utc().isoformat()},
+        )
+    assert r.status_code == 202
+    assert r.json() == {"id": str(fake_id)}
+
+
+def test_start_clone_422_out_of_window(client: TestClient) -> None:
+    from agflow.services.pitr_restore_service import InvalidTargetTimeError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_restore_service.start_clone",
+        new=AsyncMock(side_effect=InvalidTargetTimeError("out of window")),
+    ):
+        r = client.post(
+            "/api/admin/pitr/clones",
+            headers=_auth(_admin_token()),
+            json={"target_time": _now_utc().isoformat()},
+        )
+    assert r.status_code == 422
+
+
+def test_start_clone_404_window_empty(client: TestClient) -> None:
+    from agflow.services.pitr_restore_service import RestoreWindowEmptyError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_restore_service.start_clone",
+        new=AsyncMock(side_effect=RestoreWindowEmptyError("no basebackup")),
+    ):
+        r = client.post(
+            "/api/admin/pitr/clones",
+            headers=_auth(_admin_token()),
+            json={"target_time": _now_utc().isoformat()},
+        )
+    assert r.status_code == 404
+
+
+def test_start_clone_409_already_active(client: TestClient) -> None:
+    from agflow.services.pitr_restore_service import CloneAlreadyActiveError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_restore_service.start_clone",
+        new=AsyncMock(side_effect=CloneAlreadyActiveError("xxx")),
+    ):
+        r = client.post(
+            "/api/admin/pitr/clones",
+            headers=_auth(_admin_token()),
+            json={"target_time": _now_utc().isoformat()},
+        )
+    assert r.status_code == 409
+
+
+def test_get_active_clone_returns_null_when_no_active(client: TestClient) -> None:
+    with patch(
+        "agflow.api.admin.pitr.pitr_clone_service.get_active_clone",
+        new=AsyncMock(return_value=None),
+    ):
+        r = client.get("/api/admin/pitr/clones/active", headers=_auth(_admin_token()))
+    assert r.status_code == 200
+    assert r.json() is None
+
+
+def test_get_active_clone_returns_clone(client: TestClient) -> None:
+    fake = _make_clone_status(status="ready")
+    with patch(
+        "agflow.api.admin.pitr.pitr_clone_service.get_active_clone",
+        new=AsyncMock(return_value=fake),
+    ):
+        r = client.get("/api/admin/pitr/clones/active", headers=_auth(_admin_token()))
+    assert r.status_code == 200
+    assert r.json()["status"] == "ready"
+
+
+def test_extend_active_clone_returns_refreshed(client: TestClient) -> None:
+    fake = _make_clone_status(status="ready")
+    with patch(
+        "agflow.api.admin.pitr.pitr_clone_service.extend_active_clone",
+        new=AsyncMock(return_value=fake),
+    ):
+        r = client.post(
+            "/api/admin/pitr/clones/active/extend", headers=_auth(_admin_token())
+        )
+    assert r.status_code == 200
+    assert r.json()["id"] == str(fake.id)
+
+
+def test_extend_active_clone_404_when_no_active(client: TestClient) -> None:
+    from agflow.services.pitr_clone_service import NoActiveCloneError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_clone_service.extend_active_clone",
+        new=AsyncMock(side_effect=NoActiveCloneError()),
+    ):
+        r = client.post(
+            "/api/admin/pitr/clones/active/extend", headers=_auth(_admin_token())
+        )
+    assert r.status_code == 404
+
+
+def test_terminate_active_clone_204(client: TestClient) -> None:
+    with patch(
+        "agflow.api.admin.pitr.pitr_clone_service.terminate_active_clone",
+        new=AsyncMock(),
+    ):
+        r = client.delete("/api/admin/pitr/clones/active", headers=_auth(_admin_token()))
+    assert r.status_code == 204
+
+
+def test_terminate_active_clone_404_when_no_active(client: TestClient) -> None:
+    from agflow.services.pitr_clone_service import NoActiveCloneError
+
+    with patch(
+        "agflow.api.admin.pitr.pitr_clone_service.terminate_active_clone",
+        new=AsyncMock(side_effect=NoActiveCloneError()),
+    ):
+        r = client.delete("/api/admin/pitr/clones/active", headers=_auth(_admin_token()))
     assert r.status_code == 404

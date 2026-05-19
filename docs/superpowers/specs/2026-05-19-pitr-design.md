@@ -84,7 +84,7 @@ Les snapshots `pg_dump` à intervalle court ne permettent pas une restauration f
 **Composants ajoutés** :
 - Image custom `agflow-postgres:16-pitr` (Dockerfile dans `infra/postgres-pitr/`)
 - 4 services Python SRP + 1 worker APScheduler + 1 router REST
-- 3 tables DB (+ 1 table singleton de config + 1 join table)
+- 5 tables DB : `pitr_basebackups`, `pitr_basebackup_pushes`, `pitr_config` (singleton), `pitr_config_remotes` (join), `pitr_clones`
 - 8 composants frontend
 
 **Composants retirés** :
@@ -225,7 +225,7 @@ Router `backend/src/agflow/api/admin/pitr.py`, préfixe `/api/admin/pitr`, `requ
 | POST | `/clones/active/extend` | rallonge `expires_at` de +24h | 404, 409 |
 | DELETE | `/clones/active` | arrête + supprime containers + volume | 404 |
 
-**14 endpoints au total.**
+**13 endpoints au total.**
 
 ### Schémas Pydantic (extraits)
 
@@ -626,17 +626,23 @@ Dialog shadcn (jamais `window.confirm` — cf. memory `feedback_no_system_prompt
 - `ActiveCloneCard.test.tsx` — rendu selon status, countdown
 - `RecoveryWindowChart.test.tsx` — rendu barre, état vide
 
-### E2E — étape 7.11 dans `./scripts/run-test.sh`
+### E2E — étape 7.10 dans `./scripts/run-test.sh`
 
-9 sous-assertions séquentielles validant la chaîne complète :
+Séquence chronologique (préparation + 9 assertions `fail`) :
 
-1. Stanza pgbackrest créée au boot
-2. Basebackup déclenché via API → status=`ok` < 3 min
-3. INSERT canary `before`, switch WAL (sleep 65s), note T_BEFORE, INSERT canary `after`, switch WAL
-4. Restore vers clone à T_BEFORE → status=`ready` < 5 min
-5. Clone contient ligne `before`, **pas** la ligne `after`
-6. DELETE clone → containers + volume + réseau supprimés
-7. DB live contient toujours les 2 lignes (clone n'a pas affecté la live)
+| # | Action | Assertion `fail` si... |
+|---|---|---|
+| 1 | Vérifier stanza pgbackrest au boot | `pgbackrest info` ne contient pas `agflow` |
+| 2 | `POST /pitr/basebackups` | UUID retourné vide |
+| 3 | Polling status (timeout 3 min) | `status != 'ok'` |
+| 4 | INSERT canary `before` + switch WAL + note `T_BEFORE` + INSERT canary `after` + switch WAL | (setup, pas d'assertion) |
+| 5 | `POST /pitr/clones` avec `target_time=T_BEFORE` | UUID retourné vide |
+| 6 | Polling status (timeout 5 min) | `status != 'ready'` |
+| 7 | `psql` sur le clone : `COUNT(*) WHERE note='before'` | `≠ 1` |
+| 8 | `psql` sur le clone : `COUNT(*) WHERE note='after'` | `≠ 0` |
+| 9 | `DELETE /pitr/clones/active` puis `docker ps --filter name=agflow-pitr-clone-*` | trouve encore des containers |
+| 10 | `psql` sur la DB live : `COUNT(*) WHERE note='before'` | `≠ 1` |
+| 11 | `psql` sur la DB live : `COUNT(*) WHERE note='after'` | `≠ 1` |
 
 ### Tests retirés (~25)
 
@@ -652,10 +658,10 @@ Dialog shadcn (jamais `window.confirm` — cf. memory `feedback_no_system_prompt
 |---|---|---|---|
 | **P1 — Image custom Postgres** | Dockerfile + configs + entrypoint + modif compose + volume | Build OK, archiving actif | 3-4j |
 | **P2 — Migrations + services backend** | Migrations 110, 111 + 4 services Python + tests unit | Services SRP <200 LoC chacun, ~50 tests verts | 5-6j |
-| **P3 — Worker + API REST** | pitr_scheduler.py + api/admin/pitr.py + lifespan + tests intégration | 14 endpoints, ~25 tests HTTP verts | 2-3j |
+| **P3 — Worker + API REST** | pitr_scheduler.py + api/admin/pitr.py + lifespan + tests intégration | 13 endpoints, ~25 tests HTTP verts | 2-3j |
 | **P4 — Frontend** | API client + hooks + 8 composants + dialogs + i18n | Page Backups refondue, picker fonctionnel | 3-4j |
 | **P5 — Nettoyage** | Retrait code snapshot, tests obsolètes, i18n keys | No dead code | 1-2j |
-| **P6 — E2E + smoke** | Étape 7.11 run-test.sh + validation manuelle | Step 7.11 ✅ | 2-3j |
+| **P6 — E2E + smoke** | Étape 7.10 run-test.sh + validation manuelle | Step 7.10 ✅ | 2-3j |
 
 **Total : 16-22 jours** (≈ 2.5-3 semaines avec parallélisme P2/P4 via subagents).
 
@@ -684,7 +690,7 @@ Dialog shadcn (jamais `window.confirm` — cf. memory `feedback_no_system_prompt
 - [ ] TTL 24h fonctionne (clone forcé en `terminated` après expiration)
 - [ ] Push d'un basebackup vers ≥ 2 remotes en parallèle
 - [ ] Aucune trace de `backup_schedules_snapshot` dans le code, la DB, l'UI, les i18n keys
-- [ ] `./scripts/run-test.sh` passe les 8 assertions historiques + l'étape 7.11 PITR (9 sous-assertions)
+- [ ] `./scripts/run-test.sh` passe les 8 assertions historiques + les 9 assertions de l'étape 7.10 PITR
 
 ## Out-of-scope V1 (différé V2)
 
@@ -706,7 +712,7 @@ Dialog shadcn (jamais `window.confirm` — cf. memory `feedback_no_system_prompt
 - `feat(pitr-api):` — router admin
 - `feat(pitr-ui):` — frontend
 - `chore(pitr):` — cleanup snapshot
-- `test(pitr):` — étape 7.11 run-test.sh
+- `test(pitr):` — étape 7.10 run-test.sh
 - `docs(pitr):` — éventuel guide admin
 
 ## Prochaine étape

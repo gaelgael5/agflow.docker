@@ -611,6 +611,188 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ÉTAPE 7.10 : Validation E2E PITR
+# ══════════════════════════════════════════════════════════════════════════════
+log ""
+log "=== ÉTAPE 7.10 : Validation E2E PITR ==="
+
+if [ -z "${ADMIN_JWT}" ]; then
+    log_fail "PITR e2e (JWT absent — dépendance étape 7.9)"
+    log_fail "PITR e2e — basebackup créé"
+    log_fail "PITR e2e — basebackup status=ok"
+    log_fail "PITR e2e — clone créé"
+    log_fail "PITR e2e — clone status=ready"
+    log_fail "PITR e2e — clone contient 'before'"
+    log_fail "PITR e2e — clone ne contient PAS 'after'"
+    log_fail "PITR e2e — containers clone supprimés"
+    log_fail "PITR e2e — DB live intacte (before+after)"
+else
+    # 7.10.1 — Stanza pgBackRest créée au boot du container
+    if pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres pgbackrest --stanza=agflow info 2>&1 | grep -q 'agflow'" \
+        > /dev/null 2>&1; then
+        log_pass "PITR stanza agflow présente"
+    else
+        log_fail "PITR stanza agflow absente"
+    fi
+
+    # 7.10.2 — Trigger basebackup via API
+    BB_RESP=$(pct exec "${CREATED_CTID}" -- curl -sS -X POST "http://localhost/api/admin/pitr/basebackups" \
+        -H "Authorization: Bearer ${ADMIN_JWT}" 2>/dev/null || echo "")
+    BB_ID=$(echo "${BB_RESP}" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" \
+        2>/dev/null || echo "")
+
+    if [ -n "${BB_ID}" ] && [ "${BB_ID}" != "null" ]; then
+        log_pass "PITR basebackup créé (id=${BB_ID:0:8}...)"
+    else
+        log_fail "PITR basebackup non créé : ${BB_RESP}"
+    fi
+
+    # 7.10.3 — Polling basebackup status (timeout 3 min)
+    BB_STATUS=""
+    if [ -n "${BB_ID}" ] && [ "${BB_ID}" != "null" ]; then
+        for _ in $(seq 1 36); do
+            BB_STATUS=$(pct exec "${CREATED_CTID}" -- curl -sS \
+                "http://localhost/api/admin/pitr/basebackups/${BB_ID}" \
+                -H "Authorization: Bearer ${ADMIN_JWT}" 2>/dev/null \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" \
+                2>/dev/null || echo "")
+            [ "${BB_STATUS}" = "ok" ] && break
+            [ "${BB_STATUS}" = "failed" ] && break
+            sleep 5
+        done
+    fi
+
+    if [ "${BB_STATUS}" = "ok" ]; then
+        log_pass "PITR basebackup status=ok"
+    else
+        log_fail "PITR basebackup status=${BB_STATUS} (attendu ok)"
+    fi
+
+    # 7.10.4 — Insère canary, switch WAL, note T_BEFORE, insère canary, switch WAL
+    pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U agflow -d agflow -c 'CREATE TABLE IF NOT EXISTS _pitr_canary (id serial primary key, note text, t timestamptz);'" \
+        > /dev/null 2>&1 || true
+
+    pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U agflow -d agflow -c \"INSERT INTO _pitr_canary (note, t) VALUES ('before', now());\"" \
+        > /dev/null 2>&1 || true
+    pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U agflow -d agflow -c 'SELECT pg_switch_wal();'" \
+        > /dev/null 2>&1 || true
+    sleep 3
+    T_BEFORE=$(pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U agflow -d agflow -tAc 'SELECT now();'" \
+        2>/dev/null | tr -d '[:space:]\r' | head -c 40)
+
+    pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U agflow -d agflow -c \"INSERT INTO _pitr_canary (note, t) VALUES ('after', now());\"" \
+        > /dev/null 2>&1 || true
+    pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U agflow -d agflow -c 'SELECT pg_switch_wal();'" \
+        > /dev/null 2>&1 || true
+    sleep 3
+
+    # 7.10.5 — POST clone avec target_time=T_BEFORE
+    CLONE_RESP=""
+    CLONE_ID=""
+    if [ -n "${T_BEFORE}" ]; then
+        CLONE_RESP=$(pct exec "${CREATED_CTID}" -- curl -sS -X POST "http://localhost/api/admin/pitr/clones" \
+            -H "Authorization: Bearer ${ADMIN_JWT}" \
+            -H 'Content-Type: application/json' \
+            -d "{\"target_time\":\"${T_BEFORE}\"}" 2>/dev/null || echo "")
+        CLONE_ID=$(echo "${CLONE_RESP}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" \
+            2>/dev/null || echo "")
+    fi
+
+    if [ -n "${CLONE_ID}" ] && [ "${CLONE_ID}" != "null" ]; then
+        log_pass "PITR clone créé (id=${CLONE_ID:0:8}...)"
+    else
+        log_fail "PITR clone non créé : ${CLONE_RESP}"
+    fi
+
+    # 7.10.6 — Polling clone status (timeout 5 min)
+    CLONE_STATUS=""
+    if [ -n "${CLONE_ID}" ] && [ "${CLONE_ID}" != "null" ]; then
+        for _ in $(seq 1 60); do
+            CLONE_STATUS=$(pct exec "${CREATED_CTID}" -- curl -sS \
+                "http://localhost/api/admin/pitr/clones/active" \
+                -H "Authorization: Bearer ${ADMIN_JWT}" 2>/dev/null \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','') if d else '')" \
+                2>/dev/null || echo "")
+            [ "${CLONE_STATUS}" = "ready" ] && break
+            [ "${CLONE_STATUS}" = "failed" ] && break
+            sleep 5
+        done
+    fi
+
+    if [ "${CLONE_STATUS}" = "ready" ]; then
+        log_pass "PITR clone status=ready"
+    else
+        log_fail "PITR clone status=${CLONE_STATUS} (attendu ready)"
+    fi
+
+    # 7.10.7 + 7.10.8 — Le clone contient 'before' mais PAS 'after'
+    BEFORE_CLONE=0
+    AFTER_CLONE=0
+    if [ "${CLONE_STATUS}" = "ready" ]; then
+        CLONE_CONTAINER=$(pct exec "${CREATED_CTID}" -- bash -c \
+            "docker ps --filter name=agflow-pitr-clone- --format '{{.Names}}' | head -n1" \
+            2>/dev/null | tr -d '\r')
+        if [ -n "${CLONE_CONTAINER}" ]; then
+            BEFORE_CLONE=$(pct exec "${CREATED_CTID}" -- bash -c \
+                "docker exec ${CLONE_CONTAINER} psql -U agflow -d agflow -tAc \"SELECT count(*) FROM _pitr_canary WHERE note='before';\"" \
+                2>/dev/null | tr -d '[:space:]\r')
+            AFTER_CLONE=$(pct exec "${CREATED_CTID}" -- bash -c \
+                "docker exec ${CLONE_CONTAINER} psql -U agflow -d agflow -tAc \"SELECT count(*) FROM _pitr_canary WHERE note='after';\"" \
+                2>/dev/null | tr -d '[:space:]\r')
+        fi
+    fi
+
+    if [ "${BEFORE_CLONE}" = "1" ]; then
+        log_pass "PITR clone contient ligne 'before' (count=1)"
+    else
+        log_fail "PITR clone 'before' count=${BEFORE_CLONE} (attendu 1)"
+    fi
+
+    if [ "${AFTER_CLONE}" = "0" ]; then
+        log_pass "PITR clone ne contient PAS 'after' (count=0)"
+    else
+        log_fail "PITR clone 'after' count=${AFTER_CLONE} (attendu 0)"
+    fi
+
+    # 7.10.9 — DELETE clone + vérifier containers supprimés
+    pct exec "${CREATED_CTID}" -- curl -sS -X DELETE \
+        "http://localhost/api/admin/pitr/clones/active" \
+        -H "Authorization: Bearer ${ADMIN_JWT}" > /dev/null 2>&1 || true
+    sleep 5
+    LEFTOVER=$(pct exec "${CREATED_CTID}" -- bash -c \
+        "docker ps --filter name=agflow-pitr-clone- --format '{{.Names}}'" \
+        2>/dev/null | tr -d '\r' | head -c 200)
+    if [ -z "${LEFTOVER}" ]; then
+        log_pass "PITR containers clone supprimés après DELETE"
+    else
+        log_fail "PITR containers clone restants : ${LEFTOVER}"
+    fi
+
+    # 7.10.10 + 7.10.11 — DB live intacte (before+after toujours présents)
+    LIVE_BEFORE=$(pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U agflow -d agflow -tAc \"SELECT count(*) FROM _pitr_canary WHERE note='before';\"" \
+        2>/dev/null | tr -d '[:space:]\r')
+    LIVE_AFTER=$(pct exec "${CREATED_CTID}" -- bash -c \
+        "docker exec agflow-postgres psql -U agflow -d agflow -tAc \"SELECT count(*) FROM _pitr_canary WHERE note='after';\"" \
+        2>/dev/null | tr -d '[:space:]\r')
+
+    if [ "${LIVE_BEFORE}" = "1" ] && [ "${LIVE_AFTER}" = "1" ]; then
+        log_pass "PITR DB live intacte (before=1, after=1)"
+    else
+        log_fail "PITR DB live altérée (before=${LIVE_BEFORE}, after=${LIVE_AFTER})"
+    fi
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ÉTAPE 8 : Nettoyage (optionnel)
 # ══════════════════════════════════════════════════════════════════════════════
 log ""

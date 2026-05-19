@@ -1496,13 +1496,10 @@
     },
     "schedules": {
       "fullTitle": "Planifications complètes (cron)",
-      "snapshotTitle": "Snapshots (intervalle)",
       "addFull": "+ Ajouter une planification",
-      "addSnapshot": "+ Ajouter un snapshot",
       "noneConfigured": "Aucune planification configurée.",
       "colName": "Nom",
       "colCron": "Cron",
-      "colInterval": "Intervalle",
       "colRemote": "Distant",
       "colRetention": "Rétention",
       "colLastRun": "Dernier run",
@@ -1522,11 +1519,6 @@
       "formNameLabel": "Nom",
       "formCronLabel": "Expression cron (5 champs)",
       "formCronHint": "Format : minute heure jour mois jour-semaine. Ex: `0 3 * * *` = tous les jours à 3h.",
-      "formIntervalLabel": "Intervalle",
-      "formIntervalAmount": "Quantité",
-      "formIntervalUnit": "Unité",
-      "formIntervalUnitMinutes": "Minutes",
-      "formIntervalUnitHours": "Heures",
       "formRetentionLabel": "Rétention (N derniers backups)",
       "formRetentionHint": "Au-delà de N, les plus anciens sont supprimés (fichier + DB).",
       "formRemoteOptional": "Connexion distante (optionnel)",
@@ -1578,6 +1570,7 @@
       "error": "Échec : {{msg}}"
     },
     "pitr": {
+      "title": "Restauration à un point dans le temps (PITR)",
       "config": {
         "title": "Config PITR",
         "cron": "Cron basebackup",
@@ -1596,13 +1589,47 @@
         "confirmTitle": "Restaurer au {{date}} {{time}} ?",
         "confirmDescription": "Un clone temporaire de la base de données sera créé au point dans le temps sélectionné. La base de données actuelle n'est pas affectée.",
         "launch": "Lancer la restauration"
+      },
+      "wal": {
+        "archivingActive": "Archivage actif",
+        "archivingInactive": "Archivage inactif",
+        "lastArchived": "dernière archive",
+        "never": "jamais",
+        "diskUsage": "{{used}} utilisé / {{free}} libre"
+      },
+      "window": {
+        "title": "Fenêtre de récupération",
+        "empty": "Aucune fenêtre de récupération disponible"
+      },
+      "basebackups": {
+        "title": "Basebackups",
+        "empty": "Aucun basebackup encore créé",
+        "triggerNow": "Basebackup maintenant",
+        "colDate": "Date",
+        "colSize": "Taille",
+        "colPushes": "Pushes remote",
+        "colActions": "Actions",
+        "repushTo": "Re-push vers {{remote}}",
+        "deleteConfirm": "Supprimer ce basebackup ?",
+        "deleteConfirmDescription": "Cette action est irréversible. Les WAL antérieurs seront aussi expirés."
+      },
+      "clone": {
+        "none": "Aucun clone actif",
+        "restoring": "Restauration en cours",
+        "ready": "Clone prêt",
+        "terminating": "Arrêt en cours",
+        "failed": "Échec",
+        "targetedAt": "restauré à",
+        "expiresIn": "Expire dans {{duration}}",
+        "extendButton": "Prolonger +24h",
+        "stopButton": "Arrêter maintenant",
+        "openPgweb": "Ouvrir pgweb"
       }
     },
     "filterSource": "Filtre",
     "filterAll": "Toutes",
     "filterManual": "Manuelles",
-    "filterFull": "Planifiées (full)",
-    "filterSnapshot": "Snapshots"
+    "filterFull": "Planifiées (full)"
   },
   "settings": {
     "title": "Paramètres",

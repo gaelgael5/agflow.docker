@@ -1489,13 +1489,10 @@
     },
     "schedules": {
       "fullTitle": "Full backups (cron)",
-      "snapshotTitle": "Snapshots (interval)",
       "addFull": "+ Add schedule",
-      "addSnapshot": "+ Add snapshot",
       "noneConfigured": "No schedule configured.",
       "colName": "Name",
       "colCron": "Cron",
-      "colInterval": "Interval",
       "colRemote": "Remote",
       "colRetention": "Retention",
       "colLastRun": "Last run",
@@ -1515,11 +1512,6 @@
       "formNameLabel": "Name",
       "formCronLabel": "Cron expression (5 fields)",
       "formCronHint": "Format: minute hour day month weekday. Ex: `0 3 * * *` = daily at 3am.",
-      "formIntervalLabel": "Interval",
-      "formIntervalAmount": "Amount",
-      "formIntervalUnit": "Unit",
-      "formIntervalUnitMinutes": "Minutes",
-      "formIntervalUnitHours": "Hours",
       "formRetentionLabel": "Retention (last N backups)",
       "formRetentionHint": "Beyond N, the oldest are deleted (file + DB).",
       "formRemoteOptional": "Remote connection (optional)",
@@ -1571,6 +1563,7 @@
       "error": "Failed: {{msg}}"
     },
     "pitr": {
+      "title": "Point-In-Time Recovery (PITR)",
       "config": {
         "title": "PITR Config",
         "cron": "Basebackup cron",
@@ -1589,13 +1582,47 @@
         "confirmTitle": "Restore to {{date}} {{time}}?",
         "confirmDescription": "A temporary clone of the database will be created at the selected point in time. The current database is not affected.",
         "launch": "Launch restore"
+      },
+      "wal": {
+        "archivingActive": "Archiving active",
+        "archivingInactive": "Archiving inactive",
+        "lastArchived": "last archived",
+        "never": "never",
+        "diskUsage": "{{used}} used / {{free}} free"
+      },
+      "window": {
+        "title": "Recovery window",
+        "empty": "No recovery window available"
+      },
+      "basebackups": {
+        "title": "Basebackups",
+        "empty": "No basebackup yet",
+        "triggerNow": "Basebackup now",
+        "colDate": "Date",
+        "colSize": "Size",
+        "colPushes": "Remote pushes",
+        "colActions": "Actions",
+        "repushTo": "Re-push to {{remote}}",
+        "deleteConfirm": "Delete this basebackup?",
+        "deleteConfirmDescription": "This is irreversible. Older WAL will also be expired."
+      },
+      "clone": {
+        "none": "No active clone",
+        "restoring": "Restoring",
+        "ready": "Clone ready",
+        "terminating": "Terminating",
+        "failed": "Failed",
+        "targetedAt": "restored at",
+        "expiresIn": "Expires in {{duration}}",
+        "extendButton": "Extend +24h",
+        "stopButton": "Stop now",
+        "openPgweb": "Open pgweb"
       }
     },
     "filterSource": "Filter",
     "filterAll": "All",
     "filterManual": "Manual",
-    "filterFull": "Scheduled (full)",
-    "filterSnapshot": "Snapshots"
+    "filterFull": "Scheduled (full)"
   },
   "settings": {
     "title": "Settings",

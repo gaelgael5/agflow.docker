@@ -19,7 +19,10 @@ async def _fresh_db():
 async def test_get_config_returns_seeded_defaults():
     config = await pitr_config_service.get_config()
     assert config.enabled is True
-    assert config.basebackup_cron == "0 3 * * *"
+    # Migration 115 réaligne le default sur un intervalle (toutes les 30 min)
+    assert config.basebackup_cron == "*/30 * * * *"
+    assert config.basebackup_type == "diff"
+    assert config.full_rebase_cron == "0 2 * * 0"
     assert config.retention_count == 7
     assert config.remote_connection_ids == []
 

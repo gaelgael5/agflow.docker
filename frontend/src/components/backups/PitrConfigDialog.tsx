@@ -24,8 +24,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const DEFAULT_RETENTION = 7;
-const DEFAULT_REBASE_CRON = "0 2 * * 0";
 const BASEBACKUP_TYPES: BasebackupType[] = ["full", "diff", "incr"];
+type IntervalUnit = "interval-minutes" | "interval-hours";
+
+const MAX_INTERVAL_N: Record<IntervalUnit, number> = {
+  "interval-minutes": 59,
+  "interval-hours": 23,
+};
 
 export function PitrConfigDialog() {
   const { t } = useTranslation();
@@ -38,10 +43,9 @@ export function PitrConfigDialog() {
   const [open, setOpen] = useState(false);
   const [basebackupType, setBasebackupType] = useState<BasebackupType>("diff");
 
-  // Fréquence principale (cron des basebackups planifiés)
-  const [recurrence, setRecurrence] = useState<RecurrenceType>("daily");
-  const [hour, setHour] = useState(0);
-  const [minute, setMinute] = useState(0);
+  // Fréquence principale (intervalle des basebackups planifiés)
+  const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>("interval-hours");
+  const [intervalN, setIntervalN] = useState(1);
   const [cronFallback, setCronFallback] = useState<string | null>(null);
 
   // Rebasage (cron du full hebdo) — utilisé uniquement si type ≠ full
@@ -60,13 +64,16 @@ export function PitrConfigDialog() {
     setEnabled(cfg.enabled);
 
     const parsed = parseCron(cfg.basebackup_cron);
-    if (parsed && parsed.recurrence !== "weekly") {
-      setRecurrence(parsed.recurrence);
-      setHour(parsed.hour);
-      setMinute(parsed.minute);
+    if (
+      parsed &&
+      (parsed.recurrence === "interval-minutes" ||
+        parsed.recurrence === "interval-hours")
+    ) {
+      setIntervalUnit(parsed.recurrence);
+      setIntervalN(parsed.intervalN);
       setCronFallback(null);
     } else {
-      setCronFallback(cfg.basebackup_cron);
+      setCronFallback(cfg.basebackup_cron ?? "");
     }
 
     const rebaseParsed = parseCron(cfg.full_rebase_cron);
@@ -76,7 +83,7 @@ export function PitrConfigDialog() {
       setRebaseMinute(rebaseParsed.minute);
       setRebaseFallback(null);
     } else {
-      setRebaseFallback(cfg.full_rebase_cron);
+      setRebaseFallback(cfg.full_rebase_cron ?? "");
     }
   }, [cfg]);
 
@@ -86,10 +93,24 @@ export function PitrConfigDialog() {
     );
   };
 
+  const clampInterval = (unit: IntervalUnit, n: number): number =>
+    Math.min(MAX_INTERVAL_N[unit], Math.max(1, n));
+
+  const onIntervalUnitChange = (unit: IntervalUnit) => {
+    setIntervalUnit(unit);
+    setIntervalN((current) => clampInterval(unit, current));
+  };
+
   const onSave = () => {
     const cron =
       cronFallback ??
-      buildCron({ recurrence, hour, minute, dayOfWeek: 0 });
+      buildCron({
+        recurrence: intervalUnit satisfies RecurrenceType,
+        hour: 0,
+        minute: 0,
+        dayOfWeek: 0,
+        intervalN,
+      });
     const rebaseCron =
       rebaseFallback ??
       buildCron({
@@ -97,6 +118,7 @@ export function PitrConfigDialog() {
         hour: rebaseHour,
         minute: rebaseMinute,
         dayOfWeek: rebaseDayOfWeek,
+        intervalN: 0,
       });
     update.mutate(
       {
@@ -144,7 +166,7 @@ export function PitrConfigDialog() {
             </p>
           </div>
 
-          {/* Section 2 : Fréquence du basebackup planifié */}
+          {/* Section 2 : Fréquence (intervalle) */}
           {cronFallback !== null ? (
             <div className="space-y-1">
               <Label htmlFor="pitr-cron-raw">
@@ -161,73 +183,46 @@ export function PitrConfigDialog() {
               </p>
             </div>
           ) : (
-            <>
-              <div className="space-y-2">
-                <Label>
-                  {t("backups.pitr.config.frequencyFor", {
-                    type: t(`backups.pitr.config.type_${basebackupType}`),
-                  })}
-                </Label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      checked={recurrence === "hourly"}
-                      onChange={() => setRecurrence("hourly")}
-                    />
-                    {t("backups.pitr.config.hourly")}
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      checked={recurrence === "daily"}
-                      onChange={() => setRecurrence("daily")}
-                    />
-                    {t("backups.pitr.config.daily")}
-                  </label>
-                </div>
+            <div className="space-y-2">
+              <Label>
+                {t("backups.pitr.config.intervalLabelFor", {
+                  type: t(`backups.pitr.config.type_${basebackupType}`),
+                })}
+              </Label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm">
+                  {t("backups.pitr.config.intervalEvery")}
+                </span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={MAX_INTERVAL_N[intervalUnit]}
+                  value={intervalN}
+                  onChange={(e) =>
+                    setIntervalN(
+                      clampInterval(intervalUnit, parseInt(e.target.value, 10) || 1),
+                    )
+                  }
+                  className="w-20 text-center"
+                  aria-label={t("backups.pitr.config.intervalN")}
+                />
+                <select
+                  value={intervalUnit}
+                  onChange={(e) => onIntervalUnitChange(e.target.value as IntervalUnit)}
+                  className="h-9 rounded border bg-background px-2 text-sm"
+                >
+                  <option value="interval-minutes">
+                    {t("backups.pitr.config.intervalUnit_minutes")}
+                  </option>
+                  <option value="interval-hours">
+                    {t("backups.pitr.config.intervalUnit_hours")}
+                  </option>
+                </select>
               </div>
-
-              <div className="space-y-1">
-                <Label>{t("backups.pitr.config.moment")}</Label>
-                <div className="flex items-center gap-2">
-                  {recurrence === "daily" && (
-                    <>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={23}
-                        value={hour}
-                        onChange={(e) =>
-                          setHour(
-                            Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0)),
-                          )
-                        }
-                        className="w-16 text-center"
-                      />
-                      <span className="font-mono text-lg">:</span>
-                    </>
-                  )}
-                  <Input
-                    type="number"
-                    min={0}
-                    max={59}
-                    value={minute}
-                    onChange={(e) =>
-                      setMinute(
-                        Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)),
-                      )
-                    }
-                    className="w-16 text-center"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {recurrence === "hourly"
-                    ? t("backups.pitr.config.hourlyHint")
-                    : t("backups.pitr.config.dailyHint")}
-                </p>
-              </div>
-            </>
+              <p className="text-xs text-muted-foreground">
+                {t("backups.pitr.config.intervalHint")}
+              </p>
+            </div>
           )}
 
           {/* Section 3 : Rebasage full hebdo (uniquement si type ≠ full) */}
@@ -358,6 +353,3 @@ export function PitrConfigDialog() {
     </Dialog>
   );
 }
-
-// Re-export so the dialog stays self-contained even if no one imports DEFAULT_REBASE_CRON.
-export { DEFAULT_REBASE_CRON };

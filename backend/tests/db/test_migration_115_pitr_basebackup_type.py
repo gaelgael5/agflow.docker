@@ -22,11 +22,14 @@ async def fresh_db() -> AsyncIterator[Connection]:
 
 async def test_basebackup_type_column_exists_with_default_diff(fresh_db):
     row = await fresh_db.fetchrow(
-        "SELECT basebackup_type, full_rebase_cron FROM pitr_config WHERE id = 1"
+        "SELECT basebackup_type, full_rebase_cron, basebackup_cron "
+        "FROM pitr_config WHERE id = 1"
     )
     assert row is not None
     assert row["basebackup_type"] == "diff"
     assert row["full_rebase_cron"] == "0 2 * * 0"
+    # 115 réaligne aussi basebackup_cron sur un intervalle (toutes les 30 min)
+    assert row["basebackup_cron"] == "*/30 * * * *"
 
 
 async def test_basebackup_type_check_rejects_invalid(fresh_db):

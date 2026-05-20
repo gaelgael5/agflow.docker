@@ -9,7 +9,7 @@ import structlog
 from agflow.config import get_settings
 from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.schemas.local_backups import LocalBackupSummary
-from agflow.services import db_backup
+from agflow.services import db_backup, local_backup_pushes_service
 from agflow.services import remote_backup_connections_service as rbc_service
 from agflow.services.backup_lock import backup_lock
 from agflow.services.remote_backup_providers.factory import get_provider
@@ -28,7 +28,7 @@ def _backups_dir() -> Path:
     return d
 
 
-def _to_dto(row: dict) -> LocalBackupSummary:
+def _to_dto(row: dict, pushes: list | None = None) -> LocalBackupSummary:
     source_kind = (
         "full" if row.get("source_schedule_full_id") is not None
         else "manual"
@@ -41,22 +41,28 @@ def _to_dto(row: dict) -> LocalBackupSummary:
         created_at=row["created_at"],
         source_remote_connection_id=row.get("source_remote_connection_id"),
         source_kind=source_kind,
+        local_file_present=row.get("local_file_present", True),
+        pushes=pushes if pushes is not None else [],
     )
 
 
 async def list_backups() -> list[LocalBackupSummary]:
     rows = await fetch_all(
         "SELECT id, filename, size_bytes, status, created_at, source_remote_connection_id, "
-        "       source_schedule_full_id "
+        "       source_schedule_full_id, local_file_present "
         "FROM local_backups ORDER BY created_at DESC LIMIT 100"
     )
-    return [_to_dto(r) for r in rows]
+    result: list[LocalBackupSummary] = []
+    for row in rows:
+        pushes = await local_backup_pushes_service.list_pushes(row["id"])
+        result.append(_to_dto(row, pushes=pushes))
+    return result
 
 
 async def get_backup(backup_id: UUID) -> LocalBackupSummary | None:
     row = await fetch_one(
         "SELECT id, filename, size_bytes, status, created_at, source_remote_connection_id, "
-        "       source_schedule_full_id "
+        "       source_schedule_full_id, local_file_present "
         "FROM local_backups WHERE id = $1",
         backup_id,
     )
@@ -104,7 +110,7 @@ async def create_backup(
 
     row = await fetch_one(
         "SELECT id, filename, size_bytes, status, created_at, source_remote_connection_id, "
-        "       source_schedule_full_id "
+        "       source_schedule_full_id, local_file_present "
         "FROM local_backups WHERE id=$1",
         backup_id,
     )
@@ -171,7 +177,7 @@ async def pull_remote_to_local(
 
     row = await fetch_one(
         "SELECT id, filename, size_bytes, status, created_at, source_remote_connection_id, "
-        "       source_schedule_full_id "
+        "       source_schedule_full_id, local_file_present "
         "FROM local_backups WHERE id=$1",
         backup_id,
     )

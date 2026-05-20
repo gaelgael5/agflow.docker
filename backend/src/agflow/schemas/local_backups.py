@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from agflow.schemas.local_backup_pushes import LocalBackupPushSummary
+
 
 class LocalBackupSummary(BaseModel):
     id: UUID
@@ -15,3 +17,5 @@ class LocalBackupSummary(BaseModel):
     created_at: datetime
     source_remote_connection_id: UUID | None = None
     source_kind: Literal["manual", "full"] = "manual"
+    local_file_present: bool = True
+    pushes: list[LocalBackupPushSummary] = []

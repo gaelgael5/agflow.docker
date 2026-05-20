@@ -7,9 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from agflow.auth.dependencies import require_admin
 from agflow.db.pool import get_pool
+from agflow.schemas.local_backup_pushes import LocalBackupPushSummary
 from agflow.schemas.local_backups import LocalBackupSummary
 from agflow.schemas.remote_backup_files import PullRequest, RestoreResult
-from agflow.services import local_backups_service, restore_service, users_service
+from agflow.services import (
+    local_backup_pushes_service,
+    local_backups_service,
+    restore_service,
+    users_service,
+)
 from agflow.services import remote_backup_connections_service as rbc_service
 from agflow.services.remote_backup_providers import RemoteBackupProviderError
 from agflow.services.remote_backup_providers.factory import get_provider
@@ -125,3 +131,26 @@ async def restore_backup(backup_id: UUID, body: PullRequest) -> RestoreResult:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/{backup_id}/pushes", response_model=list[LocalBackupPushSummary])
+async def list_pushes(backup_id: UUID) -> list[LocalBackupPushSummary]:
+    """Liste les pushes (1 par remote configurée) d'un local_backup."""
+    return await local_backup_pushes_service.list_pushes(backup_id)
+
+
+@router.post("/{backup_id}/push/{remote_id}", status_code=202)
+async def push_backup(backup_id: UUID, remote_id: UUID) -> dict[str, str]:
+    """Re-push manuel d'un local_backup vers une remote (utile si push initial échoué)."""
+    try:
+        result = await local_backup_pushes_service.push_one(
+            backup_id=backup_id, remote_id=remote_id
+        )
+    except local_backup_pushes_service.PushNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"push not found: {exc}") from exc
+    except local_backup_pushes_service.LocalFileMissingError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"local file missing: {exc}",
+        ) from exc
+    return {"status": result.status}

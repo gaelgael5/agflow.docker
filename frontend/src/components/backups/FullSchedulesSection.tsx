@@ -23,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScheduleHistoryTable } from "./ScheduleHistoryTable";
-import { ScheduleWizard } from "./ScheduleWizard";
+import { ScheduleForm } from "./ScheduleForm";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -71,9 +71,9 @@ export function FullSchedulesSection() {
     queryFn: () => api.get<Connection[]>("/admin/backup-remotes").then((r) => r.data),
   });
 
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardMode, setWizardMode] = useState<"create" | "edit">("create");
-  const [wizardSchedule, setWizardSchedule] = useState<FullScheduleSummary | undefined>(
+  const [formOpen, setFormOpen] = useState(false);
+  const [formMode, setFormMode] = useState<"create" | "edit">("create");
+  const [formSchedule, setFormSchedule] = useState<FullScheduleSummary | undefined>(
     undefined,
   );
   const [confirmDelete, setConfirmDelete] = useState<FullScheduleSummary | null>(null);
@@ -113,9 +113,9 @@ export function FullSchedulesSection() {
         <CardTitle>{t("backups.schedules.fullTitle")}</CardTitle>
         <Button
           onClick={() => {
-            setWizardMode("create");
-            setWizardSchedule(undefined);
-            setWizardOpen(true);
+            setFormMode("create");
+            setFormSchedule(undefined);
+            setFormOpen(true);
           }}
         >
           {t("backups.schedules.addFull")}
@@ -213,9 +213,9 @@ export function FullSchedulesSection() {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          setWizardMode("edit");
-                          setWizardSchedule(s);
-                          setWizardOpen(true);
+                          setFormMode("edit");
+                          setFormSchedule(s);
+                          setFormOpen(true);
                         }}
                         title={t("common.edit")}
                       >
@@ -245,17 +245,17 @@ export function FullSchedulesSection() {
         )}
       </CardContent>
 
-      <ScheduleWizard
-        open={wizardOpen}
-        onOpenChange={setWizardOpen}
-        mode={wizardMode}
-        initialSchedule={wizardSchedule}
+      <ScheduleForm
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        mode={formMode}
+        initialSchedule={formSchedule}
         onSubmit={async (payload) => {
-          if (wizardMode === "create") {
+          if (formMode === "create") {
             await create(payload);
             toast.success(t("backups.schedules.created"));
-          } else if (wizardSchedule) {
-            await update({ id: wizardSchedule.id, payload });
+          } else if (formSchedule) {
+            await update({ id: formSchedule.id, payload });
             toast.success(t("backups.schedules.updated"));
           }
         }}

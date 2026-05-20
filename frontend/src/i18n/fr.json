@@ -1560,34 +1560,26 @@
       "historyColSize": "Taille",
       "historyColFilename": "Fichier"
     },
-    "wizard": {
+    "form": {
       "title_create": "Nouvelle planification",
       "title_edit": "Modifier la planification",
-      "step_label": "Étape {{current}} / {{total}}",
+      "name": "Nom",
+      "namePlaceholder": "db-quotidien",
+      "frequency": "Fréquence",
+      "hourly": "Par heure",
+      "daily": "Par jour",
+      "moment": "Moment",
+      "hourField": "Heure",
+      "minuteField": "Minute",
+      "hourlyHint": "Le backup sera lancé toutes les heures à la minute indiquée (0 à 59).",
+      "dailyHint": "Le backup sera lancé tous les jours à l'heure et la minute indiquées (par défaut 00:00).",
+      "keepLocal": "Conserver une copie locale",
+      "remotes": "Connexions distantes",
+      "noRemotes": "Aucune connexion distante configurée",
+      "retention": "Rétention (N derniers backups)",
+      "errorNoDestination": "Au moins une destination est requise (locale ou distante).",
       "complexCron": "Cron personnalisé",
-      "editRaw": "Expression cron brute",
-      "step1": {
-        "title": "Fréquence",
-        "hourly": "Toutes les heures",
-        "daily": "Tous les jours"
-      },
-      "step2": {
-        "atMinute": "À quelle minute voulez-vous lancer ?",
-        "atHour": "À quelle heure voulez-vous lancer ?",
-        "minuteHint": "Entre 0 et 59 — ex : 15 → backup à xx:15",
-        "hourHint": "Entre 0 et 23 — ex : 3 → backup à 3h00"
-      },
-      "step3": {
-        "name": "Nom",
-        "namePlaceholder": "db-quotidien",
-        "keepLocal": "Conserver une copie locale",
-        "remotes": "Connexions distantes",
-        "noRemotes": "Aucune connexion distante configurée",
-        "retention": "Rétention (N derniers backups)",
-        "errorNoDestination": "Au moins une destination est requise (locale ou distante)"
-      },
-      "prev": "Précédent",
-      "next": "Suivant",
+      "complexCronHint": "Cette planification utilise un cron non représentable par le formulaire simple. Tu peux l'éditer en cron brut.",
       "save": "Enregistrer"
     },
     "restore": {

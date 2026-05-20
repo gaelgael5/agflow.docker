@@ -1553,34 +1553,26 @@
       "historyColSize": "Size",
       "historyColFilename": "File"
     },
-    "wizard": {
+    "form": {
       "title_create": "New schedule",
       "title_edit": "Edit schedule",
-      "step_label": "Step {{current}} / {{total}}",
+      "name": "Name",
+      "namePlaceholder": "daily-db",
+      "frequency": "Frequency",
+      "hourly": "Hourly",
+      "daily": "Daily",
+      "moment": "Time",
+      "hourField": "Hour",
+      "minuteField": "Minute",
+      "hourlyHint": "The backup will run every hour at the specified minute (0 to 59).",
+      "dailyHint": "The backup will run every day at the specified hour and minute (default 00:00).",
+      "keepLocal": "Keep a local copy",
+      "remotes": "Remote connections",
+      "noRemotes": "No remote connection configured",
+      "retention": "Retention (last N backups)",
+      "errorNoDestination": "At least one destination is required (local or remote).",
       "complexCron": "Custom cron",
-      "editRaw": "Raw cron expression",
-      "step1": {
-        "title": "Frequency",
-        "hourly": "Every hour",
-        "daily": "Every day"
-      },
-      "step2": {
-        "atMinute": "At which minute do you want to run?",
-        "atHour": "At which hour do you want to run?",
-        "minuteHint": "Between 0 and 59 — e.g. 15 → backup at xx:15",
-        "hourHint": "Between 0 and 23 — e.g. 3 → backup at 3:00"
-      },
-      "step3": {
-        "name": "Name",
-        "namePlaceholder": "daily-db",
-        "keepLocal": "Keep a local copy",
-        "remotes": "Remote connections",
-        "noRemotes": "No remote connection configured",
-        "retention": "Retention (last N backups)",
-        "errorNoDestination": "At least one destination is required (local or remote)"
-      },
-      "prev": "Previous",
-      "next": "Next",
+      "complexCronHint": "This schedule uses a cron expression not representable by the simple form. You can edit it as raw cron.",
       "save": "Save"
     },
     "restore": {

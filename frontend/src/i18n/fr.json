@@ -1429,7 +1429,14 @@
       "push": "Pousser…",
       "restore": "Restaurer…",
       "delete": "Supprimer",
-      "delete_confirm": "Supprimer la sauvegarde « {{filename}} » ?"
+      "delete_confirm": "Supprimer la sauvegarde « {{filename}} » ?",
+      "fileDeleted": "fichier supprimé"
+    },
+    "pushes": {
+      "title": "Pushs distants",
+      "rePushSuccess": "Re-push lancé",
+      "rePushError": "Échec du re-push : {{error}}",
+      "rePushAction": "Re-pousser vers {{remote}}"
     },
     "remote": {
       "title": "Sauvegardes distantes",
@@ -1454,7 +1461,8 @@
       },
       "running": "Restauration en cours…",
       "success": "Restauration terminée (exit {{code}})",
-      "error": "Échec de la restauration : {{message}}"
+      "error": "Échec de la restauration : {{message}}",
+      "confirmDescription": "Cette opération va écraser la base de données actuelle avec le contenu de « {{filename}} »."
     },
     "push": {
       "dialog_title": "Pousser vers une connexion distante",

@@ -1422,7 +1422,14 @@
       "push": "Push…",
       "restore": "Restore…",
       "delete": "Delete",
-      "delete_confirm": "Delete backup \"{{filename}}\"?"
+      "delete_confirm": "Delete backup \"{{filename}}\"?",
+      "fileDeleted": "file deleted"
+    },
+    "pushes": {
+      "title": "Remote pushes",
+      "rePushSuccess": "Re-push started",
+      "rePushError": "Re-push failed: {{error}}",
+      "rePushAction": "Re-push to {{remote}}"
     },
     "remote": {
       "title": "Remote backups",
@@ -1447,7 +1454,8 @@
       },
       "running": "Restore in progress…",
       "success": "Restore completed (exit {{code}})",
-      "error": "Restore failed: {{message}}"
+      "error": "Restore failed: {{message}}",
+      "confirmDescription": "This will overwrite the current database with the contents of \"{{filename}}\"."
     },
     "push": {
       "dialog_title": "Push to remote target",

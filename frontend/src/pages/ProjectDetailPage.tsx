@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Box, ChevronDown, ChevronRight, Edit2, Eye, FileText, Layers, Loader2, Lock, LockOpen, Play, Plus, RefreshCw, Save, Square, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, Box, ChevronDown, ChevronRight, Edit2, Eye, FileText, Layers, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   projectsApi,
@@ -30,9 +30,6 @@ import {
   runtimesApi,
   type ProjectGroupRuntime,
 } from "@/lib/runtimesApi";
-import { useVault } from "@/hooks/useVault";
-import { VaultUnlockDialog } from "@/components/VaultUnlockDialog";
-import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import { productsApi, type ProductVariable, type ProductConnector, type ProductComputed, type ProductApiDef, type ProductService, type SharedDep } from "@/lib/productsApi";
 import { templatesApi } from "@/lib/templatesApi";
@@ -60,10 +57,6 @@ export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const vault = useVault();
-  const { token } = useAuth();
-  const isVaultOpen = vault.state === "unlocked";
-  const [showVaultUnlock, setShowVaultUnlock] = useState(false);
 
   const projectQuery = useQuery({
     queryKey: ["projects", projectId],
@@ -144,19 +137,7 @@ export function ProjectDetailPage() {
         subtitle={project?.description}
         actions={
           <div className="flex gap-2 items-center">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-8 w-8 ${isVaultOpen ? "text-green-500" : "text-orange-500"}`}
-              title={isVaultOpen ? t("projects.vault_open") : t("projects.vault_locked")}
-              onClick={() => {
-                if (isVaultOpen) vault.lockVault();
-                else setShowVaultUnlock(true);
-              }}
-            >
-              {isVaultOpen ? <LockOpen className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-            </Button>
-            <Button variant="default" disabled={!isVaultOpen} onClick={() => setShowDeploy(true)}>
+            <Button variant="default" onClick={() => setShowDeploy(true)}>
               <Play className="w-4 h-4" />
               {t("projects.deploy")}
             </Button>
@@ -372,19 +353,6 @@ export function ProjectDetailPage() {
             qc.invalidateQueries({ queryKey: ["groups", projectId] });
           }
         }}
-      />
-
-      {/* Vault unlock dialog */}
-      <VaultUnlockDialog
-        open={showVaultUnlock}
-        email={(() => {
-          try {
-            const payload = JSON.parse(atob(token?.split(".")[1] ?? ""));
-            return (payload.sub as string) ?? "";
-          } catch { return ""; }
-        })()}
-        onComplete={() => setShowVaultUnlock(false)}
-        onClose={() => setShowVaultUnlock(false)}
       />
 
       {/* Deploy dialog */}

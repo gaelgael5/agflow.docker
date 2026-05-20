@@ -8,8 +8,6 @@ import {
   BookMarked,
   ChevronRight,
   HelpCircle,
-  Lock,
-  Unlock,
   Copy,
   Eye,
   MessageSquare,
@@ -36,7 +34,6 @@ import { ContractFormDialog } from "@/components/ContractFormDialog";
 import { contractsApi, type ContractCreatePayload, type ContractSummary } from "@/lib/contractsApi";
 import { useRoleDetail } from "@/hooks/useRoleDocuments";
 import { EnvVarStatus } from "@/components/EnvVarStatus";
-import { useVault } from "@/hooks/useVault";
 import { userSecretsApi } from "@/lib/userSecretsApi";
 import { containersApi } from "@/lib/containersApi";
 import { ChatWindow } from "@/components/ChatWindow";
@@ -46,7 +43,6 @@ import { TerminalWindow } from "@/components/TerminalWindow";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useEmptyLaunchKeys } from "@/hooks/useEmptyLaunchKeys";
 import { useEnvVarStatuses } from "@/hooks/useEnvVarStatus";
-import { VaultUnlockDialog } from "@/components/VaultUnlockDialog";
 import { PromptDialog } from "@/components/PromptDialog";
 import { PageShell } from "@/components/layout/PageHeader";
 import { toast } from "sonner";
@@ -158,7 +154,6 @@ export function AgentEditorPage() {
   const qc = useQueryClient();
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === "new";
-  const { state: vaultState } = useVault();
 
   const { agent, isLoading: agentLoading, updateMutation } = useAgent(
     isNew ? undefined : id,
@@ -208,7 +203,6 @@ export function AgentEditorPage() {
   const [genAlerts, setGenAlerts] = useState<{ level: string; variable: string; message: string }[]>([]);
   const [chatOpenFor, setChatOpenFor] = useState<string | null>(null);
   const [decryptedSecrets, setDecryptedSecrets] = useState<Record<string, string> | null>(null);
-  const [showVaultUnlock, setShowVaultUnlock] = useState(false);
   const [launchPendingSecrets, setLaunchPendingSecrets] = useState<
     Record<string, string> | null
   >(null);
@@ -237,19 +231,14 @@ export function AgentEditorPage() {
     }
   }
 
-  const vaultIsOpen = vaultState === "unlocked";
-
-  // Auto-detect vault already unlocked on mount
+  // Charge les secrets utilisateur (résolus côté serveur via Harpocrate) au montage.
+  // Pas de cadenas frontend : la résolution se fait en arrière-plan.
   useEffect(() => {
-    if (vaultIsOpen && !decryptedSecrets) {
-      void decryptUserSecrets().then((s) => {
-        if (Object.keys(s).length > 0) setDecryptedSecrets(s);
-      });
-    }
-    if (!vaultIsOpen && decryptedSecrets) {
-      setDecryptedSecrets(null);
-    }
-  }, [vaultIsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (decryptedSecrets !== null) return;
+    void decryptUserSecrets().then((s) => {
+      if (Object.keys(s).length > 0) setDecryptedSecrets(s);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [terminalContainer, setTerminalContainer] = useState<{ id: string; name: string } | null>(null);
   const [runningContainerId, setRunningContainerId] = useState<string | null>(null);
@@ -776,27 +765,6 @@ export function AgentEditorPage() {
                 </Button>
               </div>
 
-              {/* Vault lock/unlock */}
-              <Button
-                size="icon"
-                variant={vaultIsOpen ? "secondary" : "outline"}
-                className={`h-7 w-7 ${vaultIsOpen ? "border-emerald-500 bg-emerald-500/10" : ""}`}
-                title={vaultIsOpen ? t("agent_editor.vault_locked") : t("agent_editor.vault_unlock")}
-                onClick={async () => {
-                  if (vaultIsOpen) return;
-                  if (vaultState === "locked") {
-                    setShowVaultUnlock(true);
-                  } else {
-                    setError(t("agent_editor.vault_not_unlocked"));
-                  }
-                }}
-              >
-                {vaultIsOpen ? (
-                  <Unlock className="w-3.5 h-3.5 text-emerald-500" />
-                ) : (
-                  <Lock className="w-3.5 h-3.5" />
-                )}
-              </Button>
             </>
           )}
         </div>
@@ -1706,11 +1674,6 @@ export function AgentEditorPage() {
             <Plus className="w-3.5 h-3.5" />
             {t("agent_editor.env_add")}
           </Button>
-          {!decryptedSecrets && (
-            <p className="text-[11px] text-muted-foreground italic mt-2">
-              {t("agent_editor.vault_hint")}
-            </p>
-          )}
         </CardContent>
       </Card>
 
@@ -2296,18 +2259,7 @@ export function AgentEditorPage() {
           onClose={() => setTerminalContainer(null)}
         />
       )}
-      <VaultUnlockDialog
-        open={showVaultUnlock}
-        email="admin@agflow.example.com"
-        onComplete={async () => {
-          setShowVaultUnlock(false);
-          const s = await decryptUserSecrets();
-          if (Object.keys(s).length > 0) setDecryptedSecrets(s);
-        }}
-        onClose={() => setShowVaultUnlock(false)}
-      />
-
-      {/* Floating help window — draggable + resizable */}
+{/* Floating help window — draggable + resizable */}
       {showHelp && helpContent && (
         <FloatingHelpWindow
           title={t("agent_editor.help_title")}

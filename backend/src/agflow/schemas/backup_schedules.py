@@ -11,14 +11,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class FullScheduleSummary(BaseModel):
-    """Représentation publique d'un schedule full."""
+    """Représentation publique d'un schedule full (multi-remote)."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     name: str
     cron_expr: str
-    remote_connection_id: UUID | None
+    remote_connection_ids: list[UUID]
+    keep_local: bool
     retention_count: int
     enabled: bool
     last_run_at: datetime | None
@@ -28,24 +29,34 @@ class FullScheduleSummary(BaseModel):
     updated_at: datetime
 
 
-class FullScheduleCreate(BaseModel):
+class CreateFullPayload(BaseModel):
     """Payload pour créer un schedule full."""
 
-    name: str = Field(min_length=1, max_length=128)
-    cron_expr: str = Field(min_length=1, max_length=128)
-    remote_connection_id: UUID | None = None
-    retention_count: int = Field(default=10, ge=1)
+    name: str
+    cron_expr: str
+    remote_connection_ids: list[UUID] = []
+    keep_local: bool = True
+    retention_count: int = 10
     enabled: bool = True
 
 
-class FullScheduleUpdate(BaseModel):
+# Alias backward-compat (service + tests existants)
+FullScheduleCreate = CreateFullPayload
+
+
+class UpdateFullPayload(BaseModel):
     """Payload pour mettre à jour un schedule full. Tous les champs optionnels."""
 
-    name: str | None = Field(default=None, min_length=1, max_length=128)
-    cron_expr: str | None = Field(default=None, min_length=1, max_length=128)
-    remote_connection_id: UUID | None = None
+    name: str | None = None
+    cron_expr: str | None = None
+    remote_connection_ids: list[UUID] | None = None
+    keep_local: bool | None = None
     retention_count: int | None = Field(default=None, ge=1)
     enabled: bool | None = None
+
+
+# Alias backward-compat (service + tests existants)
+FullScheduleUpdate = UpdateFullPayload
 
 
 # ── History ────────────────────────────────────────────────────────────

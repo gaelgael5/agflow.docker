@@ -78,6 +78,8 @@ def test_get_config_returns_seeded(client: TestClient) -> None:
     fake = PitrConfigOut(
         enabled=True,
         basebackup_cron="0 3 * * *",
+        basebackup_type="diff",
+        full_rebase_cron="0 2 * * 0",
         retention_count=7,
         remote_connection_ids=[],
         updated_at=datetime(2026, 5, 19, tzinfo=UTC),
@@ -104,6 +106,8 @@ def test_put_config_updates_cron(client: TestClient) -> None:
     updated = PitrConfigOut(
         enabled=True,
         basebackup_cron="0 4 * * *",
+        basebackup_type="diff",
+        full_rebase_cron="0 2 * * 0",
         retention_count=7,
         remote_connection_ids=[],
         updated_at=datetime(2026, 5, 19, tzinfo=UTC),
@@ -149,6 +153,8 @@ def test_put_config_triggers_reload_when_cron_changes(client: TestClient) -> Non
     updated = PitrConfigOut(
         enabled=True,
         basebackup_cron="0 2 * * *",
+        basebackup_type="diff",
+        full_rebase_cron="0 2 * * 0",
         retention_count=7,
         remote_connection_ids=[],
         updated_at=datetime(2026, 5, 19, tzinfo=UTC),
@@ -180,6 +186,8 @@ def test_put_config_no_reload_when_only_retention_changes(client: TestClient) ->
     updated = PitrConfigOut(
         enabled=True,
         basebackup_cron="0 3 * * *",
+        basebackup_type="diff",
+        full_rebase_cron="0 2 * * 0",
         retention_count=14,
         remote_connection_ids=[],
         updated_at=datetime(2026, 5, 19, tzinfo=UTC),

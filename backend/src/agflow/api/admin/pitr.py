@@ -47,21 +47,29 @@ async def get_config() -> PitrConfigOut:
 
 @router.put("/config", response_model=PitrConfigOut)
 async def update_config(payload: PitrConfigUpdate) -> PitrConfigOut:
-    """Update the PITR config (cron, retention, remotes, enabled).
+    """Update the PITR config (cron, type, rebase cron, retention, remotes, enabled).
 
     422 if cron invalid. Triggers `pitr_scheduler.reload_basebackup_schedule()`
-    if cron or enabled flag changed.
+    if any of cron / type / rebase cron / enabled flag changed.
     """
     try:
         cfg = await pitr_config_service.update_config(
             enabled=payload.enabled,
             basebackup_cron=payload.basebackup_cron,
+            basebackup_type=payload.basebackup_type,
+            full_rebase_cron=payload.full_rebase_cron,
             retention_count=payload.retention_count,
             remote_connection_ids=payload.remote_connection_ids,
         )
     except pitr_config_service.InvalidCronError as err:
         raise HTTPException(status_code=422, detail=str(err)) from err
-    if payload.basebackup_cron is not None or payload.enabled is not None:
+    schedule_affecting = (
+        payload.basebackup_cron is not None
+        or payload.basebackup_type is not None
+        or payload.full_rebase_cron is not None
+        or payload.enabled is not None
+    )
+    if schedule_affecting:
         await pitr_scheduler.reload_basebackup_schedule()
     return cfg
 

@@ -7,9 +7,14 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+BasebackupType = Literal["full", "diff", "incr"]
+
+
 class PitrConfigOut(BaseModel):
     enabled: bool
     basebackup_cron: str
+    basebackup_type: BasebackupType
+    full_rebase_cron: str
     retention_count: int
     remote_connection_ids: list[UUID]
     updated_at: datetime
@@ -18,6 +23,8 @@ class PitrConfigOut(BaseModel):
 class PitrConfigUpdate(BaseModel):
     enabled: bool | None = None
     basebackup_cron: str | None = None
+    basebackup_type: BasebackupType | None = None
+    full_rebase_cron: str | None = None
     retention_count: int | None = Field(default=None, ge=1)
     remote_connection_ids: list[UUID] | None = None
 

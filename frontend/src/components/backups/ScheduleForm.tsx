@@ -93,7 +93,8 @@ export function ScheduleForm({
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
-    const cron = cronFallback ?? buildCron({ recurrence, hour, minute });
+    const cron =
+      cronFallback ?? buildCron({ recurrence, hour, minute, dayOfWeek: 0 });
     await onSubmit({
       name,
       cron_expr: cron,

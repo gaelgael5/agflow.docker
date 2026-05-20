@@ -31,9 +31,13 @@ export interface BasebackupSummary {
   pushes: BasebackupPushSummary[];
 }
 
+export type BasebackupType = "full" | "diff" | "incr";
+
 export interface PitrConfig {
   enabled: boolean;
   basebackup_cron: string;
+  basebackup_type: BasebackupType;
+  full_rebase_cron: string;
   retention_count: number;
   remote_connection_ids: string[];
   updated_at: string;
@@ -42,6 +46,8 @@ export interface PitrConfig {
 export interface PitrConfigUpdate {
   enabled?: boolean;
   basebackup_cron?: string;
+  basebackup_type?: BasebackupType;
+  full_rebase_cron?: string;
   retention_count?: number;
   remote_connection_ids?: string[];
 }

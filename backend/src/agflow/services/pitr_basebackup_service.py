@@ -15,7 +15,8 @@ import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.docker.exec_helper import docker_exec
-from agflow.schemas.pitr import BasebackupPushSummary, BasebackupSummary
+from agflow.schemas.pitr import BasebackupPushSummary, BasebackupSummary, BasebackupType
+from agflow.services import pitr_config_service
 
 log = structlog.get_logger(__name__)
 
@@ -184,13 +185,28 @@ async def get_basebackup(basebackup_id: UUID) -> BasebackupSummary:
 # ---------------------------------------------------------------------------
 
 
-async def trigger_basebackup_now(*, actor_user_id: UUID | None = None) -> UUID:
-    """Trigger a fresh pgbackrest full backup. Returns the inserted basebackup UUID."""
+async def trigger_basebackup_now(
+    *,
+    actor_user_id: UUID | None = None,
+    force_type: BasebackupType | None = None,
+) -> UUID:
+    """Trigger a fresh pgbackrest backup. Returns the inserted basebackup UUID.
+
+    The backup type comes from `force_type` if provided (used by the rebase job),
+    otherwise from `pitr_config.basebackup_type`. pgBackRest auto-promotes the
+    first run of a stanza to 'full' even when --type=diff/incr is requested.
+    """
     running = await fetch_one(
         "SELECT id FROM pitr_basebackups WHERE status = 'running' LIMIT 1"
     )
     if running:
         raise BasebackupRunningError(str(running["id"]))
+
+    if force_type is not None:
+        backup_type: BasebackupType = force_type
+    else:
+        cfg = await pitr_config_service.get_config()
+        backup_type = cfg.basebackup_type
 
     placeholder_label = f"pending-{datetime.now(UTC).isoformat()}"
     row = await fetch_one(
@@ -205,13 +221,14 @@ async def trigger_basebackup_now(*, actor_user_id: UUID | None = None) -> UUID:
     log.info(
         "pitr.basebackup.started",
         basebackup_id=str(bid),
+        backup_type=backup_type,
         actor_user_id=str(actor_user_id) if actor_user_id else None,
     )
 
     try:
         await ensure_stanza()
         code, stdout, err = await _pg_exec(
-            ["--stanza=" + STANZA, "backup", "--type=full"]
+            ["--stanza=" + STANZA, "backup", f"--type={backup_type}"]
         )
         if code != 0:
             raise RuntimeError(f"pgbackrest backup failed: {err}")

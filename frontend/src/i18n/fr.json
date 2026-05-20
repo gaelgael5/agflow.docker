@@ -1537,6 +1537,8 @@
       "deleted": "Planification supprimée",
       "formDestinationLabel": "Destination",
       "destinationLocal": "Locale",
+      "destinationLocalKept": "Local conservé",
+      "destinationLocalOnly": "Local seulement",
       "destinationRemote": "Distante",
       "formRemoteConnectionLabel": "Connexion distante",
       "formRemoteConnectionPlaceholder": "Choisir une connexion…",

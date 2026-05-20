@@ -6,26 +6,14 @@ import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 
 import { useFullScheduleHistory, useFullSchedules } from "@/hooks/useBackupSchedules";
-import type {
-  FullScheduleSummary,
-  CreateFullPayload,
-  UpdateFullPayload,
-} from "@/lib/backupSchedulesApi";
+import type { FullScheduleSummary } from "@/lib/backupSchedulesApi";
 import type { Connection } from "@/components/backup-remotes/ConnectionModal";
 import { api } from "@/lib/api";
+import { formatCronHuman } from "@/lib/cronWizard";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -35,36 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScheduleHistoryTable } from "./ScheduleHistoryTable";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const PRESETS = [
-  { key: "daily3am", expr: "0 3 * * *" },
-  { key: "hourly", expr: "0 * * * *" },
-  { key: "mondays", expr: "0 3 * * 1" },
-  { key: "weekly", expr: "0 4 * * 0" },
-] as const;
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface FormState {
-  id?: string;
-  name: string;
-  cron_expr: string;
-  retention_count: number;
-  enabled: boolean;
-  keep_local: boolean;
-  remote_connection_ids: string[];
-}
-
-const EMPTY: FormState = {
-  name: "",
-  cron_expr: "0 3 * * *",
-  retention_count: 10,
-  enabled: true,
-  keep_local: true,
-  remote_connection_ids: [],
-};
+import { ScheduleWizard } from "./ScheduleWizard";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -112,63 +71,13 @@ export function FullSchedulesSection() {
     queryFn: () => api.get<Connection[]>("/admin/backup-remotes").then((r) => r.data),
   });
 
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<FormState>(EMPTY);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardMode, setWizardMode] = useState<"create" | "edit">("create");
+  const [wizardSchedule, setWizardSchedule] = useState<FullScheduleSummary | undefined>(
+    undefined,
+  );
   const [confirmDelete, setConfirmDelete] = useState<FullScheduleSummary | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const openCreate = () => {
-    setForm(EMPTY);
-    setOpen(true);
-  };
-
-  const openEdit = (s: FullScheduleSummary) => {
-    setForm({
-      id: s.id,
-      name: s.name,
-      cron_expr: s.cron_expr,
-      retention_count: s.retention_count,
-      enabled: s.enabled,
-      keep_local: s.keep_local,
-      remote_connection_ids: s.remote_connection_ids,
-    });
-    setOpen(true);
-  };
-
-  const handleSubmit = async () => {
-    if (!form.name || !form.cron_expr) {
-      toast.error(t("backups.schedules.runNowError", { msg: "name + cron required" }));
-      return;
-    }
-    try {
-      if (form.id) {
-        const payload: UpdateFullPayload = {
-          name: form.name,
-          cron_expr: form.cron_expr,
-          retention_count: form.retention_count,
-          enabled: form.enabled,
-          keep_local: form.keep_local,
-          remote_connection_ids: form.remote_connection_ids,
-        };
-        await update({ id: form.id, payload });
-        toast.success(t("backups.schedules.updated"));
-      } else {
-        const payload: CreateFullPayload = {
-          name: form.name,
-          cron_expr: form.cron_expr,
-          retention_count: form.retention_count,
-          enabled: form.enabled,
-          keep_local: form.keep_local,
-          remote_connection_ids: form.remote_connection_ids,
-        };
-        await create(payload);
-        toast.success(t("backups.schedules.created"));
-      }
-      setOpen(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  };
 
   const handleRunNow = async (s: FullScheduleSummary) => {
     try {
@@ -198,16 +107,19 @@ export function FullSchedulesSection() {
     }
   };
 
-  const isSubmitDisabled =
-    !form.name ||
-    !form.cron_expr ||
-    (!form.keep_local && form.remote_connection_ids.length === 0);
-
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>{t("backups.schedules.fullTitle")}</CardTitle>
-        <Button onClick={openCreate}>{t("backups.schedules.addFull")}</Button>
+        <Button
+          onClick={() => {
+            setWizardMode("create");
+            setWizardSchedule(undefined);
+            setWizardOpen(true);
+          }}
+        >
+          {t("backups.schedules.addFull")}
+        </Button>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -236,22 +148,27 @@ export function FullSchedulesSection() {
                 <>
                   <TableRow key={s.id}>
                     <TableCell className="font-medium">{s.name}</TableCell>
-                    <TableCell className="font-mono text-xs">{s.cron_expr}</TableCell>
+                    <TableCell className="text-xs">{formatCronHuman(s.cron_expr)}</TableCell>
                     <TableCell>{s.retention_count}</TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap items-center gap-1 text-xs">
                         {s.keep_local && (
-                          <Badge variant="secondary">
-                            {t("backups.schedules.destinationLocal")}
-                          </Badge>
+                          <span className="rounded bg-muted px-1.5 py-0.5">
+                            ✓ {t("backups.schedules.destinationLocalKept")}
+                          </span>
                         )}
-                        {s.remote_connection_ids.map((rid) => (
-                          <Badge key={rid} variant="outline">
-                            {connections.find((c) => c.id === rid)?.name ?? rid}
-                          </Badge>
-                        ))}
+                        {s.remote_connection_ids.map((rid) => {
+                          const r = connections.find((c) => c.id === rid);
+                          return (
+                            <span key={rid} className="rounded bg-muted px-1.5 py-0.5">
+                              {r?.name ?? rid.slice(0, 8)}
+                            </span>
+                          );
+                        })}
                         {!s.keep_local && s.remote_connection_ids.length === 0 && (
-                          <span className="text-muted-foreground text-xs">—</span>
+                          <span className="text-muted-foreground">
+                            {t("backups.schedules.destinationLocalOnly")}
+                          </span>
                         )}
                       </div>
                     </TableCell>
@@ -295,7 +212,11 @@ export function FullSchedulesSection() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => openEdit(s)}
+                        onClick={() => {
+                          setWizardMode("edit");
+                          setWizardSchedule(s);
+                          setWizardOpen(true);
+                        }}
                         title={t("common.edit")}
                       >
                         <Pencil className="h-4 w-4" />
@@ -324,139 +245,21 @@ export function FullSchedulesSection() {
         )}
       </CardContent>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {form.id
-                ? t("backups.schedules.editTitle")
-                : t("backups.schedules.createTitle")}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="full-name">{t("backups.schedules.formNameLabel")}</Label>
-              <Input
-                id="full-name"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="db-quotidien"
-              />
-            </div>
-            <div>
-              <Label htmlFor="full-cron">{t("backups.schedules.formCronLabel")}</Label>
-              <Input
-                id="full-cron"
-                value={form.cron_expr}
-                onChange={(e) => setForm((f) => ({ ...f, cron_expr: e.target.value }))}
-                placeholder="0 3 * * *"
-                className="font-mono"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("backups.schedules.formCronHint")}
-              </p>
-              <div className="flex gap-2 mt-2 flex-wrap">
-                {PRESETS.map((p) => (
-                  <Button
-                    key={p.key}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setForm((f) => ({ ...f, cron_expr: p.expr }))}
-                  >
-                    {t(`backups.schedules.cronPresets.${p.key}`)}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="full-retention">
-                {t("backups.schedules.formRetentionLabel")}
-              </Label>
-              <Input
-                id="full-retention"
-                type="number"
-                min={1}
-                value={form.retention_count}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    retention_count: parseInt(e.target.value, 10) || 1,
-                  }))
-                }
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("backups.schedules.formRetentionHint")}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>{t("backups.schedules.formDestinationLabel")}</Label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.keep_local}
-                  onChange={(e) => setForm((f) => ({ ...f, keep_local: e.target.checked }))}
-                  className="h-4 w-4 rounded border-input"
-                />
-                {t("backups.schedules.destinationLocal")}
-              </label>
-              <div>
-                <Label htmlFor="full-remote-conn">
-                  {t("backups.schedules.formRemoteConnectionLabel")}
-                </Label>
-                {connections.length === 0 ? (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("backups.schedules.formRemoteConnectionNone")}
-                  </p>
-                ) : (
-                  <div className="mt-1 max-h-32 space-y-1 overflow-y-auto rounded border p-2">
-                    {connections.map((c) => (
-                      <label key={c.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={form.remote_connection_ids.includes(c.id)}
-                          onChange={() =>
-                            setForm((f) => ({
-                              ...f,
-                              remote_connection_ids: f.remote_connection_ids.includes(c.id)
-                                ? f.remote_connection_ids.filter((x) => x !== c.id)
-                                : [...f.remote_connection_ids, c.id],
-                            }))
-                          }
-                          className="h-4 w-4 rounded border-input"
-                        />
-                        {c.name}
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                id="full-enabled"
-                type="checkbox"
-                checked={form.enabled}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, enabled: e.target.checked }))
-                }
-                className="h-4 w-4 rounded border-input"
-              />
-              <Label htmlFor="full-enabled">
-                {t("backups.schedules.formEnabledLabel")}
-              </Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>
-              {t("backups.schedules.cancel")}
-            </Button>
-            <Button onClick={handleSubmit} disabled={isSubmitDisabled}>
-              {t("backups.schedules.save")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ScheduleWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        mode={wizardMode}
+        initialSchedule={wizardSchedule}
+        onSubmit={async (payload) => {
+          if (wizardMode === "create") {
+            await create(payload);
+            toast.success(t("backups.schedules.created"));
+          } else if (wizardSchedule) {
+            await update({ id: wizardSchedule.id, payload });
+            toast.success(t("backups.schedules.updated"));
+          }
+        }}
+      />
 
       <ConfirmDialog
         open={confirmDelete !== null}

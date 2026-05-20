@@ -1530,6 +1530,8 @@
       "deleted": "Schedule deleted",
       "formDestinationLabel": "Destination",
       "destinationLocal": "Local",
+      "destinationLocalKept": "Local kept",
+      "destinationLocalOnly": "Local only",
       "destinationRemote": "Remote",
       "formRemoteConnectionLabel": "Remote connection",
       "formRemoteConnectionPlaceholder": "Select a connection…",

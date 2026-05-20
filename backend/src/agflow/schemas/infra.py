@@ -153,6 +153,22 @@ class MachineUpdate(BaseModel):
     environment: str | None = None
 
 
+class TestConnectionDryRunRequest(BaseModel):
+    """Test SSH avant création de machine : on fournit host/port/credentials
+    directement (la machine n'existe pas encore en DB).
+    """
+    host: str = Field(min_length=1)
+    port: int = 22
+    username: str | None = None
+    password: str | None = None
+    certificate_id: UUID | None = None
+
+
+class TestConnectionResponse(BaseModel):
+    success: bool
+    message: str
+
+
 class RequiredActionStatus(BaseModel):
     name: str
     done: bool

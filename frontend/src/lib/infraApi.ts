@@ -323,6 +323,20 @@ export const infraMachinesApi = {
   async testConnection(id: string): Promise<{ success: boolean; message: string }> {
     return (await api.post(`/infra/machines/${id}/test-connection`)).data;
   },
+  async testConnectionDryRun(payload: {
+    host: string;
+    port: number;
+    username: string | null;
+    password: string | null;
+    certificate_id: string | null;
+  }): Promise<{ success: boolean; message: string }> {
+    return (
+      await api.post<{ success: boolean; message: string }>(
+        "/infra/machines/test-connection-dryrun",
+        payload,
+      )
+    ).data;
+  },
   async runScript(id: string, scriptUrl: string, args: Record<string, string>): Promise<ScriptRunResult> {
     return (await api.post<ScriptRunResult>(
       `/infra/machines/${id}/run-script`,

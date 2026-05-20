@@ -20,6 +20,8 @@ from agflow.schemas.infra import (
     SwarmInitRequest,
     SwarmJoinRequest,
     SwarmLeaveRequest,
+    TestConnectionDryRunRequest,
+    TestConnectionResponse,
 )
 from agflow.services import (
     infra_certificates_service,
@@ -109,6 +111,38 @@ async def delete_machine(machine_id: UUID):
 
 
 # ── SSH helpers (test, containers, health) ───────────────
+
+
+@router.post(
+    "/test-connection-dryrun",
+    response_model=TestConnectionResponse,
+    dependencies=_admin,
+)
+async def test_connection_dryrun(payload: TestConnectionDryRunRequest):
+    """Tester une connexion SSH AVANT que la machine soit créée en DB.
+
+    Les credentials sont fournis dans le body (et le certificate_id éventuel
+    pointe vers une infra_certificates row existante). Timeout court (10 s)
+    pour ne pas bloquer le client si l'host est injoignable.
+    """
+    private_key: str | None = None
+    passphrase: str | None = None
+    if payload.certificate_id is not None:
+        cert = await infra_certificates_service.get_decrypted(payload.certificate_id)
+        private_key = cert.get("private_key")
+        passphrase = cert.get("passphrase")
+
+    result = await ssh_executor.test_connection(
+        host=payload.host,
+        port=payload.port,
+        username=payload.username,
+        password=payload.password,
+        private_key=private_key,
+        passphrase=passphrase,
+        connect_timeout=10.0,
+    )
+    return TestConnectionResponse(**result)
+
 
 async def _get_ssh_creds(machine_id: UUID) -> tuple[dict[str, Any], str | None, str | None]:
     """Return (creds, private_key, passphrase) for SSH use. Raises MachineNotFoundError."""

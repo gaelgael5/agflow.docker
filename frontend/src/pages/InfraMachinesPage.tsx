@@ -677,6 +677,8 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
   const [userId, setUserId] = useState("");
   const [environment, setEnvironment] = useState("");
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const isEdit = !!initial;
 
   useEffect(() => {
@@ -697,10 +699,40 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
       setUserId(""); setEnvironment("");
     }
     setSaving(false);
+    setTesting(false);
+    setTestResult(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Reset du badge dès que le user change un champ qui influence la connexion.
+  useEffect(() => {
+    setTestResult(null);
+  }, [host, port, username, password, certificateId]);
+
   const canSubmit = typeId.trim() && host.trim();
+  const canTest = host.trim() !== "" && !testing;
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await infraMachinesApi.testConnectionDryRun({
+        host: host.trim(),
+        port: parseInt(port || "22", 10),
+        username: username || null,
+        password: password || null,
+        certificate_id: certificateId || null,
+      });
+      setTestResult(r);
+    } catch (e) {
+      setTestResult({
+        success: false,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -773,8 +805,24 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
             <p className="text-[10px] text-muted-foreground mt-1">{t("infra.machine_environment_hint")}</p>
           </div>
         </div>
+        {testResult !== null && (
+          <div
+            className={`mt-2 rounded border p-2 text-[12px] ${
+              testResult.success
+                ? "border-green-600/40 bg-green-600/10 text-green-700 dark:text-green-400"
+                : "border-destructive/40 bg-destructive/10 text-destructive"
+            }`}
+          >
+            {testResult.success
+              ? `✓ ${t("infra.machine_test_ok")} — ${testResult.message}`
+              : `✗ ${t("infra.machine_test_failed")} : ${testResult.message}`}
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button variant="secondary" disabled={!canTest} onClick={handleTest}>
+            {testing ? t("infra.machine_test_in_progress") : t("infra.machine_test_button")}
+          </Button>
           <Button disabled={!canSubmit || saving} onClick={async () => {
             setSaving(true);
             try {

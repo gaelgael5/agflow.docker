@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import asyncio
+
 import asyncssh
 import structlog
 
@@ -23,13 +25,26 @@ async def test_connection(
     password: str | None = None,
     private_key: str | None = None,
     passphrase: str | None = None,
+    connect_timeout: float = 10.0,
 ) -> dict[str, Any]:
-    """Test SSH connectivity. Returns {success, message}."""
+    """Test SSH connectivity. Returns {success, message}.
+
+    `connect_timeout` borne le temps total de la phase de connexion (TCP + SSH
+    handshake) pour éviter un blocage de 2 min sur l'OS-level timeout quand
+    le host est injoignable (typo dans l'IP, machine éteinte, etc.).
+    """
     try:
-        conn = await _connect(host, port, username, password, private_key, passphrase)
+        conn = await asyncio.wait_for(
+            _connect(host, port, username, password, private_key, passphrase),
+            timeout=connect_timeout,
+        )
         async with conn:
             result = await conn.run("echo ok", check=True)
             return {"success": True, "message": f"Connected — {result.stdout.strip()}"}
+    except asyncio.TimeoutError:
+        msg = f"Connection timed out after {connect_timeout:.0f}s"
+        _log.warning("ssh.test_timeout", host=host, port=port, timeout=connect_timeout)
+        return {"success": False, "message": msg}
     except Exception as exc:
         _log.warning("ssh.test_failed", host=host, port=port, error=str(exc))
         return {"success": False, "message": str(exc)}

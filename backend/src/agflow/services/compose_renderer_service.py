@@ -333,12 +333,12 @@ async def render_group_compose(
         )
 
     files = await template_storage_service.list_files(slug)
-    sh_files = [f["filename"] for f in files if f["filename"].endswith(".sh.j2")]
-    if not sh_files:
+    docker_files = [f["filename"] for f in files if f["filename"].endswith(".docker.j2")]
+    if not docker_files:
         raise ComposeRenderError(
-            f"Template {slug!r} has no *.sh.j2 file — create one in the template editor."
+            f"Template {slug!r} has no *.docker.j2 file — create one in the template editor."
         )
-    filename = sh_files[0]
+    filename = docker_files[0]
 
     try:
         content = await template_storage_service.read_file(slug, filename)

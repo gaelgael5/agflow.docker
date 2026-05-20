@@ -47,6 +47,7 @@ export interface GroupSummary {
   max_agents: number;
   max_replicas: number;
   compose_template_slug: string | null;
+  swarm_template_slug: string | null;
   instance_count: number;
   created_at: string;
   updated_at: string;
@@ -58,6 +59,7 @@ export interface GroupCreatePayload {
   max_agents?: number;
   max_replicas?: number;
   compose_template_slug?: string | null;
+  swarm_template_slug?: string | null;
 }
 
 export const groupsApi = {

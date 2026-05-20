@@ -24,6 +24,7 @@ def _to_summary(row: dict[str, Any]) -> GroupSummary:
         max_agents=row["max_agents"],
         max_replicas=row.get("max_replicas", 1),
         compose_template_slug=row.get("compose_template_slug"),
+        swarm_template_slug=row.get("swarm_template_slug"),
         instance_count=row.get("instance_count", 0),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -62,27 +63,37 @@ async def create(
     max_agents: int = 0,
     max_replicas: int = 1,
     compose_template_slug: str | None = None,
+    swarm_template_slug: str | None = None,
 ) -> GroupSummary:
     row = await fetch_one(
         """
-        INSERT INTO groups (project_id, name, max_agents, max_replicas, compose_template_slug)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO groups
+            (project_id, name, max_agents, max_replicas,
+             compose_template_slug, swarm_template_slug)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
         """,
-        project_id, name, max_agents, max_replicas, compose_template_slug,
+        project_id, name, max_agents, max_replicas,
+        compose_template_slug, swarm_template_slug,
     )
     assert row is not None
     _log.info("groups.create", name=name, project_id=str(project_id))
     return await get_by_id(row["id"])
 
 
-_NULLABLE_GROUP_FIELDS = {"compose_template_slug"}
+_NULLABLE_GROUP_FIELDS = {"compose_template_slug", "swarm_template_slug"}
 
 
 async def update(group_id: UUID, **kwargs: Any) -> GroupSummary:
     await get_by_id(group_id)
     updates: dict[str, Any] = {}
-    for field in ("name", "max_agents", "max_replicas", "compose_template_slug"):
+    for field in (
+        "name",
+        "max_agents",
+        "max_replicas",
+        "compose_template_slug",
+        "swarm_template_slug",
+    ):
         if field not in kwargs:
             continue
         val = kwargs[field]

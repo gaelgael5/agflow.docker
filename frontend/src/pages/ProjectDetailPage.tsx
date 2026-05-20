@@ -85,8 +85,9 @@ export function ProjectDetailPage() {
     queryFn: async () => (await api.get<ProductOption[]>("/admin/products")).data,
   });
 
+  // Filtre commun compose/swarm : templates ayant au moins un fichier `.docker.j2`.
   const templatesQuery = useQuery({
-    queryKey: ["templates", "with-sh-j2"],
+    queryKey: ["templates", "with-docker-j2"],
     queryFn: async () => {
       const summaries = await templatesApi.list();
       const details = await Promise.all(
@@ -94,11 +95,11 @@ export function ProjectDetailPage() {
       );
       return summaries.filter((_t, i) => {
         const d = details[i];
-        return d?.files.some((f) => f.filename.endsWith(".sh.j2"));
+        return d?.files.some((f) => f.filename.endsWith(".docker.j2"));
       });
     },
   });
-  const composeTemplateOptions = [
+  const dockerTemplateOptions = [
     { value: "", label: t("projects.group_compose_template_none") },
     ...(templatesQuery.data ?? []).map((tpl) => ({
       value: tpl.slug,
@@ -253,7 +254,13 @@ export function ProjectDetailPage() {
           {
             name: "compose_template_slug",
             label: t("projects.group_compose_template"),
-            options: composeTemplateOptions,
+            options: dockerTemplateOptions,
+            defaultValue: "",
+          },
+          {
+            name: "swarm_template_slug",
+            label: t("projects.group_swarm_template"),
+            options: dockerTemplateOptions,
             defaultValue: "",
           },
         ]}
@@ -264,6 +271,7 @@ export function ProjectDetailPage() {
             max_agents: parseInt(values.max_agents ?? "0", 10),
             max_replicas: Math.max(1, parseInt(values.max_replicas ?? "1", 10)),
             compose_template_slug: values.compose_template_slug || null,
+            swarm_template_slug: values.swarm_template_slug || null,
           });
           qc.invalidateQueries({ queryKey: ["groups", projectId] });
           setShowAddGroup(false);
@@ -283,8 +291,14 @@ export function ProjectDetailPage() {
           {
             name: "compose_template_slug",
             label: t("projects.group_compose_template"),
-            options: composeTemplateOptions,
+            options: dockerTemplateOptions,
             defaultValue: editGroup?.compose_template_slug ?? "",
+          },
+          {
+            name: "swarm_template_slug",
+            label: t("projects.group_swarm_template"),
+            options: dockerTemplateOptions,
+            defaultValue: editGroup?.swarm_template_slug ?? "",
           },
         ]}
         onSubmit={async (values) => {
@@ -294,6 +308,7 @@ export function ProjectDetailPage() {
             max_agents: parseInt(values.max_agents ?? "0", 10),
             max_replicas: Math.max(1, parseInt(values.max_replicas ?? "1", 10)),
             compose_template_slug: values.compose_template_slug || null,
+            swarm_template_slug: values.swarm_template_slug || null,
           });
           qc.invalidateQueries({ queryKey: ["groups", projectId] });
           setEditGroup(null);

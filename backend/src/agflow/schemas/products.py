@@ -103,6 +103,7 @@ class GroupCreate(BaseModel):
     max_agents: int = 0
     max_replicas: int = Field(default=1, ge=1)
     compose_template_slug: str | None = None
+    swarm_template_slug: str | None = None
 
 
 class GroupUpdate(BaseModel):
@@ -110,6 +111,7 @@ class GroupUpdate(BaseModel):
     max_agents: int | None = None
     max_replicas: int | None = Field(default=None, ge=1)
     compose_template_slug: str | None = None
+    swarm_template_slug: str | None = None
 
 
 class GroupSummary(BaseModel):
@@ -119,6 +121,7 @@ class GroupSummary(BaseModel):
     max_agents: int = 0
     max_replicas: int = 1
     compose_template_slug: str | None = None
+    swarm_template_slug: str | None = None
     instance_count: int = 0
     created_at: datetime
     updated_at: datetime

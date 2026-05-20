@@ -30,6 +30,7 @@ async def create_group(payload: GroupCreate):
         max_agents=payload.max_agents,
         max_replicas=payload.max_replicas,
         compose_template_slug=payload.compose_template_slug,
+        swarm_template_slug=payload.swarm_template_slug,
     )
 
 

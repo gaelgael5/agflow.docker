@@ -1,4 +1,5 @@
 import { api } from "./api";
+import type { LocalBackupPush } from "./localBackupPushesApi";
 
 export interface RemoteBackupFile {
   filename: string;
@@ -16,6 +17,8 @@ export interface LocalBackup {
   created_at: string;
   source_remote_connection_id: string | null;
   source_kind: "manual" | "full";
+  local_file_present: boolean;
+  pushes: LocalBackupPush[];
 }
 
 export interface RestoreResult {

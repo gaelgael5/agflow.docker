@@ -179,7 +179,11 @@ def _build_group_context(
             for k, v in (svc.get("env_template") or {}).items():
                 env[k] = _resolve_template(str(v), resolution_ctx)
 
-            labels = [
+            # Labels : fusion recette (custom utilisateur) + agflow.* (traçabilité,
+            # toujours injectés). Le template Jinja2 itère sur `svc.labels` et reçoit
+            # les deux ensembles concaténés.
+            recipe_labels = list(svc.get("labels") or [])
+            agflow_labels = [
                 f"agflow.group_id={inst.group_id}",
                 f"agflow.instance_id={inst.id}",
                 f"agflow.runtime_id={runtime_id}",
@@ -204,9 +208,13 @@ def _build_group_context(
                     f"{inst.instance_name}-{dep}"
                     for dep in (svc.get("requires_services") or [])
                 ],
-                "labels": labels,
+                "labels": recipe_labels + agflow_labels,
                 "networks": [network],
                 "deploy": swarm_defaults.resolve_deploy(svc.get("deploy")),
+                # Champs bruts propagés depuis la recette ; le template Jinja2
+                # décide quoi en faire (cf. `| default(...)` ou `{% if ... %}`).
+                "restart": svc.get("restart"),
+                "healthcheck": svc.get("healthcheck"),
             })
 
         rendered_instances.append({

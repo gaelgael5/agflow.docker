@@ -17,6 +17,10 @@ from agflow.services.remote_backup_providers.factory import get_provider
 _log = structlog.get_logger(__name__)
 
 
+class BackupNotFoundError(LookupError):
+    """Levée quand un local_backup demandé n'existe pas en base."""
+
+
 def _backups_dir() -> Path:
     settings = get_settings()
     d = Path(settings.agflow_data_dir) / "backups"
@@ -197,3 +201,80 @@ async def stream_backup_chunks(backup_id: UUID):
             await asyncio.to_thread(f.close)
 
     return _gen()
+
+
+async def delete_backup(backup_id: UUID) -> None:
+    """Supprime le fichier local ET la row local_backups (suppression totale)."""
+    row = await fetch_one("SELECT file_path FROM local_backups WHERE id=$1", backup_id)
+    if row is None:
+        raise BackupNotFoundError(str(backup_id))
+
+    file_path = Path(row["file_path"])
+    file_path.unlink(missing_ok=True)
+    await execute("DELETE FROM local_backups WHERE id=$1", backup_id)
+    _log.info("local_backup.deleted", backup_id=str(backup_id))
+
+
+async def delete_file_only(backup_id: UUID) -> None:
+    """Supprime le fichier .dump localement, UPDATE local_file_present=false.
+    La row local_backups est PRÉSERVÉE (audit + push history)."""
+    row = await fetch_one(
+        "SELECT file_path, local_file_present FROM local_backups WHERE id = $1",
+        backup_id,
+    )
+    if row is None:
+        raise BackupNotFoundError(str(backup_id))
+    if not row["local_file_present"]:
+        return  # idempotent
+
+    file_path = Path(row["file_path"])
+    try:
+        file_path.unlink(missing_ok=True)
+    except OSError as exc:
+        _log.warning(
+            "local_backup.delete_file_failed",
+            backup_id=str(backup_id),
+            file_path=str(file_path),
+            error=str(exc),
+        )
+
+    await execute(
+        "UPDATE local_backups SET local_file_present=false WHERE id=$1", backup_id
+    )
+    _log.info("local_backup.file_deleted", backup_id=str(backup_id))
+
+
+async def prune_old_backups(schedule_id: UUID, retention_count: int) -> int:
+    """Supprime les fichiers (et rows) excédentaires pour une planification donnée.
+
+    Seules les rows avec local_file_present=true sont candidates : les rows
+    déjà sans fichier (keep_local=false flow) sont ignorées.
+
+    Retourne le nombre de backups supprimés.
+    """
+    rows = await fetch_all(
+        "SELECT id, file_path FROM local_backups "
+        "WHERE source_schedule_full_id = $1 AND local_file_present = true "
+        "ORDER BY created_at DESC OFFSET $2",
+        schedule_id,
+        retention_count,
+    )
+    deleted = 0
+    for row in rows:
+        try:
+            Path(row["file_path"]).unlink(missing_ok=True)
+            await execute("DELETE FROM local_backups WHERE id=$1", row["id"])
+            deleted += 1
+        except Exception as exc:
+            _log.warning(
+                "local_backup.prune_failed",
+                backup_id=str(row["id"]),
+                error=str(exc),
+            )
+    if deleted:
+        _log.info(
+            "local_backup.pruned",
+            schedule_id=str(schedule_id),
+            count=deleted,
+        )
+    return deleted

@@ -1604,11 +1604,19 @@
       "title": "Restauration à un point dans le temps (PITR)",
       "config": {
         "title": "Config PITR",
-        "cron": "Cron basebackup",
-        "retention": "Rétention (nombre de backups)",
+        "configureButton": "Configurer PITR",
+        "frequency": "Fréquence du basebackup",
+        "hourly": "Par heure",
+        "daily": "Par jour",
+        "moment": "À quelle heure voulez-vous lancer ?",
+        "hourlyHint": "Minute de chaque heure (00 = top de l'heure)",
+        "dailyHint": "Heure et minute auxquelles le basebackup se déclenche, tous les jours",
+        "complexCron": "Cron (expression complexe)",
+        "complexCronHint": "Le cron actuel ne se réduit pas à par heure / par jour. Modifie-le directement.",
         "remotes": "Destinations distantes",
         "enabled": "PITR activé",
-        "save": "Enregistrer"
+        "save": "Enregistrer",
+        "retentionAutoHint": "La rétention PITR suit automatiquement les basebackups conservés. pgBackRest purge le WAL devenu inutile."
       },
       "restore": {
         "title": "Restauration point-dans-le-temps",

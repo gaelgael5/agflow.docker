@@ -1597,11 +1597,19 @@
       "title": "Point-In-Time Recovery (PITR)",
       "config": {
         "title": "PITR Config",
-        "cron": "Basebackup cron",
-        "retention": "Retention (backup count)",
+        "configureButton": "Configure PITR",
+        "frequency": "Basebackup frequency",
+        "hourly": "Hourly",
+        "daily": "Daily",
+        "moment": "When should it run?",
+        "hourlyHint": "Minute of each hour (00 = top of the hour)",
+        "dailyHint": "Hour and minute at which the basebackup runs, every day",
+        "complexCron": "Cron (complex expression)",
+        "complexCronHint": "The current cron does not reduce to hourly / daily. Edit it directly.",
         "remotes": "Remote destinations",
         "enabled": "PITR enabled",
-        "save": "Save"
+        "save": "Save",
+        "retentionAutoHint": "PITR retention automatically follows the kept basebackups. pgBackRest prunes WAL files no longer reachable."
       },
       "restore": {
         "title": "Point-in-time restore",

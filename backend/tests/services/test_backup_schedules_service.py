@@ -10,6 +10,7 @@ from agflow.schemas.backup_schedules import (
     FullScheduleCreate,
     FullScheduleUpdate,
 )
+from agflow.services import backup_schedules_service
 from agflow.services import backup_schedules_service as svc
 from tests._db_reset import reset_schema_and_migrate
 
@@ -189,4 +190,52 @@ async def test_prune_old_backups_keeps_n_latest(fresh_db: None, tmp_path) -> Non
     )
     assert len(remaining) == 2
 
+
+# ── Multi-remote : nouvelles validations ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_full_schedule_rejects_empty_destinations() -> None:
+    """keep_local=False + remote_connection_ids=[] → EmptyDestinationsError (pas de DB)."""
+    # La validation des destinations se fait avant tout accès DB : pas besoin de fresh_db.
+    with pytest.raises(backup_schedules_service.EmptyDestinationsError):
+        await backup_schedules_service.create_full_schedule(
+            name="bad",
+            cron_expr="0 3 * * *",
+            remote_connection_ids=[],
+            keep_local=False,
+            retention_count=10,
+            enabled=True,
+            actor_user_id=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_full_schedule_replaces_remote_list(fresh_db: None) -> None:
+    """update avec remote_connection_ids=[r2] remplace [r1] par [r2]."""
+    from agflow.db.pool import fetch_one as db_fetch_one
+
+    r1 = (await db_fetch_one(
+        "INSERT INTO remote_backup_connections (name, kind, config) "
+        "VALUES ('r1', 'sftp', '{}'::jsonb) RETURNING id"
+    ))["id"]
+    r2 = (await db_fetch_one(
+        "INSERT INTO remote_backup_connections (name, kind, config) "
+        "VALUES ('r2', 'sftp', '{}'::jsonb) RETURNING id"
+    ))["id"]
+
+    sched = await backup_schedules_service.create_full_schedule(
+        name="s",
+        cron_expr="0 3 * * *",
+        remote_connection_ids=[r1],
+        keep_local=True,
+        retention_count=10,
+        enabled=True,
+        actor_user_id=None,
+    )
+    await backup_schedules_service.update_full_schedule(
+        sched.id, remote_connection_ids=[r2]
+    )
+    refreshed = await backup_schedules_service.get_full_schedule(sched.id)
+    assert refreshed.remote_connection_ids == [r2]
 

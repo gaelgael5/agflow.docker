@@ -6,10 +6,6 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from agflow.schemas.backup_schedules import (
-    FullScheduleCreate,
-    FullScheduleUpdate,
-)
 from agflow.services import backup_schedules_service
 from agflow.services import backup_schedules_service as svc
 from tests._db_reset import reset_schema_and_migrate
@@ -36,7 +32,9 @@ async def _create_admin() -> uuid.UUID:
 async def test_create_full_schedule(fresh_db: None) -> None:
     actor = await _create_admin()
     out = await svc.create_full_schedule(
-        FullScheduleCreate(name="daily", cron_expr="0 3 * * *", retention_count=5),
+        name="daily",
+        cron_expr="0 3 * * *",
+        retention_count=5,
         actor_user_id=actor,
     )
     assert out.name == "daily"
@@ -51,7 +49,8 @@ async def test_create_full_rejects_invalid_cron(fresh_db: None) -> None:
     actor = await _create_admin()
     with pytest.raises(svc.InvalidCronExpressionError):
         await svc.create_full_schedule(
-            FullScheduleCreate(name="bad", cron_expr="not a cron"),
+            name="bad",
+            cron_expr="not a cron",
             actor_user_id=actor,
         )
 
@@ -59,12 +58,8 @@ async def test_create_full_rejects_invalid_cron(fresh_db: None) -> None:
 @pytest.mark.asyncio
 async def test_list_full_schedules_returns_created(fresh_db: None) -> None:
     actor = await _create_admin()
-    await svc.create_full_schedule(
-        FullScheduleCreate(name="a", cron_expr="0 * * * *"), actor_user_id=actor,
-    )
-    await svc.create_full_schedule(
-        FullScheduleCreate(name="b", cron_expr="0 0 * * *"), actor_user_id=actor,
-    )
+    await svc.create_full_schedule(name="a", cron_expr="0 * * * *", actor_user_id=actor)
+    await svc.create_full_schedule(name="b", cron_expr="0 0 * * *", actor_user_id=actor)
     items = await svc.list_full_schedules()
     assert len(items) == 2
     assert {i.name for i in items} == {"a", "b"}
@@ -80,10 +75,10 @@ async def test_get_full_schedule_404(fresh_db: None) -> None:
 async def test_update_full_changes_fields(fresh_db: None) -> None:
     actor = await _create_admin()
     created = await svc.create_full_schedule(
-        FullScheduleCreate(name="x", cron_expr="0 * * * *"), actor_user_id=actor,
+        name="x", cron_expr="0 * * * *", actor_user_id=actor,
     )
     updated = await svc.update_full_schedule(
-        created.id, FullScheduleUpdate(name="y", retention_count=42),
+        created.id, name="y", retention_count=42,
     )
     assert updated.name == "y"
     assert updated.retention_count == 42
@@ -93,19 +88,17 @@ async def test_update_full_changes_fields(fresh_db: None) -> None:
 async def test_update_full_rejects_invalid_cron(fresh_db: None) -> None:
     actor = await _create_admin()
     created = await svc.create_full_schedule(
-        FullScheduleCreate(name="x", cron_expr="0 * * * *"), actor_user_id=actor,
+        name="x", cron_expr="0 * * * *", actor_user_id=actor,
     )
     with pytest.raises(svc.InvalidCronExpressionError):
-        await svc.update_full_schedule(
-            created.id, FullScheduleUpdate(cron_expr="bad cron"),
-        )
+        await svc.update_full_schedule(created.id, cron_expr="bad cron")
 
 
 @pytest.mark.asyncio
 async def test_delete_full_removes_row(fresh_db: None) -> None:
     actor = await _create_admin()
     created = await svc.create_full_schedule(
-        FullScheduleCreate(name="x", cron_expr="0 * * * *"), actor_user_id=actor,
+        name="x", cron_expr="0 * * * *", actor_user_id=actor,
     )
     await svc.delete_full_schedule(created.id)
     with pytest.raises(svc.ScheduleNotFoundError):
@@ -116,7 +109,7 @@ async def test_delete_full_removes_row(fresh_db: None) -> None:
 async def test_set_full_enabled_toggles(fresh_db: None) -> None:
     actor = await _create_admin()
     created = await svc.create_full_schedule(
-        FullScheduleCreate(name="x", cron_expr="0 * * * *"), actor_user_id=actor,
+        name="x", cron_expr="0 * * * *", actor_user_id=actor,
     )
     assert created.enabled is True
     disabled = await svc.set_full_enabled(created.id, False)
@@ -128,10 +121,9 @@ async def test_set_full_enabled_toggles(fresh_db: None) -> None:
 
 @pytest.mark.asyncio
 async def test_record_run_full_updates_last_run_fields(fresh_db: None) -> None:
-    from agflow.schemas.backup_schedules import FullScheduleCreate
     actor = await _create_admin()
     created = await svc.create_full_schedule(
-        FullScheduleCreate(name="s", cron_expr="0 * * * *"), actor_user_id=actor,
+        name="s", cron_expr="0 * * * *", actor_user_id=actor,
     )
     await svc.record_run(schedule_id=created.id, kind="full", status="ok")
     refreshed = await svc.get_full_schedule(created.id)
@@ -147,12 +139,10 @@ async def test_record_run_full_updates_last_run_fields(fresh_db: None) -> None:
 async def test_prune_old_backups_keeps_n_latest(fresh_db: None, tmp_path) -> None:
     """Crée 5 local_backups liés à 1 schedule, retention=2, vérifie qu'il reste 2 + fichiers physiques supprimés."""
     from agflow.db.pool import execute
-    from agflow.schemas.backup_schedules import FullScheduleCreate
 
     actor = await _create_admin()
     created = await svc.create_full_schedule(
-        FullScheduleCreate(name="s", cron_expr="0 * * * *", retention_count=2),
-        actor_user_id=actor,
+        name="s", cron_expr="0 * * * *", retention_count=2, actor_user_id=actor,
     )
 
     # Crée 5 backups liés au schedule + leurs fichiers physiques
@@ -238,4 +228,3 @@ async def test_update_full_schedule_replaces_remote_list(fresh_db: None) -> None
     )
     refreshed = await backup_schedules_service.get_full_schedule(sched.id)
     assert refreshed.remote_connection_ids == [r2]
-

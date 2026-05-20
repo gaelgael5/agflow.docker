@@ -11,9 +11,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from agflow.db.pool import execute, fetch_all, fetch_one, get_pool
 from agflow.schemas.backup_schedules import (
-    FullScheduleCreate,
     FullScheduleSummary,
-    FullScheduleUpdate,
     ScheduleHistoryEntry,
 )
 from agflow.services import remote_backup_connections_service
@@ -95,41 +93,23 @@ async def get_full_schedule(schedule_id: UUID) -> FullScheduleSummary:
 
 
 async def create_full_schedule(
-    payload: FullScheduleCreate | None = None,
     *,
-    name: str | None = None,
-    cron_expr: str | None = None,
+    name: str,
+    cron_expr: str,
     remote_connection_ids: list[UUID] | None = None,
-    keep_local: bool | None = None,
-    retention_count: int | None = None,
-    enabled: bool | None = None,
+    keep_local: bool = True,
+    retention_count: int = 10,
+    enabled: bool = True,
     actor_user_id: UUID | None = None,
 ) -> FullScheduleSummary:
-    """Crée une planification full (multi-remote).
-
-    Accepte soit un payload Pydantic (rétrocompat), soit des kwargs nommés.
-    """
-    # Résolution des paramètres : kwargs priment sur le payload
-    if payload is not None:
-        _name = name if name is not None else payload.name
-        _cron_expr = cron_expr if cron_expr is not None else payload.cron_expr
-        _remote_ids = remote_connection_ids if remote_connection_ids is not None else payload.remote_connection_ids
-        _keep_local = keep_local if keep_local is not None else payload.keep_local
-        _retention_count = retention_count if retention_count is not None else payload.retention_count
-        _enabled = enabled if enabled is not None else payload.enabled
-    else:
-        _name = name or ""
-        _cron_expr = cron_expr or ""
-        _remote_ids = remote_connection_ids if remote_connection_ids is not None else []
-        _keep_local = keep_local if keep_local is not None else True
-        _retention_count = retention_count if retention_count is not None else 10
-        _enabled = enabled if enabled is not None else True
+    """Crée une planification full (multi-remote)."""
+    _remote_ids: list[UUID] = remote_connection_ids if remote_connection_ids is not None else []
 
     # 1) Validation cron
-    _validate_cron(_cron_expr)
+    _validate_cron(cron_expr)
 
     # 2) Validation destinations (≥ 1)
-    if not _keep_local and not _remote_ids:
+    if not keep_local and not _remote_ids:
         raise EmptyDestinationsError(
             "at least one destination required (local or remote)"
         )
@@ -147,7 +127,7 @@ async def create_full_schedule(
             "INSERT INTO backup_schedules_full "
             "(name, cron_expr, retention_count, enabled, keep_local, created_by_user_id) "
             "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-            _name, _cron_expr, _retention_count, _enabled, _keep_local, actor_user_id,
+            name, cron_expr, retention_count, enabled, keep_local, actor_user_id,
         )
         schedule_id = row["id"]
         for rid in _remote_ids:
@@ -161,14 +141,13 @@ async def create_full_schedule(
         "backup_schedules.full.created",
         schedule_id=str(schedule_id),
         remote_count=len(_remote_ids),
-        keep_local=_keep_local,
+        keep_local=keep_local,
     )
     return await get_full_schedule(schedule_id)
 
 
 async def update_full_schedule(
     schedule_id: UUID,
-    payload: FullScheduleUpdate | None = None,
     *,
     name: str | None = None,
     cron_expr: str | None = None,
@@ -177,41 +156,22 @@ async def update_full_schedule(
     retention_count: int | None = None,
     enabled: bool | None = None,
 ) -> FullScheduleSummary:
-    """Met à jour une planification full (multi-remote).
-
-    Accepte soit un payload Pydantic (rétrocompat), soit des kwargs nommés.
-    """
-    # Résolution des paramètres : kwargs priment sur le payload
-    if payload is not None:
-        _name = name if name is not None else payload.name
-        _cron_expr = cron_expr if cron_expr is not None else payload.cron_expr
-        _remote_ids = remote_connection_ids if remote_connection_ids is not None else payload.remote_connection_ids
-        _keep_local = keep_local if keep_local is not None else payload.keep_local
-        _retention_count = retention_count if retention_count is not None else payload.retention_count
-        _enabled = enabled if enabled is not None else payload.enabled
-    else:
-        _name = name
-        _cron_expr = cron_expr
-        _remote_ids = remote_connection_ids
-        _keep_local = keep_local
-        _retention_count = retention_count
-        _enabled = enabled
-
+    """Met à jour une planification full (multi-remote). Tous les champs sont optionnels."""
     # Validation cron si fourni
-    if _cron_expr is not None:
-        _validate_cron(_cron_expr)
+    if cron_expr is not None:
+        _validate_cron(cron_expr)
 
     # Validation chaque remote existe
-    if _remote_ids is not None:
-        for rid in _remote_ids:
+    if remote_connection_ids is not None:
+        for rid in remote_connection_ids:
             conn = await remote_backup_connections_service.get_connection(None, rid)
             if conn is None:
                 raise RemoteNotFoundError(str(rid))
 
     # Validation destinations (état final)
     current = await get_full_schedule(schedule_id)
-    final_keep_local = _keep_local if _keep_local is not None else current.keep_local
-    final_remote_ids = _remote_ids if _remote_ids is not None else current.remote_connection_ids
+    final_keep_local = keep_local if keep_local is not None else current.keep_local
+    final_remote_ids = remote_connection_ids if remote_connection_ids is not None else current.remote_connection_ids
     if not final_keep_local and not final_remote_ids:
         raise EmptyDestinationsError(
             "at least one destination required (local or remote)"
@@ -221,20 +181,20 @@ async def update_full_schedule(
     async with pool.acquire() as conn, conn.transaction():
         sets: list[str] = []
         params: list[Any] = []
-        if _name is not None:
-            params.append(_name)
+        if name is not None:
+            params.append(name)
             sets.append(f"name = ${len(params)}")
-        if _cron_expr is not None:
-            params.append(_cron_expr)
+        if cron_expr is not None:
+            params.append(cron_expr)
             sets.append(f"cron_expr = ${len(params)}")
-        if _retention_count is not None:
-            params.append(_retention_count)
+        if retention_count is not None:
+            params.append(retention_count)
             sets.append(f"retention_count = ${len(params)}")
-        if _enabled is not None:
-            params.append(_enabled)
+        if enabled is not None:
+            params.append(enabled)
             sets.append(f"enabled = ${len(params)}")
-        if _keep_local is not None:
-            params.append(_keep_local)
+        if keep_local is not None:
+            params.append(keep_local)
             sets.append(f"keep_local = ${len(params)}")
         if sets:
             params.append(schedule_id)
@@ -243,12 +203,12 @@ async def update_full_schedule(
                 *params,
             )
 
-        if _remote_ids is not None:
+        if remote_connection_ids is not None:
             await conn.execute(
                 "DELETE FROM backup_schedule_full_remotes WHERE schedule_id = $1",
                 schedule_id,
             )
-            for rid in _remote_ids:
+            for rid in remote_connection_ids:
                 await conn.execute(
                     "INSERT INTO backup_schedule_full_remotes (schedule_id, remote_connection_id) "
                     "VALUES ($1, $2)",

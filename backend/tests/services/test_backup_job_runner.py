@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agflow.schemas.backup_schedules import FullScheduleCreate
 from agflow.services import backup_job_runner
 from agflow.services import backup_schedules_service as svc
 from tests._db_reset import reset_schema_and_migrate
@@ -30,16 +29,25 @@ async def _create_admin() -> uuid.UUID:
     return uid
 
 
+async def _insert_remote(name: str = "r") -> uuid.UUID:
+    from agflow.db.pool import fetch_one
+    row = await fetch_one(
+        "INSERT INTO remote_backup_connections (name, kind, config) "
+        "VALUES ($1, 'sftp', '{}'::jsonb) RETURNING id",
+        name,
+    )
+    return row["id"]
+
+
 @pytest.mark.asyncio
 async def test_run_full_job_happy_path_no_remote(fresh_db: None) -> None:
     """Happy path sans remote : crée backup + record_run ok, pas de push."""
     actor = await _create_admin()
     sched = await svc.create_full_schedule(
-        FullScheduleCreate(name="s", cron_expr="0 * * * *", retention_count=5),
+        name="s", cron_expr="0 * * * *", retention_count=5,
         actor_user_id=actor,
     )
 
-    # Mock create_backup pour ne pas vraiment dump Postgres
     fake_backup = MagicMock(id=uuid.uuid4(), filename="b.sql.gz")
     with patch(
         "agflow.services.backup_job_runner.local_backups_service.create_backup",
@@ -48,7 +56,6 @@ async def test_run_full_job_happy_path_no_remote(fresh_db: None) -> None:
         await backup_job_runner.run_full_job(sched.id)
 
     mock_create.assert_called_once()
-    # Vérifie qu'on passe source_schedule_full_id
     assert mock_create.call_args.kwargs["source_schedule_full_id"] == sched.id
 
     refreshed = await svc.get_full_schedule(sched.id)
@@ -62,7 +69,7 @@ async def test_run_full_job_skipped_if_disabled(fresh_db: None) -> None:
     """Si enabled=false → no-op (pas de create_backup, last_run inchangé)."""
     actor = await _create_admin()
     sched = await svc.create_full_schedule(
-        FullScheduleCreate(name="s", cron_expr="0 * * * *", enabled=False),
+        name="s", cron_expr="0 * * * *", enabled=False,
         actor_user_id=actor,
     )
 
@@ -80,31 +87,17 @@ async def test_run_full_job_skipped_if_disabled(fresh_db: None) -> None:
 
 @pytest.mark.asyncio
 async def test_run_full_job_with_remote_push_ok(fresh_db: None) -> None:
-    """Avec remote configurée : create + push + record ok."""
-    from agflow.db.pool import execute
-
+    """Avec remote configurée : create + seed + push_all_pending + record ok."""
     actor = await _create_admin()
-
-    # Crée une remote_backup_connection minimale (SFTP fake)
-    conn_id = uuid.uuid4()
-    await execute(
-        "INSERT INTO remote_backup_connections "
-        "(id, name, kind, config, vault_api_key_id, vault_secret_path) "
-        "VALUES ($1, 'r', 'sftp', '{}'::jsonb, 'default', 'remote-backups/dummy')",
-        conn_id,
-    )
+    conn_id = await _insert_remote("r1")
 
     sched = await svc.create_full_schedule(
-        FullScheduleCreate(
-            name="s", cron_expr="0 * * * *",
-            remote_connection_id=conn_id,
-        ),
+        name="s", cron_expr="0 * * * *",
+        remote_connection_ids=[conn_id],
         actor_user_id=actor,
     )
 
     fake_backup = MagicMock(id=uuid.uuid4(), filename="b.sql.gz")
-    fake_provider = MagicMock()
-    fake_provider.upload_stream = AsyncMock(return_value=42)
 
     with (
         patch(
@@ -112,54 +105,41 @@ async def test_run_full_job_with_remote_push_ok(fresh_db: None) -> None:
             AsyncMock(return_value=fake_backup),
         ),
         patch(
-            "agflow.services.backup_job_runner.local_backups_service.stream_backup_chunks",
-            AsyncMock(return_value=iter([b"data"])),
-        ),
+            "agflow.services.backup_job_runner.local_backup_pushes_service.seed_pushes",
+            new=AsyncMock(),
+        ) as mock_seed,
         patch(
-            "agflow.services.backup_job_runner.rbc_service.fetch_credentials",
-            AsyncMock(return_value={"username": "u", "password": "p"}),
-        ),
-        patch(
-            "agflow.services.backup_job_runner.rbc_service.resolve_remote_path",
-            return_value="full/",
-        ),
-        patch(
-            "agflow.services.backup_job_runner.get_provider",
-            return_value=fake_provider,
-        ),
+            "agflow.services.backup_job_runner.local_backup_pushes_service.push_all_pending",
+            new=AsyncMock(return_value=True),
+        ) as mock_push_all,
     ):
         await backup_job_runner.run_full_job(sched.id)
 
-    fake_provider.upload_stream.assert_called_once()
+    mock_seed.assert_called_once_with(
+        backup_id=fake_backup.id,
+        remote_ids=[conn_id],
+    )
+    mock_push_all.assert_called_once_with(backup_id=fake_backup.id)
+
     refreshed = await svc.get_full_schedule(sched.id)
     assert refreshed.last_run_status == "ok"
 
 
 @pytest.mark.asyncio
 async def test_run_full_job_remote_push_failed(fresh_db: None) -> None:
-    """Backup local OK mais push remote KO → status='failed' avec l'erreur."""
-    from agflow.db.pool import execute
-
+    """create_backup OK mais push_all_pending retourne False → status='ok' (partial fail
+    visible via badges), mais delete_file_only n'est PAS appelé."""
     actor = await _create_admin()
-    conn_id = uuid.uuid4()
-    await execute(
-        "INSERT INTO remote_backup_connections "
-        "(id, name, kind, config, vault_api_key_id, vault_secret_path) "
-        "VALUES ($1, 'r', 'sftp', '{}'::jsonb, 'default', 'remote-backups/dummy')",
-        conn_id,
-    )
+    conn_id = await _insert_remote("r1")
 
     sched = await svc.create_full_schedule(
-        FullScheduleCreate(
-            name="s", cron_expr="0 * * * *",
-            remote_connection_id=conn_id,
-        ),
+        name="s", cron_expr="0 * * * *",
+        remote_connection_ids=[conn_id],
+        keep_local=False,
         actor_user_id=actor,
     )
 
     fake_backup = MagicMock(id=uuid.uuid4(), filename="b.sql.gz")
-    fake_provider = MagicMock()
-    fake_provider.upload_stream = AsyncMock(side_effect=RuntimeError("S3 timeout"))
 
     with (
         patch(
@@ -167,27 +147,24 @@ async def test_run_full_job_remote_push_failed(fresh_db: None) -> None:
             AsyncMock(return_value=fake_backup),
         ),
         patch(
-            "agflow.services.backup_job_runner.local_backups_service.stream_backup_chunks",
-            AsyncMock(return_value=iter([b"data"])),
+            "agflow.services.backup_job_runner.local_backup_pushes_service.seed_pushes",
+            new=AsyncMock(),
         ),
         patch(
-            "agflow.services.backup_job_runner.rbc_service.fetch_credentials",
-            AsyncMock(return_value={"username": "u", "password": "p"}),
+            "agflow.services.backup_job_runner.local_backup_pushes_service.push_all_pending",
+            new=AsyncMock(return_value=False),
         ),
         patch(
-            "agflow.services.backup_job_runner.rbc_service.resolve_remote_path",
-            return_value="full/",
-        ),
-        patch(
-            "agflow.services.backup_job_runner.get_provider",
-            return_value=fake_provider,
-        ),
+            "agflow.services.backup_job_runner.local_backups_service.delete_file_only",
+            new=AsyncMock(),
+        ) as mock_delete,
     ):
         await backup_job_runner.run_full_job(sched.id)
 
+    mock_delete.assert_not_called()
+
     refreshed = await svc.get_full_schedule(sched.id)
-    assert refreshed.last_run_status == "failed"
-    assert "S3 timeout" in (refreshed.last_run_error or "")
+    assert refreshed.last_run_status == "ok"
 
 
 @pytest.mark.asyncio
@@ -197,7 +174,7 @@ async def test_run_full_job_prunes_after_run(fresh_db: None) -> None:
 
     actor = await _create_admin()
     sched = await svc.create_full_schedule(
-        FullScheduleCreate(name="s", cron_expr="0 * * * *", retention_count=2),
+        name="s", cron_expr="0 * * * *", retention_count=2,
         actor_user_id=actor,
     )
 
@@ -216,8 +193,8 @@ async def test_run_full_job_prunes_after_run(fresh_db: None) -> None:
         bid = uuid.uuid4()
         await execute(
             "INSERT INTO local_backups (id, filename, file_path, status, "
-            "source_schedule_full_id, created_at) "
-            "VALUES ($1, 'new.sql.gz', '/nonexistent/new.sql.gz', 'completed', $2, now())",
+            "source_schedule_full_id, created_at, local_file_present) "
+            "VALUES ($1, 'new.sql.gz', '/nonexistent/new.sql.gz', 'completed', $2, now(), true)",
             bid, kwargs["source_schedule_full_id"],
         )
         return MagicMock(id=bid, filename="new.sql.gz")
@@ -235,3 +212,112 @@ async def test_run_full_job_prunes_after_run(fresh_db: None) -> None:
     )
     assert len(remaining) == 2
 
+
+# ---------------------------------------------------------------------------
+# Nouveaux tests multi-remote
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_full_job_multi_remote_happy_path(fresh_db: None) -> None:
+    """schedule avec 2 remotes → seed_pushes + push_all_pending OK → record_run('ok')."""
+    r1 = await _insert_remote("r1")
+    r2 = await _insert_remote("r2")
+
+    sched = await svc.create_full_schedule(
+        name="multi", cron_expr="0 3 * * *",
+        remote_connection_ids=[r1, r2], keep_local=True,
+        retention_count=10, enabled=True, actor_user_id=None,
+    )
+
+    fake_backup = MagicMock(id=uuid.uuid4())
+    with (
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.create_backup",
+            new=AsyncMock(return_value=fake_backup),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.local_backup_pushes_service.push_all_pending",
+            new=AsyncMock(return_value=True),
+        ) as mock_push_all,
+        patch(
+            "agflow.services.backup_job_runner.local_backup_pushes_service.seed_pushes",
+            new=AsyncMock(),
+        ) as mock_seed,
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.delete_file_only",
+            new=AsyncMock(),
+        ) as mock_delete,
+    ):
+        await backup_job_runner.run_full_job(sched.id)
+
+    mock_seed.assert_called_once()
+    mock_push_all.assert_called_once()
+    mock_delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_full_job_keep_local_false_all_ok_deletes_file(fresh_db: None) -> None:
+    """keep_local=false + push_all_pending=True → delete_file_only appelé."""
+    r1 = await _insert_remote("r1")
+    sched = await svc.create_full_schedule(
+        name="no-local", cron_expr="0 3 * * *",
+        remote_connection_ids=[r1], keep_local=False,
+        retention_count=10, enabled=True, actor_user_id=None,
+    )
+
+    backup_id = uuid.uuid4()
+    with (
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.create_backup",
+            new=AsyncMock(return_value=MagicMock(id=backup_id)),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.local_backup_pushes_service.push_all_pending",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.local_backup_pushes_service.seed_pushes",
+            new=AsyncMock(),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.delete_file_only",
+            new=AsyncMock(),
+        ) as mock_delete,
+    ):
+        await backup_job_runner.run_full_job(sched.id)
+
+    mock_delete.assert_called_once_with(backup_id)
+
+
+@pytest.mark.asyncio
+async def test_run_full_job_keep_local_false_push_fail_keeps_file(fresh_db: None) -> None:
+    """keep_local=false + push_all_pending=False (partial fail) → delete_file_only NON appelé."""
+    r1 = await _insert_remote("r1")
+    sched = await svc.create_full_schedule(
+        name="no-local-fail", cron_expr="0 3 * * *",
+        remote_connection_ids=[r1], keep_local=False,
+        retention_count=10, enabled=True, actor_user_id=None,
+    )
+
+    with (
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.create_backup",
+            new=AsyncMock(return_value=MagicMock(id=uuid.uuid4())),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.local_backup_pushes_service.push_all_pending",
+            new=AsyncMock(return_value=False),  # partial fail
+        ),
+        patch(
+            "agflow.services.backup_job_runner.local_backup_pushes_service.seed_pushes",
+            new=AsyncMock(),
+        ),
+        patch(
+            "agflow.services.backup_job_runner.local_backups_service.delete_file_only",
+            new=AsyncMock(),
+        ) as mock_delete,
+    ):
+        await backup_job_runner.run_full_job(sched.id)
+
+    mock_delete.assert_not_called()  # fichier conservé en cas d'échec partiel

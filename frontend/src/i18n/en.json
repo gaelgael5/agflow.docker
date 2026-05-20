@@ -1598,7 +1598,7 @@
       "config": {
         "title": "PITR Config",
         "configureButton": "Configure PITR",
-        "basebackupType": "Basebackup type",
+        "basebackupType": "Backup type",
         "type_full": "Full",
         "type_diff": "Differential (diff)",
         "type_incr": "Incremental (incr)",
@@ -1611,8 +1611,6 @@
         "intervalUnit_minutes": "minutes",
         "intervalUnit_hours": "hours",
         "intervalHint": "PITR runs at this interval (e.g. every 30 minutes, every 2 hours). Pick based on write frequency and acceptable data loss window.",
-        "complexCron": "Cron (complex expression)",
-        "complexCronHint": "The current cron does not reduce to hourly / daily. Edit it directly.",
         "rebaseTitle": "Full rebase (weekly)",
         "rebaseHint": "When the type is differential or incremental, a periodic full resets the counter (otherwise diff/incr grow indefinitely).",
         "rebaseDay": "Day of week",

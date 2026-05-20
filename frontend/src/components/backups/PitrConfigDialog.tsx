@@ -44,15 +44,13 @@ export function PitrConfigDialog() {
   const [basebackupType, setBasebackupType] = useState<BasebackupType>("diff");
 
   // Fréquence principale (intervalle des basebackups planifiés)
-  const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>("interval-hours");
-  const [intervalN, setIntervalN] = useState(1);
-  const [cronFallback, setCronFallback] = useState<string | null>(null);
+  const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>("interval-minutes");
+  const [intervalN, setIntervalN] = useState(30);
 
   // Rebasage (cron du full hebdo) — utilisé uniquement si type ≠ full
   const [rebaseDayOfWeek, setRebaseDayOfWeek] = useState(0); // 0=dim
   const [rebaseHour, setRebaseHour] = useState(2);
   const [rebaseMinute, setRebaseMinute] = useState(0);
-  const [rebaseFallback, setRebaseFallback] = useState<string | null>(null);
 
   const [selectedRemotes, setSelectedRemotes] = useState<string[]>([]);
   const [enabled, setEnabled] = useState(true);
@@ -71,9 +69,10 @@ export function PitrConfigDialog() {
     ) {
       setIntervalUnit(parsed.recurrence);
       setIntervalN(parsed.intervalN);
-      setCronFallback(null);
     } else {
-      setCronFallback(cfg.basebackup_cron ?? "");
+      // Pas un intervalle (ex: cron legacy "0 3 * * *") : on recale sur 30 min.
+      setIntervalUnit("interval-minutes");
+      setIntervalN(30);
     }
 
     const rebaseParsed = parseCron(cfg.full_rebase_cron);
@@ -81,9 +80,11 @@ export function PitrConfigDialog() {
       setRebaseDayOfWeek(rebaseParsed.dayOfWeek);
       setRebaseHour(rebaseParsed.hour);
       setRebaseMinute(rebaseParsed.minute);
-      setRebaseFallback(null);
     } else {
-      setRebaseFallback(cfg.full_rebase_cron ?? "");
+      // Pas un weekly : default dimanche 02h00.
+      setRebaseDayOfWeek(0);
+      setRebaseHour(2);
+      setRebaseMinute(0);
     }
   }, [cfg]);
 
@@ -102,24 +103,20 @@ export function PitrConfigDialog() {
   };
 
   const onSave = () => {
-    const cron =
-      cronFallback ??
-      buildCron({
-        recurrence: intervalUnit satisfies RecurrenceType,
-        hour: 0,
-        minute: 0,
-        dayOfWeek: 0,
-        intervalN,
-      });
-    const rebaseCron =
-      rebaseFallback ??
-      buildCron({
-        recurrence: "weekly",
-        hour: rebaseHour,
-        minute: rebaseMinute,
-        dayOfWeek: rebaseDayOfWeek,
-        intervalN: 0,
-      });
+    const cron = buildCron({
+      recurrence: intervalUnit satisfies RecurrenceType,
+      hour: 0,
+      minute: 0,
+      dayOfWeek: 0,
+      intervalN,
+    });
+    const rebaseCron = buildCron({
+      recurrence: "weekly",
+      hour: rebaseHour,
+      minute: rebaseMinute,
+      dayOfWeek: rebaseDayOfWeek,
+      intervalN: 0,
+    });
     update.mutate(
       {
         basebackup_cron: cron,
@@ -146,7 +143,7 @@ export function PitrConfigDialog() {
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Section 1 : Type de basebackup */}
+          {/* Section 1 : Type de backup */}
           <div className="space-y-2">
             <Label>{t("backups.pitr.config.basebackupType")}</Label>
             <div className="flex flex-col gap-1">
@@ -166,64 +163,47 @@ export function PitrConfigDialog() {
             </p>
           </div>
 
-          {/* Section 2 : Fréquence (intervalle) */}
-          {cronFallback !== null ? (
-            <div className="space-y-1">
-              <Label htmlFor="pitr-cron-raw">
-                {t("backups.pitr.config.complexCron")}
-              </Label>
+          {/* Section 2 : Intervalle */}
+          <div className="space-y-2">
+            <Label>
+              {t("backups.pitr.config.intervalLabelFor", {
+                type: t(`backups.pitr.config.type_${basebackupType}`),
+              })}
+            </Label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm">
+                {t("backups.pitr.config.intervalEvery")}
+              </span>
               <Input
-                id="pitr-cron-raw"
-                value={cronFallback}
-                onChange={(e) => setCronFallback(e.target.value)}
-                className="font-mono"
+                type="number"
+                min={1}
+                max={MAX_INTERVAL_N[intervalUnit]}
+                value={intervalN}
+                onChange={(e) =>
+                  setIntervalN(
+                    clampInterval(intervalUnit, parseInt(e.target.value, 10) || 1),
+                  )
+                }
+                className="w-20 text-center"
+                aria-label={t("backups.pitr.config.intervalN")}
               />
-              <p className="text-xs text-muted-foreground">
-                {t("backups.pitr.config.complexCronHint")}
-              </p>
+              <select
+                value={intervalUnit}
+                onChange={(e) => onIntervalUnitChange(e.target.value as IntervalUnit)}
+                className="h-9 rounded border bg-background px-2 text-sm"
+              >
+                <option value="interval-minutes">
+                  {t("backups.pitr.config.intervalUnit_minutes")}
+                </option>
+                <option value="interval-hours">
+                  {t("backups.pitr.config.intervalUnit_hours")}
+                </option>
+              </select>
             </div>
-          ) : (
-            <div className="space-y-2">
-              <Label>
-                {t("backups.pitr.config.intervalLabelFor", {
-                  type: t(`backups.pitr.config.type_${basebackupType}`),
-                })}
-              </Label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm">
-                  {t("backups.pitr.config.intervalEvery")}
-                </span>
-                <Input
-                  type="number"
-                  min={1}
-                  max={MAX_INTERVAL_N[intervalUnit]}
-                  value={intervalN}
-                  onChange={(e) =>
-                    setIntervalN(
-                      clampInterval(intervalUnit, parseInt(e.target.value, 10) || 1),
-                    )
-                  }
-                  className="w-20 text-center"
-                  aria-label={t("backups.pitr.config.intervalN")}
-                />
-                <select
-                  value={intervalUnit}
-                  onChange={(e) => onIntervalUnitChange(e.target.value as IntervalUnit)}
-                  className="h-9 rounded border bg-background px-2 text-sm"
-                >
-                  <option value="interval-minutes">
-                    {t("backups.pitr.config.intervalUnit_minutes")}
-                  </option>
-                  <option value="interval-hours">
-                    {t("backups.pitr.config.intervalUnit_hours")}
-                  </option>
-                </select>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("backups.pitr.config.intervalHint")}
-              </p>
-            </div>
-          )}
+            <p className="text-xs text-muted-foreground">
+              {t("backups.pitr.config.intervalHint")}
+            </p>
+          </div>
 
           {/* Section 3 : Rebasage full hebdo (uniquement si type ≠ full) */}
           {basebackupType !== "full" && (
@@ -232,75 +212,58 @@ export function PitrConfigDialog() {
               <p className="text-xs text-muted-foreground">
                 {t("backups.pitr.config.rebaseHint")}
               </p>
-              {rebaseFallback !== null ? (
+              <div className="flex flex-wrap items-end gap-2">
                 <div className="space-y-1">
-                  <Label htmlFor="pitr-rebase-raw">
-                    {t("backups.pitr.config.complexCron")}
+                  <Label className="text-xs">
+                    {t("backups.pitr.config.rebaseDay")}
                   </Label>
-                  <Input
-                    id="pitr-rebase-raw"
-                    value={rebaseFallback}
-                    onChange={(e) => setRebaseFallback(e.target.value)}
-                    className="font-mono"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t("backups.pitr.config.complexCronHint")}
-                  </p>
+                  <select
+                    value={rebaseDayOfWeek}
+                    onChange={(e) =>
+                      setRebaseDayOfWeek(parseInt(e.target.value, 10))
+                    }
+                    className="h-9 rounded border bg-background px-2 text-sm"
+                  >
+                    {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+                      <option key={d} value={d}>
+                        {t(`backups.pitr.config.day_${d}`)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              ) : (
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">
-                      {t("backups.pitr.config.rebaseDay")}
-                    </Label>
-                    <select
-                      value={rebaseDayOfWeek}
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    {t("backups.pitr.config.rebaseTime")}
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={rebaseHour}
                       onChange={(e) =>
-                        setRebaseDayOfWeek(parseInt(e.target.value, 10))
+                        setRebaseHour(
+                          Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0)),
+                        )
                       }
-                      className="h-9 rounded border bg-background px-2 text-sm"
-                    >
-                      {[0, 1, 2, 3, 4, 5, 6].map((d) => (
-                        <option key={d} value={d}>
-                          {t(`backups.pitr.config.day_${d}`)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">
-                      {t("backups.pitr.config.rebaseTime")}
-                    </Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={23}
-                        value={rebaseHour}
-                        onChange={(e) =>
-                          setRebaseHour(
-                            Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0)),
-                          )
-                        }
-                        className="w-16 text-center"
-                      />
-                      <span className="font-mono text-lg">:</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={59}
-                        value={rebaseMinute}
-                        onChange={(e) =>
-                          setRebaseMinute(
-                            Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)),
-                          )
-                        }
-                        className="w-16 text-center"
-                      />
-                    </div>
+                      className="w-16 text-center"
+                    />
+                    <span className="font-mono text-lg">:</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={59}
+                      value={rebaseMinute}
+                      onChange={(e) =>
+                        setRebaseMinute(
+                          Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)),
+                        )
+                      }
+                      className="w-16 text-center"
+                    />
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           )}
 

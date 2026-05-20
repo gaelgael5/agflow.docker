@@ -29,7 +29,7 @@ def _viewer_token() -> str:
 def _full_summary(name: str = "s", enabled: bool = True) -> FullScheduleSummary:
     return FullScheduleSummary(
         id=uuid4(), name=name, cron_expr="0 * * * *",
-        remote_connection_id=None, retention_count=10, enabled=enabled,
+        remote_connection_ids=[], keep_local=True, retention_count=10, enabled=enabled,
         last_run_at=None, last_run_status=None, last_run_error=None,
         created_at=datetime(2026, 5, 16, tzinfo=UTC),
         updated_at=datetime(2026, 5, 16, tzinfo=UTC),
@@ -83,7 +83,12 @@ def test_create_full_returns_201(client: TestClient) -> None:
         r = client.post(
             "/api/admin/backup-schedules/full",
             headers={"Authorization": f"Bearer {_admin_token()}"},
-            json={"name": "new", "cron_expr": "0 3 * * *"},
+            json={
+                "name": "new",
+                "cron_expr": "0 3 * * *",
+                "remote_connection_ids": [],
+                "keep_local": True,
+            },
         )
     assert r.status_code == 201
     assert r.json()["name"] == "new"
@@ -104,7 +109,12 @@ def test_create_full_returns_422_on_invalid_cron(client: TestClient) -> None:
         r = client.post(
             "/api/admin/backup-schedules/full",
             headers={"Authorization": f"Bearer {_admin_token()}"},
-            json={"name": "x", "cron_expr": "bad"},
+            json={
+                "name": "x",
+                "cron_expr": "bad",
+                "remote_connection_ids": [],
+                "keep_local": True,
+            },
         )
     assert r.status_code == 422
 
@@ -118,7 +128,7 @@ def test_update_full_404(client: TestClient) -> None:
         r = client.put(
             f"/api/admin/backup-schedules/full/{uuid4()}",
             headers={"Authorization": f"Bearer {_admin_token()}"},
-            json={"name": "y"},
+            json={"name": "y", "remote_connection_ids": [], "keep_local": True},
         )
     assert r.status_code == 404
 
@@ -178,5 +188,61 @@ def test_set_full_enabled_toggles(client: TestClient) -> None:
         )
     assert r.status_code == 200
     assert r.json()["enabled"] is False
+
+
+def test_post_full_422_empty_destinations(client: TestClient) -> None:
+    """POST avec keep_local=false + remote_connection_ids=[] → 422."""
+    from agflow.services.backup_schedules_service import EmptyDestinationsError
+    with (
+        patch(
+            "agflow.api.admin.backup_schedules.users_service.get_by_email",
+            AsyncMock(return_value=type("U", (), {"id": uuid4()})()),
+        ),
+        patch(
+            "agflow.api.admin.backup_schedules.svc.create_full_schedule",
+            AsyncMock(side_effect=EmptyDestinationsError("no dest")),
+        ),
+    ):
+        r = client.post(
+            "/api/admin/backup-schedules/full",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+            json={
+                "name": "bad",
+                "cron_expr": "0 3 * * *",
+                "remote_connection_ids": [],
+                "keep_local": False,
+                "retention_count": 10,
+                "enabled": True,
+            },
+        )
+    assert r.status_code == 422
+
+
+def test_post_full_404_unknown_remote(client: TestClient) -> None:
+    """POST avec un remote_connection_id inconnu → 404."""
+    from agflow.services.backup_schedules_service import RemoteNotFoundError
+    with (
+        patch(
+            "agflow.api.admin.backup_schedules.users_service.get_by_email",
+            AsyncMock(return_value=type("U", (), {"id": uuid4()})()),
+        ),
+        patch(
+            "agflow.api.admin.backup_schedules.svc.create_full_schedule",
+            AsyncMock(side_effect=RemoteNotFoundError("unknown-uuid")),
+        ),
+    ):
+        r = client.post(
+            "/api/admin/backup-schedules/full",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+            json={
+                "name": "s",
+                "cron_expr": "0 3 * * *",
+                "remote_connection_ids": ["12345678-1234-1234-1234-123456789abc"],
+                "keep_local": True,
+                "retention_count": 10,
+                "enabled": True,
+            },
+        )
+    assert r.status_code == 404
 
 

@@ -11,10 +11,10 @@ from pydantic import BaseModel
 
 from agflow.auth.dependencies import require_admin
 from agflow.schemas.backup_schedules import (
-    FullScheduleCreate,
+    CreateFullPayload,
     FullScheduleSummary,
-    FullScheduleUpdate,
     ScheduleHistoryEntry,
+    UpdateFullPayload,
 )
 from agflow.services import (
     backup_scheduler,
@@ -49,30 +49,62 @@ async def list_full() -> list[FullScheduleSummary]:
     status_code=status.HTTP_201_CREATED,
 )
 async def create_full(
-    payload: FullScheduleCreate,
+    payload: CreateFullPayload,
     admin_email: str = Depends(require_admin),
 ) -> FullScheduleSummary:
     admin_user = await users_service.get_by_email(admin_email)
     actor_id = admin_user.id if admin_user else None
     try:
-        return await svc.create_full_schedule(payload, actor_user_id=actor_id)
+        return await svc.create_full_schedule(
+            name=payload.name,
+            cron_expr=payload.cron_expr,
+            remote_connection_ids=payload.remote_connection_ids,
+            keep_local=payload.keep_local,
+            retention_count=payload.retention_count,
+            enabled=payload.enabled,
+            actor_user_id=actor_id,
+        )
     except svc.InvalidCronExpressionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc),
+        ) from exc
+    except svc.EmptyDestinationsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc),
+        ) from exc
+    except svc.RemoteNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"remote not found: {exc}",
         ) from exc
 
 
 @router.put("/full/{schedule_id}", response_model=FullScheduleSummary)
 async def update_full(
-    schedule_id: UUID, payload: FullScheduleUpdate,
+    schedule_id: UUID, payload: UpdateFullPayload,
 ) -> FullScheduleSummary:
     try:
-        return await svc.update_full_schedule(schedule_id, payload)
+        return await svc.update_full_schedule(
+            schedule_id,
+            name=payload.name,
+            cron_expr=payload.cron_expr,
+            remote_connection_ids=payload.remote_connection_ids,
+            keep_local=payload.keep_local,
+            retention_count=payload.retention_count,
+            enabled=payload.enabled,
+        )
     except svc.ScheduleNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except svc.InvalidCronExpressionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc),
+        ) from exc
+    except svc.EmptyDestinationsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc),
+        ) from exc
+    except svc.RemoteNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"remote not found: {exc}",
         ) from exc
 
 

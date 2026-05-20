@@ -283,7 +283,7 @@ async def prune_old_backups(
     rows_to_delete = await fetch_all(
         f"""
         SELECT id, file_path FROM local_backups
-        WHERE {column} = $1
+        WHERE {column} = $1 AND local_file_present = true
         ORDER BY created_at DESC
         OFFSET $2
         """,

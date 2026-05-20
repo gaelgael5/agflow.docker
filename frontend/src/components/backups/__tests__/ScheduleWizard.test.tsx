@@ -67,7 +67,7 @@ describe("ScheduleWizard", () => {
     );
     await user.click(screen.getByLabelText(/toutes les heures/i));
     await user.click(screen.getByRole("button", { name: /suivant/i }));
-    expect(screen.getByLabelText(/à la minute/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/quelle minute/i)).toBeInTheDocument();
   });
 
   it("Step 3 bouton Save disabled si pas de destination", async () => {
@@ -82,8 +82,8 @@ describe("ScheduleWizard", () => {
     );
     await user.click(screen.getByLabelText(/tous les jours/i));
     await user.click(screen.getByRole("button", { name: /suivant/i }));
-    await user.clear(screen.getByLabelText(/à l'heure/i));
-    await user.type(screen.getByLabelText(/à l'heure/i), "3");
+    await user.clear(screen.getByLabelText(/quelle heure/i));
+    await user.type(screen.getByLabelText(/quelle heure/i), "3");
     await user.click(screen.getByRole("button", { name: /suivant/i }));
     await user.type(screen.getByLabelText(/nom/i), "test");
     // Décocher local : aucune remote sélectionnée → invalide
@@ -105,8 +105,8 @@ describe("ScheduleWizard", () => {
     );
     await user.click(screen.getByLabelText(/tous les jours/i));
     await user.click(screen.getByRole("button", { name: /suivant/i }));
-    await user.clear(screen.getByLabelText(/à l'heure/i));
-    await user.type(screen.getByLabelText(/à l'heure/i), "3");
+    await user.clear(screen.getByLabelText(/quelle heure/i));
+    await user.type(screen.getByLabelText(/quelle heure/i), "3");
     await user.click(screen.getByRole("button", { name: /suivant/i }));
     await user.type(screen.getByLabelText(/nom/i), "db-jour");
     await user.click(screen.getByRole("button", { name: /enregistrer/i }));

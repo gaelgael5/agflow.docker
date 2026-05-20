@@ -1565,8 +1565,8 @@
         "daily": "Every day"
       },
       "step2": {
-        "atMinute": "At minute",
-        "atHour": "At hour",
+        "atMinute": "At which minute do you want to run?",
+        "atHour": "At which hour do you want to run?",
         "minuteHint": "Between 0 and 59 — e.g. 15 → backup at xx:15",
         "hourHint": "Between 0 and 23 — e.g. 3 → backup at 3:00"
       },

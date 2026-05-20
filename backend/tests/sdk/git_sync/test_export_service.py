@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -40,14 +41,23 @@ def _build_git_service_mock(tmp_path: Path, config: GitConfig) -> MagicMock:
     return git
 
 
+_EXISTS_TABLE_RE = re.compile(r'FROM "([^"]+)"\."([^"]+)"')
+
+
 def _build_db_conn_mock(
     *,
     columns_per_table: dict[str, list[dict]] | None = None,
     fk_rows: list[dict] | None = None,
+    has_rows_per_table: dict[str, bool] | None = None,
 ) -> AsyncMock:
-    """Mock asyncpg connection : retourne colonnes + FK selon la query."""
+    """Mock asyncpg connection : retourne colonnes + FK + EXISTS selon la query.
+
+    `has_rows_per_table` mappe `schema.table` → bool pour stub `_has_any_row`.
+    Default : True (tables peuplées).
+    """
     columns_per_table = columns_per_table or {}
     fk_rows = fk_rows or []
+    has_rows_per_table = has_rows_per_table or {}
 
     async def _fetch(query: str, *args):
         if "information_schema.columns" in query:
@@ -56,6 +66,14 @@ def _build_db_conn_mock(
         if "information_schema.table_constraints" in query:
             return fk_rows
         return []
+
+    async def _fetchval(query: str, *args):
+        # ExportService._has_any_row : `SELECT EXISTS (SELECT 1 FROM "s"."t" LIMIT 1)`
+        match = _EXISTS_TABLE_RE.search(query)
+        if match:
+            full = f"{match.group(1)}.{match.group(2)}"
+            return has_rows_per_table.get(full, True)
+        return None
 
     async def _copy(query: str, *, output, **kwargs):
         # Écrit un CSV minimaliste à partir du SELECT — c'est ce que ferait
@@ -69,6 +87,7 @@ def _build_db_conn_mock(
 
     conn = AsyncMock()
     conn.fetch = _fetch
+    conn.fetchval = _fetchval
     conn.copy_from_query = _copy
     return conn
 
@@ -225,3 +244,72 @@ async def test_export_empty_tables_list_short_circuits(tmp_path):
     module_path = tmp_path / "docker" / "datas"
     csvs = list(module_path.glob("*.csv")) if module_path.exists() else []
     assert csvs == []
+
+
+# ─── Règle « table vide → pas de fichier » ───────────────────────────────────
+
+
+async def test_export_skips_csv_when_table_is_empty(tmp_path):
+    """Table sans aucune ligne → aucun fichier CSV créé."""
+    config = _make_config()
+    git = _build_git_service_mock(tmp_path, config)
+    conn = _build_db_conn_mock(
+        columns_per_table={
+            "public.empty_t": [
+                {"column_name": "id", "is_generated": "NEVER", "identity_generation": None}
+            ]
+        },
+        has_rows_per_table={"public.empty_t": False},
+    )
+
+    await ExportService(conn, git).export([_t("empty_t")])
+
+    module_path = tmp_path / "docker" / "datas"
+    assert not (module_path / "public.empty_t.csv").exists()
+
+
+async def test_export_deletes_stale_csv_when_table_becomes_empty(tmp_path):
+    """Une exécution précédente avait laissé un CSV, la table est désormais vide
+    → le CSV obsolète est supprimé pour que la suppression soit propagée par Git.
+    """
+    config = _make_config()
+    git = _build_git_service_mock(tmp_path, config)
+
+    module_path = tmp_path / "docker" / "datas"
+    stale_csv = module_path / "public.now_empty.csv"
+    stale_csv.write_bytes(b"id\n1\n")
+
+    conn = _build_db_conn_mock(
+        columns_per_table={
+            "public.now_empty": [
+                {"column_name": "id", "is_generated": "NEVER", "identity_generation": None}
+            ]
+        },
+        has_rows_per_table={"public.now_empty": False},
+    )
+
+    await ExportService(conn, git).export([_t("now_empty")])
+
+    assert not stale_csv.exists()
+
+
+async def test_export_deletes_stale_csv_when_no_exportable_columns(tmp_path):
+    """Toutes les colonnes sont exclues → pas d'export ET on nettoie un CSV précédent."""
+    config = _make_config(excluded_columns={"public.only_excluded": ["x"]})
+    git = _build_git_service_mock(tmp_path, config)
+
+    module_path = tmp_path / "docker" / "datas"
+    stale_csv = module_path / "public.only_excluded.csv"
+    stale_csv.write_bytes(b"x\nval\n")
+
+    conn = _build_db_conn_mock(
+        columns_per_table={
+            "public.only_excluded": [
+                {"column_name": "x", "is_generated": "NEVER", "identity_generation": None}
+            ]
+        },
+    )
+
+    await ExportService(conn, git).export([_t("only_excluded")])
+
+    assert not stale_csv.exists()

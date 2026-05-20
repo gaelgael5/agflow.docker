@@ -357,6 +357,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
   const [passphrase, setPassphrase] = useState("");
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const publicFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -371,7 +372,17 @@ function UploadDialog({ open, onClose, onCreate, t }: {
     reader.onload = () => {
       const text = reader.result as string;
       setPrivateKey(text);
-      if (!name) setName(file.name.replace(/\.(pem|key|id_rsa|id_ed25519)$/i, ""));
+      if (!name) setName(file.name.replace(/\.(pem|key|pub|id_rsa|id_ed25519)$/i, ""));
+    };
+    reader.readAsText(file);
+  }
+
+  function handlePublicFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPublicKey(reader.result as string);
     };
     reader.readAsText(file);
   }
@@ -400,7 +411,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
                 <Upload className="w-3.5 h-3.5" />
                 {t("infra.cert_choose_file")}
               </Button>
-              <input ref={fileRef} type="file" className="hidden" accept=".pem,.key,*" onChange={handleFile} />
+              <input ref={fileRef} type="file" className="hidden" accept=".pem,.key,.pub" onChange={handleFile} />
               {privateKey && <Badge variant="secondary" className="text-[9px] self-center">{t("infra.cert_file_loaded")}</Badge>}
             </div>
             <textarea
@@ -413,6 +424,19 @@ function UploadDialog({ open, onClose, onCreate, t }: {
           </div>
           <div>
             <Label className="text-[11px]">{t("infra.cert_public_key")}</Label>
+            <div className="flex gap-2 mt-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => publicFileRef.current?.click()}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {t("infra.cert_choose_file")}
+              </Button>
+              <input ref={publicFileRef} type="file" className="hidden" onChange={handlePublicFile} />
+              {publicKey && <Badge variant="secondary" className="text-[9px] self-center">{t("infra.cert_file_loaded")}</Badge>}
+            </div>
             <textarea
               value={publicKey}
               onChange={(e) => setPublicKey(e.target.value)}

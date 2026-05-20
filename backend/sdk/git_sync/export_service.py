@@ -12,6 +12,12 @@ Filtre des colonnes pour chaque table :
     - colonnes listées dans `config.excluded_columns[table.full_name]`
     - colonnes `is_generated = 'ALWAYS'`
     - colonnes `identity_generation = 'ALWAYS'`
+
+Règle « table vide » :
+    Une table sans aucune ligne ne produit pas de fichier CSV. Si une exécution
+    précédente avait écrit un fichier pour cette table (table peuplée à
+    l'époque, vidée depuis), le fichier existant est supprimé pour que la
+    suppression soit propagée par le commit Git.
 """
 from __future__ import annotations
 
@@ -74,21 +80,40 @@ class ExportService:
 
     async def _export_table(self, table: TableRef, module_path: Path) -> None:
         columns = await self._select_exportable_columns(table)
+        csv_path = module_path / table.csv_name
+
         if not columns:
             # Aucune colonne à exporter (toutes exclues / table virtuelle) :
-            # on n'écrit même pas de fichier — l'absence sera visible côté
-            # import qui ignore les CSVs manquants.
+            # on n'écrit pas de fichier. Si un fichier d'une exécution
+            # précédente existe, on le supprime pour cohérence.
+            if csv_path.exists():
+                csv_path.unlink()
+            return
+
+        if not await self._has_any_row(table):
+            # Table vide : pas de fichier. Si un fichier précédent existait
+            # (table peuplée puis vidée), on le supprime pour que la
+            # suppression soit propagée par le commit.
+            if csv_path.exists():
+                csv_path.unlink()
             return
 
         cols_sql = ", ".join(f'"{c}"' for c in columns)
         query = (
             f'SELECT {cols_sql} FROM "{table.schema}"."{table.table}"'
         )
-        csv_path = module_path / table.csv_name
         with csv_path.open("wb") as f:
             await self._conn.copy_from_query(
                 query, output=f, format="csv", header=True
             )
+
+    async def _has_any_row(self, table: TableRef) -> bool:
+        """True si la table contient au moins une ligne, False sinon."""
+        return bool(
+            await self._conn.fetchval(
+                f'SELECT EXISTS (SELECT 1 FROM "{table.schema}"."{table.table}" LIMIT 1)'
+            )
+        )
 
     async def _select_exportable_columns(self, table: TableRef) -> list[str]:
         rows = await self._conn.fetch(_COLUMNS_QUERY, table.schema, table.table)

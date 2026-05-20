@@ -168,8 +168,10 @@ class GitService:
         )
 
         module_path = self.get_module_path(repo_root)
+        # `-A` garantit que les suppressions de fichiers (ex. CSV d'une table
+        # devenue vide) sont stagées, pas seulement les ajouts/modifications.
         await _run_git(
-            ["-C", str(repo_root), "add", str(module_path)], env=env
+            ["-C", str(repo_root), "add", "-A", str(module_path)], env=env
         )
 
         # `git diff --cached --quiet` retourne 0 si pas de diff, 1 si diff.

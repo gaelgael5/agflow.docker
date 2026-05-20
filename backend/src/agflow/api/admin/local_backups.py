@@ -44,6 +44,15 @@ async def create_backup(
     return await local_backups_service.create_backup(created_by_user_id=user_uuid)
 
 
+@router.delete("/{backup_id}", status_code=204)
+async def delete_backup(backup_id: UUID) -> None:
+    """Suppression complète d'un local_backup : fichier + pushes + row."""
+    try:
+        await local_backups_service.delete_backup(backup_id)
+    except local_backups_service.BackupNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/{backup_id}/push-to-remote/{remote_id}", status_code=200)
 async def push_to_remote(backup_id: UUID, remote_id: UUID) -> dict:
     """Push un backup local vers une connexion distante (usage 'full')."""

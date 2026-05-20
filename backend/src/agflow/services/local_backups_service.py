@@ -236,3 +236,39 @@ async def delete_file_only(backup_id: UUID) -> None:
         "UPDATE local_backups SET local_file_present=false WHERE id=$1", backup_id
     )
     _log.info("local_backup.file_deleted", backup_id=str(backup_id))
+
+
+async def delete_backup(backup_id: UUID) -> None:
+    """Suppression complète d'un local_backup : fichier + pushes + row.
+
+    L'ordre est important : la FK `local_backup_pushes.local_backup_id` est
+    `ON DELETE RESTRICT`, donc on doit purger les pushes AVANT de supprimer
+    la row du backup. Le fichier est aussi supprimé du disque (idempotent
+    via missing_ok=True).
+    """
+    row = await fetch_one(
+        "SELECT file_path FROM local_backups WHERE id = $1", backup_id
+    )
+    if row is None:
+        raise BackupNotFoundError(str(backup_id))
+
+    # 1) Purger les pushes (RESTRICT FK)
+    await execute(
+        "DELETE FROM local_backup_pushes WHERE local_backup_id = $1", backup_id
+    )
+
+    # 2) Supprimer le fichier physique (idempotent)
+    file_path = Path(row["file_path"])
+    try:
+        file_path.unlink(missing_ok=True)
+    except OSError as exc:
+        _log.warning(
+            "local_backup.delete_file_failed",
+            backup_id=str(backup_id),
+            file_path=str(file_path),
+            error=str(exc),
+        )
+
+    # 3) Supprimer la row local_backups
+    await execute("DELETE FROM local_backups WHERE id = $1", backup_id)
+    _log.info("local_backup.deleted", backup_id=str(backup_id))

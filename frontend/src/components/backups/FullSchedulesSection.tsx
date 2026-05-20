@@ -27,13 +27,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -60,8 +53,8 @@ interface FormState {
   cron_expr: string;
   retention_count: number;
   enabled: boolean;
-  destination: "local" | "remote";
-  remote_connection_id: string | null;
+  keep_local: boolean;
+  remote_connection_ids: string[];
 }
 
 const EMPTY: FormState = {
@@ -69,8 +62,8 @@ const EMPTY: FormState = {
   cron_expr: "0 3 * * *",
   retention_count: 10,
   enabled: true,
-  destination: "local",
-  remote_connection_id: null,
+  keep_local: true,
+  remote_connection_ids: [],
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -136,8 +129,8 @@ export function FullSchedulesSection() {
       cron_expr: s.cron_expr,
       retention_count: s.retention_count,
       enabled: s.enabled,
-      destination: s.remote_connection_id ? "remote" : "local",
-      remote_connection_id: s.remote_connection_id,
+      keep_local: s.keep_local,
+      remote_connection_ids: s.remote_connection_ids,
     });
     setOpen(true);
   };
@@ -147,8 +140,6 @@ export function FullSchedulesSection() {
       toast.error(t("backups.schedules.runNowError", { msg: "name + cron required" }));
       return;
     }
-    const remote_connection_id =
-      form.destination === "remote" ? form.remote_connection_id : null;
     try {
       if (form.id) {
         const payload: UpdateFullPayload = {
@@ -156,7 +147,8 @@ export function FullSchedulesSection() {
           cron_expr: form.cron_expr,
           retention_count: form.retention_count,
           enabled: form.enabled,
-          remote_connection_id,
+          keep_local: form.keep_local,
+          remote_connection_ids: form.remote_connection_ids,
         };
         await update({ id: form.id, payload });
         toast.success(t("backups.schedules.updated"));
@@ -166,7 +158,8 @@ export function FullSchedulesSection() {
           cron_expr: form.cron_expr,
           retention_count: form.retention_count,
           enabled: form.enabled,
-          remote_connection_id,
+          keep_local: form.keep_local,
+          remote_connection_ids: form.remote_connection_ids,
         };
         await create(payload);
         toast.success(t("backups.schedules.created"));
@@ -208,8 +201,7 @@ export function FullSchedulesSection() {
   const isSubmitDisabled =
     !form.name ||
     !form.cron_expr ||
-    (form.destination === "remote" && !form.remote_connection_id) ||
-    (form.destination === "remote" && connections.length === 0);
+    (!form.keep_local && form.remote_connection_ids.length === 0);
 
   return (
     <Card>
@@ -247,16 +239,21 @@ export function FullSchedulesSection() {
                     <TableCell className="font-mono text-xs">{s.cron_expr}</TableCell>
                     <TableCell>{s.retention_count}</TableCell>
                     <TableCell>
-                      {s.remote_connection_id ? (
-                        <Badge variant="outline">
-                          {connections.find((c) => c.id === s.remote_connection_id)?.name ??
-                            "—"}
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">
-                          {t("backups.schedules.destinationLocal")}
-                        </Badge>
-                      )}
+                      <div className="flex flex-wrap gap-1">
+                        {s.keep_local && (
+                          <Badge variant="secondary">
+                            {t("backups.schedules.destinationLocal")}
+                          </Badge>
+                        )}
+                        {s.remote_connection_ids.map((rid) => (
+                          <Badge key={rid} variant="outline">
+                            {connections.find((c) => c.id === rid)?.name ?? rid}
+                          </Badge>
+                        ))}
+                        {!s.keep_local && s.remote_connection_ids.length === 0 && (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{formatLastRun(s, t)}</TableCell>
                     <TableCell>
@@ -392,65 +389,49 @@ export function FullSchedulesSection() {
                 {t("backups.schedules.formRetentionHint")}
               </p>
             </div>
-            <div>
-              <Label htmlFor="full-destination">
-                {t("backups.schedules.formDestinationLabel")}
-              </Label>
-              <Select
-                value={form.destination}
-                onValueChange={(v) =>
-                  setForm((f) => ({
-                    ...f,
-                    destination: v as "local" | "remote",
-                    remote_connection_id: v === "local" ? null : f.remote_connection_id,
-                  }))
-                }
-              >
-                <SelectTrigger id="full-destination">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="local">
-                    {t("backups.schedules.destinationLocal")}
-                  </SelectItem>
-                  <SelectItem value="remote">
-                    {t("backups.schedules.destinationRemote")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {form.destination === "remote" && (
+            <div className="space-y-2">
+              <Label>{t("backups.schedules.formDestinationLabel")}</Label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.keep_local}
+                  onChange={(e) => setForm((f) => ({ ...f, keep_local: e.target.checked }))}
+                  className="h-4 w-4 rounded border-input"
+                />
+                {t("backups.schedules.destinationLocal")}
+              </label>
               <div>
                 <Label htmlFor="full-remote-conn">
                   {t("backups.schedules.formRemoteConnectionLabel")}
                 </Label>
                 {connections.length === 0 ? (
-                  <p className="text-xs text-destructive mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {t("backups.schedules.formRemoteConnectionNone")}
                   </p>
                 ) : (
-                  <Select
-                    value={form.remote_connection_id ?? ""}
-                    onValueChange={(v) =>
-                      setForm((f) => ({ ...f, remote_connection_id: v || null }))
-                    }
-                  >
-                    <SelectTrigger id="full-remote-conn">
-                      <SelectValue
-                        placeholder={t("backups.schedules.formRemoteConnectionPlaceholder")}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {connections.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="mt-1 max-h-32 space-y-1 overflow-y-auto rounded border p-2">
+                    {connections.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={form.remote_connection_ids.includes(c.id)}
+                          onChange={() =>
+                            setForm((f) => ({
+                              ...f,
+                              remote_connection_ids: f.remote_connection_ids.includes(c.id)
+                                ? f.remote_connection_ids.filter((x) => x !== c.id)
+                                : [...f.remote_connection_ids, c.id],
+                            }))
+                          }
+                          className="h-4 w-4 rounded border-input"
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                  </div>
                 )}
               </div>
-            )}
+            </div>
             <div className="flex items-center gap-2">
               <input
                 id="full-enabled"

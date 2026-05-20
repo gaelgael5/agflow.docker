@@ -4,7 +4,8 @@ export interface FullScheduleSummary {
   id: string;
   name: string;
   cron_expr: string;
-  remote_connection_id: string | null;
+  remote_connection_ids: string[];
+  keep_local: boolean;
   retention_count: number;
   enabled: boolean;
   last_run_at: string | null;
@@ -17,7 +18,8 @@ export interface FullScheduleSummary {
 export interface CreateFullPayload {
   name: string;
   cron_expr: string;
-  remote_connection_id?: string | null;
+  remote_connection_ids: string[];
+  keep_local: boolean;
   retention_count?: number;
   enabled?: boolean;
 }
@@ -25,7 +27,8 @@ export interface CreateFullPayload {
 export interface UpdateFullPayload {
   name?: string;
   cron_expr?: string;
-  remote_connection_id?: string | null;
+  remote_connection_ids?: string[];
+  keep_local?: boolean;
   retention_count?: number;
   enabled?: boolean;
 }

@@ -1550,6 +1550,36 @@
       "historyColSize": "Taille",
       "historyColFilename": "Fichier"
     },
+    "wizard": {
+      "title_create": "Nouvelle planification",
+      "title_edit": "Modifier la planification",
+      "step_label": "Étape {{current}} / {{total}}",
+      "complexCron": "Cron personnalisé",
+      "editRaw": "Expression cron brute",
+      "step1": {
+        "title": "Fréquence",
+        "hourly": "Toutes les heures",
+        "daily": "Tous les jours"
+      },
+      "step2": {
+        "atMinute": "À la minute",
+        "atHour": "À l'heure",
+        "minuteHint": "Entre 0 et 59 — ex : 15 → backup à xx:15",
+        "hourHint": "Entre 0 et 23 — ex : 3 → backup à 3h00"
+      },
+      "step3": {
+        "name": "Nom",
+        "namePlaceholder": "db-quotidien",
+        "keepLocal": "Conserver une copie locale",
+        "remotes": "Connexions distantes",
+        "noRemotes": "Aucune connexion distante configurée",
+        "retention": "Rétention (N derniers backups)",
+        "errorNoDestination": "Au moins une destination est requise (locale ou distante)"
+      },
+      "prev": "Précédent",
+      "next": "Suivant",
+      "save": "Enregistrer"
+    },
     "restore": {
       "button": "Restaurer cette sauvegarde",
       "success": "Restauration terminée (exit code {{exit_code}}). Recharger l'application.",

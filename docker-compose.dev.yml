@@ -10,6 +10,7 @@ services:
     build:
       context: ./infra/postgres-pitr
       dockerfile: Dockerfile
+    pull_policy: build       # image build-only, ne pas tenter le pull
     container_name: agflow-postgres
     restart: unless-stopped
     environment:

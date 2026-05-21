@@ -34,6 +34,7 @@ import {
 import { api } from "@/lib/api";
 import { productsApi, type ProductVariable, type ProductConnector, type ProductComputed, type ProductApiDef, type ProductService, type SharedDep } from "@/lib/productsApi";
 import { templatesApi } from "@/lib/templatesApi";
+import { GroupVariablesSection } from "@/components/projects/GroupVariablesSection";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -215,6 +216,7 @@ export function ProjectDetailPage() {
                       ))}
                     </div>
                   )}
+                  <GroupVariablesSection groupId={g.id} />
                   <GroupScriptsSection groupId={g.id} t={t} />
                   <GroupRuntimesSection groupId={g.id} t={t} />
                 </CardContent>

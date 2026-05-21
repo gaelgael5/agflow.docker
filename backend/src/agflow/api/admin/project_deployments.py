@@ -418,10 +418,21 @@ async def _run_group_script(link: Any, script_content: str, env_text: str = "") 
             "timing": link.timing, "success": False, "error": str(exc),
         }
 
-    # Resolve ${ENV_VAR} refs inside each input value against the deploy's .env
+    # Résolution en 2 étapes pour chaque input_value :
+    #   1) ${vault://api:path} et ${env://NAME} → via platform_secrets_service
+    #      (qui fait l'appel SDK Harpocrate + lecture table env globale)
+    #   2) ${SIMPLE_NAME} → contre le .env du déploiement (qui contient
+    #      maintenant les variables de groupe injectées au Generate)
+    from agflow.services import platform_secrets_service
+    platform_secrets_map = await platform_secrets_service.resolve_all()
     resolved_inputs: dict[str, str] = {}
     for name, raw in (link.input_values or {}).items():
-        resolved, _ok = _resolve_input_value(raw, env_text)
+        # Étape 1 : résoudre les refs déclaratives ${vault://…} / ${env://…}
+        step1 = platform_secrets_service.resolve_platform_refs(
+            raw or "", platform_secrets_map,
+        )
+        # Étape 2 : résoudre les ${VAR} simples contre le .env
+        resolved, _ok = _resolve_input_value(step1, env_text)
         resolved_inputs[name] = resolved
 
     rendered = _substitute_script_placeholders(script_content, resolved_inputs)

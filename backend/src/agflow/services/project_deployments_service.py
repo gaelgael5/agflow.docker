@@ -235,6 +235,22 @@ async def generate(deployment_id: UUID, user_secrets: dict[str, str] | None = No
         else:
             env_vars[ref] = ""
 
+    # Inject group-level variables into the .env. Each variable can be either
+    # a literal value or a reference (${vault://…}, ${env://…}) that we resolve
+    # via platform_secrets_service before writing.
+    # The variable name (left-hand side) is used as-is for the .env key.
+    try:
+        from agflow.services import group_variables_service, platform_secrets_service
+        platform_secrets_map = await platform_secrets_service.resolve_all()
+        for g in groups:
+            for var in await group_variables_service.list_by_group(g.id):
+                resolved = platform_secrets_service.resolve_platform_refs(
+                    var.value, platform_secrets_map,
+                )
+                env_vars[var.name] = resolved
+    except Exception as exc:
+        _log.warning("deployments.group_variables_inject_failed", error=str(exc))
+
     env_content = "\n".join(f"{k}={env_vars[k]}" for k in sorted(env_vars.keys()))
 
     # Store in DB

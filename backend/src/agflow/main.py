@@ -23,6 +23,7 @@ from agflow.api.admin.dockerfiles import router as admin_dockerfiles_router
 from agflow.api.admin.generations import router as admin_generations_router
 from agflow.api.admin.git_sync import router as admin_git_sync_router
 from agflow.api.admin.group_scripts import router as admin_group_scripts_router
+from agflow.api.admin.group_variables import router as admin_group_variables_router
 from agflow.api.admin.groups import router as admin_groups_router
 from agflow.api.admin.harpocrate_vaults import router as admin_harpocrate_vaults_router
 from agflow.api.admin.hmac_keys import router as admin_hmac_keys_router
@@ -368,6 +369,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_projects_router)
     app.include_router(admin_groups_router)
     app.include_router(admin_group_scripts_router)
+    app.include_router(admin_group_variables_router)
     app.include_router(admin_scripts_router)
     app.include_router(admin_sessions_router)
     app.include_router(admin_supervision_router)

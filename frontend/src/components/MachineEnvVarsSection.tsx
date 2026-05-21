@@ -73,7 +73,7 @@ export function MachineEnvVarsSection({ machineId }: { machineId: string }) {
         })}
       </div>
       <Button size="sm" onClick={() => void handleSave()} disabled={upsert.isPending}>
-        {upsert.isPending ? "…" : t("infra.machine_env_vars_save_button")}
+        {upsert.isPending ? t("common.saving") : t("infra.machine_env_vars_save_button")}
       </Button>
     </div>
   );

@@ -38,6 +38,7 @@ import { groupVariablesApi } from "@/lib/groupVariablesApi";
 import { GroupVariablesSection } from "@/components/projects/GroupVariablesSection";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useProjectEnvVarsCheck } from "@/hooks/useInfraEnvVars";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -95,6 +96,7 @@ export function ProjectDetailPage() {
       });
     },
   });
+  const envVarsCheck = useProjectEnvVarsCheck(projectId);
   const dockerTemplateOptions = [
     { value: "", label: t("projects.group_compose_template_none") },
     ...(templatesQuery.data ?? []).map((tpl) => ({
@@ -151,6 +153,26 @@ export function ProjectDetailPage() {
           </div>
         }
       />
+
+      {envVarsCheck.data && envVarsCheck.data.total_missing > 0 && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm">
+          <p className="font-medium text-destructive">
+            {t("projects.env_vars_missing_banner", { count: envVarsCheck.data.total_missing })}
+          </p>
+          <ul className="mt-2 space-y-1">
+            {envVarsCheck.data.items.map((item) => (
+              <li key={item.group_script_id} className="text-xs text-muted-foreground">
+                <span className="font-mono">{item.script_name}</span>
+                {" — "}
+                {item.missing_env_vars.join(", ")}
+                {" ("}
+                {item.group_name}
+                {")"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {groupsQuery.isLoading ? (
         <div className="space-y-3"><Skeleton className="h-32 w-full" /></div>

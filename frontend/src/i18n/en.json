@@ -1178,7 +1178,8 @@
     "unresolved_secrets": "Unresolved secrets",
     "section_api": "API",
     "section_services": "Services",
-    "requires": "requires"
+    "requires": "requires",
+    "env_vars_missing_banner": "{{count}} missing environment variable(s) for this project"
   },
   "instances": {
     "page_title": "Instances",

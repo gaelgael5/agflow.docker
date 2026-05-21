@@ -1185,7 +1185,8 @@
     "unresolved_secrets": "Secrets non résolus",
     "section_api": "API",
     "section_services": "Services",
-    "requires": "dépend de"
+    "requires": "dépend de",
+    "env_vars_missing_banner": "{{count}} variable(s) d'environnement manquante(s) pour ce projet"
   },
   "instances": {
     "page_title": "Instances",

@@ -24,10 +24,19 @@ POSTGRES_CONTAINER = os.environ.get(
 )
 
 
-def export_filename() -> str:
-    """Nom de fichier d'export horodaté UTC."""
+def _slugify(name: str) -> str:
+    import re
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def export_filename(schedule_name: str | None = None) -> str:
+    """Nom de fichier d'export horodaté UTC, préfixé du nom de planification si fourni."""
     ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    return f"agflow-db-{ts}.sql.gz"
+    base = f"agflow-db-{ts}.sql.gz"
+    if schedule_name:
+        slug = _slugify(schedule_name)
+        return f"{slug}-{base}" if slug else base
+    return base
 
 
 _DUMP_CMD = (

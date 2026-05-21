@@ -44,6 +44,7 @@ async def run_full_job(schedule_id: UUID) -> None:
         # 1) Création du backup local
         backup = await local_backups_service.create_backup(
             source_schedule_full_id=schedule_id,
+            schedule_name=schedule.name,
         )
 
         # 2) Pushes (si la planif a des remotes)

@@ -88,6 +88,11 @@ async def _resolve_vault_credentials(vault_name: str | None) -> tuple[str, str, 
         settings = get_settings()
         if settings.harpocrate_key and settings.harpocrate_url:
             return _BOOTSTRAP_VAULT_NAME, settings.harpocrate_url, settings.harpocrate_key
+        _log.error(
+            "vault_client.no_vault_configured",
+            harpocrate_key_set=bool(settings.harpocrate_key),
+            harpocrate_url_set=bool(settings.harpocrate_url),
+        )
         raise VaultNotFoundError(
             "No default Harpocrate vault configured (DB empty and HARPOCRATE_KEY/URL also unset)"
         )
@@ -111,6 +116,12 @@ async def _ensure_client(vault_name: str | None = None) -> tuple[str, VaultClien
             try:
                 client = _build_vault_client(api_key, base_url)
             except Exception as exc:
+                _log.error(
+                    "vault_client.invalid_api_key",
+                    vault=resolved_name,
+                    error=str(exc),
+                    key_len=len(api_key) if api_key else 0,
+                )
                 raise VaultNotFoundError(
                     f"Vault '{resolved_name}' has an invalid API key: {exc}"
                 ) from exc

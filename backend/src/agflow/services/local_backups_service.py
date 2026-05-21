@@ -73,11 +73,12 @@ async def create_backup(
     *,
     created_by_user_id: UUID | None = None,
     source_schedule_full_id: UUID | None = None,
+    schedule_name: str | None = None,
 ) -> LocalBackupSummary:
     """Stream pg_dump vers disque, enregistre en DB. Sérialise via backup_lock."""
     async with backup_lock:
         backup_id = uuid4()
-        filename = db_backup.export_filename()
+        filename = db_backup.export_filename(schedule_name=schedule_name)
         file_path = _backups_dir() / filename
 
         await execute(

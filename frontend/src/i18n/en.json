@@ -1373,7 +1373,21 @@
     "runs_started": "Started",
     "runs_finished": "Finished",
     "runs_result": "Result",
-    "runs_running": "running"
+    "runs_running": "running",
+    "env_vars_title": "Environment variables",
+    "env_var_add_button": "Add",
+    "env_vars_empty": "No environment variables defined",
+    "env_var_col_name": "Name",
+    "env_var_col_description": "Description",
+    "env_var_col_position": "Pos.",
+    "env_var_description_placeholder": "Description (optional)",
+    "env_var_invalid_name": "Invalid name — use A-Z, 0-9, _ (must start with a letter or _)",
+    "env_var_added": "Variable added",
+    "env_var_add_error": "Error adding variable",
+    "env_var_delete_title": "Delete variable",
+    "env_var_delete_message": "Are you sure you want to delete \"{{name}}\"?",
+    "env_var_deleted": "Variable deleted",
+    "env_var_delete_error": "Error deleting variable"
   },
   "sessions": {
     "page_title": "Sessions",

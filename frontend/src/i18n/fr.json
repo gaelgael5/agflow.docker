@@ -1380,7 +1380,21 @@
     "runs_started": "Démarré",
     "runs_finished": "Terminé",
     "runs_result": "Résultat",
-    "runs_running": "en cours"
+    "runs_running": "en cours",
+    "env_vars_title": "Variables d'environnement",
+    "env_var_add_button": "Ajouter",
+    "env_vars_empty": "Aucune variable d'environnement définie",
+    "env_var_col_name": "Nom",
+    "env_var_col_description": "Description",
+    "env_var_col_position": "Pos.",
+    "env_var_description_placeholder": "Description (optionnelle)",
+    "env_var_invalid_name": "Nom invalide — utilisez A-Z, 0-9, _ (commencer par une lettre ou _)",
+    "env_var_added": "Variable ajoutée",
+    "env_var_add_error": "Erreur lors de l'ajout de la variable",
+    "env_var_delete_title": "Supprimer la variable",
+    "env_var_delete_message": "Êtes-vous sûr de vouloir supprimer « {{name}} » ?",
+    "env_var_deleted": "Variable supprimée",
+    "env_var_delete_error": "Erreur lors de la suppression de la variable"
   },
   "sessions": {
     "page_title": "Sessions",

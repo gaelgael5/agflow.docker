@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { Copy, Pencil, Trash2 } from "lucide-react";
@@ -265,7 +265,7 @@ function SecretFormCard({
             </Label>
             <Input
               id="secret-value"
-              type="password"
+              type={type === "env" ? "text" : "password"}
               placeholder={t("secrets.form_value_placeholder")}
               value={value}
               onChange={(e) => setValue(e.target.value)}
@@ -306,6 +306,19 @@ function SecretRow({
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Une variable d'environnement n'est pas un secret : on affiche sa valeur
+  // en clair dès le montage, sans bouton "Reveal".
+  const isEnvVar = secret.type === "env";
+
+  useEffect(() => {
+    if (!isEnvVar || revealed !== null) return;
+    let cancelled = false;
+    void secretsApi.reveal(secret.id).then((res) => {
+      if (!cancelled) setRevealed(res.value);
+    });
+    return () => { cancelled = true; };
+  }, [isEnvVar, secret.id, revealed]);
 
   async function handleReveal() {
     setLoading(true);
@@ -376,7 +389,7 @@ function SecretRow({
         {editing ? (
           <div className="flex items-center gap-1.5">
             <Input
-              type="password"
+              type={isEnvVar ? "text" : "password"}
               className="h-7 text-[12px] font-mono w-48"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
@@ -398,7 +411,7 @@ function SecretRow({
             <code className="text-[12px]">
               {revealed !== null ? (revealed || t("secrets.value_empty")) : t("secrets.value_masked")}
             </code>
-            {revealed === null && (
+            {revealed === null && !isEnvVar && (
               <Button variant="ghost" size="sm" className="h-6 text-[12px]" onClick={() => void handleReveal()} disabled={loading}>
                 {t("secrets.reveal")}
               </Button>
@@ -414,9 +427,11 @@ function SecretRow({
                 >
                   <Copy className="w-2.5 h-2.5" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-6 text-[12px]" onClick={() => setRevealed(null)}>
-                  {t("secrets.hide")}
-                </Button>
+                {!isEnvVar && (
+                  <Button variant="ghost" size="sm" className="h-6 text-[12px]" onClick={() => setRevealed(null)}>
+                    {t("secrets.hide")}
+                  </Button>
+                )}
               </>
             )}
             <Button

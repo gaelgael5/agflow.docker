@@ -172,6 +172,22 @@ function ScriptEditor({ id, summaries, t }: {
     onError: (e) => toast.error(String(e)),
   });
 
+  // Raccourci Ctrl+S / Cmd+S : déclenche la sauvegarde quand l'éditeur est
+  // ouvert. Le `preventDefault` empêche le navigateur d'ouvrir sa boîte
+  // "Enregistrer la page sous…".
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (dirty && name.trim() && !saveMutation.isPending) {
+          saveMutation.mutate();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dirty, name, saveMutation]);
+
   if (detailQuery.isLoading) {
     return <Card className="p-6"><span className="text-[12px] text-muted-foreground">…</span></Card>;
   }

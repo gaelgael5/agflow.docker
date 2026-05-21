@@ -630,7 +630,6 @@ function NamedTypeDialog({ open, initial, categories, onClose, onSubmit, t }: {
     const map: Record<string, string> = {};
     for (const a of existingActions) map[a.category_action_id] = a.url;
     setActionUrls(map);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingActions, open]);
 
   const canSubmit = name.trim() && typeId && connectionType;

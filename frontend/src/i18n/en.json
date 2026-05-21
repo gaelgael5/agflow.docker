@@ -1126,6 +1126,8 @@
     "deploy_generate": "Generate",
     "deploy_generated": "Compose and .env generated",
     "deploy_push": "Push & Start",
+    "deploy_blockers_title": "{{count}} variable(s) without value block the push:",
+    "deploy_blockers_hint": "Add these keys to the recipe (variables, or secrets_required with generate:null to allow an empty value), or to your platform/user secrets, then click Generate again.",
     "deploy_pushed": "Deployed successfully",
     "deploy_deployed": "Deployed",
     "tab_assign": "Server assignment",

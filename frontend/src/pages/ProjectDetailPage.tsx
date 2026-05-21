@@ -564,6 +564,29 @@ function DeployDialog({ projectId, groups, onClose, t }: {
           )}
         </div>
 
+        {/* Liste des clés bloquantes qui empêchent le push (vides et non-nullable).
+            Affichée seulement quand un déploiement "generated" existe ET qu'au moins
+            une clé bloque, pour que l'utilisateur comprenne quoi corriger. */}
+        {deployment?.status === "generated" && (() => {
+          const blockers = [...unresolvedEnvKeys].filter((k) => !nullableSet.has(k));
+          if (blockers.length === 0) return null;
+          return (
+            <div className="border-t pt-3 mb-2">
+              <p className="text-[12px] text-amber-500 font-medium mb-1">
+                {t("projects.deploy_blockers_title", { count: String(blockers.length) })}
+              </p>
+              <ul className="text-[11px] font-mono space-y-0.5 ml-3">
+                {blockers.map((k) => (
+                  <li key={k} className="text-red-400">• {k}</li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                {t("projects.deploy_blockers_hint")}
+              </p>
+            </div>
+          );
+        })()}
+
         {/* Footer : bouton Générer toujours dispo, Pousser quand le déploiement est prêt */}
         {deployment?.status !== "deployed" && (
           <div className="flex justify-end gap-2 border-t pt-3">

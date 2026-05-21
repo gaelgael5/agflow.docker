@@ -1133,6 +1133,8 @@
     "deploy_generate": "Générer",
     "deploy_generated": "Compose et .env générés",
     "deploy_push": "Pousser & Démarrer",
+    "deploy_blockers_title": "{{count}} variable(s) sans valeur empêche(nt) le push :",
+    "deploy_blockers_hint": "Renseigne ces clés dans la recette (variables ou secrets_required avec generate:null pour autoriser une valeur vide), ou dans tes secrets globaux / utilisateur, puis re-clique sur Générer.",
     "deploy_pushed": "Déployé avec succès",
     "deploy_deployed": "Déployé",
     "tab_assign": "Assignation serveurs",

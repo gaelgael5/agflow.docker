@@ -309,7 +309,7 @@ async def resolve_for_machine(machine_id: UUID) -> dict[str, str]:
 **V1 (ce chantier)** :
 - Tables + migration SQL
 - Services backend (CRUD + upsert + resolve_for_machine + check_project)
-- API REST (6 endpoints)
+- API REST (7 endpoints)
 - UI variante typée (déclaration)
 - UI machine (saisie)
 - UI projet (bannière + détail manquants)
@@ -364,7 +364,7 @@ async def resolve_for_machine(machine_id: UUID) -> dict[str, str]:
 | Doublon de nom | 409 ou 422 (constraint) + toast erreur |
 | ID env var inconnu dans upsert | 422 avec détail |
 | Machine sans variante typée | Section env vars masquée côté UI |
-| Machine avec variante sans vars déclarées | Section masquée ou message "aucune variable déclarée" |
+| Machine avec variante sans vars déclarées | Section affichée avec message "Aucune variable déclarée pour cette variante." |
 | Suppression d'une variable avec des valeurs machine | CASCADE automatique, avertissement dans le Dialog de confirmation |
 
 ---

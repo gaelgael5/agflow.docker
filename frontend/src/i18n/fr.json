@@ -74,6 +74,8 @@
     "outputs_extract_no_vars": "Aucune feuille trouvée dans ce JSON.",
     "outputs_extract_confirm": "Extraire",
     "outputs_extracted": "{{count}} variable(s) ajoutée(s) (déjà présentes : {{skipped}}).",
+    "via_env_label": "env",
+    "via_env_tooltip": "Acheminée via variable d'environnement (pour les entrées : export VAR=… avant exécution ; pour les retours : lue dans l'env du process après exécution).",
     "inputs_status_keep": "keep",
     "inputs_status_clean": "clean",
     "inputs_status_replace": "replace",

@@ -47,7 +47,7 @@ function flattenJsonToVariables(json: unknown): ScriptOutputVariable[] {
     if (!path) return;
     const lastSegment = path.split(".").pop() ?? path;
     const name = lastSegment.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-    out.push({ name, description: "", path });
+    out.push({ name, description: "", path, via_env: false });
   };
   recurse(json, "");
   return out;
@@ -275,7 +275,7 @@ function ScriptEditor({ id, summaries, t }: {
           <Button
             size="sm" variant="outline" className="h-6 text-[10px]"
             onClick={() => {
-              setInputs([...inputs, { name: "", description: "", default: "" }]);
+              setInputs([...inputs, { name: "", description: "", default: "", via_env: false }]);
               setDirty(true);
             }}
           >
@@ -288,7 +288,7 @@ function ScriptEditor({ id, summaries, t }: {
         ) : (
           <div className="space-y-1 border rounded p-2">
             {inputs.map((v, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center">
+              <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto_auto] gap-2 items-center">
                 <Input
                   value={v.name}
                   onChange={(e) => {
@@ -319,6 +319,22 @@ function ScriptEditor({ id, summaries, t }: {
                   className="h-7 text-[11px] font-mono"
                   placeholder={t("scripts.inputs_default_placeholder")}
                 />
+                <label
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer select-none"
+                  title={t("scripts.via_env_tooltip")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={v.via_env}
+                    onChange={(e) => {
+                      const next = [...inputs];
+                      next[idx] = { ...next[idx]!, via_env: e.target.checked };
+                      setInputs(next); setDirty(true);
+                    }}
+                    className="h-3 w-3"
+                  />
+                  {t("scripts.via_env_label")}
+                </label>
                 <Button
                   variant="ghost" size="icon" className="h-6 w-6"
                   onClick={() => {
@@ -351,7 +367,7 @@ function ScriptEditor({ id, summaries, t }: {
             <Button
               size="sm" variant="outline" className="h-6 text-[10px]"
               onClick={() => {
-                setOutputs([...outputs, { name: "", description: "", path: "" }]);
+                setOutputs([...outputs, { name: "", description: "", path: "", via_env: false }]);
                 setDirty(true);
               }}
             >
@@ -365,7 +381,7 @@ function ScriptEditor({ id, summaries, t }: {
         ) : (
           <div className="space-y-1 border rounded p-2">
             {outputs.map((v, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center">
+              <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto_auto] gap-2 items-center">
                 <Input
                   value={v.name}
                   onChange={(e) => {
@@ -396,6 +412,22 @@ function ScriptEditor({ id, summaries, t }: {
                   className="h-7 text-[11px] font-mono"
                   placeholder={t("scripts.outputs_path_placeholder")}
                 />
+                <label
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer select-none"
+                  title={t("scripts.via_env_tooltip")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={v.via_env}
+                    onChange={(e) => {
+                      const next = [...outputs];
+                      next[idx] = { ...next[idx]!, via_env: e.target.checked };
+                      setOutputs(next); setDirty(true);
+                    }}
+                    className="h-3 w-3"
+                  />
+                  {t("scripts.via_env_label")}
+                </label>
                 <Button
                   variant="ghost" size="icon" className="h-6 w-6"
                   onClick={() => {

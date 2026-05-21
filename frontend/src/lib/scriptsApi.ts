@@ -8,6 +8,9 @@ export interface ScriptInputVariable {
   name: string;
   description: string;
   default: string;
+  /** true = passée au script comme variable d'environnement (export VAR=…)
+   *  plutôt que par substitution {VAR} dans le contenu. */
+  via_env: boolean;
 }
 
 export interface ScriptOutputVariable {
@@ -16,6 +19,9 @@ export interface ScriptOutputVariable {
   /** Dot-path d'extraction dans le JSON renvoyé en dernière ligne du stdout
    *  (ex: "result.hostname"). Vide = utilise `name` directement comme clé. */
   path: string;
+  /** true = lue depuis l'environnement du process à la fin de l'exécution
+   *  plutôt que par parsing du JSON de stdout. */
+  via_env: boolean;
 }
 
 export interface ScriptSummary {

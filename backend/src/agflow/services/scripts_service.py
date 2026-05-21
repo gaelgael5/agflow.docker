@@ -45,6 +45,7 @@ def _parse_inputs(raw: Any) -> list[ScriptInputVariable]:
             name=v.get("name", ""),
             description=v.get("description", ""),
             default=v.get("default", ""),
+            via_env=bool(v.get("via_env", False)),
         )
         for v in raw
         if v.get("name")
@@ -61,6 +62,7 @@ def _parse_outputs(raw: Any) -> list[ScriptOutputVariable]:
             name=v.get("name", ""),
             description=v.get("description", ""),
             path=v.get("path", ""),
+            via_env=bool(v.get("via_env", False)),
         )
         for v in raw
         if v.get("name")
@@ -120,6 +122,7 @@ def _serialize_inputs(inputs: Any) -> str:
                 "name": v.get("name", ""),
                 "description": v.get("description", ""),
                 "default": v.get("default", ""),
+                "via_env": bool(v.get("via_env", False)),
             })
     return _json.dumps(out)
 
@@ -136,6 +139,7 @@ def _serialize_outputs(outputs: Any) -> str:
                 "name": v.get("name", ""),
                 "description": v.get("description", ""),
                 "path": v.get("path", ""),
+                "via_env": bool(v.get("via_env", False)),
             })
     return _json.dumps(out)
 

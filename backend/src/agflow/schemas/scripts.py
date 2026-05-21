@@ -16,6 +16,10 @@ class ScriptInputVariable(BaseModel):
     name: str
     description: str = ""
     default: str = ""
+    # Acheminée comme variable d'environnement (export VAR=…) plutôt que par
+    # substitution {VAR} dans le contenu. Déclaratif uniquement — la logique
+    # de consommation sera définie dans un chantier dédié.
+    via_env: bool = False
 
 
 class ScriptOutputVariable(BaseModel):
@@ -28,6 +32,9 @@ class ScriptOutputVariable(BaseModel):
     name: str
     description: str = ""
     path: str = ""
+    # Récupérée depuis l'environnement du process à la fin de l'exécution
+    # plutôt que par parsing du JSON de stdout. Déclaratif uniquement.
+    via_env: bool = False
 
 
 class ScriptRow(BaseModel):

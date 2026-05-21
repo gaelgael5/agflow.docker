@@ -74,6 +74,8 @@
     "outputs_extract_no_vars": "No leaf found in this JSON.",
     "outputs_extract_confirm": "Extract",
     "outputs_extracted": "{{count}} variable(s) added (already present: {{skipped}}).",
+    "via_env_label": "env",
+    "via_env_tooltip": "Carried via environment variable (inputs: export VAR=… before exec; outputs: read from the process env after exec).",
     "inputs_status_keep": "keep",
     "inputs_status_clean": "clean",
     "inputs_status_replace": "replace",

@@ -108,7 +108,12 @@ async def _ensure_client(vault_name: str | None = None) -> tuple[str, VaultClien
         resolved_name, base_url, api_key = await _resolve_vault_credentials(vault_name)
         client = _clients.get(resolved_name)
         if client is None:
-            client = _build_vault_client(api_key, base_url)
+            try:
+                client = _build_vault_client(api_key, base_url)
+            except Exception as exc:
+                raise VaultNotFoundError(
+                    f"Vault '{resolved_name}' has an invalid API key: {exc}"
+                ) from exc
             _clients[resolved_name] = client
         return resolved_name, client
 

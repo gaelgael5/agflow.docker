@@ -19,7 +19,7 @@ from agflow.schemas.remote_backup_connections import (
     TestConnectionWithIdRequest,
 )
 from agflow.schemas.remote_backup_files import RemoteBackupFileDTO
-from agflow.services import gdrive_oauth_session, users_service
+from agflow.services import gdrive_oauth_session, users_service, vault_client
 from agflow.services import remote_backup_connections_service as rbc_service
 from agflow.services.remote_backup_providers import RemoteBackupProviderError
 from agflow.services.remote_backup_providers.factory import get_provider
@@ -96,6 +96,8 @@ async def create_connection(
         raise HTTPException(
             status_code=409, detail="A connection with this name already exists"
         ) from exc
+    except vault_client.VaultNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return dto  # type: ignore[return-value]
 
 
@@ -234,6 +236,8 @@ async def update_connection(
             dto = await rbc_service.get_connection(conn, connection_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except vault_client.VaultNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if dto is None:
         raise HTTPException(status_code=404, detail="Connection not found")
     return dto

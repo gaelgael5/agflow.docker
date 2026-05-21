@@ -20,6 +20,7 @@ import {
   type InfraNamedTypeCreatePayload,
 } from "@/lib/infraApi";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { NamedTypeEnvVarsSection } from "@/components/NamedTypeEnvVarsSection";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -687,6 +688,11 @@ function NamedTypeDialog({ open, initial, categories, onClose, onSubmit, t }: {
             </div>
           )}
         </div>
+        {initial && (
+          <div className="border-t pt-4 mt-4">
+            <NamedTypeEnvVarsSection namedTypeId={initial.id} />
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
           <Button

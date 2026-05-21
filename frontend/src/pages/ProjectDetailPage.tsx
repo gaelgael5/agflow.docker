@@ -34,6 +34,7 @@ import {
 import { api } from "@/lib/api";
 import { productsApi, type ProductVariable, type ProductConnector, type ProductComputed, type ProductApiDef, type ProductService, type SharedDep } from "@/lib/productsApi";
 import { templatesApi } from "@/lib/templatesApi";
+import { groupVariablesApi } from "@/lib/groupVariablesApi";
 import { GroupVariablesSection } from "@/components/projects/GroupVariablesSection";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -1037,10 +1038,25 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
   );
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+
+  // Préfixe utilisé pour rendre les références ${VAR} uniques entre groupes
+  // d'une même DB : `${<RES_NAME>_VAR}`. RES_NAME est une variable globale
+  // au groupe, créée automatiquement avec valeur initiale "RES_1" (cf.
+  // groups_service.create). Si elle est absente ou vide (groupes antérieurs
+  // au chantier), on retombe sur le nom de l'instance pour rester compatible.
+  const groupVarsQuery = useQuery({
+    queryKey: ["group-variables", instance.group_id],
+    queryFn: () => groupVariablesApi.list(instance.group_id),
+  });
+  const instSlugForDisplay = (() => {
+    const fallback = instance.instance_name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+    const resName = groupVarsQuery.data?.find((x) => x.name === "RES_NAME")?.value?.trim();
+    if (!resName) return fallback;
+    return resName.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  })();
   // Rewrite ${VAR} references to ${<INSTSLUG>_VAR} for any VAR declared as a
   // secret in the recipe. Used in the Connectors + API panels so the display
   // matches what actually lands in the generated .env.
-  const instSlugForDisplay = instance.instance_name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
   const secretNames = new Set((productVars ?? []).filter((v) => v.type === "secret").map((v) => v.name));
   function rewriteSecretRefs(value: string): string {
     if (!value) return value;
@@ -1066,7 +1082,9 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
               .then(setAvailableServices)
               .catch(() => setAvailableServices([]));
           }
-          const instSlug = instance.instance_name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+          // Même logique que `instSlugForDisplay` ci-dessus : RES_NAME du
+          // groupe, avec fallback sur le nom de l'instance.
+          const instSlug = instSlugForDisplay;
           const merged = { ...instance.variables };
           for (const v of result.variables) {
             if (v.name in merged) continue;

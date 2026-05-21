@@ -41,6 +41,16 @@ class GroupVariableDuplicateError(Exception):
     """Une variable de ce nom existe déjà dans le groupe."""
 
 
+class GroupVariableProtectedError(Exception):
+    """Tentative de suppression d'une variable système (ex. RES_NAME)."""
+
+
+# Noms réservés : impossibles à supprimer (créés à la création du groupe et
+# utilisés par le préfixage des secrets d'instance). On peut éditer la valeur
+# mais pas retirer la variable.
+_PROTECTED_NAMES: frozenset[str] = frozenset({"RES_NAME"})
+
+
 def _validate_name(name: str) -> None:
     if not _NAME_RE.match(name or ""):
         raise GroupVariableInvalidNameError(
@@ -142,6 +152,14 @@ async def update(
 
 
 async def delete(var_id: UUID) -> None:
+    # Refuse la suppression si la variable est protégée (créée automatiquement
+    # à la création du groupe, ex. RES_NAME utilisé pour le préfixage des
+    # secrets d'instance).
+    current = await get_by_id(var_id)
+    if current.name in _PROTECTED_NAMES:
+        raise GroupVariableProtectedError(
+            f"group_variable {current.name!r} is protected and cannot be deleted"
+        )
     result = await execute("DELETE FROM group_variables WHERE id = $1", var_id)
     if result.endswith(" 0"):
         raise GroupVariableNotFoundError(f"group_variable {var_id} not found")

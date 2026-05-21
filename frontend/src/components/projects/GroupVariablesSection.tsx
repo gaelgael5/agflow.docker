@@ -156,6 +156,11 @@ export function GroupVariablesSection({ groupId }: { groupId: string }) {
   );
 }
 
+// Noms de variables protégées (créées à la création du groupe et essentielles
+// au fonctionnement) — le backend refuse la suppression et le bouton Trash
+// est caché côté UI. La valeur reste éditable.
+const PROTECTED_NAMES = new Set<string>(["RES_NAME"]);
+
 // Une ligne = chip à gauche (avec description en dessous), input au milieu,
 // boutons edit/delete à droite. Mêmes proportions que `VarRow` (variables
 // d'instance) pour rester cohérent visuellement.
@@ -172,6 +177,7 @@ function VariableRow({
   onDelete: () => void;
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
+  const isProtected = PROTECTED_NAMES.has(variable.name);
   const [draftValue, setDraftValue] = useState(variable.value);
   const [saving, setSaving] = useState(false);
 
@@ -232,15 +238,17 @@ function VariableRow({
       >
         <Pencil className="w-3 h-3" />
       </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 shrink-0"
-        onClick={onDelete}
-        title={t("common.delete")}
-      >
-        <Trash2 className="w-3 h-3 text-destructive" />
-      </Button>
+      {!isProtected && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          onClick={onDelete}
+          title={t("common.delete")}
+        >
+          <Trash2 className="w-3 h-3 text-destructive" />
+        </Button>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Box, ChevronDown, ChevronRight, Edit2, History, Loader2, Play, Plus, Server, ScrollText, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { MachineEnvVarsSection } from "@/components/MachineEnvVarsSection";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -816,6 +817,11 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
             {testResult.success
               ? `✓ ${t("infra.machine_test_ok")} — ${testResult.message}`
               : `✗ ${t("infra.machine_test_failed")} : ${testResult.message}`}
+          </div>
+        )}
+        {initial && (
+          <div className="border-t pt-4 mt-4">
+            <MachineEnvVarsSection machineId={initial.id} />
           </div>
         )}
         <DialogFooter>

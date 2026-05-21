@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -8,6 +8,7 @@ import {
   groupVariablesApi,
   type GroupVariable,
 } from "@/lib/groupVariablesApi";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,14 +19,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 export function GroupVariablesSection({ groupId }: { groupId: string }) {
@@ -62,23 +55,23 @@ export function GroupVariablesSection({ groupId }: { groupId: string }) {
   });
 
   return (
-    <div className="border-t pt-3 mt-3">
-      <div className="flex items-center justify-between mb-2">
+    <div className="border-t px-4 py-3 space-y-2">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h4 className="text-[13px] font-semibold">
+          <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
             {t("projects.group_variables_title")}
           </h4>
           <span className="text-[10px] text-muted-foreground">
             ({variables.length})
           </span>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
-          <Plus className="w-3.5 h-3.5" />
+        <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => setShowAdd(true)}>
+          <Plus className="w-3 h-3" />
           {t("projects.group_variables_add")}
         </Button>
       </div>
 
-      <p className="text-[11px] text-muted-foreground mb-2">
+      <p className="text-[11px] text-muted-foreground">
         {t("projects.group_variables_hint")}
       </p>
 
@@ -91,59 +84,20 @@ export function GroupVariablesSection({ groupId }: { groupId: string }) {
           {t("projects.group_variables_empty")}
         </p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-[11px]">
-                {t("projects.group_variables_col_name")}
-              </TableHead>
-              <TableHead className="text-[11px]">
-                {t("projects.group_variables_col_value")}
-              </TableHead>
-              <TableHead className="text-[11px]">
-                {t("projects.group_variables_col_description")}
-              </TableHead>
-              <TableHead className="w-20" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {variables.map((v) => (
-              <TableRow key={v.id}>
-                <TableCell className="font-mono text-[12px]">{v.name}</TableCell>
-                <TableCell className="font-mono text-[12px] break-all max-w-xs">
-                  {v.value || (
-                    <span className="text-muted-foreground italic">
-                      {t("projects.group_variables_empty_value")}
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-[11px] text-muted-foreground">
-                  {v.description || "—"}
-                </TableCell>
-                <TableCell className="text-right space-x-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => setEditTarget(v)}
-                    title={t("common.edit")}
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => setDeleteTarget(v)}
-                    title={t("common.delete")}
-                  >
-                    <Trash2 className="w-3 h-3 text-destructive" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="space-y-2">
+          {variables.map((v) => (
+            <VariableRow
+              key={v.id}
+              variable={v}
+              onUpdateValue={(value) =>
+                updateMut.mutateAsync({ id: v.id, payload: { value } })
+              }
+              onEdit={() => setEditTarget(v)}
+              onDelete={() => setDeleteTarget(v)}
+              t={t}
+            />
+          ))}
+        </div>
       )}
 
       <GroupVariableFormDialog
@@ -202,6 +156,95 @@ export function GroupVariablesSection({ groupId }: { groupId: string }) {
   );
 }
 
+// Une ligne = chip à gauche (avec description en dessous), input au milieu,
+// boutons edit/delete à droite. Mêmes proportions que `VarRow` (variables
+// d'instance) pour rester cohérent visuellement.
+function VariableRow({
+  variable,
+  onUpdateValue,
+  onEdit,
+  onDelete,
+  t,
+}: {
+  variable: GroupVariable;
+  onUpdateValue: (value: string) => Promise<unknown>;
+  onEdit: () => void;
+  onDelete: () => void;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const [draftValue, setDraftValue] = useState(variable.value);
+  const [saving, setSaving] = useState(false);
+
+  // Si la valeur change côté serveur (autre tab, autre user), on resynchronise.
+  useEffect(() => {
+    setDraftValue(variable.value);
+  }, [variable.value]);
+
+  const hasValue = Boolean(draftValue.trim());
+
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-48 shrink-0 pt-1.5">
+        <div className="flex items-center gap-1.5">
+          <Badge
+            variant="outline"
+            className={`text-[8px] font-mono ${
+              hasValue
+                ? "border-green-500 text-green-600"
+                : "border-blue-400 text-blue-500"
+            }`}
+          >
+            {`\${${variable.name}}`}
+          </Badge>
+        </div>
+        {variable.description && (
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {variable.description}
+          </p>
+        )}
+      </div>
+      <Input
+        value={draftValue}
+        onChange={(e) => setDraftValue(e.target.value)}
+        placeholder={variable.name}
+        className="font-mono text-[12px] flex-1 h-8"
+        disabled={saving}
+        onBlur={async () => {
+          if (draftValue === variable.value) return;
+          setSaving(true);
+          try {
+            await onUpdateValue(draftValue);
+          } catch (e) {
+            // Restore + bubble up
+            setDraftValue(variable.value);
+            toast.error(e instanceof Error ? e.message : String(e));
+          } finally {
+            setSaving(false);
+          }
+        }}
+      />
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 shrink-0"
+        onClick={onEdit}
+        title={t("common.edit")}
+      >
+        <Pencil className="w-3 h-3" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 shrink-0"
+        onClick={onDelete}
+        title={t("common.delete")}
+      >
+        <Trash2 className="w-3 h-3 text-destructive" />
+      </Button>
+    </div>
+  );
+}
+
 function GroupVariableFormDialog({
   open,
   initial,
@@ -220,8 +263,14 @@ function GroupVariableFormDialog({
   const [description, setDescription] = useState(initial?.description ?? "");
   const [saving, setSaving] = useState(false);
 
-  // Reset form quand on rouvre avec un autre initial.
-  const dialogKey = `${open}-${initial?.id ?? "new"}`;
+  // Reset à chaque (ré)ouverture, ou changement de variable cible.
+  useEffect(() => {
+    if (!open) return;
+    setName(initial?.name ?? "");
+    setValue(initial?.value ?? "");
+    setDescription(initial?.description ?? "");
+    setSaving(false);
+  }, [open, initial]);
 
   return (
     <Dialog
@@ -229,7 +278,6 @@ function GroupVariableFormDialog({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      key={dialogKey}
     >
       <DialogContent>
         <DialogHeader>

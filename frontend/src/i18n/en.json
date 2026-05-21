@@ -1388,7 +1388,13 @@
     "env_var_delete_title": "Delete variable",
     "env_var_delete_message": "Are you sure you want to delete \"{{name}}\"?",
     "env_var_deleted": "Variable deleted",
-    "env_var_delete_error": "Error deleting variable"
+    "env_var_delete_error": "Error deleting variable",
+    "machine_env_vars_title": "Environment variable values",
+    "machine_env_vars_empty": "No environment variables to fill in for this machine",
+    "machine_env_vars_save_button": "Save",
+    "machine_env_vars_saved": "Variables saved",
+    "machine_env_vars_save_error": "Error saving variables",
+    "machine_env_var_value_placeholder": "Value…"
   },
   "sessions": {
     "page_title": "Sessions",

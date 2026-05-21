@@ -71,13 +71,16 @@ export interface TriggerRule {
   value: string;
 }
 
+export type TargetKind = "fixed_machine" | "deployment_host";
+
 export interface GroupScript {
   id: string;
   group_id: string;
   group_name: string;
   script_id: string;
   script_name: string;
-  machine_id: string;
+  target_kind: TargetKind;
+  machine_id: string | null;
   machine_name: string;
   timing: ScriptTiming;
   position: number;
@@ -91,7 +94,8 @@ export interface GroupScript {
 
 export interface GroupScriptCreatePayload {
   script_id: string;
-  machine_id: string;
+  target_kind?: TargetKind;
+  machine_id?: string | null;
   timing: ScriptTiming;
   position?: number;
   env_mapping?: Record<string, string>;
@@ -102,7 +106,8 @@ export interface GroupScriptCreatePayload {
 
 export interface GroupScriptUpdatePayload {
   script_id?: string;
-  machine_id?: string;
+  target_kind?: TargetKind;
+  machine_id?: string | null;
   timing?: ScriptTiming;
   position?: number;
   env_mapping?: Record<string, string>;

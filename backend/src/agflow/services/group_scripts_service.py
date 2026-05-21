@@ -1,4 +1,13 @@
-"""group_scripts — liaison script ↔ groupe avec contexte d'exécution."""
+"""group_scripts — liaison script ↔ groupe avec contexte d'exécution.
+
+Une ligne `group_scripts` indique :
+  * quel script s'exécute,
+  * quand (`timing` ∈ {before, after}),
+  * sur quelle machine cible (`target_kind`) :
+      - `fixed_machine`     → la machine désignée par `machine_id` (UUID fixe)
+      - `deployment_host`   → la machine assignée au groupe au runtime
+        (résolu via `resolve_target_machine_id` → `groups.machine_id`).
+"""
 from __future__ import annotations
 
 import json as _json
@@ -14,7 +23,8 @@ _log = structlog.get_logger(__name__)
 
 _LIST_SQL = """
     SELECT
-        gs.id, gs.group_id, gs.script_id, gs.machine_id, gs.timing, gs.position,
+        gs.id, gs.group_id, gs.script_id, gs.target_kind, gs.machine_id,
+        gs.timing, gs.position,
         gs.env_mapping, gs.input_values, gs.input_statuses, gs.trigger_rules,
         gs.created_at, gs.updated_at,
         s.name AS script_name,
@@ -22,13 +32,21 @@ _LIST_SQL = """
         g.name AS group_name
     FROM group_scripts gs
     JOIN scripts s ON s.id = gs.script_id
-    JOIN infra_machines m ON m.id = gs.machine_id
+    LEFT JOIN infra_machines m ON m.id = gs.machine_id
     JOIN groups g ON g.id = gs.group_id
 """
 
 
 class GroupScriptNotFoundError(Exception):
     pass
+
+
+class GroupScriptInvalidTargetError(ValueError):
+    """target_kind='fixed_machine' sans machine_id, ou target_kind invalide."""
+
+
+class GroupScriptNoDeploymentHostError(RuntimeError):
+    """target_kind='deployment_host' mais le groupe n'a pas de machine assignée."""
 
 
 def _to_row(row: dict[str, Any]) -> GroupScriptRow:
@@ -60,7 +78,8 @@ def _to_row(row: dict[str, Any]) -> GroupScriptRow:
         group_name=row.get("group_name", ""),
         script_id=row["script_id"],
         script_name=row["script_name"],
-        machine_id=row["machine_id"],
+        target_kind=row.get("target_kind") or "fixed_machine",
+        machine_id=row.get("machine_id"),
         machine_name=machine_name,
         timing=row["timing"],
         position=row["position"],
@@ -104,44 +123,85 @@ def _serialize_trigger_rules(rules: Any) -> str:
     return _json.dumps(out)
 
 
+def _validate_target(target_kind: str, machine_id: UUID | None) -> None:
+    if target_kind not in ("fixed_machine", "deployment_host"):
+        raise GroupScriptInvalidTargetError(
+            f"target_kind must be 'fixed_machine' or 'deployment_host', got {target_kind!r}"
+        )
+    if target_kind == "fixed_machine" and machine_id is None:
+        raise GroupScriptInvalidTargetError(
+            "target_kind='fixed_machine' requires machine_id to be set"
+        )
+
+
 async def create(
     group_id: UUID,
     script_id: UUID,
-    machine_id: UUID,
+    machine_id: UUID | None,
     timing: str,
     position: int = 0,
     env_mapping: dict[str, str] | None = None,
     input_values: dict[str, str] | None = None,
     input_statuses: dict[str, str] | None = None,
     trigger_rules: Any = None,
+    target_kind: str = "fixed_machine",
 ) -> GroupScriptRow:
+    _validate_target(target_kind, machine_id)
+    effective_machine_id = machine_id if target_kind == "fixed_machine" else None
     row = await fetch_one(
         """
         INSERT INTO group_scripts
-            (group_id, script_id, machine_id, timing, position,
+            (group_id, script_id, target_kind, machine_id, timing, position,
              env_mapping, input_values, input_statuses, trigger_rules)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb)
         RETURNING id
         """,
-        group_id, script_id, machine_id, timing, position,
+        group_id, script_id, target_kind, effective_machine_id, timing, position,
         _json.dumps(env_mapping or {}),
         _json.dumps(input_values or {}),
         _json.dumps(input_statuses or {}),
         _serialize_trigger_rules(trigger_rules),
     )
     assert row is not None
-    _log.info("group_scripts.create", group_id=str(group_id), script_id=str(script_id))
+    _log.info(
+        "group_scripts.create",
+        group_id=str(group_id),
+        script_id=str(script_id),
+        target_kind=target_kind,
+    )
     return await get_by_id(row["id"])
 
 
 async def update(link_id: UUID, **kwargs: Any) -> GroupScriptRow:
-    await get_by_id(link_id)
+    current = await get_by_id(link_id)
+
+    # Détermine le state effectif après update pour la validation cohérente
+    # (target_kind + machine_id doivent rester compatibles).
+    next_target_kind = kwargs.get("target_kind") or current.target_kind
+    next_machine_id: UUID | None
+    if "machine_id" in kwargs:
+        next_machine_id = kwargs["machine_id"]
+    else:
+        next_machine_id = current.machine_id
+    if next_target_kind == "deployment_host":
+        # En deployment_host on ignore machine_id (résolu au runtime).
+        next_machine_id = None
+    _validate_target(next_target_kind, next_machine_id)
 
     updates: dict[str, Any] = {}
     jsonb_fields: set[str] = set()
-    for field in ("script_id", "machine_id", "timing", "position"):
-        if field in kwargs and kwargs[field] is not None:
-            updates[field] = kwargs[field]
+    if "script_id" in kwargs and kwargs["script_id"] is not None:
+        updates["script_id"] = kwargs["script_id"]
+    if "timing" in kwargs and kwargs["timing"] is not None:
+        updates["timing"] = kwargs["timing"]
+    if "position" in kwargs and kwargs["position"] is not None:
+        updates["position"] = kwargs["position"]
+    if "target_kind" in kwargs and kwargs["target_kind"] is not None:
+        updates["target_kind"] = kwargs["target_kind"]
+    # machine_id : toujours réécrit pour respecter next_machine_id
+    # (None en deployment_host, valeur fournie sinon).
+    if "machine_id" in kwargs or "target_kind" in kwargs:
+        updates["machine_id"] = next_machine_id
     if "env_mapping" in kwargs and kwargs["env_mapping"] is not None:
         updates["env_mapping"] = _json.dumps(kwargs["env_mapping"])
         jsonb_fields.add("env_mapping")
@@ -156,7 +216,7 @@ async def update(link_id: UUID, **kwargs: Any) -> GroupScriptRow:
         jsonb_fields.add("trigger_rules")
 
     if not updates:
-        return await get_by_id(link_id)
+        return current
 
     sets = []
     values = []
@@ -180,3 +240,33 @@ async def delete(link_id: UUID) -> None:
     if result.endswith(" 0"):
         raise GroupScriptNotFoundError(f"group_script {link_id} not found")
     _log.info("group_scripts.delete", id=str(link_id))
+
+
+async def resolve_target_machine_id(link_id: UUID) -> UUID:
+    """Retourne la machine effective où exécuter le script.
+
+    - target_kind='fixed_machine'    → row.machine_id (jamais NULL grâce au CHECK DB)
+    - target_kind='deployment_host'  → groups.machine_id (résolu maintenant)
+
+    Lève GroupScriptNoDeploymentHostError si `deployment_host` mais
+    `groups.machine_id` est NULL (le groupe n'a pas encore de machine assignée).
+    """
+    row = await fetch_one(
+        """
+        SELECT gs.target_kind, gs.machine_id, g.machine_id AS group_machine_id
+        FROM group_scripts gs
+        JOIN groups g ON g.id = gs.group_id
+        WHERE gs.id = $1
+        """,
+        link_id,
+    )
+    if row is None:
+        raise GroupScriptNotFoundError(f"group_script {link_id} not found")
+    if row["target_kind"] == "deployment_host":
+        if row["group_machine_id"] is None:
+            raise GroupScriptNoDeploymentHostError(
+                f"group_script {link_id} uses deployment_host but the group "
+                "has no machine assigned yet"
+            )
+        return row["group_machine_id"]
+    return row["machine_id"]

@@ -403,7 +403,15 @@ async def _run_group_script(link: Any, script_content: str, env_text: str = "") 
     """
     import secrets as _secrets
     try:
-        ssh = await _ssh_kwargs_for_machine(link.machine_id)
+        # `resolve_target_machine_id` retourne `link.machine_id` si target_kind=
+        # 'fixed_machine', et `groups.machine_id` si target_kind='deployment_host'.
+        target_machine_id = await group_scripts_service.resolve_target_machine_id(link.id)
+        ssh = await _ssh_kwargs_for_machine(target_machine_id)
+    except group_scripts_service.GroupScriptNoDeploymentHostError as exc:
+        return {
+            "script": link.script_name, "machine": link.machine_name,
+            "timing": link.timing, "success": False, "error": str(exc),
+        }
     except Exception as exc:
         return {
             "script": link.script_name, "machine": link.machine_name,

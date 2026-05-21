@@ -23,6 +23,7 @@ import {
   type InputStatus,
   type ScriptSummary,
   type ScriptTiming,
+  type TargetKind,
   type TriggerOp,
   type TriggerRule,
 } from "@/lib/scriptsApi";
@@ -1729,6 +1730,7 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
   const [scriptId, setScriptId] = useState("");
+  const [targetKind, setTargetKind] = useState<TargetKind>("fixed_machine");
   const [machineId, setMachineId] = useState("");
   const [timing, setTiming] = useState<ScriptTiming>("before");
   const [position, setPosition] = useState("0");
@@ -1744,7 +1746,8 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
     if (!open) return;
     if (initial) {
       setScriptId(initial.script_id);
-      setMachineId(initial.machine_id);
+      setTargetKind(initial.target_kind ?? "fixed_machine");
+      setMachineId(initial.machine_id ?? "");
       setTiming(initial.timing);
       setPosition(String(initial.position));
       setMappingText(Object.entries(initial.env_mapping).map(([k, v]) => `${k}=${v}`).join("\n"));
@@ -1752,7 +1755,8 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
       setInputStatuses((initial.input_statuses ?? {}) as Record<string, InputStatus>);
       setTriggerRules(initial.trigger_rules ?? []);
     } else {
-      setScriptId(""); setMachineId(""); setTiming("before"); setPosition("0");
+      setScriptId(""); setTargetKind("fixed_machine"); setMachineId("");
+      setTiming("before"); setPosition("0");
       setMappingText(""); setInputValues({}); setInputStatuses({}); setTriggerRules([]);
     }
     setInputsOpen(true);
@@ -1792,7 +1796,8 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scriptId]);
 
-  const canSubmit = scriptId && machineId;
+  const canSubmit =
+    scriptId && (targetKind === "deployment_host" || machineId);
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -1815,18 +1820,35 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
             </select>
           </div>
           <div>
-            <Label className="text-[11px]">{t("scripts.group_machine")}</Label>
-            <select value={machineId} onChange={(e) => setMachineId(e.target.value)}
-              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
-              <option value="">—</option>
-              {filteredMachines.map((m) => (
-                <option key={m.id} value={m.id}>{m.name || m.host}</option>
-              ))}
+            <Label className="text-[11px]">{t("scripts.group_target_kind")}</Label>
+            <select
+              value={targetKind}
+              onChange={(e) => setTargetKind(e.target.value as TargetKind)}
+              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+            >
+              <option value="fixed_machine">{t("scripts.group_target_kind_fixed")}</option>
+              <option value="deployment_host">{t("scripts.group_target_kind_deployment_host")}</option>
             </select>
-            {requiredTypeId && filteredMachines.length === 0 && (
-              <p className="text-[10px] text-orange-600 mt-1">{t("scripts.group_no_matching_machine")}</p>
-            )}
           </div>
+          {targetKind === "fixed_machine" ? (
+            <div>
+              <Label className="text-[11px]">{t("scripts.group_machine")}</Label>
+              <select value={machineId} onChange={(e) => setMachineId(e.target.value)}
+                className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                <option value="">—</option>
+                {filteredMachines.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name || m.host}</option>
+                ))}
+              </select>
+              {requiredTypeId && filteredMachines.length === 0 && (
+                <p className="text-[10px] text-orange-600 mt-1">{t("scripts.group_no_matching_machine")}</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground italic">
+              {t("scripts.group_target_kind_deployment_host_hint")}
+            </p>
+          )}
           <div>
             <Label className="text-[11px]">{t("scripts.group_timing")}</Label>
             <select value={timing} onChange={(e) => setTiming(e.target.value as ScriptTiming)}
@@ -1989,7 +2011,8 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
                 }
                 await onSubmit({
                   script_id: scriptId,
-                  machine_id: machineId,
+                  target_kind: targetKind,
+                  machine_id: targetKind === "deployment_host" ? null : machineId,
                   timing,
                   position: parseInt(position || "0", 10),
                   env_mapping: mapping,

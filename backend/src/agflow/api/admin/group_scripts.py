@@ -26,17 +26,21 @@ async def list_group_scripts(group_id: UUID):
 
 @router.post("", response_model=GroupScriptRow, status_code=status.HTTP_201_CREATED)
 async def create_group_script(group_id: UUID, payload: GroupScriptCreate):
-    return await group_scripts_service.create(
-        group_id=group_id,
-        script_id=payload.script_id,
-        machine_id=payload.machine_id,
-        timing=payload.timing,
-        position=payload.position,
-        env_mapping=payload.env_mapping,
-        input_values=payload.input_values,
-        input_statuses=payload.input_statuses,
-        trigger_rules=payload.trigger_rules,
-    )
+    try:
+        return await group_scripts_service.create(
+            group_id=group_id,
+            script_id=payload.script_id,
+            machine_id=payload.machine_id,
+            timing=payload.timing,
+            position=payload.position,
+            env_mapping=payload.env_mapping,
+            input_values=payload.input_values,
+            input_statuses=payload.input_statuses,
+            trigger_rules=payload.trigger_rules,
+            target_kind=payload.target_kind,
+        )
+    except group_scripts_service.GroupScriptInvalidTargetError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.put("/{link_id}", response_model=GroupScriptRow)
@@ -47,6 +51,8 @@ async def update_group_script(group_id: UUID, link_id: UUID, payload: GroupScrip
         )
     except group_scripts_service.GroupScriptNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except group_scripts_service.GroupScriptInvalidTargetError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.delete("/{link_id}", status_code=status.HTTP_204_NO_CONTENT)

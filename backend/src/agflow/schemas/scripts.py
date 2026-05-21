@@ -72,14 +72,18 @@ class TriggerRule(BaseModel):
     value: str = ""
 
 
+TargetKind = Literal["fixed_machine", "deployment_host"]
+
+
 class GroupScriptRow(BaseModel):
     id: UUID
     group_id: UUID
     group_name: str = ""
     script_id: UUID
     script_name: str
-    machine_id: UUID
-    machine_name: str
+    target_kind: TargetKind = "fixed_machine"
+    machine_id: UUID | None = None
+    machine_name: str = ""
     timing: Timing
     position: int
     env_mapping: dict[str, str]
@@ -92,7 +96,8 @@ class GroupScriptRow(BaseModel):
 
 class GroupScriptCreate(BaseModel):
     script_id: UUID
-    machine_id: UUID
+    target_kind: TargetKind = "fixed_machine"
+    machine_id: UUID | None = None
     timing: Timing
     position: int = 0
     env_mapping: dict[str, str] = Field(default_factory=dict)
@@ -103,6 +108,7 @@ class GroupScriptCreate(BaseModel):
 
 class GroupScriptUpdate(BaseModel):
     script_id: UUID | None = None
+    target_kind: TargetKind | None = None
     machine_id: UUID | None = None
     timing: Timing | None = None
     position: int | None = None

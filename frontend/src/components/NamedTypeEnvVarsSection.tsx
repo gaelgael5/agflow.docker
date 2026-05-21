@@ -159,9 +159,13 @@ export function NamedTypeEnvVarsSection({ namedTypeId }: { namedTypeId: string }
         description={t("infra.env_var_delete_message", { name: deleteTarget?.name ?? "" })}
         onConfirm={async () => {
           if (!deleteTargetId) return;
-          await remove.mutateAsync(deleteTargetId);
-          setDeleteTargetId(null);
-          toast.success(t("infra.env_var_deleted"));
+          try {
+            await remove.mutateAsync(deleteTargetId);
+            setDeleteTargetId(null);
+            toast.success(t("infra.env_var_deleted"));
+          } catch {
+            toast.error(t("infra.env_var_delete_error"));
+          }
         }}
       />
     </div>

@@ -50,8 +50,10 @@ export function useMachineEnvVarsUpsert(machineId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: MachineEnvVarUpsert) => machineEnvVarsApi.upsert(machineId, payload),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["infra-machine-env-vars", machineId] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["infra-machine-env-vars", machineId] });
+      void qc.invalidateQueries({ queryKey: ["project-env-vars-check"] });
+    },
   });
 }
 

@@ -197,6 +197,7 @@ export function ProjectDetailPage() {
                 </div>
 
                 <CardContent className="p-0">
+                  <GroupVariablesSection groupId={g.id} />
                   {instances.length === 0 ? (
                     <p className="px-4 py-3 text-[12px] text-muted-foreground italic">
                       {t("projects.no_instances")}
@@ -216,7 +217,6 @@ export function ProjectDetailPage() {
                       ))}
                     </div>
                   )}
-                  <GroupVariablesSection groupId={g.id} />
                   <GroupScriptsSection groupId={g.id} t={t} />
                   <GroupRuntimesSection groupId={g.id} t={t} />
                 </CardContent>

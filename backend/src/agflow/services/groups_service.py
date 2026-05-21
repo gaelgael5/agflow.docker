@@ -6,7 +6,7 @@ from uuid import UUID
 
 import structlog
 
-from agflow.db.pool import execute, fetch_all, fetch_one
+from agflow.db.pool import execute, fetch_all, fetch_one, get_pool
 from agflow.schemas.products import GroupSummary
 
 _log = structlog.get_logger(__name__)
@@ -65,20 +65,36 @@ async def create(
     compose_template_slug: str | None = None,
     swarm_template_slug: str | None = None,
 ) -> GroupSummary:
-    row = await fetch_one(
-        """
-        INSERT INTO groups
-            (project_id, name, max_agents, max_replicas,
-             compose_template_slug, swarm_template_slug)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id
-        """,
-        project_id, name, max_agents, max_replicas,
-        compose_template_slug, swarm_template_slug,
-    )
-    assert row is not None
+    # On crée le groupe ET sa variable globale `RES_NAME` dans la même
+    # transaction : RES_NAME est la convention pour le nom court de la
+    # ressource exposée publiquement (réutilisable dans les scripts pré/post
+    # démarrage et dans les recettes via ${RES_NAME}). L'utilisateur la
+    # complète après création depuis le bloc Variables du groupe.
+    db_pool = await get_pool()
+    async with db_pool.acquire() as conn, conn.transaction():
+        group_row = await conn.fetchrow(
+            """
+            INSERT INTO groups
+                (project_id, name, max_agents, max_replicas,
+                 compose_template_slug, swarm_template_slug)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+            """,
+            project_id, name, max_agents, max_replicas,
+            compose_template_slug, swarm_template_slug,
+        )
+        assert group_row is not None
+        await conn.execute(
+            """
+            INSERT INTO group_variables (group_id, name, value, description)
+            VALUES ($1, 'RES_NAME', 'RES_1',
+                'Nom court de la ressource exposée publiquement '
+                '(consommable dans les recettes et scripts via ${RES_NAME}).')
+            """,
+            group_row["id"],
+        )
     _log.info("groups.create", name=name, project_id=str(project_id))
-    return await get_by_id(row["id"])
+    return await get_by_id(group_row["id"])
 
 
 _NULLABLE_GROUP_FIELDS = {"compose_template_slug", "swarm_template_slug"}

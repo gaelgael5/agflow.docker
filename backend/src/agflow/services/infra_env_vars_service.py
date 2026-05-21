@@ -101,7 +101,7 @@ async def create_env_var(
         raise EnvVarDuplicateError(
             f"env_var {name!r} already exists for named_type {named_type_id}"
         ) from exc
-    assert row is not None
+    assert row is not None  # RETURNING garantit une ligne si pas d'exception
     _log.info("infra_env_vars.create", named_type_id=str(named_type_id), name=name)
     return _to_nt_row(row)
 
@@ -130,7 +130,7 @@ async def update_env_var(
         raise EnvVarDuplicateError(
             f"another env_var already uses the name {next_name!r}"
         ) from exc
-    assert row is not None
+    assert row is not None  # RETURNING garantit une ligne si pas d'exception
     _log.info("infra_env_vars.update", id=str(env_var_id), name=next_name)
     return _to_nt_row(row)
 
@@ -258,8 +258,13 @@ async def check_project_env_vars(project_id: UUID) -> ProjectEnvVarsCheck:
             elif gs.target_kind == "deployment_host":
                 try:
                     machine_id = await group_scripts_service.resolve_target_machine_id(gs.id)
-                except Exception:
-                    pass  # groupe sans machine assignée : skip
+                except Exception as exc:
+                    _log.debug(
+                        "infra_env_vars.check.skip_group_script",
+                        gs_id=str(gs.id),
+                        reason=str(exc),
+                    )
+                    continue
 
             env_available: dict[str, str] = {}
             if machine_id:

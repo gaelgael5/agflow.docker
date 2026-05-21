@@ -1387,6 +1387,7 @@
     "env_var_col_name": "Nom",
     "env_var_col_description": "Description",
     "env_var_col_position": "Pos.",
+    "env_var_name_placeholder": "MON_VAR",
     "env_var_description_placeholder": "Description (optionnelle)",
     "env_var_invalid_name": "Nom invalide — utilisez A-Z, 0-9, _ (commencer par une lettre ou _)",
     "env_var_added": "Variable ajoutée",

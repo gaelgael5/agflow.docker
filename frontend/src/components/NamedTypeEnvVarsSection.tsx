@@ -95,7 +95,7 @@ export function NamedTypeEnvVarsSection({ namedTypeId }: { namedTypeId: string }
                   <td className="px-2 py-1">
                     <Input
                       className="h-7 text-xs font-mono"
-                      placeholder="MY_VAR"
+                      placeholder={t("infra.env_var_name_placeholder")}
                       value={newRow.name}
                       onChange={(e) => setNewRow({ ...newRow, name: e.target.value.toUpperCase() })}
                       onKeyDown={(e) => {

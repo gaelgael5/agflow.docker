@@ -56,7 +56,7 @@ describe("NamedTypeEnvVarsSection", () => {
     render(<NamedTypeEnvVarsSection namedTypeId={NAMED_TYPE_ID} />, { wrapper });
     await waitFor(() => screen.getByText("infra.env_var_add_button"));
     await userEvent.click(screen.getByText("infra.env_var_add_button"));
-    expect(screen.getByPlaceholderText("MY_VAR")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("infra.env_var_name_placeholder")).toBeInTheDocument();
   });
 
   it("appelle create et ferme la ligne après soumission valide", async () => {
@@ -72,13 +72,17 @@ describe("NamedTypeEnvVarsSection", () => {
     render(<NamedTypeEnvVarsSection namedTypeId={NAMED_TYPE_ID} />, { wrapper });
     await waitFor(() => screen.getByText("infra.env_var_add_button"));
     await userEvent.click(screen.getByText("infra.env_var_add_button"));
-    await userEvent.type(screen.getByPlaceholderText("MY_VAR"), "NEW_VAR");
+    await userEvent.type(screen.getByPlaceholderText("infra.env_var_name_placeholder"), "NEW_VAR");
     await userEvent.keyboard("{Enter}");
     await waitFor(() => {
       expect(infraEnvVarsApi.namedTypeEnvVarsApi.create).toHaveBeenCalledWith(
         NAMED_TYPE_ID,
         expect.objectContaining({ name: "NEW_VAR" }),
       );
+    });
+    // Vérifie que la ligne d'ajout est fermée
+    await waitFor(() => {
+      expect(screen.queryByPlaceholderText("infra.env_var_name_placeholder")).not.toBeInTheDocument();
     });
   });
 });

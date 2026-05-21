@@ -1380,6 +1380,7 @@
     "env_var_col_name": "Name",
     "env_var_col_description": "Description",
     "env_var_col_position": "Pos.",
+    "env_var_name_placeholder": "MY_VAR",
     "env_var_description_placeholder": "Description (optional)",
     "env_var_invalid_name": "Invalid name — use A-Z, 0-9, _ (must start with a letter or _)",
     "env_var_added": "Variable added",

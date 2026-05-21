@@ -5,8 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from agflow.auth.dependencies import require_operator as require_admin
+from agflow.schemas.infra_env_vars import ProjectEnvVarsCheck
 from agflow.schemas.products import ProjectCreate, ProjectSummary, ProjectUpdate
-from agflow.services import groups_service, product_instances_service, projects_service
+from agflow.services import groups_service, infra_env_vars_service, product_instances_service, projects_service
 
 router = APIRouter(
     prefix="/api/admin/projects",
@@ -179,3 +180,13 @@ async def get_project_v5(project_id: UUID) -> ProjectSummaryV5:
         description=project.description,
         resources_summary=resources_summary,
     )
+
+
+@router.get("/{project_id}/env-vars-check", response_model=ProjectEnvVarsCheck)
+async def check_env_vars(project_id: UUID):
+    """Check which group_scripts have missing env vars in their target machines."""
+    try:
+        await projects_service.get_by_id(project_id)
+    except projects_service.ProjectNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return await infra_env_vars_service.check_project_env_vars(project_id)

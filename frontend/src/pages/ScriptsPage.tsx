@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileCode, Plus, Save, Trash2, X } from "lucide-react";
+import { FileCode, FileJson, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   scriptsApi,
@@ -18,11 +18,40 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 
 const selectClass = "mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm";
+
+/**
+ * Aplatit un JSON arbitraire en liste de variables de sortie.
+ *
+ * Chaque feuille (valeur non-objet, ou tableau) du JSON donne une entrée :
+ *   - `path` : dot-path complet (ex: "result.hostname")
+ *   - `name` : dernier segment, normalisé UPPER_SNAKE_CASE
+ *
+ * Les tableaux sont traités comme des feuilles : on ne descend pas dedans.
+ * Si l'utilisateur veut un index précis, il l'ajoute manuellement dans le path.
+ */
+function flattenJsonToVariables(json: unknown): ScriptOutputVariable[] {
+  const out: ScriptOutputVariable[] = [];
+  const recurse = (node: unknown, path: string): void => {
+    if (node !== null && typeof node === "object" && !Array.isArray(node)) {
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        recurse(v, path ? `${path}.${k}` : k);
+      }
+      return;
+    }
+    if (!path) return;
+    const lastSegment = path.split(".").pop() ?? path;
+    const name = lastSegment.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+    out.push({ name, description: "", path });
+  };
+  recurse(json, "");
+  return out;
+}
 
 export function ScriptsPage() {
   const { t } = useTranslation();
@@ -145,6 +174,7 @@ function ScriptEditor({ id, summaries, t }: {
   const [executeOnTypeId, setExecuteOnTypeId] = useState<string>("");
   const [inputs, setInputs] = useState<ScriptInputVariable[]>([]);
   const [outputs, setOutputs] = useState<ScriptOutputVariable[]>([]);
+  const [showJsonExtract, setShowJsonExtract] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -310,16 +340,25 @@ function ScriptEditor({ id, summaries, t }: {
       <div>
         <div className="flex items-center justify-between mb-1">
           <Label className="text-[11px]">{t("scripts.outputs_title")}</Label>
-          <Button
-            size="sm" variant="outline" className="h-6 text-[10px]"
-            onClick={() => {
-              setOutputs([...outputs, { name: "", description: "", path: "" }]);
-              setDirty(true);
-            }}
-          >
-            <Plus className="w-3 h-3" />
-            {t("scripts.outputs_add")}
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              size="sm" variant="outline" className="h-6 text-[10px]"
+              onClick={() => setShowJsonExtract(true)}
+            >
+              <FileJson className="w-3 h-3" />
+              {t("scripts.outputs_extract_button")}
+            </Button>
+            <Button
+              size="sm" variant="outline" className="h-6 text-[10px]"
+              onClick={() => {
+                setOutputs([...outputs, { name: "", description: "", path: "" }]);
+                setDirty(true);
+              }}
+            >
+              <Plus className="w-3 h-3" />
+              {t("scripts.outputs_add")}
+            </Button>
+          </div>
         </div>
         {outputs.length === 0 ? (
           <p className="text-[10px] text-muted-foreground italic">{t("scripts.outputs_empty")}</p>
@@ -386,7 +425,87 @@ function ScriptEditor({ id, summaries, t }: {
           {t("scripts.content_hint", { count: String(summaries.length) })}
         </p>
       </div>
+
+      <ExtractFromJsonDialog
+        open={showJsonExtract}
+        onClose={() => setShowJsonExtract(false)}
+        onExtracted={(vars) => {
+          const existingPaths = new Set(outputs.map((o) => o.path));
+          const toAdd = vars.filter((v) => !existingPaths.has(v.path));
+          if (toAdd.length > 0) {
+            setOutputs([...outputs, ...toAdd]);
+            setDirty(true);
+          }
+          setShowJsonExtract(false);
+          toast.success(
+            t("scripts.outputs_extracted", {
+              count: String(toAdd.length),
+              skipped: String(vars.length - toAdd.length),
+            }),
+          );
+        }}
+        t={t}
+      />
     </Card>
+  );
+}
+
+function ExtractFromJsonDialog({ open, onClose, onExtracted, t }: {
+  open: boolean;
+  onClose: () => void;
+  onExtracted: (vars: ScriptOutputVariable[]) => void;
+  t: (key: string, opts?: Record<string, string>) => string;
+}) {
+  const [raw, setRaw] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) { setRaw(""); setErr(null); }
+  }, [open]);
+
+  const handleExtract = () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      setErr(t("scripts.outputs_extract_invalid_json"));
+      return;
+    }
+    const vars = flattenJsonToVariables(parsed);
+    if (vars.length === 0) {
+      setErr(t("scripts.outputs_extract_no_vars"));
+      return;
+    }
+    onExtracted(vars);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{t("scripts.outputs_extract_title")}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-[11px] text-muted-foreground">
+            {t("scripts.outputs_extract_hint")}
+          </p>
+          <Textarea
+            value={raw}
+            onChange={(e) => { setRaw(e.target.value); setErr(null); }}
+            placeholder={t("scripts.outputs_extract_placeholder")}
+            className="font-mono text-[11px] h-48"
+            autoFocus
+          />
+          {err && <p className="text-[11px] text-destructive">{err}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button onClick={handleExtract} disabled={!raw.trim()}>
+            {t("scripts.outputs_extract_confirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

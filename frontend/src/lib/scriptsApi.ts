@@ -10,6 +10,14 @@ export interface ScriptInputVariable {
   default: string;
 }
 
+export interface ScriptOutputVariable {
+  name: string;
+  description: string;
+  /** Dot-path d'extraction dans le JSON renvoyé en dernière ligne du stdout
+   *  (ex: "result.hostname"). Vide = utilise `name` directement comme clé. */
+  path: string;
+}
+
 export interface ScriptSummary {
   id: string;
   name: string;
@@ -17,6 +25,7 @@ export interface ScriptSummary {
   execute_on_types_named: string | null;
   execute_on_types_named_name: string | null;
   input_variables: ScriptInputVariable[];
+  output_variables: ScriptOutputVariable[];
   created_at: string;
   updated_at: string;
 }
@@ -31,6 +40,7 @@ export interface ScriptCreatePayload {
   content?: string;
   execute_on_types_named?: string | null;
   input_variables?: ScriptInputVariable[];
+  output_variables?: ScriptOutputVariable[];
 }
 
 export interface ScriptUpdatePayload {
@@ -39,6 +49,7 @@ export interface ScriptUpdatePayload {
   content?: string;
   execute_on_types_named?: string | null;
   input_variables?: ScriptInputVariable[];
+  output_variables?: ScriptOutputVariable[];
 }
 
 export const scriptsApi = {

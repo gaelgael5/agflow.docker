@@ -18,6 +18,18 @@ class ScriptInputVariable(BaseModel):
     default: str = ""
 
 
+class ScriptOutputVariable(BaseModel):
+    """Variable de sortie déclarée par un script.
+
+    À l'exécution, le script doit produire en dernière ligne de son stdout
+    un JSON contenant la valeur attendue, accessible via `path` (dot-notation).
+    Exemple : `path="result.hostname"` extrait `parsed["result"]["hostname"]`.
+    """
+    name: str
+    description: str = ""
+    path: str = ""
+
+
 class ScriptRow(BaseModel):
     id: UUID
     name: str
@@ -26,6 +38,7 @@ class ScriptRow(BaseModel):
     execute_on_types_named: UUID | None = None
     execute_on_types_named_name: str | None = None
     input_variables: list[ScriptInputVariable] = []
+    output_variables: list[ScriptOutputVariable] = []
     created_at: datetime
     updated_at: datetime
 
@@ -38,6 +51,7 @@ class ScriptSummary(BaseModel):
     execute_on_types_named: UUID | None = None
     execute_on_types_named_name: str | None = None
     input_variables: list[ScriptInputVariable] = []
+    output_variables: list[ScriptOutputVariable] = []
     created_at: datetime
     updated_at: datetime
 
@@ -48,6 +62,7 @@ class ScriptCreate(BaseModel):
     content: str = ""
     execute_on_types_named: UUID | None = None
     input_variables: list[ScriptInputVariable] = Field(default_factory=list)
+    output_variables: list[ScriptOutputVariable] = Field(default_factory=list)
 
 
 class ScriptUpdate(BaseModel):
@@ -56,6 +71,7 @@ class ScriptUpdate(BaseModel):
     content: str | None = None
     execute_on_types_named: UUID | None = None
     input_variables: list[ScriptInputVariable] | None = None
+    output_variables: list[ScriptOutputVariable] | None = None
 
 
 # ── Group → Script reference ─────────────────────────────

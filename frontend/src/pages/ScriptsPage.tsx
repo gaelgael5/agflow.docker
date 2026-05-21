@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   scriptsApi,
   type ScriptInputVariable,
+  type ScriptOutputVariable,
   type ScriptRow,
   type ScriptSummary,
 } from "@/lib/scriptsApi";
@@ -143,6 +144,7 @@ function ScriptEditor({ id, summaries, t }: {
   const [content, setContent] = useState("");
   const [executeOnTypeId, setExecuteOnTypeId] = useState<string>("");
   const [inputs, setInputs] = useState<ScriptInputVariable[]>([]);
+  const [outputs, setOutputs] = useState<ScriptOutputVariable[]>([]);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -152,6 +154,7 @@ function ScriptEditor({ id, summaries, t }: {
     setContent(detailQuery.data.content);
     setExecuteOnTypeId(detailQuery.data.execute_on_types_named ?? "");
     setInputs(detailQuery.data.input_variables ?? []);
+    setOutputs(detailQuery.data.output_variables ?? []);
     setDirty(false);
   }, [detailQuery.data]);
 
@@ -162,6 +165,7 @@ function ScriptEditor({ id, summaries, t }: {
       content,
       execute_on_types_named: executeOnTypeId || null,
       input_variables: inputs,
+      output_variables: outputs,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scripts"] });
@@ -300,6 +304,74 @@ function ScriptEditor({ id, summaries, t }: {
         )}
         <p className="text-[10px] text-muted-foreground mt-1">
           {t("scripts.inputs_hint")}
+        </p>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <Label className="text-[11px]">{t("scripts.outputs_title")}</Label>
+          <Button
+            size="sm" variant="outline" className="h-6 text-[10px]"
+            onClick={() => {
+              setOutputs([...outputs, { name: "", description: "", path: "" }]);
+              setDirty(true);
+            }}
+          >
+            <Plus className="w-3 h-3" />
+            {t("scripts.outputs_add")}
+          </Button>
+        </div>
+        {outputs.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground italic">{t("scripts.outputs_empty")}</p>
+        ) : (
+          <div className="space-y-1 border rounded p-2">
+            {outputs.map((v, idx) => (
+              <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center">
+                <Input
+                  value={v.name}
+                  onChange={(e) => {
+                    const next = [...outputs];
+                    next[idx] = { ...next[idx]!, name: e.target.value };
+                    setOutputs(next); setDirty(true);
+                  }}
+                  className="h-7 text-[11px] font-mono"
+                  placeholder="VAR_NAME"
+                />
+                <Input
+                  value={v.description}
+                  onChange={(e) => {
+                    const next = [...outputs];
+                    next[idx] = { ...next[idx]!, description: e.target.value };
+                    setOutputs(next); setDirty(true);
+                  }}
+                  className="h-7 text-[11px]"
+                  placeholder={t("scripts.outputs_description_placeholder")}
+                />
+                <Input
+                  value={v.path}
+                  onChange={(e) => {
+                    const next = [...outputs];
+                    next[idx] = { ...next[idx]!, path: e.target.value };
+                    setOutputs(next); setDirty(true);
+                  }}
+                  className="h-7 text-[11px] font-mono"
+                  placeholder={t("scripts.outputs_path_placeholder")}
+                />
+                <Button
+                  variant="ghost" size="icon" className="h-6 w-6"
+                  onClick={() => {
+                    setOutputs(outputs.filter((_, i) => i !== idx));
+                    setDirty(true);
+                  }}
+                >
+                  <X className="w-3 h-3 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground mt-1">
+          {t("scripts.outputs_hint")}
         </p>
       </div>
 

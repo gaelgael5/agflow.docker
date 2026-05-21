@@ -23,8 +23,10 @@ from agflow.schemas.infra import (
     TestConnectionDryRunRequest,
     TestConnectionResponse,
 )
+from agflow.schemas.infra_env_vars import MachineEnvVarRow, MachineEnvVarUpsert
 from agflow.services import (
     infra_certificates_service,
+    infra_env_vars_service,
     infra_machines_runs_service,
     infra_machines_service,
     infra_named_type_actions_service,
@@ -889,3 +891,18 @@ async def action_swarm_leave(machine_id: UUID, payload: SwarmLeaveRequest):
         )
     except swarm_actions_service.SwarmActionError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+# ── Env vars de la machine ────────────────────────────────────────────────
+
+@router.get("/{machine_id}/env-vars", response_model=list[MachineEnvVarRow], dependencies=_admin)
+async def list_machine_env_vars(machine_id: UUID):
+    return await infra_env_vars_service.list_machine_env_vars(machine_id)
+
+
+@router.put("/{machine_id}/env-vars", response_model=list[MachineEnvVarRow], dependencies=_admin)
+async def upsert_machine_env_vars(machine_id: UUID, payload: MachineEnvVarUpsert):
+    try:
+        return await infra_env_vars_service.upsert_machine_env_vars(machine_id, payload.values)
+    except infra_env_vars_service.EnvVarForeignKeyError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

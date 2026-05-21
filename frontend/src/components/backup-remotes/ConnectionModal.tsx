@@ -59,9 +59,22 @@ export function ConnectionModal({
   );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
 
-  const useVault = isEdit && !username;
+  const useVault = isEdit && !username && !privateKey;
+
+  const buildCredentials = () => {
+    if (!username && !password && !privateKey) return undefined;
+    if (kind === "s3") return { access_key_id: username, secret_access_key: password };
+    if (kind === "sftp")
+      return {
+        username,
+        password,
+        ...(privateKey ? { private_key: privateKey } : {}),
+      };
+    return { username, password };
+  };
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -71,24 +84,18 @@ export function ConnectionModal({
           ? { port: kind === "ftps" ? "21" : "22" }
           : {}),
       };
-      const credentials =
-        username || password
-          ? kind === "s3"
-            ? { access_key_id: username, secret_access_key: password }
-            : { username, password }
-          : undefined;
       if (isEdit) {
         return api.patch(`/admin/backup-remotes/${connection.id}`, {
           name,
           config: finalConfig,
-          credentials,
+          credentials: buildCredentials(),
         });
       }
       return api.post("/admin/backup-remotes", {
         name,
         kind,
         config: finalConfig,
-        credentials,
+        credentials: buildCredentials(),
       });
     },
     onSuccess: () => {
@@ -108,15 +115,7 @@ export function ConnectionModal({
       : "/admin/backup-remotes/test";
     const body = useVault
       ? { path, config }
-      : {
-          kind,
-          config,
-          credentials:
-            kind === "s3"
-              ? { access_key_id: username, secret_access_key: password }
-              : { username, password },
-          path,
-        };
+      : { kind, config, credentials: buildCredentials(), path };
     try {
       const res = await api.post<{ ok: boolean; message?: string }>(url, body);
       setTestResults((r) => ({
@@ -132,8 +131,6 @@ export function ConnectionModal({
   };
 
   const pathKeys = kind === "s3" ? ["prefix_full"] : ["remote_path_full"];
-
-  const pathLabelKey = (_key: string): string => "path_full";
 
   const handleConfigChange = (key: string, value: string) =>
     setConfig((c) => ({ ...c, [key]: value }));
@@ -155,6 +152,7 @@ export function ConnectionModal({
                 onValueChange={(v) => {
                   setKind(v as Kind);
                   setConfig({});
+                  setPrivateKey("");
                 }}
               >
                 <SelectTrigger>
@@ -199,11 +197,13 @@ export function ConnectionModal({
               {pathKeys.map((key) => {
                 const result = testResults[key];
                 const pathFilled = Boolean(config[key]);
-                const hasCredentials = Boolean(username && password);
+                const hasCredentials = Boolean(
+                  (username && password) || (kind === "sftp" && username && privateKey),
+                );
                 const testDisabled = !pathFilled || (!useVault && !hasCredentials);
                 return (
                   <div key={key}>
-                    <Label>{t(`backup_remotes.${pathLabelKey(key)}`)}</Label>
+                    <Label>{t("backup_remotes.path_full")}</Label>
                     <div className="flex gap-2">
                       <Input
                         value={config[key] ?? ""}
@@ -237,9 +237,11 @@ export function ConnectionModal({
                 kind={kind}
                 username={username}
                 password={password}
+                privateKey={privateKey}
                 hasExisting={isEdit && connection.has_credentials}
                 onChangeUsername={setUsername}
                 onChangePassword={setPassword}
+                onChangePrivateKey={setPrivateKey}
               />
 
               {saveMutation.isError && (

@@ -21,7 +21,8 @@ class SftpProvider:
         self._port: int = int(config.get("port", 22))
         self._fingerprint: str | None = config.get("host_key_fingerprint")
         self._username: str = credentials.get("username", "")
-        self._password: str | None = credentials.get("password")
+        self._password: str | None = credentials.get("password") or None
+        self._private_key: str | None = credentials.get("private_key") or None
         if not self._fingerprint:
             _log.warning("sftp.host_key_check_disabled", host=self._host)
             self._known_hosts = None
@@ -35,7 +36,17 @@ class SftpProvider:
             "username": self._username,
             "known_hosts": self._known_hosts,
         }
-        if self._password:
+        if self._private_key:
+            try:
+                key = asyncssh.import_private_key(
+                    self._private_key, passphrase=self._password
+                )
+            except Exception as exc:
+                raise RemoteBackupProviderError(
+                    f"Invalid SSH private key or wrong passphrase: {exc}"
+                ) from exc
+            kw["client_keys"] = [key]
+        elif self._password:
             kw["password"] = self._password
         return kw
 

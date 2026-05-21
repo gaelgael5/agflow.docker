@@ -8,10 +8,11 @@ import structlog
 
 from agflow.config import get_settings
 from agflow.db.pool import execute, fetch_all, fetch_one
-from agflow.schemas.local_backups import LocalBackupSummary
+from agflow.schemas.local_backups import LocalBackupSummary, ScanResult
 from agflow.services import db_backup, local_backup_pushes_service
 from agflow.services import remote_backup_connections_service as rbc_service
 from agflow.services.backup_lock import backup_lock
+from agflow.services.remote_backup_providers import RemoteBackupProviderError
 from agflow.services.remote_backup_providers.factory import get_provider
 
 _log = structlog.get_logger(__name__)
@@ -237,6 +238,111 @@ async def delete_file_only(backup_id: UUID) -> None:
         "UPDATE local_backups SET local_file_present=false WHERE id=$1", backup_id
     )
     _log.info("local_backup.file_deleted", backup_id=str(backup_id))
+
+
+async def scan_from_schedules() -> ScanResult:
+    """Reconstruit l'historique des backups depuis les remotes de chaque planification full.
+
+    Pour chaque planification : liste les fichiers sur le remote dont le nom
+    correspond au slug (ex: delhi-agflow-db-*.sql.gz). Crée les rows
+    local_backups + local_backup_pushes pour les fichiers absents de la DB.
+    Les fichiers restent sur le remote — seuls les enregistrements DB sont créés.
+    """
+    from datetime import UTC, datetime
+
+    from agflow.services import backup_schedules_service
+
+    schedules = await backup_schedules_service.list_full_schedules()
+    imported = 0
+    skipped = 0
+    errors: list[str] = []
+
+    for schedule in schedules:
+        slug = db_backup._slugify(schedule.name)
+        prefix = f"{slug}-agflow-db-"
+
+        for remote_id in schedule.remote_connection_ids:
+            try:
+                connection = await rbc_service.get_connection(None, remote_id)
+                if connection is None:
+                    errors.append(
+                        f"schedule={schedule.name!r}: remote {remote_id} not found"
+                    )
+                    continue
+                credentials = await rbc_service.fetch_credentials(connection)
+                if credentials is None:
+                    errors.append(
+                        f"schedule={schedule.name!r}: remote {remote_id} has no credentials"
+                    )
+                    continue
+                provider = get_provider(connection.kind, connection.config, credentials)
+                files = await provider.list_remote("full")
+            except RemoteBackupProviderError as exc:
+                errors.append(
+                    f"schedule={schedule.name!r}, remote={remote_id}: {exc}"
+                )
+                continue
+
+            for f in files:
+                if not (
+                    f.filename.startswith(prefix) and f.filename.endswith(".sql.gz")
+                ):
+                    continue
+
+                existing = await fetch_one(
+                    "SELECT id FROM local_backups WHERE filename = $1", f.filename
+                )
+                if existing:
+                    skipped += 1
+                    continue
+
+                # Extrait l'horodatage du nom : {prefix}{YYYYMMDD}-{HHMMSS}.sql.gz
+                ts_part = f.filename[len(prefix):].removesuffix(".sql.gz")
+                try:
+                    created_at = datetime.strptime(ts_part, "%Y%m%d-%H%M%S").replace(
+                        tzinfo=UTC
+                    )
+                except ValueError:
+                    created_at = f.last_modified or datetime.now(UTC)
+
+                backup_id = uuid4()
+                await execute(
+                    "INSERT INTO local_backups "
+                    "  (id, filename, file_path, status, size_bytes, "
+                    "   source_schedule_full_id, local_file_present, created_at) "
+                    "VALUES ($1, $2, '', 'completed', $3, $4, false, $5)",
+                    backup_id,
+                    f.filename,
+                    f.size_bytes,
+                    schedule.id,
+                    created_at,
+                )
+                await execute(
+                    "INSERT INTO local_backup_pushes "
+                    "  (local_backup_id, remote_connection_id, status, "
+                    "   remote_path, size_bytes, pushed_at) "
+                    "VALUES ($1, $2, 'ok', $3, $4, $5)",
+                    backup_id,
+                    remote_id,
+                    f"full/{f.filename}",
+                    f.size_bytes,
+                    created_at,
+                )
+                imported += 1
+                _log.info(
+                    "local_backup.scan_imported",
+                    filename=f.filename,
+                    schedule=schedule.name,
+                    remote_id=str(remote_id),
+                )
+
+    _log.info(
+        "local_backup.scan_done",
+        imported=imported,
+        skipped=skipped,
+        errors=len(errors),
+    )
+    return ScanResult(imported=imported, skipped=skipped, errors=errors)
 
 
 async def delete_backup(backup_id: UUID) -> None:

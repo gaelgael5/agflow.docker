@@ -27,6 +27,12 @@ export interface RestoreResult {
   output_tail: string;
 }
 
+export interface ScanResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
 export const backupsApi = {
   async listLocal(): Promise<LocalBackup[]> {
     const res = await api.get<LocalBackup[]>("/admin/local-backups");
@@ -59,6 +65,11 @@ export const backupsApi = {
       `/admin/local-backups/${backupId}/restore`,
       { filename },
     );
+    return res.data;
+  },
+
+  async scanFromSchedules(): Promise<ScanResult> {
+    const res = await api.post<ScanResult>("/admin/local-backups/scan-schedules");
     return res.data;
   },
 };

@@ -1447,6 +1447,9 @@
     "kind_s3": "S3 / Compatible",
     "username": "Username",
     "password": "Password",
+    "password_or_passphrase": "Password / passphrase (if key is encrypted)",
+    "private_key": "SSH private key (optional)",
+    "private_key_hint": "Leave blank to use password authentication. If the key is encrypted, enter its passphrase in the field below.",
     "access_key_id": "Access Key ID",
     "secret_access_key": "Secret Access Key",
     "endpoint_url": "Endpoint URL (blank = AWS)",
@@ -1649,6 +1652,13 @@
       "running": "Creating export…",
       "success": "Export created",
       "error": "Failed: {{msg}}"
+    },
+    "scanImport": {
+      "button": "Import",
+      "running": "Scanning remotes…",
+      "success": "{{imported}} file(s) imported, {{skipped}} already present",
+      "successWithErrors": "{{imported}} imported, {{skipped}} already present — {{errorCount}} remote error(s)",
+      "error": "Scan failed: {{msg}}"
     },
     "pitr": {
       "title": "Point-In-Time Recovery (PITR)",

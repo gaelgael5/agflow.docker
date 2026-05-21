@@ -4,6 +4,7 @@ import { BackupNowButton } from "@/components/backups/BackupNowButton";
 import { FullSchedulesSection } from "@/components/backups/FullSchedulesSection";
 import { LocalBackupsSection } from "@/components/backups/LocalBackupsSection";
 import { PitrSection } from "@/components/backups/PitrSection";
+import { ScanImportButton } from "@/components/backups/ScanImportButton";
 
 export function BackupsPage() {
   const { t } = useTranslation();
@@ -16,7 +17,10 @@ export function BackupsPage() {
             {t("backups.page_subtitle")}
           </p>
         </div>
-        <BackupNowButton />
+        <div className="flex gap-2">
+          <ScanImportButton />
+          <BackupNowButton />
+        </div>
       </div>
 
       <FullSchedulesSection />

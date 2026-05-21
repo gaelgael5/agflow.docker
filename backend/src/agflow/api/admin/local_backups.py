@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from agflow.auth.dependencies import require_admin
 from agflow.db.pool import get_pool
 from agflow.schemas.local_backup_pushes import LocalBackupPushSummary
-from agflow.schemas.local_backups import LocalBackupSummary
+from agflow.schemas.local_backups import LocalBackupSummary, ScanResult
 from agflow.schemas.remote_backup_files import PullRequest, RestoreResult
 from agflow.services import (
     local_backup_pushes_service,
@@ -140,6 +140,12 @@ async def restore_backup(backup_id: UUID, body: PullRequest) -> RestoreResult:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/scan-schedules", response_model=ScanResult, status_code=200)
+async def scan_schedules() -> ScanResult:
+    """Scanne les remotes de chaque planification full et reconstruit l'historique en DB."""
+    return await local_backups_service.scan_from_schedules()
 
 
 @router.get("/{backup_id}/pushes", response_model=list[LocalBackupPushSummary])

@@ -1454,6 +1454,9 @@
     "kind_s3": "S3 / Compatible",
     "username": "Nom d'utilisateur",
     "password": "Mot de passe",
+    "password_or_passphrase": "Mot de passe / passphrase (si clé chiffrée)",
+    "private_key": "Clé privée SSH (optionnel)",
+    "private_key_hint": "Laissez vide pour utiliser l'authentification par mot de passe. Si la clé est chiffrée, renseignez la passphrase dans le champ ci-dessous.",
     "access_key_id": "Access Key ID",
     "secret_access_key": "Secret Access Key",
     "endpoint_url": "URL endpoint (vide = AWS)",
@@ -1656,6 +1659,13 @@
       "running": "Création de l'export en cours…",
       "success": "Export créé",
       "error": "Échec : {{msg}}"
+    },
+    "scanImport": {
+      "button": "Importer",
+      "running": "Scan des remotes en cours…",
+      "success": "{{imported}} fichier(s) importé(s), {{skipped}} déjà présent(s)",
+      "successWithErrors": "{{imported}} importé(s), {{skipped}} déjà présent(s) — {{errorCount}} erreur(s) remote",
+      "error": "Échec du scan : {{msg}}"
     },
     "pitr": {
       "title": "Restauration à un point dans le temps (PITR)",

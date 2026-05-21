@@ -19,3 +19,9 @@ class LocalBackupSummary(BaseModel):
     source_kind: Literal["manual", "full"] = "manual"
     local_file_present: bool = True
     pushes: list[LocalBackupPushSummary] = []
+
+
+class ScanResult(BaseModel):
+    imported: int
+    skipped: int
+    errors: list[str]

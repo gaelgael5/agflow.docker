@@ -365,16 +365,14 @@ function UploadDialog({ open, onClose, onCreate, t }: {
   const fileRef = useRef<HTMLInputElement>(null);
   const publicFileRef = useRef<HTMLInputElement>(null);
 
+  // Vault effectif : choix explicite de l'utilisateur, sinon coffre par défaut, sinon premier coffre
+  const effectiveVaultName = vaultName || defaultVault?.name || vaults[0]?.name || "";
+
   useEffect(() => {
     if (!open) return;
     setName(""); setPrivateKey(""); setPublicKey(""); setPassphrase(""); setSaving(false);
+    setVaultName(""); // reset pour que effectiveVaultName reprenne le coffre par défaut
   }, [open]);
-
-  useEffect(() => {
-    if (open && !vaultName) {
-      setVaultName(defaultVault?.name ?? vaults[0]?.name ?? "");
-    }
-  }, [open, vaults, defaultVault, vaultName]);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -413,7 +411,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
           {vaults.length > 0 && (
             <div>
               <Label className="text-[11px]">{t("infra.cert_vault")}</Label>
-              <Select value={vaultName} onValueChange={setVaultName}>
+              <Select value={effectiveVaultName} onValueChange={setVaultName}>
                 <SelectTrigger className="mt-1 h-9 text-sm">
                   <SelectValue />
                 </SelectTrigger>
@@ -453,7 +451,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
               className={textareaClass}
             />
             <p className="mt-1 text-[10px] text-muted-foreground font-mono">
-              {t("infra.cert_vault_path_private", { vault: vaultName || "<vault>" })}
+              {t("infra.cert_vault_path_private", { vault: effectiveVaultName || "<vault>" })}
             </p>
           </div>
           <div>
@@ -479,7 +477,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
               className={textareaClass}
             />
             <p className="mt-1 text-[10px] text-muted-foreground font-mono">
-              {t("infra.cert_vault_path_public", { vault: vaultName || "<vault>" })}
+              {t("infra.cert_vault_path_public", { vault: effectiveVaultName || "<vault>" })}
             </p>
           </div>
           <div>
@@ -499,7 +497,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
                   private_key: privateKey,
                   public_key: publicKey || undefined,
                   passphrase: passphrase || undefined,
-                  vault_name: vaultName || undefined,
+                  vault_name: effectiveVaultName || undefined,
                 });
                 toast.success(t("infra.cert_uploaded"));
               } catch (e) {

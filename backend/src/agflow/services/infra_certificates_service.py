@@ -37,6 +37,10 @@ def _path_passphrase(cert_id: UUID) -> str:
     return f"certificates/{cert_id}/passphrase"
 
 
+def _path_public_key(cert_id: UUID) -> str:
+    return f"certificates/{cert_id}/public_key"
+
+
 async def _require_default_vault_name() -> str:
     """Résout le nom du coffre Harpocrate par défaut. Lève si aucun configuré."""
     default = await harpocrate_vaults_service.get_default()
@@ -130,7 +134,9 @@ async def get_public_key(cert_id: UUID) -> str | None:
 
     stored = row.get("public_key")
     if stored:
-        return stored
+        resolved = await _read_secret(stored)
+        if resolved:
+            return resolved
 
     encrypted_private = row.get("private_key")
     if not encrypted_private:
@@ -165,7 +171,7 @@ async def get_decrypted(cert_id: UUID) -> dict[str, Any]:
         "id": row["id"],
         "name": row["name"],
         "private_key": await _read_secret(row["private_key"]),
-        "public_key": row["public_key"],
+        "public_key": await _read_secret(row["public_key"]),
         "passphrase": await _read_secret(row["passphrase"]),
     }
 
@@ -194,6 +200,13 @@ async def create(
             created_paths.append(pass_path)
             pass_ref = vault_client.build_ref(vault_name, pass_path)
 
+        pub_ref: str | None = None
+        if public_key is not None:
+            pub_path = _path_public_key(cert_id)
+            await vault_client.create_secret(pub_path, public_key, vault_name=vault_name)
+            created_paths.append(pub_path)
+            pub_ref = vault_client.build_ref(vault_name, pub_path)
+
         row = await fetch_one(
             f"""
             INSERT INTO infra_certificates
@@ -201,7 +214,7 @@ async def create(
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING {_COLS}
             """,
-            cert_id, name, key_type, priv_ref, public_key, pass_ref,
+            cert_id, name, key_type, priv_ref, pub_ref, pass_ref,
         )
         assert row is not None
     except Exception:
@@ -262,11 +275,12 @@ async def update(cert_id: UUID, **kwargs: Any) -> CertificateSummary:
 
     new_private_key = kwargs.pop("private_key", None)
     new_passphrase = kwargs.pop("passphrase", None)
+    new_public_key = kwargs.pop("public_key", None)
 
-    if new_private_key is not None or new_passphrase is not None:
+    if new_private_key is not None or new_passphrase is not None or new_public_key is not None:
         vault_name = await _require_default_vault_name()
         existing = await fetch_one(
-            "SELECT private_key, passphrase FROM infra_certificates WHERE id = $1",
+            "SELECT private_key, public_key, passphrase FROM infra_certificates WHERE id = $1",
             cert_id,
         )
         assert existing is not None
@@ -291,8 +305,18 @@ async def update(cert_id: UUID, **kwargs: Any) -> CertificateSummary:
                 ref, cert_id,
             )
 
+        if new_public_key is not None:
+            ref = await _upsert_vault_secret(
+                existing["public_key"], _path_public_key(cert_id),
+                new_public_key, vault_name,
+            )
+            await execute(
+                "UPDATE infra_certificates SET public_key = $1 WHERE id = $2",
+                ref, cert_id,
+            )
+
     updates: dict[str, Any] = {}
-    for field in ("name", "public_key"):
+    for field in ("name",):
         if field in kwargs and kwargs[field] is not None:
             updates[field] = kwargs[field]
 
@@ -309,14 +333,14 @@ async def update(cert_id: UUID, **kwargs: Any) -> CertificateSummary:
 
 async def delete(cert_id: UUID) -> None:
     existing = await fetch_one(
-        "SELECT private_key, passphrase FROM infra_certificates WHERE id = $1",
+        "SELECT private_key, public_key, passphrase FROM infra_certificates WHERE id = $1",
         cert_id,
     )
     if existing is None:
         raise CertificateNotFoundError(f"Certificate {cert_id} not found")
 
     refs_to_purge: list[tuple[str, str]] = []  # (vault_name, path)
-    for raw in (existing["private_key"], existing["passphrase"]):
+    for raw in (existing["private_key"], existing["public_key"], existing["passphrase"]):
         parsed = vault_client.parse_ref(raw)
         if parsed is not None:
             refs_to_purge.append(parsed)

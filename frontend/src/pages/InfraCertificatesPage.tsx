@@ -349,7 +349,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
   open: boolean;
   onClose: () => void;
   onCreate: (p: { name: string; private_key: string; public_key?: string; passphrase?: string }) => Promise<void>;
-  t: (key: string) => string;
+  t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const [name, setName] = useState("");
   const [privateKey, setPrivateKey] = useState("");
@@ -448,7 +448,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
               className={textareaClass}
             />
             <p className="mt-1 text-[10px] text-muted-foreground font-mono">
-              {t("infra.cert_db_path_public")}
+              {t("infra.cert_vault_path_public")}
             </p>
           </div>
           <div>

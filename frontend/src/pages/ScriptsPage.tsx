@@ -94,8 +94,8 @@ export function ScriptsPage() {
         />
       </div>
 
-      <div className="px-4 md:px-8 pb-6 md:pb-10 grid grid-cols-[260px_1fr] gap-4 flex-1 min-h-0">
-        <Card className="overflow-hidden h-full flex flex-col">
+      <div className="px-4 md:px-8 pb-6 md:pb-10 flex gap-4 flex-1 min-h-0 overflow-hidden">
+        <Card className="w-[260px] shrink-0 overflow-hidden flex flex-col">
           <div className="shrink-0 p-2 border-b text-[11px] font-semibold text-muted-foreground">
             {t("scripts.list")}
           </div>
@@ -128,9 +128,11 @@ export function ScriptsPage() {
         </Card>
 
         {selectedId ? (
-          <ScriptEditor id={selectedId} summaries={scripts} t={t} />
+          <div className="flex-1 min-w-0 flex">
+            <ScriptEditor id={selectedId} summaries={scripts} t={t} />
+          </div>
         ) : (
-          <Card className="p-8 text-center text-[12px] text-muted-foreground italic">
+          <Card className="flex-1 p-8 text-center text-[12px] text-muted-foreground italic">
             {t("scripts.select_one")}
           </Card>
         )}
@@ -238,7 +240,7 @@ function ScriptEditor({ id, summaries, t }: {
   }
 
   return (
-    <Card className="p-4 flex flex-col h-full min-h-0 overflow-hidden">
+    <Card className="flex-1 min-w-0 p-4 flex flex-col h-full min-h-0 overflow-hidden">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="flex items-center justify-between shrink-0">
           <TabsList>

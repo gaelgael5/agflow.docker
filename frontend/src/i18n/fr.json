@@ -93,7 +93,9 @@
     "deploy_tab_empty": "Aucun script lié aux groupes de ce déploiement.",
     "deploy_tab_no_inputs": "(pas de variable déclarée)",
     "tab_properties": "Propriétés",
-    "tab_content": "Contenu"
+    "tab_content": "Contenu",
+    "target_env_vars_title": "Variables de la cible ({{count}})",
+    "target_env_vars_empty": "Aucune variable déclarée pour cette cible."
   },
   "assistant": {
     "not_configured": "Aucun agent n'est configuré comme assistant. Désignez-en un dans l'éditeur d'agent.",

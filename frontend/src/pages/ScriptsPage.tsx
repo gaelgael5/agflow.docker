@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileCode, FileJson, Plus, Save, Trash2, X } from "lucide-react";
+import { FileCode, FileJson, Lock, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   scriptsApi,
@@ -11,6 +11,7 @@ import {
   type ScriptSummary,
 } from "@/lib/scriptsApi";
 import { useInfraNamedTypes } from "@/hooks/useInfra";
+import { useNamedTypeEnvVars } from "@/hooks/useInfraEnvVars";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ShellEditor } from "@/components/ShellEditor";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -178,6 +179,7 @@ function ScriptEditor({ id, summaries, t }: {
   const [showJsonExtract, setShowJsonExtract] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState("properties");
+  const { data: targetEnvVars } = useNamedTypeEnvVars(executeOnTypeId || null);
 
   useEffect(() => {
     if (!detailQuery.data) return;
@@ -270,6 +272,31 @@ function ScriptEditor({ id, summaries, t }: {
               </select>
             </div>
           </div>
+
+          {executeOnTypeId && (
+            <div className="rounded border bg-muted/30 p-2">
+              <p className="text-[11px] font-medium mb-1.5">
+                {t("scripts.target_env_vars_title", { count: String(targetEnvVars?.length ?? 0) })}
+              </p>
+              {targetEnvVars && targetEnvVars.length === 0 ? (
+                <p className="text-[10px] text-muted-foreground italic">
+                  {t("scripts.target_env_vars_empty")}
+                </p>
+              ) : (
+                <div className="space-y-0.5">
+                  {(targetEnvVars ?? []).map((ev) => (
+                    <div key={ev.id} className="flex items-center gap-2 text-[11px]">
+                      <span className="font-mono">{`{${ev.name}}`}</span>
+                      {ev.is_secret && <Lock className="w-3 h-3 text-muted-foreground shrink-0" />}
+                      {ev.description && (
+                        <span className="text-muted-foreground truncate">{ev.description}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <Label className="text-[11px]">{t("scripts.description")}</Label>

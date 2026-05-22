@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileCode, FileJson, Lock, Plus, Save, Trash2, X } from "lucide-react";
+import { Copy, FileCode, FileJson, Lock, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   scriptsApi,
@@ -236,8 +236,8 @@ function ScriptEditor({ id, summaries, t }: {
   }
 
   return (
-    <Card className="p-4 flex flex-col min-h-0">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
+    <Card className="p-4 flex flex-col min-h-0 overflow-hidden">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
         <div className="flex items-center justify-between shrink-0">
           <TabsList>
             <TabsTrigger value="properties">{t("scripts.tab_properties")}</TabsTrigger>
@@ -258,7 +258,7 @@ function ScriptEditor({ id, summaries, t }: {
           </Button>
         </div>
 
-        <TabsContent value="properties" className="flex-1 min-h-0 overflow-y-auto space-y-3 mt-2">
+        <TabsContent value="properties" className="flex-1 overflow-y-auto space-y-3 mt-2">
           <div className="grid grid-cols-[1fr_1fr] gap-3 items-end">
             <div>
               <Label className="text-[11px]">{t("scripts.name")}</Label>
@@ -296,6 +296,14 @@ function ScriptEditor({ id, summaries, t }: {
                 <div className="space-y-0.5">
                   {(targetEnvVars ?? []).map((ev) => (
                     <div key={ev.id} className="flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground shrink-0"
+                        title={t("common.copy")}
+                        onClick={() => void navigator.clipboard.writeText(`{${ev.name}}`)}
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
                       <span className="font-mono">{`{${ev.name}}`}</span>
                       {ev.is_secret && <Lock className="w-3 h-3 text-muted-foreground shrink-0" />}
                       {ev.description && (
@@ -496,7 +504,7 @@ function ScriptEditor({ id, summaries, t }: {
           </div>
         </TabsContent>
 
-        <TabsContent value="content" className="flex flex-col flex-1 min-h-0 mt-2">
+        <TabsContent value="content" className="flex flex-col flex-1 overflow-hidden mt-2">
           <ShellEditor
             value={content}
             onChange={(v) => { setContent(v); setDirty(true); }}
@@ -507,7 +515,7 @@ function ScriptEditor({ id, summaries, t }: {
           </p>
         </TabsContent>
 
-        <TabsContent value="commands" className="flex-1 min-h-0 overflow-y-auto space-y-3 mt-2">
+        <TabsContent value="commands" className="flex-1 overflow-y-auto space-y-3 mt-2">
           {commands.length === 0 ? (
             <p className="text-[10px] text-muted-foreground italic">{t("scripts.commands_empty")}</p>
           ) : (
@@ -521,7 +529,7 @@ function ScriptEditor({ id, summaries, t }: {
                       next[idx] = { ...next[idx]!, name: e.target.value };
                       setCommands(next); setDirty(true);
                     }}
-                    className="h-7 w-20 text-[11px] font-mono"
+                    className="h-7 flex-1 text-[11px] font-mono"
                     placeholder={t("scripts.commands_name_placeholder")}
                   />
                   <Button

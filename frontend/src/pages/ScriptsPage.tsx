@@ -515,7 +515,8 @@ function ScriptEditor({ id, summaries, t }: {
           </p>
         </TabsContent>
 
-        <TabsContent value="commands" className="flex-1 overflow-y-auto space-y-3 mt-2">
+        <TabsContent value="commands" className="flex-1 min-h-0 overflow-hidden mt-2">
+          <div className="h-full overflow-y-auto space-y-3">
           {commands.length === 0 ? (
             <p className="text-[10px] text-muted-foreground italic">{t("scripts.commands_empty")}</p>
           ) : (
@@ -533,7 +534,7 @@ function ScriptEditor({ id, summaries, t }: {
                     placeholder={t("scripts.commands_name_placeholder")}
                   />
                   <Button
-                    variant="ghost" size="icon" className="h-6 w-6 ml-auto"
+                    variant="ghost" size="icon" className="h-6 w-6"
                     onClick={() => { setCommands(commands.filter((_, i) => i !== idx)); setDirty(true); }}
                   >
                     <X className="w-3 h-3 text-destructive" />
@@ -563,6 +564,7 @@ function ScriptEditor({ id, summaries, t }: {
             <Plus className="w-3 h-3" />
             {t("scripts.commands_add")}
           </Button>
+          </div>
         </TabsContent>
       </Tabs>
 

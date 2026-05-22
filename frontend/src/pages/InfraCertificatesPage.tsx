@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Copy, Download, Edit2, KeyRound, ShieldPlus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useInfraCertificates } from "@/hooks/useInfra";
+import { useHarpocrateVaults } from "@/hooks/useHarpocrateVaults";
 import { infraCertificatesApi, type CertificateSummary } from "@/lib/infraApi";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
@@ -15,6 +16,9 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -348,22 +352,29 @@ function GenerateDialog({ open, onClose, onGenerated, t }: {
 function UploadDialog({ open, onClose, onCreate, t }: {
   open: boolean;
   onClose: () => void;
-  onCreate: (p: { name: string; private_key: string; public_key?: string; passphrase?: string }) => Promise<void>;
+  onCreate: (p: { name: string; private_key: string; public_key?: string; passphrase?: string; vault_name?: string }) => Promise<void>;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
+  const { vaults, defaultVault } = useHarpocrateVaults();
   const [name, setName] = useState("");
   const [privateKey, setPrivateKey] = useState("");
   const [publicKey, setPublicKey] = useState("");
   const [passphrase, setPassphrase] = useState("");
+  const [vaultName, setVaultName] = useState("");
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const publicFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    setName(""); setPrivateKey(""); setPublicKey(""); setPassphrase("");
-    setSaving(false);
+    setName(""); setPrivateKey(""); setPublicKey(""); setPassphrase(""); setSaving(false);
   }, [open]);
+
+  useEffect(() => {
+    if (open && !vaultName) {
+      setVaultName(defaultVault?.name ?? vaults[0]?.name ?? "");
+    }
+  }, [open, vaults, defaultVault, vaultName]);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -399,6 +410,26 @@ function UploadDialog({ open, onClose, onCreate, t }: {
             <Label className="text-[11px]">{t("infra.cert_name")}</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" autoFocus />
           </div>
+          {vaults.length > 0 && (
+            <div>
+              <Label className="text-[11px]">{t("infra.cert_vault")}</Label>
+              <Select value={vaultName} onValueChange={setVaultName}>
+                <SelectTrigger className="mt-1 h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {vaults.map((v) => (
+                    <SelectItem key={v.id} value={v.name}>
+                      {v.name}
+                      {v.is_default && (
+                        <span className="ml-2 text-xs text-muted-foreground">{t("infra.cert_vault_default")}</span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label className="text-[11px]">{t("infra.cert_private_key")}</Label>
             <div className="flex gap-2 mt-1">
@@ -422,7 +453,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
               className={textareaClass}
             />
             <p className="mt-1 text-[10px] text-muted-foreground font-mono">
-              {t("infra.cert_vault_path_private")}
+              {t("infra.cert_vault_path_private", { vault: vaultName || "<vault>" })}
             </p>
           </div>
           <div>
@@ -448,7 +479,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
               className={textareaClass}
             />
             <p className="mt-1 text-[10px] text-muted-foreground font-mono">
-              {t("infra.cert_vault_path_public")}
+              {t("infra.cert_vault_path_public", { vault: vaultName || "<vault>" })}
             </p>
           </div>
           <div>
@@ -468,6 +499,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
                   private_key: privateKey,
                   public_key: publicKey || undefined,
                   passphrase: passphrase || undefined,
+                  vault_name: vaultName || undefined,
                 });
                 toast.success(t("infra.cert_uploaded"));
               } catch (e) {

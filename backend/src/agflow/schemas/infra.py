@@ -101,6 +101,7 @@ class CertificateCreate(BaseModel):
     private_key: str = Field(min_length=1)
     public_key: str | None = None
     passphrase: str | None = None
+    vault_name: str | None = None
 
 
 class CertificateUpdate(BaseModel):

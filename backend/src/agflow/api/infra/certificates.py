@@ -33,6 +33,7 @@ async def create_certificate(payload: CertificateCreate):
         private_key=payload.private_key,
         public_key=payload.public_key,
         passphrase=payload.passphrase,
+        vault_name=payload.vault_name,
     )
 
 

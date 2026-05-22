@@ -182,9 +182,11 @@ async def create(
     public_key: str | None = None,
     passphrase: str | None = None,
     key_type: str = "rsa",
+    vault_name: str | None = None,
 ) -> CertificateSummary:
-    """Crée un certificat. Les secrets vivent dans le coffre Harpocrate par défaut."""
-    vault_name = await _require_default_vault_name()
+    """Crée un certificat. Les secrets vivent dans le coffre Harpocrate indiqué (ou le coffre par défaut)."""
+    if vault_name is None:
+        vault_name = await _require_default_vault_name()
     cert_id = uuid4()
     created_paths: list[str] = []
     try:

@@ -372,6 +372,7 @@ export interface CertificateCreatePayload {
   private_key: string;
   public_key?: string;
   passphrase?: string;
+  vault_name?: string;
 }
 
 export interface CertificateGeneratePayload {

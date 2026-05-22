@@ -1406,12 +1406,18 @@
     "env_var_delete_message": "Êtes-vous sûr de vouloir supprimer « {{name}} » ?",
     "env_var_deleted": "Variable supprimée",
     "env_var_delete_error": "Erreur lors de la suppression de la variable",
+    "machine_tab_general": "Général",
+    "machine_tab_env_vars": "Variables d'env",
     "machine_env_vars_title": "Valeurs des variables d'environnement",
     "machine_env_vars_empty": "Aucune variable d'environnement à renseigner pour cette machine",
+    "machine_env_vars_save_first": "Enregistrez d'abord la machine pour configurer ses variables d'environnement.",
     "machine_env_vars_save_button": "Enregistrer",
     "machine_env_vars_saved": "Variables enregistrées",
     "machine_env_vars_save_error": "Erreur lors de l'enregistrement des variables",
-    "machine_env_var_value_placeholder": "Valeur…"
+    "machine_env_var_value_placeholder": "Valeur…",
+    "machine_env_var_secret_placeholder": "Nouvelle valeur secrète…",
+    "machine_env_var_vault_label": "Coffre Harpocrate",
+    "machine_env_var_vault_default": "par défaut"
   },
   "sessions": {
     "page_title": "Sessions",

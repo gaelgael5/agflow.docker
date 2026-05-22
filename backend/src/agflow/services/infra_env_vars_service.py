@@ -13,6 +13,7 @@ import structlog
 from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.schemas.infra_env_vars import (
     MachineEnvVarRow,
+    MachineSecretEntry,
     NamedTypeEnvVarRow,
     ProjectEnvVarsCheck,
     ProjectEnvVarsCheckMissing,
@@ -56,9 +57,34 @@ def _to_machine_row(row: dict[str, Any]) -> MachineEnvVarRow:
         name=row["name"],
         description=row.get("description", ""),
         value=row.get("value", ""),
+        is_secret=row.get("is_secret", False),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
+
+
+async def _upsert_vault_secret(
+    existing_ref: str | None, path: str, new_value: str, vault_name: str,
+) -> str:
+    """Garantit que `path` contient `new_value` dans le coffre ; retourne le vault ref."""
+    from agflow.services import vault_client
+    parsed = vault_client.parse_ref(existing_ref) if existing_ref else None
+    if parsed is not None:
+        existing_vault, existing_path = parsed
+        if existing_vault == vault_name and existing_path == path:
+            await vault_client.update_secret(path, new_value, vault_name=vault_name)
+        else:
+            await vault_client.create_secret(path, new_value, vault_name=vault_name)
+            try:
+                await vault_client.delete_secret(existing_path, vault_name=existing_vault)
+            except Exception:
+                _log.warning(
+                    "infra_env_vars.vault_cleanup_failed",
+                    vault=existing_vault, path=existing_path,
+                )
+    else:
+        await vault_client.create_secret(path, new_value, vault_name=vault_name)
+    return vault_client.build_ref(vault_name, path)
 
 
 # ── named_type env vars CRUD ─────────────────────────────────────────────────
@@ -161,6 +187,7 @@ async def list_machine_env_vars(machine_id: UUID) -> list[MachineEnvVarRow]:
             nv.id                              AS named_type_env_var_id,
             nv.name,
             nv.description,
+            nv.is_secret,
             coalesce(mv.value, '')             AS value,
             coalesce(mv.created_at, now())     AS created_at,
             coalesce(mv.updated_at, now())     AS updated_at
@@ -179,12 +206,16 @@ async def list_machine_env_vars(machine_id: UUID) -> list[MachineEnvVarRow]:
 async def upsert_machine_env_vars(
     machine_id: UUID,
     values: dict[UUID, str],
+    secrets: dict[UUID, MachineSecretEntry] | None = None,
 ) -> list[MachineEnvVarRow]:
-    """Upsert atomique des valeurs. Lève EnvVarForeignKeyError si un ID est inconnu."""
-    if not values:
+    """Upsert atomique des valeurs + secrets vault. Lève EnvVarForeignKeyError si un ID est inconnu."""
+    secrets = secrets or {}
+
+    if not values and not secrets:
         return await list_machine_env_vars(machine_id)
 
     # Vérifier que tous les IDs appartiennent au contrat de la machine
+    all_ids = set(values.keys()) | set(secrets.keys())
     valid_ids = {
         r["id"]
         for r in await fetch_all(
@@ -196,28 +227,46 @@ async def upsert_machine_env_vars(
             machine_id,
         )
     }
-    unknown = set(values.keys()) - valid_ids
+    unknown = all_ids - valid_ids
     if unknown:
         raise EnvVarForeignKeyError(
             f"env_var ids {unknown} do not belong to machine {machine_id}'s named_type"
         )
 
+    # Résoudre les secrets : stocker dans le coffre, récupérer le vault ref
+    final_values = dict(values)
+    for ev_id, entry in secrets.items():
+        path = f"env-vars/{machine_id}/{ev_id}"
+        existing_row = await fetch_one(
+            "SELECT value FROM infra_machine_env_vars "
+            "WHERE machine_id = $1 AND named_type_env_var_id = $2",
+            machine_id, ev_id,
+        )
+        existing_ref = existing_row["value"] if existing_row else None
+        ref = await _upsert_vault_secret(existing_ref, path, entry.value, entry.vault_name)
+        final_values[ev_id] = ref
+
     from agflow.db.pool import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn, conn.transaction():
-            for ev_id, val in values.items():
-                await conn.execute(
-                    """
-                    INSERT INTO infra_machine_env_vars
-                        (machine_id, named_type_env_var_id, value)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (machine_id, named_type_env_var_id)
-                    DO UPDATE SET value = EXCLUDED.value, updated_at = now()
-                    """,
-                    machine_id, ev_id, val,
-                )
+        for ev_id, val in final_values.items():
+            await conn.execute(
+                """
+                INSERT INTO infra_machine_env_vars
+                    (machine_id, named_type_env_var_id, value)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (machine_id, named_type_env_var_id)
+                DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+                """,
+                machine_id, ev_id, val,
+            )
 
-    _log.info("infra_env_vars.upsert_machine", machine_id=str(machine_id), count=len(values))
+    _log.info(
+        "infra_env_vars.upsert_machine",
+        machine_id=str(machine_id),
+        count=len(final_values),
+        secrets_count=len(secrets),
+    )
     return await list_machine_env_vars(machine_id)
 
 

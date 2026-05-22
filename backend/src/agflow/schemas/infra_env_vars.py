@@ -39,20 +39,28 @@ class NamedTypeEnvVarUpdate(BaseModel):
 
 
 class MachineEnvVarRow(BaseModel):
-    """Vue dénormalisée : inclut name + description issus du contrat."""
+    """Vue dénormalisée : inclut name + description + is_secret issus du contrat."""
     id: UUID
     machine_id: UUID
     named_type_env_var_id: UUID
     name: str
     description: str
     value: str
+    is_secret: bool = False
     created_at: datetime
     updated_at: datetime
 
 
+class MachineSecretEntry(BaseModel):
+    """Valeur secrète à stocker dans Harpocrate pour une variable de machine."""
+    vault_name: str
+    value: str
+
+
 class MachineEnvVarUpsert(BaseModel):
-    """Upsert atomique — dict {named_type_env_var_id (str) → value}."""
-    values: dict[UUID, str]
+    """Upsert atomique — valeurs plain + secrets à stocker dans le coffre."""
+    values: dict[UUID, str] = Field(default_factory=dict)
+    secrets: dict[UUID, MachineSecretEntry] = Field(default_factory=dict)
 
 
 class ProjectEnvVarsCheckMissing(BaseModel):

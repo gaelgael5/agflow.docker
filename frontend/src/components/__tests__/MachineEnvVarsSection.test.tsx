@@ -13,6 +13,9 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/components/StatusIndicator", () => ({
   StatusIndicator: ({ status }: { status: string }) => <span data-testid={`status-${status}`} />,
 }));
+vi.mock("@/hooks/useHarpocrateVaults", () => ({
+  useHarpocrateVaults: () => ({ vaults: [], defaultVault: undefined, isLoading: false }),
+}));
 
 const MACHINE_ID = "m-1";
 
@@ -42,6 +45,7 @@ describe("MachineEnvVarsSection", () => {
         name: "HOST",
         description: "The host",
         value: "example.com",
+        is_secret: false,
         created_at: "",
         updated_at: "",
       },
@@ -61,6 +65,7 @@ describe("MachineEnvVarsSection", () => {
         name: "HOST",
         description: "",
         value: "",
+        is_secret: false,
         created_at: "",
         updated_at: "",
       },

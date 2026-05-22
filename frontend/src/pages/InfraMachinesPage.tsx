@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -680,6 +681,7 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [activeTab, setActiveTab] = useState("general");
   const isEdit = !!initial;
 
   useEffect(() => {
@@ -702,6 +704,7 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
     setSaving(false);
     setTesting(false);
     setTestResult(null);
+    setActiveTab("general");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -741,118 +744,132 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
         <DialogHeader>
           <DialogTitle>{isEdit ? t("infra.machine_edit_title") : t("infra.machine_dialog_title")}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label className="text-[11px]">{t("infra.machine_name_col")}</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" autoFocus placeholder={t("infra.machine_name_placeholder")} />
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("infra.machine_type")}</Label>
-            {isEdit ? (
-              <Input value={namedTypes.find((nt) => nt.id === typeId)?.name ?? ""} disabled className="mt-1 opacity-60" />
-            ) : (
-              <select value={typeId} onChange={(e) => setTypeId(e.target.value)} className={selectClass}>
-                <option value="">—</option>
-                {namedTypes.map((nt) => (
-                  <option key={nt.id} value={nt.id}>{nt.name}</option>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="w-full">
+            <TabsTrigger value="general" className="flex-1">{t("infra.machine_tab_general")}</TabsTrigger>
+            <TabsTrigger value="env_vars" className="flex-1">{t("infra.machine_tab_env_vars")}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="general" className="space-y-3 pt-2">
+            <div>
+              <Label className="text-[11px]">{t("infra.machine_name_col")}</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" autoFocus placeholder={t("infra.machine_name_placeholder")} />
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("infra.machine_type")}</Label>
+              {isEdit ? (
+                <Input value={namedTypes.find((nt) => nt.id === typeId)?.name ?? ""} disabled className="mt-1 opacity-60" />
+              ) : (
+                <select value={typeId} onChange={(e) => setTypeId(e.target.value)} className={selectClass}>
+                  <option value="">—</option>
+                  {namedTypes.map((nt) => (
+                    <option key={nt.id} value={nt.id}>{nt.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("infra.machine_host")}</Label>
+              <Input value={host} onChange={(e) => setHost(e.target.value)} className="mt-1 font-mono text-[12px]" />
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("infra.machine_port")}</Label>
+              <Input value={port} onChange={(e) => setPort(e.target.value)} className="mt-1 font-mono text-[12px]" />
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("infra.machine_username")}</Label>
+              <Input value={username} onChange={(e) => setUsername(e.target.value)} className="mt-1" />
+              <p className="mt-1 text-[10px] text-muted-foreground font-mono">
+                {t("infra.machine_db_path_username")}
+              </p>
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("infra.machine_password")}</Label>
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1"
+                placeholder={isEdit ? t("infra.machine_password_unchanged") : ""} />
+              <p className="mt-1 text-[10px] text-muted-foreground font-mono">
+                {t("infra.machine_vault_path_password")}
+              </p>
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("infra.machine_certificate")}</Label>
+              <select value={certificateId} onChange={(e) => setCertificateId(e.target.value)} className={selectClass}>
+                <option value="">— {t("common.none")} —</option>
+                {certificates.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("infra.machine_owner_user")}</Label>
+              <select value={userId} onChange={(e) => setUserId(e.target.value)} className={selectClass}>
+                <option value="">— {t("infra.machine_owner_shared")} —</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted-foreground mt-1">{t("infra.machine_owner_hint")}</p>
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("infra.machine_environment")}</Label>
+              <Input
+                value={environment}
+                onChange={(e) => setEnvironment(e.target.value)}
+                className="mt-1 font-mono text-[12px]"
+                placeholder={t("infra.machine_environment_placeholder")}
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">{t("infra.machine_environment_hint")}</p>
+            </div>
+            {testResult !== null && (
+              <div
+                className={`rounded border p-2 text-[12px] ${
+                  testResult.success
+                    ? "border-green-600/40 bg-green-600/10 text-green-700 dark:text-green-400"
+                    : "border-destructive/40 bg-destructive/10 text-destructive"
+                }`}
+              >
+                {testResult.success
+                  ? `✓ ${t("infra.machine_test_ok")} — ${testResult.message}`
+                  : `✗ ${t("infra.machine_test_failed")} : ${testResult.message}`}
+              </div>
             )}
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("infra.machine_host")}</Label>
-            <Input value={host} onChange={(e) => setHost(e.target.value)} className="mt-1 font-mono text-[12px]" />
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("infra.machine_port")}</Label>
-            <Input value={port} onChange={(e) => setPort(e.target.value)} className="mt-1 font-mono text-[12px]" />
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("infra.machine_username")}</Label>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} className="mt-1" />
-            <p className="mt-1 text-[10px] text-muted-foreground font-mono">
-              {t("infra.machine_db_path_username")}
-            </p>
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("infra.machine_password")}</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1"
-              placeholder={isEdit ? t("infra.machine_password_unchanged") : ""} />
-            <p className="mt-1 text-[10px] text-muted-foreground font-mono">
-              {t("infra.machine_vault_path_password")}
-            </p>
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("infra.machine_certificate")}</Label>
-            <select value={certificateId} onChange={(e) => setCertificateId(e.target.value)} className={selectClass}>
-              <option value="">— {t("common.none")} —</option>
-              {certificates.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("infra.machine_owner_user")}</Label>
-            <select value={userId} onChange={(e) => setUserId(e.target.value)} className={selectClass}>
-              <option value="">— {t("infra.machine_owner_shared")} —</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name || u.email}</option>
-              ))}
-            </select>
-            <p className="text-[10px] text-muted-foreground mt-1">{t("infra.machine_owner_hint")}</p>
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("infra.machine_environment")}</Label>
-            <Input
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value)}
-              className="mt-1 font-mono text-[12px]"
-              placeholder={t("infra.machine_environment_placeholder")}
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">{t("infra.machine_environment_hint")}</p>
-          </div>
-        </div>
-        {testResult !== null && (
-          <div
-            className={`mt-2 rounded border p-2 text-[12px] ${
-              testResult.success
-                ? "border-green-600/40 bg-green-600/10 text-green-700 dark:text-green-400"
-                : "border-destructive/40 bg-destructive/10 text-destructive"
-            }`}
-          >
-            {testResult.success
-              ? `✓ ${t("infra.machine_test_ok")} — ${testResult.message}`
-              : `✗ ${t("infra.machine_test_failed")} : ${testResult.message}`}
-          </div>
-        )}
-        {initial && (
-          <div className="border-t pt-4 mt-4">
-            <MachineEnvVarsSection machineId={initial.id} />
-          </div>
-        )}
+          </TabsContent>
+          <TabsContent value="env_vars" className="pt-2">
+            {initial ? (
+              <MachineEnvVarsSection machineId={initial.id} />
+            ) : (
+              <p className="text-sm text-muted-foreground italic">
+                {t("infra.machine_env_vars_save_first")}
+              </p>
+            )}
+          </TabsContent>
+        </Tabs>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
-          <Button variant="secondary" disabled={!canTest} onClick={handleTest}>
-            {testing ? t("infra.machine_test_in_progress") : t("infra.machine_test_button")}
-          </Button>
-          <Button disabled={!canSubmit || saving} onClick={async () => {
-            setSaving(true);
-            try {
-              await onSubmit({
-                name: name.trim(),
-                type_id: typeId,
-                host: host.trim(),
-                port: parseInt(port || "22", 10),
-                username: username || undefined,
-                password: password || undefined,
-                certificate_id: certificateId || undefined,
-                user_id: userId || undefined,
-                environment: environment.trim() || undefined,
-              });
-            } finally { setSaving(false); }
-          }}>
-            {saving ? "..." : t("common.confirm")}
-          </Button>
+          {activeTab === "general" && (
+            <>
+              <Button variant="secondary" disabled={!canTest} onClick={handleTest}>
+                {testing ? t("infra.machine_test_in_progress") : t("infra.machine_test_button")}
+              </Button>
+              <Button disabled={!canSubmit || saving} onClick={async () => {
+                setSaving(true);
+                try {
+                  await onSubmit({
+                    name: name.trim(),
+                    type_id: typeId,
+                    host: host.trim(),
+                    port: parseInt(port || "22", 10),
+                    username: username || undefined,
+                    password: password || undefined,
+                    certificate_id: certificateId || undefined,
+                    user_id: userId || undefined,
+                    environment: environment.trim() || undefined,
+                  });
+                } finally { setSaving(false); }
+              }}>
+                {saving ? "..." : t("common.confirm")}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

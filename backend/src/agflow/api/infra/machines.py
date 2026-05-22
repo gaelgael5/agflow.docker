@@ -903,6 +903,8 @@ async def list_machine_env_vars(machine_id: UUID):
 @router.put("/{machine_id}/env-vars", response_model=list[MachineEnvVarRow], dependencies=_admin)
 async def upsert_machine_env_vars(machine_id: UUID, payload: MachineEnvVarUpsert):
     try:
-        return await infra_env_vars_service.upsert_machine_env_vars(machine_id, payload.values)
+        return await infra_env_vars_service.upsert_machine_env_vars(
+            machine_id, payload.values, secrets=payload.secrets,
+        )
     except infra_env_vars_service.EnvVarForeignKeyError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

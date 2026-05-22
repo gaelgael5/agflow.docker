@@ -32,12 +32,19 @@ export interface MachineEnvVar {
   name: string;
   description: string;
   value: string;
+  is_secret: boolean;
   created_at: string;
   updated_at: string;
 }
 
+export interface MachineSecretEntry {
+  vault_name: string;
+  value: string;
+}
+
 export interface MachineEnvVarUpsert {
   values: Record<string, string>;
+  secrets?: Record<string, MachineSecretEntry>;
 }
 
 export interface ProjectEnvVarsCheckMissing {

@@ -236,8 +236,8 @@ function ScriptEditor({ id, summaries, t }: {
   }
 
   return (
-    <Card className="p-4 flex flex-col min-h-0 overflow-hidden">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
+    <Card className="p-4 flex flex-col h-full min-h-0 overflow-hidden">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="flex items-center justify-between shrink-0">
           <TabsList>
             <TabsTrigger value="properties">{t("scripts.tab_properties")}</TabsTrigger>
@@ -258,7 +258,7 @@ function ScriptEditor({ id, summaries, t }: {
           </Button>
         </div>
 
-        <TabsContent value="properties" className="flex-1 overflow-y-auto space-y-3 mt-2">
+        <TabsContent value="properties" className="flex-1 min-h-0 overflow-y-auto space-y-3 mt-2">
           <div className="grid grid-cols-[1fr_1fr] gap-3 items-end">
             <div>
               <Label className="text-[11px]">{t("scripts.name")}</Label>

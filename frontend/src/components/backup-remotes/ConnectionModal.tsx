@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useHarpocrateVaults } from "@/hooks/useHarpocrateVaults";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -52,6 +53,7 @@ export function ConnectionModal({
   const qc = useQueryClient();
   const isEdit = connection !== null;
 
+  const { vaults, defaultVault } = useHarpocrateVaults();
   const [kind, setKind] = useState<Kind>(connection?.kind ?? "sftp");
   const [name, setName] = useState(connection?.name ?? "");
   const [config, setConfig] = useState<Record<string, string>>(
@@ -59,7 +61,13 @@ export function ConnectionModal({
   );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [vaultName, setVaultName] = useState("");
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
+
+  const effectiveVaultName = vaultName || defaultVault?.name || vaults[0]?.name || "";
+  const vaultHint = t("backup_remotes.credentials_vault_path", {
+    vault: effectiveVaultName || "<vault>",
+  });
 
   const useVault = isEdit && !username;
 
@@ -89,6 +97,7 @@ export function ConnectionModal({
         kind,
         config: finalConfig,
         credentials: buildCredentials(),
+        vault_name: effectiveVaultName || undefined,
       });
     },
     onSuccess: () => {
@@ -226,6 +235,25 @@ export function ConnectionModal({
                 );
               })}
 
+              {!isEdit && vaults.length > 0 && (
+                <div>
+                  <Label>{t("backup_remotes.vault")}</Label>
+                  <Select value={effectiveVaultName} onValueChange={setVaultName}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vaults.map((v) => (
+                        <SelectItem key={v.id} value={v.name}>
+                          {v.name}
+                          {v.is_default ? ` ${t("backup_remotes.vault_default")}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <CredentialsFields
                 kind={kind}
                 username={username}
@@ -233,6 +261,7 @@ export function ConnectionModal({
                 hasExisting={isEdit && connection.has_credentials}
                 onChangeUsername={setUsername}
                 onChangePassword={setPassword}
+                vaultHint={vaultHint}
               />
 
               {saveMutation.isError && (

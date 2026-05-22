@@ -10,6 +10,7 @@ interface CredentialsFieldsProps {
   hasExisting: boolean;
   onChangeUsername: (v: string) => void;
   onChangePassword: (v: string) => void;
+  vaultHint?: string;
 }
 
 export function CredentialsFields({
@@ -19,6 +20,7 @@ export function CredentialsFields({
   hasExisting,
   onChangeUsername,
   onChangePassword,
+  vaultHint,
 }: CredentialsFieldsProps) {
   const { t } = useTranslation();
   const placeholder = hasExisting ? "••••••••" : "";
@@ -48,6 +50,9 @@ export function CredentialsFields({
           value={username}
           onChange={(e) => onChangeUsername(e.target.value)}
         />
+        {vaultHint && (
+          <p className="mt-1 text-[10px] text-muted-foreground font-mono">{vaultHint}</p>
+        )}
       </div>
 
       <div>
@@ -62,6 +67,9 @@ export function CredentialsFields({
           value={password}
           onChange={(e) => onChangePassword(e.target.value)}
         />
+        {vaultHint && (
+          <p className="mt-1 text-[10px] text-muted-foreground font-mono">{vaultHint}</p>
+        )}
       </div>
     </>
   );

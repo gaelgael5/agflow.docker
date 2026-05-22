@@ -189,10 +189,10 @@ async def _provider_for(remote_id: UUID):
 
     credentials: dict = {}
     if conn_row.get("vault_secret_path"):
-        from agflow.services import vault_client
-
-        raw = await vault_client.get_secret(conn_row["vault_secret_path"])
-        credentials = json.loads(raw)
+        from agflow.services.remote_backup_connections_service import (
+            _read_vault_credentials,
+        )
+        credentials = await _read_vault_credentials(conn_row["vault_secret_path"])
 
     credentials = await inject_certificate_credentials(config, credentials)
     return get_provider(conn_row["kind"], config, credentials)

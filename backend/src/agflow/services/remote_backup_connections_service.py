@@ -5,12 +5,46 @@ from uuid import UUID, uuid4
 
 import structlog
 
-from agflow.config import get_settings
 from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.schemas.remote_backup_connections import RemoteBackupConnectionSummary
 from agflow.services import vault_client
 
 _log = structlog.get_logger(__name__)
+
+
+async def _require_vault_name(vault_name: str | None) -> str:
+    """Retourne vault_name s'il est fourni, sinon le coffre par défaut. Lève si aucun configuré."""
+    if vault_name is not None:
+        return vault_name
+    from agflow.services import harpocrate_vaults_service
+    default = await harpocrate_vaults_service.get_default()
+    if default is None:
+        raise vault_client.VaultNotFoundError(
+            "No default Harpocrate vault configured — see /settings"
+        )
+    return default.name
+
+
+async def _read_vault_credentials(stored: str) -> dict:
+    """Lit un secret credentials depuis Harpocrate.
+    `stored` peut être un vault ref (${vault://name:path}) ou un chemin nu (rétrocompat).
+    """
+    parsed = vault_client.parse_ref(stored)
+    if parsed:
+        vname, path = parsed
+        raw = await vault_client.get_secret(path, vault_name=vname)
+    else:
+        raw = await vault_client.get_secret(stored)
+    return json.loads(raw)
+
+
+async def _delete_vault_credentials(stored: str) -> None:
+    parsed = vault_client.parse_ref(stored)
+    if parsed:
+        vname, path = parsed
+        await vault_client.delete_secret(path, vault_name=vname)
+    else:
+        await vault_client.delete_secret(stored)
 
 # ─── helpers DB internes (facilement mockables dans les tests) ─────────────
 #
@@ -94,9 +128,11 @@ async def fetch_credentials(connection: RemoteBackupConnectionSummary) -> dict |
     """Lit les credentials depuis Harpocrate. NE PAS appeler dans les listings."""
     if not connection.has_credentials:
         return None
-    path = f"remote-backups/{connection.id}"
-    raw = await vault_client.get_secret(path)
-    return json.loads(raw)
+    row = await _fetch_row_by_id(connection.id)
+    if row is None:
+        return None
+    stored = row.get("vault_secret_path") or f"remote-backups/{connection.id}"
+    return await _read_vault_credentials(stored)
 
 
 async def create_connection(
@@ -107,30 +143,29 @@ async def create_connection(
     config: dict,
     credentials: dict | None,
     created_by_user_id: UUID | None = None,
+    vault_name: str | None = None,
 ) -> UUID:
-    settings = get_settings()
     connection_id = uuid4()
-    vault_api_key_id: str | None = None
     vault_secret_path: str | None = None
 
     if credentials:
+        vname = await _require_vault_name(vault_name)
         path = f"remote-backups/{connection_id}"
-        await vault_client.create_secret(path, json.dumps(credentials))
-        vault_api_key_id = settings.harpocrate_vault_api_key_id
-        vault_secret_path = path
+        await vault_client.create_secret(path, json.dumps(credentials), vault_name=vname)
+        vault_secret_path = vault_client.build_ref(vname, path)
 
     try:
         await _insert_row(
             connection_id=connection_id,
             name=name, kind=kind, config=config,
-            vault_api_key_id=vault_api_key_id,
+            vault_api_key_id=None,
             vault_secret_path=vault_secret_path,
             created_by_user_id=created_by_user_id,
         )
     except Exception:
         if vault_secret_path:
             try:
-                await vault_client.delete_secret(vault_secret_path)
+                await _delete_vault_credentials(vault_secret_path)
             except Exception as cleanup_err:
                 _log.warning("rbc.vault_cleanup_failed", path=vault_secret_path, error=str(cleanup_err))
         raise
@@ -152,19 +187,26 @@ async def update_connection(
         raise ValueError(f"Connection {connection_id} not found")
 
     if credentials is not None and row["vault_secret_path"]:
-        await vault_client.update_secret(row["vault_secret_path"], json.dumps(credentials))
+        stored = row["vault_secret_path"]
+        parsed = vault_client.parse_ref(stored)
+        if parsed:
+            vname, path = parsed
+            await vault_client.update_secret(path, json.dumps(credentials), vault_name=vname)
+        else:
+            await vault_client.update_secret(stored, json.dumps(credentials))
     elif credentials is not None:
-        settings = get_settings()
+        vname = await _require_vault_name(None)
         path = f"remote-backups/{connection_id}"
-        await vault_client.create_secret(path, json.dumps(credentials))
+        await vault_client.create_secret(path, json.dumps(credentials), vault_name=vname)
+        new_ref = vault_client.build_ref(vname, path)
         try:
             await execute(
                 "UPDATE remote_backup_connections SET vault_api_key_id=$1, vault_secret_path=$2 WHERE id=$3",
-                settings.harpocrate_vault_api_key_id, path, connection_id,
+                None, new_ref, connection_id,
             )
         except Exception:
             try:
-                await vault_client.delete_secret(path)
+                await vault_client.delete_secret(path, vault_name=vname)
             except Exception as cleanup_err:
                 _log.warning("rbc.vault_cleanup_failed", path=path, error=str(cleanup_err))
             raise
@@ -204,7 +246,7 @@ async def delete_connection(conn, connection_id: UUID) -> None:
     await _soft_delete_row(connection_id)
     if row["vault_secret_path"]:
         try:
-            await vault_client.delete_secret(row["vault_secret_path"])
+            await _delete_vault_credentials(row["vault_secret_path"])
         except Exception as exc:
             _log.warning("rbc.vault_delete_failed",
                          path=row["vault_secret_path"], error=str(exc),

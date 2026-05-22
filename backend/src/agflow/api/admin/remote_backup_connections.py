@@ -90,6 +90,7 @@ async def create_connection(
                 config=body.config,
                 credentials=body.credentials,
                 created_by_user_id=user_uuid,
+                vault_name=body.vault_name,
             )
             dto = await rbc_service.get_connection(conn, connection_id)
     except asyncpg.UniqueViolationError as exc:

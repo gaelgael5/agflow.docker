@@ -22,6 +22,7 @@ class RemoteBackupConnectionCreate(BaseModel):
     kind: str
     config: dict[str, Any] = Field(default_factory=dict)
     credentials: dict[str, Any] | None = None
+    vault_name: str | None = None
 
     @field_validator("kind")
     @classmethod

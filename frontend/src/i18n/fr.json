@@ -1471,7 +1471,10 @@
     "not_configured": "Non configuré",
     "test_request_failed": "Échec de la requête",
     "delete_aria": "Supprimer cette connexion",
-    "delete_description": "Supprimer « {{name}} » ? Cette action est irréversible."
+    "delete_description": "Supprimer « {{name}} » ? Cette action est irréversible.",
+    "vault": "Coffre Harpocrate",
+    "vault_default": "(par défaut)",
+    "credentials_vault_path": "${vault://{{vault}}:remote-backups/<id>}"
   },
   "backups": {
     "page_title": "Sauvegardes & exports",

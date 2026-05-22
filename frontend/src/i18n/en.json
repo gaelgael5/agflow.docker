@@ -1464,7 +1464,10 @@
     "not_configured": "Not configured",
     "test_request_failed": "Request failed",
     "delete_aria": "Delete this connection",
-    "delete_description": "Delete \"{{name}}\"? This action is irreversible."
+    "delete_description": "Delete \"{{name}}\"? This action is irreversible.",
+    "vault": "Harpocrate vault",
+    "vault_default": "(default)",
+    "credentials_vault_path": "${vault://{{vault}}:remote-backups/<id>}"
   },
   "backups": {
     "page_title": "Backups & exports",

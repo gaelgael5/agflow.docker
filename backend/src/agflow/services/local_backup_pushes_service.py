@@ -129,11 +129,12 @@ async def push_one(*, backup_id: UUID, remote_id: UUID) -> LocalBackupPushSummar
     )
 
     try:
-        provider = await _provider_for(remote_id)
+        provider, remote_dir = await _provider_for(remote_id)
         remote_path, size_bytes = await _push_to_remote(
             provider=provider,
             local_file_path=backup["file_path"],
             filename=backup["filename"],
+            remote_dir=remote_dir,
         )
         await execute(
             "UPDATE local_backup_pushes "
@@ -169,11 +170,16 @@ async def push_one(*, backup_id: UUID, remote_id: UUID) -> LocalBackupPushSummar
 # ---------------------------------------------------------------------------
 
 
-async def _provider_for(remote_id: UUID):
-    """Résout la connexion + credentials + instancie le provider."""
+async def _provider_for(remote_id: UUID) -> tuple:
+    """Résout la connexion + credentials + instancie le provider.
+
+    Retourne (provider, remote_dir) où remote_dir est le chemin configuré
+    pour les full backups (remote_path_full), ou "full" si non configuré.
+    """
     from agflow.services.remote_backup_connections_service import (
         _fetch_row_by_id,
         inject_certificate_credentials,
+        resolve_remote_path,
     )
     from agflow.services.remote_backup_providers.factory import get_provider
 
@@ -195,7 +201,9 @@ async def _provider_for(remote_id: UUID):
         credentials = await _read_vault_credentials(conn_row["vault_secret_path"])
 
     credentials = await inject_certificate_credentials(config, credentials)
-    return get_provider(conn_row["kind"], config, credentials)
+    provider = get_provider(conn_row["kind"], config, credentials)
+    remote_dir = resolve_remote_path(config, conn_row["kind"], "full") or "full"
+    return provider, remote_dir
 
 
 async def _push_to_remote(
@@ -203,6 +211,7 @@ async def _push_to_remote(
     provider,
     local_file_path: str,
     filename: str,
+    remote_dir: str,
 ) -> tuple[str, int]:
     """Upload via provider.upload_stream. Retourne (remote_path, size_bytes)."""
 
@@ -212,7 +221,6 @@ async def _push_to_remote(
             while chunk := fh.read(65536):
                 yield chunk
 
-    remote_dir = "full"
     size_bytes: int = await provider.upload_stream(remote_dir, filename, _file_chunks())
     remote_path = f"{remote_dir}/{filename}"
     return remote_path, size_bytes

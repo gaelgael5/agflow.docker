@@ -68,7 +68,7 @@ async def test_push_all_pending_happy_marks_ok():
 
     with patch(
         "agflow.services.local_backup_pushes_service._provider_for",
-        new=AsyncMock(return_value=fake_provider),
+        new=AsyncMock(return_value=(fake_provider, "/opt/backups")),
     ):
         all_ok = await local_backup_pushes_service.push_all_pending(backup_id=bid)
     assert all_ok is True
@@ -99,7 +99,7 @@ async def test_push_all_pending_partial_fail_returns_false():
     async def _fake_provider_for(*args, **kwargs):
         p = providers[call_count["i"]]
         call_count["i"] += 1
-        return p
+        return p, "/opt/backups"
 
     with patch(
         "agflow.services.local_backup_pushes_service._provider_for",
@@ -128,7 +128,7 @@ async def test_push_one_idempotent_when_already_ok():
     fake_provider = AsyncMock()
     with patch(
         "agflow.services.local_backup_pushes_service._provider_for",
-        new=AsyncMock(return_value=fake_provider),
+        new=AsyncMock(return_value=(fake_provider, "/opt/backups")),
     ):
         await local_backup_pushes_service.push_one(backup_id=bid, remote_id=rid)
     fake_provider.upload_stream.assert_not_called()

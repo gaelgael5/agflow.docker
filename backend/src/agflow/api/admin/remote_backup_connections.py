@@ -236,6 +236,7 @@ async def update_connection(
                 name=body.name,
                 config=body.config,
                 credentials=body.credentials,
+                vault_name=body.vault_name,
             )
             dto = await rbc_service.get_connection(conn, connection_id)
     except ValueError as exc:

@@ -90,6 +90,7 @@ export function ConnectionModal({
           name,
           config: finalConfig,
           credentials: buildCredentials(),
+          vault_name: effectiveVaultName || undefined,
         });
       }
       return api.post("/admin/backup-remotes", {
@@ -235,7 +236,7 @@ export function ConnectionModal({
                 );
               })}
 
-              {!isEdit && vaults.length > 0 && (
+              {vaults.length > 0 && (
                 <div>
                   <Label>{t("backup_remotes.vault")}</Label>
                   <Select value={effectiveVaultName} onValueChange={setVaultName}>

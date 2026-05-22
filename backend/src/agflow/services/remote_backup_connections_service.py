@@ -181,6 +181,7 @@ async def update_connection(
     name: str | None = None,
     config: dict | None = None,
     credentials: dict | None = None,
+    vault_name: str | None = None,
 ) -> None:
     row = await _fetch_row_by_id(connection_id)
     if row is None:
@@ -195,7 +196,7 @@ async def update_connection(
         else:
             await vault_client.update_secret(stored, json.dumps(credentials))
     elif credentials is not None:
-        vname = await _require_vault_name(None)
+        vname = await _require_vault_name(vault_name)
         path = f"remote-backups/{connection_id}"
         await vault_client.create_secret(path, json.dumps(credentials), vault_name=vname)
         new_ref = vault_client.build_ref(vname, path)

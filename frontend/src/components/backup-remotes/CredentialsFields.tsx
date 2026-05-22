@@ -50,9 +50,6 @@ export function CredentialsFields({
           value={username}
           onChange={(e) => onChangeUsername(e.target.value)}
         />
-        {vaultHint && (
-          <p className="mt-1 text-[10px] text-muted-foreground font-mono">{vaultHint}</p>
-        )}
       </div>
 
       <div>

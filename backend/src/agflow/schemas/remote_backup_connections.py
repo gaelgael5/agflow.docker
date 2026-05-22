@@ -38,6 +38,7 @@ class RemoteBackupConnectionUpdate(BaseModel):
     name: str | None = None
     config: dict[str, Any] | None = None
     credentials: dict[str, Any] | None = None
+    vault_name: str | None = None
 
 
 class TestConnectionRequest(BaseModel):

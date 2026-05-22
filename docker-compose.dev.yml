@@ -35,6 +35,9 @@ services:
     image: agflow-backend:latest
     container_name: agflow-backend
     restart: unless-stopped
+    dns:
+      - 192.168.10.2
+      - 8.8.8.8
     env_file: .env
     environment:
       # Where the backend will mirror dockerfiles + roles on disk (bind-mounted

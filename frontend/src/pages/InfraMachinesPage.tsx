@@ -770,11 +770,17 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
           <div>
             <Label className="text-[11px]">{t("infra.machine_username")}</Label>
             <Input value={username} onChange={(e) => setUsername(e.target.value)} className="mt-1" />
+            <p className="mt-1 text-[10px] text-muted-foreground font-mono">
+              {t("infra.machine_db_path_username")}
+            </p>
           </div>
           <div>
             <Label className="text-[11px]">{t("infra.machine_password")}</Label>
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1"
               placeholder={isEdit ? t("infra.machine_password_unchanged") : ""} />
+            <p className="mt-1 text-[10px] text-muted-foreground font-mono">
+              {t("infra.machine_vault_path_password")}
+            </p>
           </div>
           <div>
             <Label className="text-[11px]">{t("infra.machine_certificate")}</Label>

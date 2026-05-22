@@ -421,6 +421,9 @@ function UploadDialog({ open, onClose, onCreate, t }: {
               rows={4}
               className={textareaClass}
             />
+            <p className="mt-1 text-[10px] text-muted-foreground font-mono">
+              {t("infra.cert_vault_path_private")}
+            </p>
           </div>
           <div>
             <Label className="text-[11px]">{t("infra.cert_public_key")}</Label>
@@ -444,6 +447,9 @@ function UploadDialog({ open, onClose, onCreate, t }: {
               rows={2}
               className={textareaClass}
             />
+            <p className="mt-1 text-[10px] text-muted-foreground font-mono">
+              {t("infra.cert_db_path_public")}
+            </p>
           </div>
           <div>
             <Label className="text-[11px]">{t("infra.cert_passphrase")}</Label>

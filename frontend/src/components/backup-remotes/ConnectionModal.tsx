@@ -130,7 +130,7 @@ export function ConnectionModal({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-[44rem]" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>
             {isEdit ? connection.name : t("backup_remotes.add")}
@@ -189,7 +189,10 @@ export function ConnectionModal({
               {pathKeys.map((key) => {
                 const result = testResults[key];
                 const pathFilled = Boolean(config[key]);
-                const hasCredentials = Boolean(username && password);
+                const hasCertAuth = kind === "sftp" && Boolean(config["certificate_id"]);
+                const hasCredentials = hasCertAuth
+                  ? Boolean(username)
+                  : Boolean(username && password);
                 const testDisabled = !pathFilled || (!useVault && !hasCredentials);
                 return (
                   <div key={key}>

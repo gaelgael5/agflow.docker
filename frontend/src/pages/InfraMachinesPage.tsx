@@ -749,7 +749,7 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
             <TabsTrigger value="general" className="flex-1">{t("infra.machine_tab_general")}</TabsTrigger>
             <TabsTrigger value="env_vars" className="flex-1">{t("infra.machine_tab_env_vars")}</TabsTrigger>
           </TabsList>
-          <TabsContent value="general" className="space-y-3 pt-2">
+          <TabsContent value="general" className="h-[520px] overflow-y-auto space-y-3 pt-2 pr-1">
             <div>
               <Label className="text-[11px]">{t("infra.machine_name_col")}</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" autoFocus placeholder={t("infra.machine_name_placeholder")} />
@@ -833,7 +833,7 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
               </div>
             )}
           </TabsContent>
-          <TabsContent value="env_vars" className="pt-2">
+          <TabsContent value="env_vars" className="h-[520px] overflow-y-auto pt-2 pr-1">
             {initial ? (
               <MachineEnvVarsSection machineId={initial.id} />
             ) : (

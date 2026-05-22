@@ -70,6 +70,16 @@ class SftpProvider:
             conn = await asyncssh.connect(**self._connect_kwargs())
             async with conn, conn.start_sftp_client() as sftp:
                 await self._ensure_path(sftp, path)
+                test_file = f"{path.rstrip('/')}/.agflow-write-test"
+                try:
+                    f = await sftp.open(test_file, "wb")
+                    async with f:
+                        await f.write(b"\x00")
+                    await sftp.remove(test_file)
+                except (OSError, asyncssh.Error) as exc:
+                    raise RemoteBackupProviderError(
+                        f"SFTP write test failed at {path!r}: {exc}"
+                    ) from exc
         except RemoteBackupProviderError:
             raise
         except Exception as exc:

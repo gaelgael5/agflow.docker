@@ -1661,6 +1661,7 @@
       "keepLocal": "Conserver une copie locale",
       "remotes": "Connexions distantes",
       "noRemotes": "Aucune connexion distante configurée",
+      "testWrite": "Tester",
       "retention": "Rétention (N derniers exports)",
       "errorNoDestination": "Au moins une destination est requise (locale ou distante).",
       "complexCron": "Cron personnalisé",

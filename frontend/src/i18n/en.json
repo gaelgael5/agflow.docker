@@ -1654,6 +1654,7 @@
       "keepLocal": "Keep a local copy",
       "remotes": "Remote connections",
       "noRemotes": "No remote connection configured",
+      "testWrite": "Test",
       "retention": "Retention (last N exports)",
       "errorNoDestination": "At least one destination is required (local or remote).",
       "complexCron": "Custom cron",

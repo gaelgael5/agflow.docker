@@ -25,6 +25,9 @@ interface Connection {
   kind: string;
 }
 
+type TestState = "idle" | "testing" | "ok" | "error";
+interface TestResult { state: TestState; message?: string }
+
 export interface ScheduleFormProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -54,6 +57,7 @@ export function ScheduleForm({
   const [remoteConnectionIds, setRemoteConnectionIds] = useState<string[]>([]);
   const [retentionCount, setRetentionCount] = useState(10);
   const [cronFallback, setCronFallback] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
 
   useEffect(() => {
     if (mode === "edit" && initialSchedule) {
@@ -80,6 +84,7 @@ export function ScheduleForm({
       setRetentionCount(10);
       setCronFallback(null);
     }
+    setTestResults({});
   }, [mode, initialSchedule, open]);
 
   const hasDestination = keepLocal || remoteConnectionIds.length > 0;
@@ -89,6 +94,26 @@ export function ScheduleForm({
     setRemoteConnectionIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+  };
+
+  const testWrite = async (id: string) => {
+    setTestResults((prev) => ({ ...prev, [id]: { state: "testing" } }));
+    try {
+      const r = await api.post<{ ok: boolean; message?: string }>(
+        `/admin/backup-remotes/${id}/test-write`,
+      );
+      setTestResults((prev) => ({
+        ...prev,
+        [id]: r.data.ok
+          ? { state: "ok" }
+          : { state: "error", message: r.data.message ?? t("common.error") },
+      }));
+    } catch (err) {
+      setTestResults((prev) => ({
+        ...prev,
+        [id]: { state: "error", message: String(err) },
+      }));
+    }
   };
 
   const handleSubmit = async () => {
@@ -228,17 +253,48 @@ export function ScheduleForm({
                   {t("backups.form.noRemotes")}
                 </p>
               ) : (
-                remotesQuery.data?.map((r) => (
-                  <label key={r.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={remoteConnectionIds.includes(r.id)}
-                      onChange={() => toggleRemote(r.id)}
-                    />
-                    {r.name}{" "}
-                    <span className="text-xs text-muted-foreground">({r.kind})</span>
-                  </label>
-                ))
+                remotesQuery.data?.map((r) => {
+                  const checked = remoteConnectionIds.includes(r.id);
+                  const tr = testResults[r.id];
+                  return (
+                    <div key={r.id} className="flex items-center gap-2 text-sm">
+                      <label className="flex flex-1 items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleRemote(r.id)}
+                        />
+                        {r.name}{" "}
+                        <span className="text-xs text-muted-foreground">({r.kind})</span>
+                      </label>
+                      {checked && (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            disabled={tr?.state === "testing"}
+                            onClick={() => void testWrite(r.id)}
+                          >
+                            {tr?.state === "testing" ? "…" : t("backups.form.testWrite")}
+                          </Button>
+                          {tr?.state === "ok" && (
+                            <span className="text-xs text-green-600">✓</span>
+                          )}
+                          {tr?.state === "error" && (
+                            <span
+                              className="text-xs text-destructive"
+                              title={tr.message}
+                            >
+                              ✗
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

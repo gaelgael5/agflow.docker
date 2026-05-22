@@ -39,9 +39,15 @@ class FtpsProvider:
                 self._host, port=self._port, ssl=self._ssl_context()
             ) as client:
                 await client.login(self._username, self._password)
-                # Vérifie l'accès en listant le répertoire parent — sans muter le serveur.
                 parent = str(PurePosixPath(path).parent) if path not in ("", "/") else "/"
                 await client.list(parent)
+                test_path = f"{path.rstrip('/')}/.agflow-write-test"
+
+                async def _one_byte() -> AsyncIterator[bytes]:
+                    yield b"\x00"
+
+                await client.upload_stream(_one_byte(), test_path)
+                await client.remove(test_path)
         except RemoteBackupProviderError:
             raise
         except Exception as exc:

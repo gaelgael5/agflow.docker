@@ -283,6 +283,37 @@ async def test_connection_saved(
         return TestConnectionResult(ok=False, error="unexpected", message=str(exc))
 
 
+@router.post("/{connection_id}/test-write", response_model=TestConnectionResult)
+async def test_write_access(connection_id: UUID) -> TestConnectionResult:
+    """Test l'accès en écriture avec le chemin remote_path_full configuré."""
+    async with (await get_pool()).acquire() as conn:
+        dto = await rbc_service.get_connection(conn, connection_id)
+        if dto is None:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        credentials = await rbc_service.fetch_credentials(dto)
+    if credentials is None:
+        return TestConnectionResult(
+            ok=False, error="no_credentials",
+            message="No credentials stored for this connection",
+        )
+    path = rbc_service.resolve_remote_path(dto.config, dto.kind, "full")
+    if path is None:
+        return TestConnectionResult(
+            ok=False, error="no_path",
+            message="No remote_path_full configured for this connection",
+        )
+    try:
+        credentials = await rbc_service.inject_certificate_credentials(dto.config, credentials)
+        provider = get_provider(dto.kind, dto.config, credentials)
+        await provider.test_connection(path)
+        return TestConnectionResult(ok=True)
+    except (RemoteBackupProviderError, ValueError) as exc:
+        return TestConnectionResult(ok=False, error="provider_error", message=str(exc))
+    except Exception as exc:
+        _log.warning("rbc.test_write.unexpected", error=str(exc))
+        return TestConnectionResult(ok=False, error="unexpected", message=str(exc))
+
+
 @router.get("/{connection_id}/files", response_model=list[RemoteBackupFileDTO])
 async def list_remote_files(connection_id: UUID) -> list[RemoteBackupFileDTO]:
     """Liste les fichiers présents sur la cible distante (usage='full')."""

@@ -846,30 +846,28 @@ function MachineFormDialog({ open, initial, onClose, namedTypes, certificates, u
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
           {activeTab === "general" && (
-            <>
-              <Button variant="secondary" disabled={!canTest} onClick={handleTest}>
-                {testing ? t("infra.machine_test_in_progress") : t("infra.machine_test_button")}
-              </Button>
-              <Button disabled={!canSubmit || saving} onClick={async () => {
-                setSaving(true);
-                try {
-                  await onSubmit({
-                    name: name.trim(),
-                    type_id: typeId,
-                    host: host.trim(),
-                    port: parseInt(port || "22", 10),
-                    username: username || undefined,
-                    password: password || undefined,
-                    certificate_id: certificateId || undefined,
-                    user_id: userId || undefined,
-                    environment: environment.trim() || undefined,
-                  });
-                } finally { setSaving(false); }
-              }}>
-                {saving ? "..." : t("common.confirm")}
-              </Button>
-            </>
+            <Button variant="secondary" disabled={!canTest} onClick={handleTest}>
+              {testing ? t("infra.machine_test_in_progress") : t("infra.machine_test_button")}
+            </Button>
           )}
+          <Button disabled={!canSubmit || saving || activeTab !== "general"} onClick={async () => {
+            setSaving(true);
+            try {
+              await onSubmit({
+                name: name.trim(),
+                type_id: typeId,
+                host: host.trim(),
+                port: parseInt(port || "22", 10),
+                username: username || undefined,
+                password: password || undefined,
+                certificate_id: certificateId || undefined,
+                user_id: userId || undefined,
+                environment: environment.trim() || undefined,
+              });
+            } finally { setSaving(false); }
+          }}>
+            {saving ? "..." : t("common.confirm")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

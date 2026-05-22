@@ -6,6 +6,7 @@ export interface NamedTypeEnvVar {
   name: string;
   description: string;
   position: number;
+  is_secret: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -14,12 +15,14 @@ export interface NamedTypeEnvVarCreate {
   name: string;
   description?: string;
   position?: number;
+  is_secret?: boolean;
 }
 
 export interface NamedTypeEnvVarUpdate {
   name?: string;
   description?: string;
   position?: number;
+  is_secret?: boolean;
 }
 
 export interface MachineEnvVar {

@@ -42,6 +42,7 @@ def _to_nt_row(row: dict[str, Any]) -> NamedTypeEnvVarRow:
         name=row["name"],
         description=row.get("description", ""),
         position=row.get("position", 0),
+        is_secret=row.get("is_secret", False),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -64,7 +65,7 @@ def _to_machine_row(row: dict[str, Any]) -> MachineEnvVarRow:
 
 async def list_by_named_type(named_type_id: UUID) -> list[NamedTypeEnvVarRow]:
     rows = await fetch_all(
-        "SELECT id, named_type_id, name, description, position, created_at, updated_at "
+        "SELECT id, named_type_id, name, description, position, is_secret, created_at, updated_at "
         "FROM infra_named_type_env_vars WHERE named_type_id = $1 ORDER BY position, name",
         named_type_id,
     )
@@ -73,7 +74,7 @@ async def list_by_named_type(named_type_id: UUID) -> list[NamedTypeEnvVarRow]:
 
 async def get_env_var_by_id(env_var_id: UUID) -> NamedTypeEnvVarRow:
     row = await fetch_one(
-        "SELECT id, named_type_id, name, description, position, created_at, updated_at "
+        "SELECT id, named_type_id, name, description, position, is_secret, created_at, updated_at "
         "FROM infra_named_type_env_vars WHERE id = $1",
         env_var_id,
     )
@@ -87,15 +88,16 @@ async def create_env_var(
     name: str,
     description: str = "",
     position: int = 0,
+    is_secret: bool = False,
 ) -> NamedTypeEnvVarRow:
     import asyncpg
     try:
         row = await fetch_one(
             "INSERT INTO infra_named_type_env_vars "
-            "  (named_type_id, name, description, position) "
-            "VALUES ($1, $2, $3, $4) "
-            "RETURNING id, named_type_id, name, description, position, created_at, updated_at",
-            named_type_id, name, description, position,
+            "  (named_type_id, name, description, position, is_secret) "
+            "VALUES ($1, $2, $3, $4, $5) "
+            "RETURNING id, named_type_id, name, description, position, is_secret, created_at, updated_at",
+            named_type_id, name, description, position, is_secret,
         )
     except asyncpg.UniqueViolationError as exc:
         raise EnvVarDuplicateError(
@@ -112,19 +114,21 @@ async def update_env_var(
     name: str | None = None,
     description: str | None = None,
     position: int | None = None,
+    is_secret: bool | None = None,
 ) -> NamedTypeEnvVarRow:
     import asyncpg
     current = await get_env_var_by_id(env_var_id)
     next_name = name if name is not None else current.name
     next_description = description if description is not None else current.description
     next_position = position if position is not None else current.position
+    next_is_secret = is_secret if is_secret is not None else current.is_secret
     try:
         row = await fetch_one(
             "UPDATE infra_named_type_env_vars "
-            "SET name = $2, description = $3, position = $4 "
+            "SET name = $2, description = $3, position = $4, is_secret = $5 "
             "WHERE id = $1 "
-            "RETURNING id, named_type_id, name, description, position, created_at, updated_at",
-            env_var_id, next_name, next_description, next_position,
+            "RETURNING id, named_type_id, name, description, position, is_secret, created_at, updated_at",
+            env_var_id, next_name, next_description, next_position, next_is_secret,
         )
     except asyncpg.UniqueViolationError as exc:
         raise EnvVarDuplicateError(
@@ -200,8 +204,7 @@ async def upsert_machine_env_vars(
 
     from agflow.db.pool import get_pool
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
+    async with pool.acquire() as conn, conn.transaction():
             for ev_id, val in values.items():
                 await conn.execute(
                     """
@@ -235,7 +238,7 @@ async def resolve_for_machine(machine_id: UUID) -> dict[str, str]:
 
 async def check_project_env_vars(project_id: UUID) -> ProjectEnvVarsCheck:
     """Vérifie que chaque group_script avec des variables via_env a sa machine complète."""
-    from agflow.services import groups_service, group_scripts_service, scripts_service
+    from agflow.services import group_scripts_service, groups_service, scripts_service
 
     groups = await groups_service.list_by_project(project_id)
     items: list[ProjectEnvVarsCheckMissing] = []

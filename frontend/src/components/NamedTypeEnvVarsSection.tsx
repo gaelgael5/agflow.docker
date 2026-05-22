@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, X, Check } from "lucide-react";
+import { Plus, Trash2, X, Check, Lock, LockOpen } from "lucide-react";
 import { toast } from "sonner";
 import { useNamedTypeEnvVars, useNamedTypeEnvVarsMutations } from "@/hooks/useInfraEnvVars";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -12,13 +12,13 @@ const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 interface NewRow {
   name: string;
   description: string;
-  position: number;
+  is_secret: boolean;
 }
 
 export function NamedTypeEnvVarsSection({ namedTypeId }: { namedTypeId: string }) {
   const { t } = useTranslation();
   const { data: envVars = [], isLoading } = useNamedTypeEnvVars(namedTypeId);
-  const { create, remove } = useNamedTypeEnvVarsMutations(namedTypeId);
+  const { create, update, remove } = useNamedTypeEnvVarsMutations(namedTypeId);
   const [newRow, setNewRow] = useState<NewRow | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
@@ -32,10 +32,19 @@ export function NamedTypeEnvVarsSection({ namedTypeId }: { namedTypeId: string }
       await create.mutateAsync({
         name: newRow.name,
         description: newRow.description,
-        position: newRow.position,
+        position: envVars.length,
+        is_secret: newRow.is_secret,
       });
       setNewRow(null);
       toast.success(t("infra.env_var_added"));
+    } catch {
+      toast.error(t("infra.env_var_add_error"));
+    }
+  }
+
+  async function handleToggleSecret(id: string, current: boolean) {
+    try {
+      await update.mutateAsync({ id, payload: { is_secret: !current } });
     } catch {
       toast.error(t("infra.env_var_add_error"));
     }
@@ -50,7 +59,7 @@ export function NamedTypeEnvVarsSection({ namedTypeId }: { namedTypeId: string }
         <Button
           size="sm"
           variant="outline"
-          onClick={() => setNewRow({ name: "", description: "", position: envVars.length })}
+          onClick={() => setNewRow({ name: "", description: "", is_secret: false })}
         >
           <Plus className="w-3.5 h-3.5 mr-1" />
           {t("infra.env_var_add_button")}
@@ -68,7 +77,7 @@ export function NamedTypeEnvVarsSection({ namedTypeId }: { namedTypeId: string }
               <tr>
                 <th className="text-left px-3 py-2 font-medium text-xs">{t("infra.env_var_col_name")}</th>
                 <th className="text-left px-3 py-2 font-medium text-xs">{t("infra.env_var_col_description")}</th>
-                <th className="text-left px-3 py-2 font-medium text-xs w-16">{t("infra.env_var_col_position")}</th>
+                <th className="text-center px-3 py-2 font-medium text-xs w-16">{t("infra.env_var_col_secret")}</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -77,7 +86,19 @@ export function NamedTypeEnvVarsSection({ namedTypeId }: { namedTypeId: string }
                 <tr key={v.id} className="border-t">
                   <td className="px-3 py-2 font-mono text-xs">{v.name}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{v.description}</td>
-                  <td className="px-3 py-2 text-xs text-center">{v.position}</td>
+                  <td className="px-2 py-1 text-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-6 h-6"
+                      title={v.is_secret ? t("infra.env_var_secret_yes") : t("infra.env_var_secret_no")}
+                      onClick={() => void handleToggleSecret(v.id, v.is_secret)}
+                    >
+                      {v.is_secret
+                        ? <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        : <LockOpen className="w-3.5 h-3.5 text-muted-foreground" />}
+                    </Button>
+                  </td>
                   <td className="px-2 py-1">
                     <Button
                       variant="ghost"
@@ -113,15 +134,18 @@ export function NamedTypeEnvVarsSection({ namedTypeId }: { namedTypeId: string }
                       onChange={(e) => setNewRow({ ...newRow, description: e.target.value })}
                     />
                   </td>
-                  <td className="px-2 py-1">
-                    <Input
-                      className="h-7 text-xs w-14"
-                      type="number"
-                      value={newRow.position}
-                      onChange={(e) =>
-                        setNewRow({ ...newRow, position: parseInt(e.target.value, 10) || 0 })
-                      }
-                    />
+                  <td className="px-2 py-1 text-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-6 h-6"
+                      title={newRow.is_secret ? t("infra.env_var_secret_yes") : t("infra.env_var_secret_no")}
+                      onClick={() => setNewRow({ ...newRow, is_secret: !newRow.is_secret })}
+                    >
+                      {newRow.is_secret
+                        ? <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        : <LockOpen className="w-3.5 h-3.5 text-muted-foreground" />}
+                    </Button>
                   </td>
                   <td className="px-2 py-1">
                     <div className="flex gap-1">

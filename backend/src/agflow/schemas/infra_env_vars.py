@@ -19,6 +19,7 @@ class NamedTypeEnvVarRow(BaseModel):
     name: str
     description: str = ""
     position: int = 0
+    is_secret: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -27,12 +28,14 @@ class NamedTypeEnvVarCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128, pattern=_NAME_RE)
     description: str = ""
     position: int = 0
+    is_secret: bool = False
 
 
 class NamedTypeEnvVarUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128, pattern=_NAME_RE)
     description: str | None = None
     position: int | None = None
+    is_secret: bool | None = None
 
 
 class MachineEnvVarRow(BaseModel):

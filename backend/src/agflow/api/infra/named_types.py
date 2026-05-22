@@ -88,6 +88,7 @@ async def create_named_type_env_var(named_type_id: UUID, payload: NamedTypeEnvVa
             name=payload.name,
             description=payload.description,
             position=payload.position,
+            is_secret=payload.is_secret,
         )
     except infra_env_vars_service.EnvVarDuplicateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

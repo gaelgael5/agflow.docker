@@ -42,6 +42,7 @@ describe("NamedTypeEnvVarsSection", () => {
         name: "MY_VAR",
         description: "desc",
         position: 0,
+        is_secret: false,
         created_at: "",
         updated_at: "",
       },
@@ -66,6 +67,7 @@ describe("NamedTypeEnvVarsSection", () => {
       name: "NEW_VAR",
       description: "",
       position: 0,
+      is_secret: false,
       created_at: "",
       updated_at: "",
     });

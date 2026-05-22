@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const selectClass = "mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm";
 
@@ -176,9 +177,11 @@ function ScriptEditor({ id, summaries, t }: {
   const [outputs, setOutputs] = useState<ScriptOutputVariable[]>([]);
   const [showJsonExtract, setShowJsonExtract] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [activeTab, setActiveTab] = useState("properties");
 
   useEffect(() => {
     if (!detailQuery.data) return;
+    setActiveTab("properties");
     setName(detailQuery.data.name);
     setDescription(detailQuery.data.description);
     setContent(detailQuery.data.content);
@@ -227,236 +230,246 @@ function ScriptEditor({ id, summaries, t }: {
   }
 
   return (
-    <Card className="p-4 flex flex-col gap-3 min-h-0">
-      <div className="grid grid-cols-[1fr_1fr_auto] gap-3 items-end">
-        <div>
-          <Label className="text-[11px]">{t("scripts.name")}</Label>
-          <Input
-            value={name}
-            onChange={(e) => { setName(e.target.value); setDirty(true); }}
-            className="mt-1 font-mono"
-          />
-        </div>
-        <div>
-          <Label className="text-[11px]">{t("scripts.execute_on_types_named")}</Label>
-          <select
-            value={executeOnTypeId}
-            onChange={(e) => { setExecuteOnTypeId(e.target.value); setDirty(true); }}
-            className={selectClass}
-          >
-            <option value="">— {t("common.none")} —</option>
-            {(namedTypes ?? []).map((nt) => (
-              <option key={nt.id} value={nt.id}>{nt.name}</option>
-            ))}
-          </select>
-        </div>
-        <Button
-          disabled={!dirty || !name.trim() || saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
-        >
-          <Save className="w-4 h-4" />
-          {t("common.confirm")}
-        </Button>
-      </div>
-
-      <div>
-        <Label className="text-[11px]">{t("scripts.description")}</Label>
-        <Input
-          value={description}
-          onChange={(e) => { setDescription(e.target.value); setDirty(true); }}
-          className="mt-1"
-          placeholder={t("scripts.description_placeholder")}
-        />
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <Label className="text-[11px]">{t("scripts.inputs_title")}</Label>
+    <Card className="p-4 flex flex-col min-h-0">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
+        <div className="flex items-center justify-between shrink-0">
+          <TabsList>
+            <TabsTrigger value="properties">{t("scripts.tab_properties")}</TabsTrigger>
+            <TabsTrigger value="content">{t("scripts.tab_content")}</TabsTrigger>
+          </TabsList>
           <Button
-            size="sm" variant="outline" className="h-6 text-[10px]"
-            onClick={() => {
-              setInputs([...inputs, { name: "", description: "", default: "", via_env: false }]);
-              setDirty(true);
-            }}
+            disabled={!dirty || !name.trim() || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
           >
-            <Plus className="w-3 h-3" />
-            {t("scripts.inputs_add")}
+            <Save className="w-4 h-4" />
+            {t("common.confirm")}
           </Button>
         </div>
-        {inputs.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground italic">{t("scripts.inputs_empty")}</p>
-        ) : (
-          <div className="space-y-1 border rounded p-2">
-            {inputs.map((v, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto_auto] gap-2 items-center">
-                <Input
-                  value={v.name}
-                  onChange={(e) => {
-                    const next = [...inputs];
-                    next[idx] = { ...next[idx]!, name: e.target.value };
-                    setInputs(next); setDirty(true);
-                  }}
-                  className="h-7 text-[11px] font-mono"
-                  placeholder="VAR_NAME"
-                />
-                <Input
-                  value={v.description}
-                  onChange={(e) => {
-                    const next = [...inputs];
-                    next[idx] = { ...next[idx]!, description: e.target.value };
-                    setInputs(next); setDirty(true);
-                  }}
-                  className="h-7 text-[11px]"
-                  placeholder={t("scripts.inputs_description_placeholder")}
-                />
-                <Input
-                  value={v.default}
-                  onChange={(e) => {
-                    const next = [...inputs];
-                    next[idx] = { ...next[idx]!, default: e.target.value };
-                    setInputs(next); setDirty(true);
-                  }}
-                  className="h-7 text-[11px] font-mono"
-                  placeholder={t("scripts.inputs_default_placeholder")}
-                />
-                <label
-                  className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer select-none"
-                  title={t("scripts.via_env_tooltip")}
-                >
-                  <input
-                    type="checkbox"
-                    checked={v.via_env}
-                    onChange={(e) => {
-                      const next = [...inputs];
-                      next[idx] = { ...next[idx]!, via_env: e.target.checked };
-                      setInputs(next); setDirty(true);
-                    }}
-                    className="h-3 w-3"
-                  />
-                  {t("scripts.via_env_label")}
-                </label>
+
+        <TabsContent value="properties" className="flex-1 min-h-0 overflow-y-auto space-y-3 mt-2">
+          <div className="grid grid-cols-[1fr_1fr] gap-3 items-end">
+            <div>
+              <Label className="text-[11px]">{t("scripts.name")}</Label>
+              <Input
+                value={name}
+                onChange={(e) => { setName(e.target.value); setDirty(true); }}
+                className="mt-1 font-mono"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("scripts.execute_on_types_named")}</Label>
+              <select
+                value={executeOnTypeId}
+                onChange={(e) => { setExecuteOnTypeId(e.target.value); setDirty(true); }}
+                className={selectClass}
+              >
+                <option value="">— {t("common.none")} —</option>
+                {(namedTypes ?? []).map((nt) => (
+                  <option key={nt.id} value={nt.id}>{nt.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-[11px]">{t("scripts.description")}</Label>
+            <Input
+              value={description}
+              onChange={(e) => { setDescription(e.target.value); setDirty(true); }}
+              className="mt-1"
+              placeholder={t("scripts.description_placeholder")}
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-[11px]">{t("scripts.inputs_title")}</Label>
+              <Button
+                size="sm" variant="outline" className="h-6 text-[10px]"
+                onClick={() => {
+                  setInputs([...inputs, { name: "", description: "", default: "", via_env: false }]);
+                  setDirty(true);
+                }}
+              >
+                <Plus className="w-3 h-3" />
+                {t("scripts.inputs_add")}
+              </Button>
+            </div>
+            {inputs.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground italic">{t("scripts.inputs_empty")}</p>
+            ) : (
+              <div className="space-y-1 border rounded p-2">
+                {inputs.map((v, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto_auto] gap-2 items-center">
+                    <Input
+                      value={v.name}
+                      onChange={(e) => {
+                        const next = [...inputs];
+                        next[idx] = { ...next[idx]!, name: e.target.value };
+                        setInputs(next); setDirty(true);
+                      }}
+                      className="h-7 text-[11px] font-mono"
+                      placeholder="VAR_NAME"
+                    />
+                    <Input
+                      value={v.description}
+                      onChange={(e) => {
+                        const next = [...inputs];
+                        next[idx] = { ...next[idx]!, description: e.target.value };
+                        setInputs(next); setDirty(true);
+                      }}
+                      className="h-7 text-[11px]"
+                      placeholder={t("scripts.inputs_description_placeholder")}
+                    />
+                    <Input
+                      value={v.default}
+                      onChange={(e) => {
+                        const next = [...inputs];
+                        next[idx] = { ...next[idx]!, default: e.target.value };
+                        setInputs(next); setDirty(true);
+                      }}
+                      className="h-7 text-[11px] font-mono"
+                      placeholder={t("scripts.inputs_default_placeholder")}
+                    />
+                    <label
+                      className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer select-none"
+                      title={t("scripts.via_env_tooltip")}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={v.via_env}
+                        onChange={(e) => {
+                          const next = [...inputs];
+                          next[idx] = { ...next[idx]!, via_env: e.target.checked };
+                          setInputs(next); setDirty(true);
+                        }}
+                        className="h-3 w-3"
+                      />
+                      {t("scripts.via_env_label")}
+                    </label>
+                    <Button
+                      variant="ghost" size="icon" className="h-6 w-6"
+                      onClick={() => {
+                        setInputs(inputs.filter((_, i) => i !== idx));
+                        setDirty(true);
+                      }}
+                    >
+                      <X className="w-3 h-3 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {t("scripts.inputs_hint")}
+            </p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-[11px]">{t("scripts.outputs_title")}</Label>
+              <div className="flex gap-1">
                 <Button
-                  variant="ghost" size="icon" className="h-6 w-6"
+                  size="sm" variant="outline" className="h-6 text-[10px]"
+                  onClick={() => setShowJsonExtract(true)}
+                >
+                  <FileJson className="w-3 h-3" />
+                  {t("scripts.outputs_extract_button")}
+                </Button>
+                <Button
+                  size="sm" variant="outline" className="h-6 text-[10px]"
                   onClick={() => {
-                    setInputs(inputs.filter((_, i) => i !== idx));
+                    setOutputs([...outputs, { name: "", description: "", path: "", via_env: false }]);
                     setDirty(true);
                   }}
                 >
-                  <X className="w-3 h-3 text-destructive" />
+                  <Plus className="w-3 h-3" />
+                  {t("scripts.outputs_add")}
                 </Button>
               </div>
-            ))}
-          </div>
-        )}
-        <p className="text-[10px] text-muted-foreground mt-1">
-          {t("scripts.inputs_hint")}
-        </p>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <Label className="text-[11px]">{t("scripts.outputs_title")}</Label>
-          <div className="flex gap-1">
-            <Button
-              size="sm" variant="outline" className="h-6 text-[10px]"
-              onClick={() => setShowJsonExtract(true)}
-            >
-              <FileJson className="w-3 h-3" />
-              {t("scripts.outputs_extract_button")}
-            </Button>
-            <Button
-              size="sm" variant="outline" className="h-6 text-[10px]"
-              onClick={() => {
-                setOutputs([...outputs, { name: "", description: "", path: "", via_env: false }]);
-                setDirty(true);
-              }}
-            >
-              <Plus className="w-3 h-3" />
-              {t("scripts.outputs_add")}
-            </Button>
-          </div>
-        </div>
-        {outputs.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground italic">{t("scripts.outputs_empty")}</p>
-        ) : (
-          <div className="space-y-1 border rounded p-2">
-            {outputs.map((v, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto_auto] gap-2 items-center">
-                <Input
-                  value={v.name}
-                  onChange={(e) => {
-                    const next = [...outputs];
-                    next[idx] = { ...next[idx]!, name: e.target.value };
-                    setOutputs(next); setDirty(true);
-                  }}
-                  className="h-7 text-[11px] font-mono"
-                  placeholder="VAR_NAME"
-                />
-                <Input
-                  value={v.description}
-                  onChange={(e) => {
-                    const next = [...outputs];
-                    next[idx] = { ...next[idx]!, description: e.target.value };
-                    setOutputs(next); setDirty(true);
-                  }}
-                  className="h-7 text-[11px]"
-                  placeholder={t("scripts.outputs_description_placeholder")}
-                />
-                <Input
-                  value={v.path}
-                  onChange={(e) => {
-                    const next = [...outputs];
-                    next[idx] = { ...next[idx]!, path: e.target.value };
-                    setOutputs(next); setDirty(true);
-                  }}
-                  className="h-7 text-[11px] font-mono"
-                  placeholder={t("scripts.outputs_path_placeholder")}
-                />
-                <label
-                  className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer select-none"
-                  title={t("scripts.via_env_tooltip")}
-                >
-                  <input
-                    type="checkbox"
-                    checked={v.via_env}
-                    onChange={(e) => {
-                      const next = [...outputs];
-                      next[idx] = { ...next[idx]!, via_env: e.target.checked };
-                      setOutputs(next); setDirty(true);
-                    }}
-                    className="h-3 w-3"
-                  />
-                  {t("scripts.via_env_label")}
-                </label>
-                <Button
-                  variant="ghost" size="icon" className="h-6 w-6"
-                  onClick={() => {
-                    setOutputs(outputs.filter((_, i) => i !== idx));
-                    setDirty(true);
-                  }}
-                >
-                  <X className="w-3 h-3 text-destructive" />
-                </Button>
+            </div>
+            {outputs.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground italic">{t("scripts.outputs_empty")}</p>
+            ) : (
+              <div className="space-y-1 border rounded p-2">
+                {outputs.map((v, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_2fr_1fr_auto_auto] gap-2 items-center">
+                    <Input
+                      value={v.name}
+                      onChange={(e) => {
+                        const next = [...outputs];
+                        next[idx] = { ...next[idx]!, name: e.target.value };
+                        setOutputs(next); setDirty(true);
+                      }}
+                      className="h-7 text-[11px] font-mono"
+                      placeholder="VAR_NAME"
+                    />
+                    <Input
+                      value={v.description}
+                      onChange={(e) => {
+                        const next = [...outputs];
+                        next[idx] = { ...next[idx]!, description: e.target.value };
+                        setOutputs(next); setDirty(true);
+                      }}
+                      className="h-7 text-[11px]"
+                      placeholder={t("scripts.outputs_description_placeholder")}
+                    />
+                    <Input
+                      value={v.path}
+                      onChange={(e) => {
+                        const next = [...outputs];
+                        next[idx] = { ...next[idx]!, path: e.target.value };
+                        setOutputs(next); setDirty(true);
+                      }}
+                      className="h-7 text-[11px] font-mono"
+                      placeholder={t("scripts.outputs_path_placeholder")}
+                    />
+                    <label
+                      className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer select-none"
+                      title={t("scripts.via_env_tooltip")}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={v.via_env}
+                        onChange={(e) => {
+                          const next = [...outputs];
+                          next[idx] = { ...next[idx]!, via_env: e.target.checked };
+                          setOutputs(next); setDirty(true);
+                        }}
+                        className="h-3 w-3"
+                      />
+                      {t("scripts.via_env_label")}
+                    </label>
+                    <Button
+                      variant="ghost" size="icon" className="h-6 w-6"
+                      onClick={() => {
+                        setOutputs(outputs.filter((_, i) => i !== idx));
+                        setDirty(true);
+                      }}
+                    >
+                      <X className="w-3 h-3 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {t("scripts.outputs_hint")}
+            </p>
           </div>
-        )}
-        <p className="text-[10px] text-muted-foreground mt-1">
-          {t("scripts.outputs_hint")}
-        </p>
-      </div>
+        </TabsContent>
 
-      <div className="flex flex-col flex-1 min-h-0">
-        <Label className="text-[11px]">{t("scripts.content")}</Label>
-        <ShellEditor
-          value={content}
-          onChange={(v) => { setContent(v); setDirty(true); }}
-          className="mt-1 flex-1 min-h-0"
-        />
-        <p className="text-[10px] text-muted-foreground mt-1 shrink-0">
-          {t("scripts.content_hint", { count: String(summaries.length) })}
-        </p>
-      </div>
+        <TabsContent value="content" className="flex flex-col flex-1 min-h-0 mt-2">
+          <ShellEditor
+            value={content}
+            onChange={(v) => { setContent(v); setDirty(true); }}
+            className="flex-1 min-h-0"
+          />
+          <p className="text-[10px] text-muted-foreground mt-1 shrink-0">
+            {t("scripts.content_hint", { count: String(summaries.length) })}
+          </p>
+        </TabsContent>
+      </Tabs>
 
       <ExtractFromJsonDialog
         open={showJsonExtract}

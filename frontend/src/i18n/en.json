@@ -91,7 +91,9 @@
     "rule_op_is_null": "is null",
     "deploy_tab_title": "Scripts",
     "deploy_tab_empty": "No scripts linked to this deployment's groups.",
-    "deploy_tab_no_inputs": "(no declared variable)"
+    "deploy_tab_no_inputs": "(no declared variable)",
+    "tab_properties": "Properties",
+    "tab_content": "Content"
   },
   "assistant": {
     "not_configured": "No agent is configured as assistant. Designate one in the agent editor.",

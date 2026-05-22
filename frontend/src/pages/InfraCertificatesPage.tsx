@@ -398,7 +398,7 @@ function UploadDialog({ open, onClose, onCreate, t }: {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+      <DialogContent className="max-w-[44rem]" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{t("infra.cert_upload_title")}</DialogTitle>
           <DialogDescription>{t("infra.cert_upload_desc")}</DialogDescription>

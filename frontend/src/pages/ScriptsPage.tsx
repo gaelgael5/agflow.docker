@@ -15,7 +15,7 @@ import { useInfraNamedTypes } from "@/hooks/useInfra";
 import { useNamedTypeEnvVars } from "@/hooks/useInfraEnvVars";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ShellEditor } from "@/components/ShellEditor";
-import { PageHeader, PageShell } from "@/components/layout/PageHeader";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -80,27 +80,29 @@ export function ScriptsPage() {
   });
 
   return (
-    <PageShell maxWidth="full" className="flex flex-col h-[calc(100vh-64px)]">
-      <PageHeader
-        title={t("scripts.page_title")}
-        subtitle={t("scripts.page_subtitle")}
-        actions={
-          <Button onClick={() => setShowCreate(true)}>
-            <Plus className="w-4 h-4" />
-            {t("scripts.add")}
-          </Button>
-        }
-      />
+    <div className="flex flex-col h-full min-h-[calc(100vh-3.5rem)] overflow-hidden">
+      <div className="px-4 md:px-8 pt-6 md:pt-10 shrink-0">
+        <PageHeader
+          title={t("scripts.page_title")}
+          subtitle={t("scripts.page_subtitle")}
+          actions={
+            <Button onClick={() => setShowCreate(true)}>
+              <Plus className="w-4 h-4" />
+              {t("scripts.add")}
+            </Button>
+          }
+        />
+      </div>
 
-      <div className="grid grid-cols-[260px_1fr] gap-4 flex-1 min-h-0">
-        <Card className="overflow-hidden h-fit max-h-full">
-          <div className="p-2 border-b text-[11px] font-semibold text-muted-foreground">
+      <div className="px-4 md:px-8 pb-6 md:pb-10 grid grid-cols-[260px_1fr] gap-4 flex-1 min-h-0">
+        <Card className="overflow-hidden h-full flex flex-col">
+          <div className="shrink-0 p-2 border-b text-[11px] font-semibold text-muted-foreground">
             {t("scripts.list")}
           </div>
           {scripts.length === 0 ? (
             <p className="p-4 text-[12px] text-muted-foreground italic">{t("scripts.empty")}</p>
           ) : (
-            <ul className="divide-y overflow-auto">
+            <ul className="divide-y overflow-auto flex-1 min-h-0">
               {scripts.map((s) => (
                 <li
                   key={s.id}
@@ -155,7 +157,7 @@ export function ScriptsPage() {
           if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id);
         }}
       />
-    </PageShell>
+    </div>
   );
 }
 
@@ -504,7 +506,7 @@ function ScriptEditor({ id, summaries, t }: {
           </div>
         </TabsContent>
 
-        <TabsContent value="content" className="flex flex-col flex-1 overflow-hidden mt-2">
+        <TabsContent value="content" className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2">
           <ShellEditor
             value={content}
             onChange={(v) => { setContent(v); setDirty(true); }}

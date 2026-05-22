@@ -59,20 +59,13 @@ export function ConnectionModal({
   );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [privateKey, setPrivateKey] = useState("");
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
 
-  const useVault = isEdit && !username && !privateKey;
+  const useVault = isEdit && !username;
 
   const buildCredentials = () => {
-    if (!username && !password && !privateKey) return undefined;
+    if (!username && !password) return undefined;
     if (kind === "s3") return { access_key_id: username, secret_access_key: password };
-    if (kind === "sftp")
-      return {
-        username,
-        password,
-        ...(privateKey ? { private_key: privateKey } : {}),
-      };
     return { username, password };
   };
 
@@ -152,7 +145,6 @@ export function ConnectionModal({
                 onValueChange={(v) => {
                   setKind(v as Kind);
                   setConfig({});
-                  setPrivateKey("");
                 }}
               >
                 <SelectTrigger>
@@ -197,9 +189,7 @@ export function ConnectionModal({
               {pathKeys.map((key) => {
                 const result = testResults[key];
                 const pathFilled = Boolean(config[key]);
-                const hasCredentials = Boolean(
-                  (username && password) || (kind === "sftp" && username && privateKey),
-                );
+                const hasCredentials = Boolean(username && password);
                 const testDisabled = !pathFilled || (!useVault && !hasCredentials);
                 return (
                   <div key={key}>
@@ -237,11 +227,9 @@ export function ConnectionModal({
                 kind={kind}
                 username={username}
                 password={password}
-                privateKey={privateKey}
                 hasExisting={isEdit && connection.has_credentials}
                 onChangeUsername={setUsername}
                 onChangePassword={setPassword}
-                onChangePrivateKey={setPrivateKey}
               />
 
               {saveMutation.isError && (

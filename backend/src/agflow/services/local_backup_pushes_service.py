@@ -171,7 +171,10 @@ async def push_one(*, backup_id: UUID, remote_id: UUID) -> LocalBackupPushSummar
 
 async def _provider_for(remote_id: UUID):
     """Résout la connexion + credentials + instancie le provider."""
-    from agflow.services.remote_backup_connections_service import _fetch_row_by_id
+    from agflow.services.remote_backup_connections_service import (
+        _fetch_row_by_id,
+        inject_certificate_credentials,
+    )
     from agflow.services.remote_backup_providers.factory import get_provider
 
     conn_row = await _fetch_row_by_id(remote_id)
@@ -191,6 +194,7 @@ async def _provider_for(remote_id: UUID):
         raw = await vault_client.get_secret(conn_row["vault_secret_path"])
         credentials = json.loads(raw)
 
+    credentials = await inject_certificate_credentials(config, credentials)
     return get_provider(conn_row["kind"], config, credentials)
 
 

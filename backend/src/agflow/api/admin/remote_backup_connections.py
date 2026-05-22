@@ -105,10 +105,13 @@ async def create_connection(
 async def test_connection_unsaved(body: TestConnectionRequest) -> TestConnectionResult:
     """Test avec creds fournis dans le body (création / édition avec resaisie)."""
     try:
-        provider = get_provider(body.kind, body.config, body.credentials)
+        credentials = await rbc_service.inject_certificate_credentials(
+            body.config, body.credentials
+        )
+        provider = get_provider(body.kind, body.config, credentials)
         await provider.test_connection(body.path)
         return TestConnectionResult(ok=True)
-    except RemoteBackupProviderError as exc:
+    except (RemoteBackupProviderError, ValueError) as exc:
         return TestConnectionResult(ok=False, error="provider_error", message=str(exc))
     except Exception as exc:
         _log.warning("rbc.test_connection.unexpected", error=str(exc))
@@ -267,10 +270,11 @@ async def test_connection_saved(
             message="No credentials stored for this connection",
         )
     try:
+        credentials = await rbc_service.inject_certificate_credentials(config, credentials)
         provider = get_provider(dto.kind, config, credentials)
         await provider.test_connection(body.path)
         return TestConnectionResult(ok=True)
-    except RemoteBackupProviderError as exc:
+    except (RemoteBackupProviderError, ValueError) as exc:
         return TestConnectionResult(ok=False, error="provider_error", message=str(exc))
     except Exception as exc:
         _log.warning("rbc.test_connection_saved.unexpected", error=str(exc))
@@ -296,6 +300,7 @@ async def list_remote_files(connection_id: UUID) -> list[RemoteBackupFileDTO]:
         )
 
     try:
+        credentials = await rbc_service.inject_certificate_credentials(dto.config, credentials)
         provider = get_provider(dto.kind, dto.config, credentials)
         files = await provider.list_remote(remote_path)
     except RemoteBackupProviderError as exc:

@@ -23,6 +23,7 @@ class SftpProvider:
         self._username: str = credentials.get("username", "")
         self._password: str | None = credentials.get("password") or None
         self._private_key: str | None = credentials.get("private_key") or None
+        self._passphrase: str | None = credentials.get("passphrase") or None
         if not self._fingerprint:
             _log.warning("sftp.host_key_check_disabled", host=self._host)
             self._known_hosts = None
@@ -39,7 +40,7 @@ class SftpProvider:
         if self._private_key:
             try:
                 key = asyncssh.import_private_key(
-                    self._private_key, passphrase=self._password
+                    self._private_key, passphrase=self._passphrase
                 )
             except Exception as exc:
                 raise RemoteBackupProviderError(

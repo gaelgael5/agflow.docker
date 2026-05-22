@@ -211,6 +211,28 @@ async def delete_connection(conn, connection_id: UUID) -> None:
                          note="secret orphan in vault — cleanup manually")
 
 
+async def inject_certificate_credentials(config: dict, credentials: dict) -> dict:
+    """Si config["certificate_id"] est défini (SFTP), résout la clé privée depuis infra_certificates.
+
+    Retourne credentials enrichi de private_key + passphrase (le cas échéant).
+    Sans certificate_id, retourne credentials inchangé.
+    """
+    cert_id_str = config.get("certificate_id")
+    if not cert_id_str:
+        return credentials
+    from uuid import UUID
+
+    from agflow.services import infra_certificates_service
+    try:
+        decrypted = await infra_certificates_service.get_decrypted(UUID(str(cert_id_str)))
+    except infra_certificates_service.CertificateNotFoundError as exc:
+        raise ValueError(f"SSH certificate {cert_id_str}: {exc}") from exc
+    extra: dict = {"private_key": decrypted["private_key"]}
+    if decrypted.get("passphrase"):
+        extra["passphrase"] = decrypted["passphrase"]
+    return {**credentials, **extra}
+
+
 def resolve_remote_path(config: dict, kind: str, usage: str) -> str | None:
     """Retourne le path côté serveur (SFTP/S3) selon kind et usage (snapshots|full)."""
     if kind in ("sftp", "ftps"):

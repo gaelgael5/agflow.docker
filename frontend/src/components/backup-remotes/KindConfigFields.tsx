@@ -1,6 +1,15 @@
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { infraCertificatesApi } from "@/lib/infraApi";
 import type { Kind } from "./types";
 
 interface KindConfigFieldsProps {
@@ -11,6 +20,12 @@ interface KindConfigFieldsProps {
 
 export function KindConfigFields({ kind, config, onChange }: KindConfigFieldsProps) {
   const { t } = useTranslation();
+
+  const { data: certificates } = useQuery({
+    queryKey: ["infra-certificates"],
+    queryFn: () => infraCertificatesApi.list(),
+    enabled: kind === "sftp",
+  });
 
   if (kind !== "s3") {
     return (
@@ -30,6 +45,32 @@ export function KindConfigFields({ kind, config, onChange }: KindConfigFieldsPro
             onChange={(e) => onChange("port", e.target.value)}
           />
         </div>
+        {kind === "sftp" && (
+          <div>
+            <Label>{t("backup_remotes.certificate")}</Label>
+            <Select
+              value={config["certificate_id"] ?? ""}
+              onValueChange={(v) => onChange("certificate_id", v === "__none__" ? "" : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={t("backup_remotes.certificate_none")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">
+                  {t("backup_remotes.certificate_none")}
+                </SelectItem>
+                {(certificates ?? []).map((cert) => (
+                  <SelectItem key={cert.id} value={cert.id}>
+                    {cert.name}
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {cert.key_type}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </>
     );
   }

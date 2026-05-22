@@ -78,6 +78,9 @@ async def push_to_remote(backup_id: UUID, remote_id: UUID) -> dict:
         )
 
     try:
+        credentials = await rbc_service.inject_certificate_credentials(
+            connection.config, credentials
+        )
         provider = get_provider(connection.kind, connection.config, credentials)
         source = await local_backups_service.stream_backup_chunks(backup_id)
         written = await provider.upload_stream(remote_path, backup.filename, source)

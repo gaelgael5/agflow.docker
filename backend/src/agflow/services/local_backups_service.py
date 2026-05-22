@@ -142,6 +142,10 @@ async def pull_remote_to_local(
     if remote_path is None:
         raise ValueError(f"No full backup path configured on remote {remote_id}")
 
+    credentials = await rbc_service.inject_certificate_credentials(
+        connection.config, credentials
+    )
+
     async with backup_lock:
         backup_id = uuid4()
         file_path = _backups_dir() / filename
@@ -275,6 +279,9 @@ async def scan_from_schedules() -> ScanResult:
                         f"schedule={schedule.name!r}: remote {remote_id} has no credentials"
                     )
                     continue
+                credentials = await rbc_service.inject_certificate_credentials(
+                    connection.config, credentials
+                )
                 provider = get_provider(connection.kind, connection.config, credentials)
                 files = await provider.list_remote("full")
             except RemoteBackupProviderError as exc:

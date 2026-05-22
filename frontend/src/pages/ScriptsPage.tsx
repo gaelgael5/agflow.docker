@@ -5,6 +5,7 @@ import { FileCode, FileJson, Lock, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   scriptsApi,
+  type ScriptCommand,
   type ScriptInputVariable,
   type ScriptOutputVariable,
   type ScriptRow,
@@ -176,6 +177,7 @@ function ScriptEditor({ id, summaries, t }: {
   const [executeOnTypeId, setExecuteOnTypeId] = useState<string>("");
   const [inputs, setInputs] = useState<ScriptInputVariable[]>([]);
   const [outputs, setOutputs] = useState<ScriptOutputVariable[]>([]);
+  const [commands, setCommands] = useState<ScriptCommand[]>([]);
   const [showJsonExtract, setShowJsonExtract] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState("properties");
@@ -190,6 +192,7 @@ function ScriptEditor({ id, summaries, t }: {
     setExecuteOnTypeId(detailQuery.data.execute_on_types_named ?? "");
     setInputs(detailQuery.data.input_variables ?? []);
     setOutputs(detailQuery.data.output_variables ?? []);
+    setCommands(detailQuery.data.commands ?? []);
     setDirty(false);
   }, [detailQuery.data]);
 
@@ -201,6 +204,7 @@ function ScriptEditor({ id, summaries, t }: {
       execute_on_types_named: executeOnTypeId || null,
       input_variables: inputs,
       output_variables: outputs,
+      commands,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scripts"] });
@@ -238,6 +242,12 @@ function ScriptEditor({ id, summaries, t }: {
           <TabsList>
             <TabsTrigger value="properties">{t("scripts.tab_properties")}</TabsTrigger>
             <TabsTrigger value="content">{t("scripts.tab_content")}</TabsTrigger>
+            <TabsTrigger value="commands">
+              {t("scripts.tab_commands")}
+              {commands.length > 0 && (
+                <span className="ml-1.5 text-[10px] text-muted-foreground">({commands.length})</span>
+              )}
+            </TabsTrigger>
           </TabsList>
           <Button
             disabled={!dirty || !name.trim() || saveMutation.isPending}
@@ -495,6 +505,56 @@ function ScriptEditor({ id, summaries, t }: {
           <p className="text-[10px] text-muted-foreground mt-1 shrink-0">
             {t("scripts.content_hint", { count: String(summaries.length) })}
           </p>
+        </TabsContent>
+
+        <TabsContent value="commands" className="flex-1 min-h-0 overflow-y-auto space-y-3 mt-2">
+          {commands.length === 0 ? (
+            <p className="text-[10px] text-muted-foreground italic">{t("scripts.commands_empty")}</p>
+          ) : (
+            commands.map((cmd, idx) => (
+              <div key={idx} className="border rounded p-2 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={cmd.name}
+                    onChange={(e) => {
+                      const next = [...commands];
+                      next[idx] = { ...next[idx]!, name: e.target.value };
+                      setCommands(next); setDirty(true);
+                    }}
+                    className="h-7 w-20 text-[11px] font-mono"
+                    placeholder={t("scripts.commands_name_placeholder")}
+                  />
+                  <Button
+                    variant="ghost" size="icon" className="h-6 w-6 ml-auto"
+                    onClick={() => { setCommands(commands.filter((_, i) => i !== idx)); setDirty(true); }}
+                  >
+                    <X className="w-3 h-3 text-destructive" />
+                  </Button>
+                </div>
+                <ShellEditor
+                  value={cmd.content}
+                  onChange={(v) => {
+                    const next = [...commands];
+                    next[idx] = { ...next[idx]!, content: v };
+                    setCommands(next); setDirty(true);
+                  }}
+                  className="h-40"
+                />
+              </div>
+            ))
+          )}
+          <Button
+            size="sm" variant="outline" className="h-7 text-[11px]"
+            onClick={() => {
+              const used = new Set(commands.map((c) => c.name));
+              const name = [...("abcdefghijklmnopqrstuvwxyz")].find((c) => !used.has(c)) ?? String(commands.length + 1);
+              setCommands([...commands, { name, content: "" }]);
+              setDirty(true);
+            }}
+          >
+            <Plus className="w-3 h-3" />
+            {t("scripts.commands_add")}
+          </Button>
         </TabsContent>
       </Tabs>
 

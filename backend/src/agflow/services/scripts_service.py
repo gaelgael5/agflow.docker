@@ -1,15 +1,15 @@
 """Scripts service — shell scripts stored as TEXT in DB (see migration 070)."""
 from __future__ import annotations
 
+import json as _json
 from typing import Any
 from uuid import UUID
 
 import structlog
 
-import json as _json
-
 from agflow.db.pool import execute, fetch_all, fetch_one
 from agflow.schemas.scripts import (
+    ScriptCommand,
     ScriptInputVariable,
     ScriptOutputVariable,
     ScriptRow,
@@ -20,12 +20,12 @@ _log = structlog.get_logger(__name__)
 
 _FULL_SELECT = """
     s.id, s.name, s.description, s.content, s.execute_on_types_named,
-    s.input_variables, s.output_variables, s.created_at, s.updated_at,
+    s.input_variables, s.output_variables, s.commands, s.created_at, s.updated_at,
     nt.name AS execute_on_types_named_name
 """
 _SUMMARY_SELECT = """
     s.id, s.name, s.description, s.execute_on_types_named,
-    s.input_variables, s.output_variables, s.created_at, s.updated_at,
+    s.input_variables, s.output_variables, s.commands, s.created_at, s.updated_at,
     nt.name AS execute_on_types_named_name
 """
 _FROM_JOIN = "FROM scripts s LEFT JOIN infra_named_types nt ON nt.id = s.execute_on_types_named"
@@ -69,6 +69,18 @@ def _parse_outputs(raw: Any) -> list[ScriptOutputVariable]:
     ]
 
 
+def _parse_commands(raw: Any) -> list[ScriptCommand]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        raw = _json.loads(raw)
+    return [
+        ScriptCommand(name=v.get("name", ""), content=v.get("content", ""))
+        for v in raw
+        if v.get("name")
+    ]
+
+
 def _to_row(row: dict[str, Any]) -> ScriptRow:
     return ScriptRow(
         id=row["id"],
@@ -79,6 +91,7 @@ def _to_row(row: dict[str, Any]) -> ScriptRow:
         execute_on_types_named_name=row.get("execute_on_types_named_name"),
         input_variables=_parse_inputs(row.get("input_variables")),
         output_variables=_parse_outputs(row.get("output_variables")),
+        commands=_parse_commands(row.get("commands")),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -93,6 +106,7 @@ def _to_summary(row: dict[str, Any]) -> ScriptSummary:
         execute_on_types_named_name=row.get("execute_on_types_named_name"),
         input_variables=_parse_inputs(row.get("input_variables")),
         output_variables=_parse_outputs(row.get("output_variables")),
+        commands=_parse_commands(row.get("commands")),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -144,6 +158,18 @@ def _serialize_outputs(outputs: Any) -> str:
     return _json.dumps(out)
 
 
+def _serialize_commands(commands: Any) -> str:
+    if commands is None:
+        return "[]"
+    out = []
+    for v in commands:
+        if hasattr(v, "model_dump"):
+            out.append(v.model_dump())
+        elif isinstance(v, dict):
+            out.append({"name": v.get("name", ""), "content": v.get("content", "")})
+    return _json.dumps(out)
+
+
 async def create(
     name: str,
     description: str = "",
@@ -151,18 +177,20 @@ async def create(
     execute_on_types_named: UUID | None = None,
     input_variables: Any = None,
     output_variables: Any = None,
+    commands: Any = None,
 ) -> ScriptRow:
     row = await fetch_one(
         """
         INSERT INTO scripts
             (name, description, content, execute_on_types_named,
-             input_variables, output_variables)
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+             input_variables, output_variables, commands)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb)
         RETURNING id
         """,
         name, description, content, execute_on_types_named,
         _serialize_inputs(input_variables),
         _serialize_outputs(output_variables),
+        _serialize_commands(commands),
     )
     assert row is not None
     _log.info("scripts.create", name=name)
@@ -183,6 +211,9 @@ async def update(script_id: UUID, **kwargs: Any) -> ScriptRow:
     if "output_variables" in kwargs and kwargs["output_variables"] is not None:
         updates["output_variables"] = _serialize_outputs(kwargs["output_variables"])
         jsonb_fields.add("output_variables")
+    if "commands" in kwargs and kwargs["commands"] is not None:
+        updates["commands"] = _serialize_commands(kwargs["commands"])
+        jsonb_fields.add("commands")
 
     if not updates:
         return await get_by_id(script_id)

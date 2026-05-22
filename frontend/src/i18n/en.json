@@ -95,7 +95,11 @@
     "tab_properties": "Properties",
     "tab_content": "Content",
     "target_env_vars_title": "Target variables ({{count}})",
-    "target_env_vars_empty": "No variables declared for this target."
+    "target_env_vars_empty": "No variables declared for this target.",
+    "tab_commands": "Commands",
+    "commands_add": "Add",
+    "commands_empty": "No commands. Click Add to create one.",
+    "commands_name_placeholder": "a"
   },
   "assistant": {
     "not_configured": "No agent is configured as assistant. Designate one in the agent editor.",

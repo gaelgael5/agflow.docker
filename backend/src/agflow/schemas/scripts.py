@@ -6,7 +6,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 # ── Script (fichier .sh en BDD) ──────────────────────────
 
 InputStatus = Literal["keep", "clean", "replace"]
@@ -37,6 +36,11 @@ class ScriptOutputVariable(BaseModel):
     via_env: bool = False
 
 
+class ScriptCommand(BaseModel):
+    name: str
+    content: str = ""
+
+
 class ScriptRow(BaseModel):
     id: UUID
     name: str
@@ -46,6 +50,7 @@ class ScriptRow(BaseModel):
     execute_on_types_named_name: str | None = None
     input_variables: list[ScriptInputVariable] = []
     output_variables: list[ScriptOutputVariable] = []
+    commands: list[ScriptCommand] = []
     created_at: datetime
     updated_at: datetime
 
@@ -59,6 +64,7 @@ class ScriptSummary(BaseModel):
     execute_on_types_named_name: str | None = None
     input_variables: list[ScriptInputVariable] = []
     output_variables: list[ScriptOutputVariable] = []
+    commands: list[ScriptCommand] = []
     created_at: datetime
     updated_at: datetime
 
@@ -70,6 +76,7 @@ class ScriptCreate(BaseModel):
     execute_on_types_named: UUID | None = None
     input_variables: list[ScriptInputVariable] = Field(default_factory=list)
     output_variables: list[ScriptOutputVariable] = Field(default_factory=list)
+    commands: list[ScriptCommand] = Field(default_factory=list)
 
 
 class ScriptUpdate(BaseModel):
@@ -79,6 +86,7 @@ class ScriptUpdate(BaseModel):
     execute_on_types_named: UUID | None = None
     input_variables: list[ScriptInputVariable] | None = None
     output_variables: list[ScriptOutputVariable] | None = None
+    commands: list[ScriptCommand] | None = None
 
 
 # ── Group → Script reference ─────────────────────────────

@@ -24,6 +24,11 @@ export interface ScriptOutputVariable {
   via_env: boolean;
 }
 
+export interface ScriptCommand {
+  name: string;
+  content: string;
+}
+
 export interface ScriptSummary {
   id: string;
   name: string;
@@ -32,6 +37,7 @@ export interface ScriptSummary {
   execute_on_types_named_name: string | null;
   input_variables: ScriptInputVariable[];
   output_variables: ScriptOutputVariable[];
+  commands: ScriptCommand[];
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +53,7 @@ export interface ScriptCreatePayload {
   execute_on_types_named?: string | null;
   input_variables?: ScriptInputVariable[];
   output_variables?: ScriptOutputVariable[];
+  commands?: ScriptCommand[];
 }
 
 export interface ScriptUpdatePayload {
@@ -56,6 +63,7 @@ export interface ScriptUpdatePayload {
   execute_on_types_named?: string | null;
   input_variables?: ScriptInputVariable[];
   output_variables?: ScriptOutputVariable[];
+  commands?: ScriptCommand[];
 }
 
 export const scriptsApi = {

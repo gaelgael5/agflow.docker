@@ -128,9 +128,7 @@ export function ScriptsPage() {
         </Card>
 
         {selectedId ? (
-          <div className="flex-1 min-w-0 flex">
-            <ScriptEditor id={selectedId} summaries={scripts} t={t} />
-          </div>
+          <ScriptEditor id={selectedId} summaries={scripts} t={t} />
         ) : (
           <Card className="flex-1 p-8 text-center text-[12px] text-muted-foreground italic">
             {t("scripts.select_one")}
@@ -240,7 +238,7 @@ function ScriptEditor({ id, summaries, t }: {
   }
 
   return (
-    <Card className="flex-1 min-w-0 p-4 flex flex-col h-full min-h-0 overflow-hidden">
+    <Card className="flex-1 min-w-0 p-4 flex flex-col min-h-0 overflow-hidden">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="flex items-center justify-between shrink-0">
           <TabsList>
@@ -262,7 +260,7 @@ function ScriptEditor({ id, summaries, t }: {
           </Button>
         </div>
 
-        <TabsContent value="properties" className="flex-1 min-h-0 overflow-y-auto space-y-3 mt-2">
+        <TabsContent value="properties" className="flex-1 min-h-0 overflow-y-auto space-y-3 mt-2 data-[state=inactive]:hidden">
           <div className="grid grid-cols-[1fr_1fr] gap-3 items-end">
             <div>
               <Label className="text-[11px]">{t("scripts.name")}</Label>
@@ -508,7 +506,7 @@ function ScriptEditor({ id, summaries, t }: {
           </div>
         </TabsContent>
 
-        <TabsContent value="content" className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2">
+        <TabsContent value="content" className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2 data-[state=inactive]:hidden">
           <ShellEditor
             value={content}
             onChange={(v) => { setContent(v); setDirty(true); }}
@@ -519,7 +517,7 @@ function ScriptEditor({ id, summaries, t }: {
           </p>
         </TabsContent>
 
-        <TabsContent value="commands" className="flex-1 min-h-0 overflow-hidden mt-2">
+        <TabsContent value="commands" className="flex-1 min-h-0 overflow-hidden mt-2 data-[state=inactive]:hidden">
           <div className="h-full overflow-y-auto space-y-3">
           {commands.length === 0 ? (
             <p className="text-[10px] text-muted-foreground italic">{t("scripts.commands_empty")}</p>

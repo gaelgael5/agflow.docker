@@ -423,14 +423,13 @@ function DeployDialog({ projectId, groups, onClose, t }: {
   const composeTabPrefix = "compose-";
   const activeComposeGroupId = tab.startsWith(composeTabPrefix) ? tab.slice(composeTabPrefix.length) : null;
 
-  // Load child machines on open (service-category machines that can host deployments)
-  useState(() => {
+  useEffect(() => {
     infraMachinesApi.list().then((list) => {
       setServers(list.filter((m) => m.parent_id !== null).map((m) => ({
         id: m.id, name: m.name || m.host, host: m.host, parent_id: m.parent_id,
       })));
     });
-  });
+  }, []);
 
   const canGenerate = groups.every((g) => groupServers[g.id]);
 
@@ -745,7 +744,7 @@ function DeployDataPanel({ deployment, t }: {
     return parts;
   }
 
-  if (!("groups" in data) || !data.groups) {
+  if (!data || !("groups" in data) || !data.groups) {
     return (
       <p className="text-[12px] text-muted-foreground italic p-4">
         {t("projects.deploy_data_empty")}
@@ -756,7 +755,7 @@ function DeployDataPanel({ deployment, t }: {
   return (
     <pre className="p-4 bg-zinc-950 text-zinc-300 rounded-md text-[12px] font-mono whitespace-pre leading-5 overflow-auto max-h-[60vh]">
       <span className="text-zinc-500"># project: </span>
-      <span>{data.project.name}</span>
+      <span>{(data as DeploymentData).project?.name}</span>
       <span className="text-zinc-500">  network: </span>
       <span className="text-sky-400">{data.project.network}</span>
       {"\n"}
@@ -866,12 +865,12 @@ function PreviewDialog({ group, onClose, t }: {
   const [preview, setPreview] = useState<GroupPreview | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useState(() => {
+  useEffect(() => {
     groupsApi.preview(group.id)
       .then(setPreview)
       .catch((e) => toast.error(String(e)))
       .finally(() => setLoading(false));
-  });
+  }, [group.id]);
 
   function colorize(yamlText: string, resolved: Set<string>, unresolved: Set<string>): React.ReactNode[] {
     // Split by ${...} and {{...}} patterns and colorize
@@ -1116,6 +1115,8 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
       qc.invalidateQueries({ queryKey: ["instances", projectId] });
       setDirty(false);
       toast.success(t("projects.variables_saved"));
+    } catch (e) {
+      toast.error(String(e));
     } finally {
       setSaving(false);
     }

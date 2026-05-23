@@ -151,7 +151,7 @@ async def create_connection(
     if credentials:
         vname = await _require_vault_name(vault_name)
         path = f"remote-backups/{connection_id}"
-        await vault_client.create_secret(path, json.dumps(credentials), vault_name=vname)
+        await vault_client.create_secret(path, json.dumps(credentials), tags=[name, kind], vault_name=vname)
         vault_secret_path = vault_client.build_ref(vname, path)
 
     try:
@@ -198,7 +198,9 @@ async def update_connection(
     elif credentials is not None:
         vname = await _require_vault_name(vault_name)
         path = f"remote-backups/{connection_id}"
-        await vault_client.create_secret(path, json.dumps(credentials), vault_name=vname)
+        conn_name = name or row["name"]
+        conn_kind = row["kind"]
+        await vault_client.create_secret(path, json.dumps(credentials), tags=[conn_name, conn_kind], vault_name=vname)
         new_ref = vault_client.build_ref(vname, path)
         try:
             await execute(

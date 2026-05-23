@@ -188,24 +188,25 @@ async def create(
     if vault_name is None:
         vault_name = await _require_default_vault_name()
     cert_id = uuid4()
+    tags = [name]
     created_paths: list[str] = []
     try:
         priv_path = _path_private_key(cert_id)
-        await vault_client.create_secret(priv_path, private_key, vault_name=vault_name)
+        await vault_client.create_secret(priv_path, private_key, tags=tags, vault_name=vault_name)
         created_paths.append(priv_path)
         priv_ref = vault_client.build_ref(vault_name, priv_path)
 
         pass_ref: str | None = None
         if passphrase is not None:
             pass_path = _path_passphrase(cert_id)
-            await vault_client.create_secret(pass_path, passphrase, vault_name=vault_name)
+            await vault_client.create_secret(pass_path, passphrase, tags=tags, vault_name=vault_name)
             created_paths.append(pass_path)
             pass_ref = vault_client.build_ref(vault_name, pass_path)
 
         pub_ref: str | None = None
         if public_key is not None:
             pub_path = _path_public_key(cert_id)
-            await vault_client.create_secret(pub_path, public_key, vault_name=vault_name)
+            await vault_client.create_secret(pub_path, public_key, tags=tags, vault_name=vault_name)
             created_paths.append(pub_path)
             pub_ref = vault_client.build_ref(vault_name, pub_path)
 

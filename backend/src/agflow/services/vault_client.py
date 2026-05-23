@@ -178,11 +178,15 @@ async def list_secrets(limit: int = 200, vault_name: str | None = None) -> list:
 
 
 async def create_secret(
-    name: str, value: str, description: str | None = None, vault_name: str | None = None,
+    name: str,
+    value: str,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    vault_name: str | None = None,
 ) -> str:
     """Crée un nouveau secret dans le vault. Retourne le secret_id (UUID str)."""
     _, client = await _ensure_client(vault_name)
-    return await _run(client.secrets.create, name, value, description)
+    return await _run(client.secrets.create, name, value, description, tags)
 
 
 async def update_secret(name: str, value: str, vault_name: str | None = None) -> None:

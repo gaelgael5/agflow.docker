@@ -46,10 +46,10 @@ if (-not $remoteUser) { Write-Error 'REMOTE_USER requis'; exit 1 }
 $branch = if ($cfg['BRANCH']) { $cfg['BRANCH'] } else { 'dev' }
 
 # Commande passee en argument ssh (pas de pipe = pas de BOM)
-$remoteCmd = "/opt/agflow.docker/dev-deploy.sh $branch && " +
+$remoteCmd = "cd /opt/agflow.docker && ./dev-deploy.sh $branch && " +
              "echo '--- logs ($lines lignes) ---' && " +
              "sleep 3 && " +
-             "docker compose -f /opt/agflow.docker/docker-compose.dev.yml logs --tail=$lines"
+             "docker compose -f docker-compose.dev.yml logs --tail=$lines"
 
 Write-Host "==> [CT${MachineId}] ${remoteUser}@${remoteHost}"
 

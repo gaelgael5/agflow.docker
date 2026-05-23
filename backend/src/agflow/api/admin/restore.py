@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import structlog
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from agflow.auth.dependencies import require_admin
 from agflow.schemas.restore_wizard import (
@@ -12,6 +13,7 @@ from agflow.schemas.restore_wizard import (
     RestoreJobStarted,
     RestoreJobStatus,
     VaultRef,
+    VaultSecretsRequest,
     VaultSecretItem,
 )
 from agflow.services.restore_wizard_browse_service import browse_remote
@@ -26,6 +28,8 @@ from agflow.services.restore_wizard_vault_service import (
     list_vault_secrets_by_prefix,
     test_vault_connection,
 )
+
+_log = structlog.get_logger(__name__)
 
 router = APIRouter(
     prefix="/api/admin/restore",
@@ -43,14 +47,10 @@ async def vault_test(body: VaultRef) -> dict:
     return {}
 
 
-@router.get("/vault/secrets", response_model=list[VaultSecretItem])
-async def vault_secrets(
-    vault_url: str = Query(...),
-    vault_api_key: str = Query(...),
-    path: str = Query(default=""),
-) -> list[VaultSecretItem]:
+@router.post("/vault/secrets", response_model=list[VaultSecretItem])
+async def vault_secrets(body: VaultSecretsRequest) -> list[VaultSecretItem]:
     try:
-        return await list_vault_secrets_by_prefix(vault_url, vault_api_key, path)
+        return await list_vault_secrets_by_prefix(body.url, body.api_key, body.path)
     except InvalidVaultCredentialsError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
@@ -67,11 +67,14 @@ async def remote_browse(body: RemoteBrowseRequest) -> list[RemoteEntry]:
     try:
         return await browse_remote(
             connection_type=body.connection_type,
-            manual_fields=body.manual_fields,
+            manual_fields={**body.manual_fields, "path": body.path},
             credentials=credentials,
         )
+    except InvalidVaultCredentialsError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _log.error("restore.browse_failed", error=str(exc))
+        raise HTTPException(status_code=502, detail="Connexion distante échouée") from exc
 
 
 @router.post("/execute", status_code=202, response_model=RestoreJobStarted)

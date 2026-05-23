@@ -19,6 +19,12 @@ class VaultRef(BaseModel):
     api_key: str = Field(min_length=1, max_length=1024)
 
 
+class VaultSecretsRequest(VaultRef):
+    """Body pour lister les secrets vault filtrés par préfixe."""
+
+    path: str = ""
+
+
 class VaultSecretItem(BaseModel):
     name: str
     tags: list[str]

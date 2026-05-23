@@ -124,7 +124,7 @@ async def run_job(job_id: UUID, req: RestoreExecuteRequest) -> None:
 
     except Exception as exc:
         _log.error("restore_wizard.job_failed", job_id=str(job_id), error=str(exc))
-        await _set_failed(job_id, str(exc))
+        await _set_failed(job_id, "Erreur interne. Consultez les logs serveur pour le détail.")
     finally:
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)

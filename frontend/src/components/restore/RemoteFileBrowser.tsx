@@ -43,7 +43,7 @@ export function RemoteFileBrowser({
     queryFn: () =>
       restoreApi.browse({
         connection_type: connectionType,
-        manual_fields: manualFields,
+        manual_fields: { ...manualFields, path: currentPath },
         vault_mappings: vaultMappings,
         vault: { url: vaultUrl, api_key: vaultApiKey },
         path: currentPath,

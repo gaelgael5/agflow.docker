@@ -14,6 +14,8 @@ interface VaultSecretPickerProps {
   optional?: boolean;
 }
 
+const NONE_VALUE = "__none__";
+
 export function VaultSecretPicker({
   label,
   secrets,
@@ -25,13 +27,16 @@ export function VaultSecretPicker({
   return (
     <div className="space-y-1">
       <Label>{label}{optional && <span className="ml-1 text-muted-foreground text-xs">({t("common.optional")})</span>}</Label>
-      <Select value={value} onValueChange={onChange}>
+      <Select
+        value={value === "" ? NONE_VALUE : value}
+        onValueChange={(v) => onChange(v === NONE_VALUE ? "" : v)}
+      >
         <SelectTrigger>
           <SelectValue placeholder={t("restore.picker_placeholder")} />
         </SelectTrigger>
         <SelectContent>
           {optional && (
-            <SelectItem value="">{t("restore.picker_none")}</SelectItem>
+            <SelectItem value={NONE_VALUE}>{t("restore.picker_none")}</SelectItem>
           )}
           {secrets.map((s) => (
             <SelectItem key={s.name} value={s.name}>

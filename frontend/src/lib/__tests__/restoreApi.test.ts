@@ -28,15 +28,13 @@ describe("restoreApi.testVault", () => {
 });
 
 describe("restoreApi.listSecrets", () => {
-  it("appelle GET /admin/restore/vault/secrets avec params", async () => {
-    mockApi.get.mockResolvedValue({ data: [] });
+  it("appelle POST /admin/restore/vault/secrets avec body", async () => {
+    mockApi.post.mockResolvedValue({ data: [] });
     await restoreApi.listSecrets("https://v.test", "key", "certificates");
-    expect(mockApi.get).toHaveBeenCalledWith("/admin/restore/vault/secrets", {
-      params: {
-        vault_url: "https://v.test",
-        vault_api_key: "key",
-        path: "certificates",
-      },
+    expect(mockApi.post).toHaveBeenCalledWith("/admin/restore/vault/secrets", {
+      url: "https://v.test",
+      api_key: "key",
+      path: "certificates",
     });
   });
 });

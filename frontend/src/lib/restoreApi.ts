@@ -48,8 +48,10 @@ export const restoreApi = {
     vaultApiKey: string,
     path: string,
   ): Promise<VaultSecretItem[]> {
-    const res = await api.get<VaultSecretItem[]>("/admin/restore/vault/secrets", {
-      params: { vault_url: vaultUrl, vault_api_key: vaultApiKey, path },
+    const res = await api.post<VaultSecretItem[]>("/admin/restore/vault/secrets", {
+      url: vaultUrl,
+      api_key: vaultApiKey,
+      path,
     });
     return res.data;
   },

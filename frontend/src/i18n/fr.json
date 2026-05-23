@@ -2021,5 +2021,14 @@
       "reconnecting": "Reconnexion...",
       "disconnected": "Hors-ligne (polling 5s)"
     }
+  },
+  "restore": {
+    "page_title": "Restauration",
+    "page_subtitle": "Restaurez votre base depuis une sauvegarde distante",
+    "step_vault": "Connexion au coffre",
+    "step_connection": "Connexion distante",
+    "step_browse": "Parcourir les fichiers",
+    "step_confirm": "Confirmer la restauration",
+    "nav_label": "Restauration"
   }
 }

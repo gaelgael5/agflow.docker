@@ -2014,5 +2014,14 @@
       "reconnecting": "Reconnecting...",
       "disconnected": "Offline (5s polling)"
     }
+  },
+  "restore": {
+    "page_title": "Restore",
+    "page_subtitle": "Restore your database from a remote backup",
+    "step_vault": "Vault connection",
+    "step_connection": "Remote connection",
+    "step_browse": "Browse files",
+    "step_confirm": "Confirm restore",
+    "nav_label": "Restore"
   }
 }

@@ -22,6 +22,7 @@ import {
   ExternalLink,
   PlugZap,
   RadioTower,
+  RotateCcw,
   Sun,
   Tags,
   Users,
@@ -125,6 +126,7 @@ export function Sidebar({ open = false, onClose }: Props) {
             items: [
               { to: "/backups", label: t("backups.sidebar"), icon: Archive },
               { to: "/backup-remotes", label: t("backup_remotes.title"), icon: Cloud },
+              { to: "/restore", label: t("restore.nav_label"), icon: RotateCcw },
             ],
           },
           {

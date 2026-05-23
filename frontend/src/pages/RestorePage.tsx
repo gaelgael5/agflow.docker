@@ -1,4 +1,3 @@
-// frontend/src/pages/RestorePage.tsx
 import type { JSX } from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -6,9 +5,10 @@ import { RestoreTimelineItem } from "@/components/restore/RestoreTimelineItem";
 import { VaultConnectStep } from "@/components/restore/VaultConnectStep";
 import { RemoteConnectionStep } from "@/components/restore/RemoteConnectionStep";
 import { RemoteFileBrowser } from "@/components/restore/RemoteFileBrowser";
+import { RestoreConfirmStep } from "@/components/restore/RestoreConfirmStep";
 import type { VaultSecretItem } from "@/lib/restoreApi";
 
-export interface RestoreWizardState {
+interface RestoreWizardState {
   step: 1 | 2 | 3 | 4;
   vault: { url: string; apiKey: string } | null;
   secrets: VaultSecretItem[];
@@ -16,7 +16,6 @@ export interface RestoreWizardState {
   manualFields: Record<string, string>;
   vaultMappings: Record<string, string>;
   selectedFile: { path: string; name: string; size_bytes: number | null } | null;
-  jobId: string | null;
 }
 
 const INITIAL_STATE: RestoreWizardState = {
@@ -27,7 +26,6 @@ const INITIAL_STATE: RestoreWizardState = {
   manualFields: {},
   vaultMappings: {},
   selectedFile: null,
-  jobId: null,
 };
 
 export function RestorePage(): JSX.Element {
@@ -90,7 +88,19 @@ export function RestorePage(): JSX.Element {
       </RestoreTimelineItem>
 
       <RestoreTimelineItem step={4} title={t("restore.step_confirm")} status={stepStatus(4)}>
-        <p className="text-sm text-muted-foreground">étape 4 — à implémenter</p>
+        {state.vault && state.connectionType && state.selectedFile && (
+          <RestoreConfirmStep
+            request={{
+              connection_type: state.connectionType,
+              manual_fields: state.manualFields,
+              vault_mappings: state.vaultMappings,
+              vault: { url: state.vault.url, api_key: state.vault.apiKey },
+              file_path: state.selectedFile.path,
+            }}
+            selectedFileName={state.selectedFile.name}
+            selectedFileSize={state.selectedFile.size_bytes}
+          />
+        )}
       </RestoreTimelineItem>
     </div>
   );

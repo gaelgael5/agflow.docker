@@ -287,12 +287,21 @@ async def resolve_for_machine(machine_id: UUID) -> dict[str, str]:
 
 async def check_project_env_vars(project_id: UUID) -> ProjectEnvVarsCheck:
     """Vérifie que chaque group_script avec des variables via_env a sa machine complète."""
-    from agflow.services import group_scripts_service, groups_service, scripts_service
+    from agflow.services import (
+        group_scripts_service,
+        group_variables_service,
+        groups_service,
+        scripts_service,
+    )
 
     groups = await groups_service.list_by_project(project_id)
     items: list[ProjectEnvVarsCheckMissing] = []
 
     for group in groups:
+        group_var_names = {
+            r.name for r in await group_variables_service.list_by_group(group.id)
+            if r.value
+        }
         group_scripts = await group_scripts_service.list_by_group(group.id)
         for gs in group_scripts:
             script = await scripts_service.get_by_id(gs.script_id)
@@ -322,7 +331,7 @@ async def check_project_env_vars(project_id: UUID) -> ProjectEnvVarsCheck:
             if machine_id:
                 env_available = await resolve_for_machine(machine_id)
 
-            missing = [v.name for v in via_env_vars if v.name not in env_available]
+            missing = [v.name for v in via_env_vars if v.name not in env_available and v.name not in group_var_names]
             if missing:
                 items.append(ProjectEnvVarsCheckMissing(
                     group_script_id=gs.id,

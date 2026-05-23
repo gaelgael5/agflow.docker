@@ -1,19 +1,24 @@
-# remote-deploy.ps1 — Lance /opt/agflow.docker/dev-deploy.sh sur la machine de test
+# remote-deploy.ps1 — Lance /opt/agflow.docker/dev-deploy.sh sur une machine de test
 #
+# Usage : .\scripts\remote-deploy.ps1 <machine_id>
+#   ex  : .\scripts\remote-deploy.ps1 302
+#
+# Lit la configuration dans scripts\.env.<machine_id>.remote-deploy
 # Nécessite le client SSH Windows (intégré depuis Windows 10 1809).
 # Auth par clé SSH ou par mot de passe via plink (PuTTY).
-#
-# Configuration : remplir scripts\.env.remote-deploy
 
 param(
+    [Parameter(Mandatory)]
+    [string]$MachineId,
+
     [int]$LogLines = 0   # 0 = utilise la valeur du .env (défaut 80)
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$EnvFile   = Join-Path $ScriptDir ".env.remote-deploy"
+$EnvFile   = Join-Path $ScriptDir ".env.${MachineId}.remote-deploy"
 
 if (-not (Test-Path $EnvFile)) {
-    Write-Error "Fichier $EnvFile introuvable. Copier .env.remote-deploy.example -> .env.remote-deploy"
+    Write-Error "Fichier $EnvFile introuvable."
     exit 1
 }
 
@@ -48,10 +53,9 @@ sleep 3
 docker compose -f /opt/agflow.docker/docker-compose.dev.yml logs --tail=$lines --no-color
 "@
 
-Write-Host "==> ${remoteUser}@${remoteHost}"
+Write-Host "==> [CT${MachineId}] ${remoteUser}@${remoteHost}"
 
 if ($remoteKey) {
-    # Remplacer ~ par le répertoire home Windows
     $keyPath = $remoteKey -replace '^~', $env:USERPROFILE
     if (-not (Test-Path $keyPath)) {
         Write-Error "Cle SSH introuvable : $keyPath"
@@ -61,7 +65,7 @@ if ($remoteKey) {
 
 } elseif ($remotePwd) {
     if (-not (Get-Command plink -ErrorAction SilentlyContinue)) {
-        Write-Error "plink requis pour l'auth par mot de passe — installer PuTTY : winget install PuTTY.PuTTY"
+        Write-Error "plink requis pour l'auth par mot de passe — winget install PuTTY.PuTTY"
         exit 1
     }
     $remoteCmd | plink -batch -pw $remotePwd -P $remotePort "${remoteUser}@${remoteHost}" "bash -s"

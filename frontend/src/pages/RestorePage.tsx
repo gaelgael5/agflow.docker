@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { RestoreTimelineItem } from "@/components/restore/RestoreTimelineItem";
 import { VaultConnectStep } from "@/components/restore/VaultConnectStep";
 import { RemoteConnectionStep } from "@/components/restore/RemoteConnectionStep";
+import { RemoteFileBrowser } from "@/components/restore/RemoteFileBrowser";
 import type { VaultSecretItem } from "@/lib/restoreApi";
 
 export interface RestoreWizardState {
@@ -74,7 +75,18 @@ export function RestorePage(): JSX.Element {
       </RestoreTimelineItem>
 
       <RestoreTimelineItem step={3} title={t("restore.step_browse")} status={stepStatus(3)}>
-        <p className="text-sm text-muted-foreground">étape 3 — à implémenter</p>
+        {state.vault && state.connectionType && (
+          <RemoteFileBrowser
+            vaultUrl={state.vault.url}
+            vaultApiKey={state.vault.apiKey}
+            connectionType={state.connectionType}
+            manualFields={state.manualFields}
+            vaultMappings={state.vaultMappings}
+            onSelect={(file) =>
+              setState((s) => ({ ...s, step: 4, selectedFile: file }))
+            }
+          />
+        )}
       </RestoreTimelineItem>
 
       <RestoreTimelineItem step={4} title={t("restore.step_confirm")} status={stepStatus(4)}>

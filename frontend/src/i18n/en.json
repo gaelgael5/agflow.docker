@@ -1187,7 +1187,11 @@
     "section_api": "API",
     "section_services": "Services",
     "requires": "requires",
-    "env_vars_missing_banner": "{{count}} missing environment variable(s) for this project"
+    "env_vars_missing_banner": "{{count}} missing environment variable(s) for this project",
+    "var_origin_global": "Global variables",
+    "var_origin_group": "Group variables",
+    "var_origin_before_script": "Pre-deployment scripts",
+    "var_origin_manual": "Manual entry"
   },
   "instances": {
     "page_title": "Instances",

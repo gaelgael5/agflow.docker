@@ -43,7 +43,7 @@ export function isMissing(
     return false;
   }
 
-  const v = value?.trim() ?? "";
+  const v = String(value ?? "").trim();
 
   // Règle 2 : valeur vide
   if (!v) return true;
@@ -71,7 +71,7 @@ export function getOrigin(
   sources: VarSources,
 ): VarOrigin {
   const { globalVarNames, groupVarNames, beforeOutputNames } = sources;
-  const v = value?.trim() ?? "";
+  const v = String(value ?? "").trim();
 
   // Si le nom lui-même est couvert
   if (globalVarNames.has(varName)) return "global";

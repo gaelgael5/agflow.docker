@@ -291,7 +291,7 @@ export function AgentEditorPage() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  });
+  }, [formDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // beforeunload
   useEffect(() => {

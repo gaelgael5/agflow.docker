@@ -43,7 +43,7 @@ export function useGroupAvailableVars(
 
     const groupVarNames = new Set<string>(
       (groupVarsQuery.data ?? [])
-        .filter((v) => v.value.trim() !== "")
+        .filter((v) => String(v.value ?? "").trim() !== "")
         .map((v) => v.name),
     );
 

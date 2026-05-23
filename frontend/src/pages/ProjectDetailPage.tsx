@@ -1088,7 +1088,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
             if (v.name in merged) continue;
             if (v.generate && v.generate !== "null") continue;
             if (v.default) {
-              merged[v.name] = v.default;
+              merged[v.name] = String(v.default);
             }
           }
           setValues(merged);

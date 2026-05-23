@@ -3,6 +3,7 @@ import type { JSX } from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RestoreTimelineItem } from "@/components/restore/RestoreTimelineItem";
+import { VaultConnectStep } from "@/components/restore/VaultConnectStep";
 import type { VaultSecretItem } from "@/lib/restoreApi";
 
 export interface RestoreWizardState {
@@ -29,7 +30,7 @@ const INITIAL_STATE: RestoreWizardState = {
 
 export function RestorePage(): JSX.Element {
   const { t } = useTranslation();
-  const [state, _setState] = useState<RestoreWizardState>(INITIAL_STATE);
+  const [state, setState] = useState<RestoreWizardState>(INITIAL_STATE);
 
   function stepStatus(n: number): "pending" | "active" | "done" {
     if (state.step > n) return "done";
@@ -45,7 +46,11 @@ export function RestorePage(): JSX.Element {
       </div>
 
       <RestoreTimelineItem step={1} title={t("restore.step_vault")} status={stepStatus(1)}>
-        <p className="text-sm text-muted-foreground">étape 1 — à implémenter</p>
+        <VaultConnectStep
+          onDone={(vault, secrets) =>
+            setState((s) => ({ ...s, step: 2, vault, secrets }))
+          }
+        />
       </RestoreTimelineItem>
 
       <RestoreTimelineItem step={2} title={t("restore.step_connection")} status={stepStatus(2)}>

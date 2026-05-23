@@ -43,6 +43,7 @@ from agflow.api.admin.remote_backup_connections import (
 from agflow.api.admin.remote_backup_connections import (
     router as admin_remote_backup_connections_router,
 )
+from agflow.api.admin.restore import router as admin_restore_router
 from agflow.api.admin.roles import router as admin_roles_router
 from agflow.api.admin.scripts import router as admin_scripts_router
 from agflow.api.admin.secrets import router as admin_secrets_router
@@ -386,6 +387,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_remote_backup_connections_router)
     app.include_router(admin_backup_schedules_router)
     app.include_router(admin_local_backups_router)
+    app.include_router(admin_restore_router)
     app.include_router(admin_git_sync_router)
     app.include_router(admin_hmac_keys_router)
     app.include_router(admin_workflow_runtimes_router)

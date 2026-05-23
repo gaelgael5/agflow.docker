@@ -21,7 +21,7 @@ _CHUNK = 65536
 
 async def create_job() -> UUID:
     row = await fetch_one(
-        "INSERT INTO restore_jobs (status) VALUES ('running') RETURNING id, status, log, created_at, completed_at",
+        "INSERT INTO restore_jobs (status) VALUES ('running') RETURNING id",
     )
     return row["id"]
 
@@ -100,9 +100,13 @@ async def run_job(job_id: UUID, req: RestoreExecuteRequest) -> None:
         fd, tmp_str = tempfile.mkstemp(suffix=f"-{filename}")
         tmp_path = Path(tmp_str)
         try:
-            with os.fdopen(fd, "wb") as fh:
-                async for chunk in await provider.download_stream(dir_path, filename):
-                    fh.write(chunk)
+            agen = await provider.download_stream(dir_path, filename)
+            try:
+                with os.fdopen(fd, "wb") as fh:
+                    async for chunk in agen:
+                        fh.write(chunk)
+            finally:
+                await agen.aclose()
         except Exception:
             tmp_path.unlink(missing_ok=True)
             tmp_path = None

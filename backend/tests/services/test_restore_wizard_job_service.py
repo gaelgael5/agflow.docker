@@ -9,6 +9,17 @@ from agflow.schemas.restore_wizard import RestoreExecuteRequest, VaultRef
 from agflow.services.restore_wizard_job_service import run_job
 
 
+def _make_req(**overrides) -> RestoreExecuteRequest:
+    defaults = dict(
+        connection_type="sftp",
+        manual_fields={"host": "192.168.1.1", "port": "22"},
+        vault_mappings={"username": "remote-backups/user"},
+        vault=VaultRef(url="https://vault.test", api_key="k"),
+        file_path="/backups/dump.sql.gz",
+    )
+    return RestoreExecuteRequest(**{**defaults, **overrides})
+
+
 @pytest.mark.asyncio
 async def test_run_job_success():
     job_id = uuid4()
@@ -31,33 +42,14 @@ async def test_run_job_success():
         executed.append((sql, args))
 
     with (
-        patch(
-            "agflow.services.restore_wizard_job_service.get_vault_secret_value",
-            side_effect=fake_get_secret,
-        ),
-        patch(
-            "agflow.services.restore_wizard_job_service.get_provider",
-            return_value=fake_provider,
-        ),
-        patch(
-            "agflow.services.restore_wizard_job_service.db_backup.restore_dump",
-            side_effect=fake_restore,
-        ),
-        patch(
-            "agflow.services.restore_wizard_job_service.execute",
-            side_effect=fake_execute,
-        ),
+        patch("agflow.services.restore_wizard_job_service.get_vault_secret_value", side_effect=fake_get_secret),
+        patch("agflow.services.restore_wizard_job_service.get_provider", return_value=fake_provider),
+        patch("agflow.services.restore_wizard_job_service.db_backup.restore_dump", side_effect=fake_restore),
+        patch("agflow.services.restore_wizard_job_service.execute", side_effect=fake_execute),
     ):
-        req = RestoreExecuteRequest(
-            connection_type="sftp",
-            manual_fields={"host": "192.168.1.1", "port": "22"},
-            vault_mappings={"username": "remote-backups/user", "private_key": "certificates/key"},
-            vault=VaultRef(url="https://vault.test", api_key="k"),
-            file_path="/backups/dump.sql.gz",
-        )
-        await run_job(job_id, req)
+        await run_job(job_id, _make_req())
 
-    done_calls = [c for c in executed if "done" in str(c)]
+    done_calls = [c for c in executed if "status = 'done'" in str(c)]
     assert done_calls, "Le job doit être marqué 'done'"
 
 
@@ -83,31 +75,34 @@ async def test_run_job_restore_failure():
         executed.append((sql, args))
 
     with (
-        patch(
-            "agflow.services.restore_wizard_job_service.get_vault_secret_value",
-            side_effect=fake_get_secret,
-        ),
-        patch(
-            "agflow.services.restore_wizard_job_service.get_provider",
-            return_value=fake_provider,
-        ),
-        patch(
-            "agflow.services.restore_wizard_job_service.db_backup.restore_dump",
-            side_effect=fake_restore_fail,
-        ),
-        patch(
-            "agflow.services.restore_wizard_job_service.execute",
-            side_effect=fake_execute,
-        ),
+        patch("agflow.services.restore_wizard_job_service.get_vault_secret_value", side_effect=fake_get_secret),
+        patch("agflow.services.restore_wizard_job_service.get_provider", return_value=fake_provider),
+        patch("agflow.services.restore_wizard_job_service.db_backup.restore_dump", side_effect=fake_restore_fail),
+        patch("agflow.services.restore_wizard_job_service.execute", side_effect=fake_execute),
     ):
-        req = RestoreExecuteRequest(
-            connection_type="sftp",
-            manual_fields={"host": "192.168.1.1"},
-            vault_mappings={"username": "remote-backups/u"},
-            vault=VaultRef(url="https://v.test", api_key="k"),
-            file_path="/b/dump.sql.gz",
-        )
-        await run_job(job_id, req)
+        await run_job(job_id, _make_req(file_path="/b/dump.sql.gz"))
 
-    failed_calls = [c for c in executed if "failed" in str(c)]
+    failed_calls = [c for c in executed if "status = 'failed'" in str(c)]
     assert failed_calls, "Le job doit être marqué 'failed'"
+
+
+@pytest.mark.asyncio
+async def test_run_job_vault_error_marks_failed():
+    job_id = uuid4()
+
+    async def fake_get_secret_error(_url, _key, _name):
+        raise RuntimeError("vault unreachable")
+
+    executed = []
+
+    async def fake_execute(sql, *args):
+        executed.append((sql, args))
+
+    with (
+        patch("agflow.services.restore_wizard_job_service.get_vault_secret_value", side_effect=fake_get_secret_error),
+        patch("agflow.services.restore_wizard_job_service.execute", side_effect=fake_execute),
+    ):
+        await run_job(job_id, _make_req())
+
+    failed_calls = [c for c in executed if "status = 'failed'" in str(c)]
+    assert failed_calls, "Le job doit être marqué 'failed' quand le vault est inaccessible"

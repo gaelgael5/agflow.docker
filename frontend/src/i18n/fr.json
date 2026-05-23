@@ -2023,12 +2023,32 @@
     }
   },
   "restore": {
-    "page_title": "Restauration",
-    "page_subtitle": "Restaurez votre base depuis une sauvegarde distante",
-    "step_vault": "Connexion au coffre",
+    "nav_label": "Restauration",
+    "page_title": "Restaurer la base de données",
+    "page_subtitle": "Importez un backup depuis un stockage distant en utilisant vos credentials vault.",
+    "step_vault": "Connexion au vault",
     "step_connection": "Connexion distante",
-    "step_browse": "Parcourir les fichiers",
-    "step_confirm": "Confirmer la restauration",
-    "nav_label": "Restauration"
+    "step_browse": "Sélection du backup",
+    "step_confirm": "Confirmation et restauration",
+    "vault_url_label": "URL du vault",
+    "vault_apikey_label": "API key",
+    "btn_connect_vault": "Connecter le vault",
+    "vault_connect_error": "Impossible de se connecter au vault. Vérifiez l'URL et la clé.",
+    "connection_type_label": "Type de connexion",
+    "btn_test_connection": "Tester la connexion",
+    "connection_test_error": "Connexion au remote échouée. Vérifiez les paramètres.",
+    "picker_placeholder": "Choisir un secret...",
+    "picker_none": "Aucun (optionnel)",
+    "browse_root": "Racine",
+    "browse_empty": "Répertoire vide",
+    "browse_error": "Impossible de lister les fichiers. Vérifiez la connexion.",
+    "summary_file": "Fichier",
+    "summary_size": "Taille",
+    "summary_type": "Type de connexion",
+    "confirm_warning": "⚠️ La restauration va écraser la base de données actuelle. Cette opération est irréversible.",
+    "btn_restore": "Restaurer la base",
+    "status_running": "Restauration en cours...",
+    "status_done": "Restauration terminée avec succès.",
+    "status_failed": "La restauration a échoué."
   }
 }

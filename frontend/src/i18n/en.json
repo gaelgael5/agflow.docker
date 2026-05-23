@@ -2016,12 +2016,32 @@
     }
   },
   "restore": {
-    "page_title": "Restore",
-    "page_subtitle": "Restore your database from a remote backup",
+    "nav_label": "Restore",
+    "page_title": "Restore database",
+    "page_subtitle": "Import a backup from remote storage using your vault credentials.",
     "step_vault": "Vault connection",
     "step_connection": "Remote connection",
-    "step_browse": "Browse files",
-    "step_confirm": "Confirm restore",
-    "nav_label": "Restore"
+    "step_browse": "Select backup",
+    "step_confirm": "Confirm and restore",
+    "vault_url_label": "Vault URL",
+    "vault_apikey_label": "API key",
+    "btn_connect_vault": "Connect vault",
+    "vault_connect_error": "Cannot connect to vault. Check the URL and key.",
+    "connection_type_label": "Connection type",
+    "btn_test_connection": "Test connection",
+    "connection_test_error": "Remote connection failed. Check the parameters.",
+    "picker_placeholder": "Choose a secret...",
+    "picker_none": "None (optional)",
+    "browse_root": "Root",
+    "browse_empty": "Empty directory",
+    "browse_error": "Cannot list files. Check the connection.",
+    "summary_file": "File",
+    "summary_size": "Size",
+    "summary_type": "Connection type",
+    "confirm_warning": "⚠️ Restoring will overwrite the current database. This operation is irreversible.",
+    "btn_restore": "Restore database",
+    "status_running": "Restore in progress...",
+    "status_done": "Restore completed successfully.",
+    "status_failed": "Restore failed."
   }
 }

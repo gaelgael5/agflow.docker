@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 ###############################################################################
-# remote-deploy.sh — Déploiement sur une machine distante via SSH
+# remote-deploy.sh — Build + démarrage sur la machine de test, logs initiaux
 #
-# Se connecte sur REMOTE_HOST et lance REMOTE_SCRIPT dans REMOTE_DIR.
-# Supporte l'auth par clé SSH ou par mot de passe (sshpass requis).
-#
-# Usage : ./scripts/remote-deploy.sh
+# 1. SSH sur REMOTE_HOST
+# 2. docker compose build  (dans REMOTE_DIR)
+# 3. docker compose up -d
+# 4. Affiche les logs des premiers LOG_LINES lignes pour vérifier le boot
 #
 # Configuration : copier scripts/.env.remote-deploy.example
 #                 vers    scripts/.env.remote-deploy et remplir les valeurs.
@@ -21,42 +21,35 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
-# Charger les variables sans les exporter dans l'environnement courant
 set -a
 # shellcheck source=/dev/null
 source "$ENV_FILE"
 set +a
 
-# Variables obligatoires
 : "${REMOTE_HOST:?REMOTE_HOST requis dans $ENV_FILE}"
 : "${REMOTE_USER:?REMOTE_USER requis dans $ENV_FILE}"
 
 REMOTE_PORT="${REMOTE_PORT:-22}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/agflow.docker}"
-REMOTE_SCRIPT="${REMOTE_SCRIPT:-./dev-deploy.sh}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.dev.yml}"
+LOG_LINES="${LOG_LINES:-80}"
 
-# Options SSH communes
 SSH_OPTS=(
     -o StrictHostKeyChecking=no
     -o BatchMode=no
     -p "$REMOTE_PORT"
 )
 
-# Choisir la méthode d'authentification
 if [ -n "${REMOTE_KEY:-}" ]; then
-    if [ ! -f "$REMOTE_KEY" ]; then
-        echo "ERROR: clé SSH introuvable : $REMOTE_KEY"
-        exit 1
-    fi
+    [ -f "$REMOTE_KEY" ] || { echo "ERROR: clé SSH introuvable : $REMOTE_KEY"; exit 1; }
     SSH_OPTS+=(-i "$REMOTE_KEY")
     SSH_BIN="ssh"
 elif [ -n "${REMOTE_PASSWORD:-}" ]; then
-    if ! command -v sshpass &>/dev/null; then
-        echo "ERROR: sshpass est requis pour l'auth par mot de passe."
-        echo "       apt-get install sshpass  (Debian/Ubuntu)"
-        echo "       brew install hudochenkov/sshpass/sshpass  (macOS)"
+    command -v sshpass &>/dev/null || {
+        echo "ERROR: sshpass requis pour l'auth par mot de passe."
+        echo "       apt-get install sshpass  ou  brew install hudochenkov/sshpass/sshpass"
         exit 1
-    fi
+    }
     export SSHPASS="$REMOTE_PASSWORD"
     SSH_BIN="sshpass -e ssh"
 else
@@ -64,11 +57,27 @@ else
     exit 1
 fi
 
-echo "==> Connexion à ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PORT}"
-echo "==> Répertoire : ${REMOTE_DIR}"
-echo "==> Script     : ${REMOTE_SCRIPT}"
+echo "==> ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PORT}  —  ${REMOTE_DIR}"
 echo ""
 
 # shellcheck disable=SC2086
-$SSH_BIN "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" \
-    "cd ${REMOTE_DIR} && ${REMOTE_SCRIPT}"
+$SSH_BIN "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" bash <<REMOTE
+set -euo pipefail
+cd "${REMOTE_DIR}"
+
+echo "--- Build des images ---"
+docker compose -f ${COMPOSE_FILE} build
+
+echo ""
+echo "--- Démarrage de la stack ---"
+docker compose -f ${COMPOSE_FILE} up -d
+
+echo ""
+echo "--- État des services ---"
+docker compose -f ${COMPOSE_FILE} ps
+
+echo ""
+echo "--- Premiers logs (${LOG_LINES} lignes) ---"
+sleep 3
+docker compose -f ${COMPOSE_FILE} logs --tail=${LOG_LINES} --no-color
+REMOTE

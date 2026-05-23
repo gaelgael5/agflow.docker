@@ -34,7 +34,7 @@ import {
 import { api } from "@/lib/api";
 import { productsApi, type ProductVariable, type ProductConnector, type ProductComputed, type ProductApiDef, type ProductService, type SharedDep } from "@/lib/productsApi";
 import { templatesApi } from "@/lib/templatesApi";
-import { groupVariablesApi } from "@/lib/groupVariablesApi";
+import { isMissing, getOrigin, type VarSources } from "@/lib/missingVars";
 import { GroupVariablesSection } from "@/components/projects/GroupVariablesSection";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -964,11 +964,11 @@ function CollapsibleSection({ title, count, defaultOpen = true, children }: {
 
 /* ── Variable Row ─────────────────────────────────────── */
 
-function VarRow({ v, values, statuses, instSlug, onUpdate, onUpdateStatus, t }: {
+function VarRow({ v, values, statuses, sources, onUpdate, onUpdateStatus, t }: {
   v: ProductVariable;
   values: Record<string, string>;
   statuses: Record<string, InstanceVariableStatus>;
-  instSlug: string;
+  sources: VarSources;
   onUpdate: (name: string, val: string) => void;
   onUpdateStatus: (name: string, status: InstanceVariableStatus) => void;
   t: (key: string, opts?: Record<string, string>) => string;
@@ -978,13 +978,11 @@ function VarRow({ v, values, statuses, instSlug, onUpdate, onUpdateStatus, t }: 
   const hasGenerator = Boolean(v.generate && v.generate !== "null");
   const hasValue = Boolean(String(values[v.name] ?? "").trim());
   const isResolved = !isUndeclared && (hasGenerator || hasValue);
-  // Rewrite ${VARNAME} → ${INSTSLUG_VARNAME} for secrets so the badge matches
-  // what actually appears in the generated .env.
-  const displayedSyntax =
-    v.type === "secret" && instSlug
-      ? v.syntax.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (_, n) => `\${${instSlug}_${n}}`)
-      : v.syntax;
-  const badgeColorClass = isUndeclared
+  const displayedSyntax = v.syntax;
+  const currentValue = values[v.name] ?? "";
+  const missing = isMissing(v.name, currentValue, sources);
+  const origin = getOrigin(v.name, currentValue, sources);
+  const badgeColorClass = isUndeclared || missing
     ? "border-red-500 text-red-500"
     : isResolved
       ? "border-green-500 text-green-600"
@@ -1012,12 +1010,19 @@ function VarRow({ v, values, statuses, instSlug, onUpdate, onUpdateStatus, t }: 
           className="font-mono text-[12px] flex-1 h-8 opacity-60 bg-muted"
         />
       ) : (
-        <Input
-          value={values[v.name] ?? ""}
-          onChange={(e) => onUpdate(v.name, e.target.value)}
-          placeholder={v.default || v.name}
-          className={`font-mono text-[12px] flex-1 h-8 ${v.type === "secret" ? "text-orange-500" : ""}`}
-        />
+        <div className="flex-1">
+          <Input
+            value={values[v.name] ?? ""}
+            onChange={(e) => onUpdate(v.name, e.target.value)}
+            placeholder={v.default || v.name}
+            className={`font-mono text-[12px] w-full h-8 ${v.type === "secret" ? "text-orange-500" : ""}`}
+          />
+          {!missing && origin !== "missing" && (
+            <p className="text-[9px] text-muted-foreground mt-0.5">
+              {t(`projects.var_origin_${origin}`)}
+            </p>
+          )}
+        </div>
       )}
       <select
         value={currentStatus}
@@ -1036,6 +1041,13 @@ function VarRow({ v, values, statuses, instSlug, onUpdate, onUpdateStatus, t }: 
 /* ── Instance Row with expandable variables ───────────── */
 
 import { Input } from "@/components/ui/input";
+
+/** Sources vides : utilisées par défaut jusqu'à ce que la tâche 6 câble les vraies sources. */
+const emptySources: VarSources = {
+  globalVarNames: new Set(),
+  groupVarNames: new Set(),
+  beforeOutputNames: new Set(),
+};
 import type { QueryClient } from "@tanstack/react-query";
 
 function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t }: {
@@ -1061,32 +1073,6 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  // Préfixe utilisé pour rendre les références ${VAR} uniques entre groupes
-  // d'une même DB : `${<RES_NAME>_VAR}`. RES_NAME est une variable globale
-  // au groupe, créée automatiquement avec valeur initiale "RES_1" (cf.
-  // groups_service.create). Si elle est absente ou vide (groupes antérieurs
-  // au chantier), on retombe sur le nom de l'instance pour rester compatible.
-  const groupVarsQuery = useQuery({
-    queryKey: ["group-variables", instance.group_id],
-    queryFn: () => groupVariablesApi.list(instance.group_id),
-  });
-  const instSlugForDisplay = (() => {
-    const fallback = instance.instance_name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-    const resName = groupVarsQuery.data?.find((x) => x.name === "RES_NAME")?.value?.trim();
-    if (!resName) return fallback;
-    return resName.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-  })();
-  // Rewrite ${VAR} references to ${<INSTSLUG>_VAR} for any VAR declared as a
-  // secret in the recipe. Used in the Connectors + API panels so the display
-  // matches what actually lands in the generated .env.
-  const secretNames = new Set((productVars ?? []).filter((v) => v.type === "secret").map((v) => v.name));
-  function rewriteSecretRefs(value: string): string {
-    if (!value) return value;
-    return value.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (m, name) => {
-      if (secretNames.has(name)) return `\${${instSlugForDisplay}_${name}}`;
-      return m;
-    });
-  }
 
   function toggle() {
     if (!expanded && productVars === null) {
@@ -1104,17 +1090,12 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
               .then(setAvailableServices)
               .catch(() => setAvailableServices([]));
           }
-          // Même logique que `instSlugForDisplay` ci-dessus : RES_NAME du
-          // groupe, avec fallback sur le nom de l'instance.
-          const instSlug = instSlugForDisplay;
           const merged = { ...instance.variables };
           for (const v of result.variables) {
             if (v.name in merged) continue;
             if (v.generate && v.generate !== "null") continue;
             if (v.default) {
               merged[v.name] = v.default;
-            } else if (v.type === "secret") {
-              merged[v.name] = "${" + instSlug + "_" + v.name + "}";
             }
           }
           setValues(merged);
@@ -1187,7 +1168,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                 <CollapsibleSection title={t("projects.section_variables")} count={productVars.filter((v) => v.type === "variable").length}>
                   <div className="space-y-2">
                     {productVars.filter((v) => v.type === "variable").map((v) => (
-                      <VarRow key={v.name} v={v} values={values} statuses={statuses} instSlug={instSlugForDisplay} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
+                      <VarRow key={v.name} v={v} values={values} statuses={statuses} sources={emptySources} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
                     ))}
                   </div>
                 </CollapsibleSection>
@@ -1198,7 +1179,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                 <CollapsibleSection title={t("projects.section_secrets")} count={productVars.filter((v) => v.type === "secret").length}>
                   <div className="space-y-2">
                     {productVars.filter((v) => v.type === "secret").map((v) => (
-                      <VarRow key={v.name} v={v} values={values} statuses={statuses} instSlug={instSlugForDisplay} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
+                      <VarRow key={v.name} v={v} values={values} statuses={statuses} sources={emptySources} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
                     ))}
                   </div>
                 </CollapsibleSection>
@@ -1270,12 +1251,11 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                         {Object.keys(c.env).length > 0 && (
                           <div className="mt-2 space-y-0.5">
                             {Object.entries(c.env).map(([k, v]) => {
-                              const rewritten = rewriteSecretRefs(v);
                               return (
                                 <div key={k} className="flex items-center gap-2 text-[10px] font-mono">
                                   <span className="text-muted-foreground">{k}</span>
                                   <span className="text-muted-foreground">=</span>
-                                  <span className={rewritten.startsWith("${") ? "text-orange-500" : "text-blue-500"}>{rewritten}</span>
+                                  <span className={v.startsWith("${") ? "text-orange-500" : "text-blue-500"}>{v}</span>
                                 </div>
                               );
                             })}
@@ -1298,7 +1278,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                       <div><span className="text-muted-foreground">url:</span> <span className="text-blue-500">{apiDef.url}</span></div>
                       <div><span className="text-muted-foreground">base_url:</span> <span className="text-blue-500">{apiDef.base_url}</span></div>
                       {apiDef.auth_header && (
-                        <div><span className="text-muted-foreground">auth:</span> {apiDef.auth_header} {apiDef.auth_prefix} <span className="text-orange-500">{rewriteSecretRefs(apiDef.auth_secret_ref ?? "")}</span></div>
+                        <div><span className="text-muted-foreground">auth:</span> {apiDef.auth_header} {apiDef.auth_prefix} <span className="text-orange-500">{apiDef.auth_secret_ref ?? ""}</span></div>
                       )}
                     </div>
                   </div>

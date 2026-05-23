@@ -1735,7 +1735,7 @@ function ScriptLinkList({ links, groupId, onEdit, qc, t }: {
   );
 }
 
-function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit, t }: {
+function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose, onSubmit, t }: {
   open: boolean;
   initial: GroupScript | null;
   groupId: string;
@@ -1745,6 +1745,9 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
   onSubmit: (p: GroupScriptCreatePayload, linkId?: string) => Promise<void>;
   t: (key: string, opts?: Record<string, string>) => string;
 }) {
+  const scriptPosition = initial?.position ?? 999;
+  const sources = useGroupAvailableVars(groupId, scriptPosition);
+
   const [scriptId, setScriptId] = useState("");
   const [targetKind, setTargetKind] = useState<TargetKind>("fixed_machine");
   const [machineId, setMachineId] = useState("");
@@ -1903,19 +1906,29 @@ function GroupScriptDialog({ open, initial, scripts, machines, onClose, onSubmit
                 <div className="mt-2 space-y-2">
                   {declaredInputs.map((iv) => {
                     const s = inputStatuses[iv.name] ?? "keep";
+                    const val = inputValues[iv.name] ?? "";
+                    const varMissing = isMissing(iv.name, val, sources);
+                    const origin = getOrigin(iv.name, val, sources);
                     return (
                       <div key={iv.name}>
-                        <Label className="text-[10px]">
+                        <Label className={`text-[10px] ${varMissing ? "text-red-500" : ""}`}>
                           <span className="font-mono">{iv.name}</span>
                           {iv.description && <span className="text-muted-foreground ml-1">— {iv.description}</span>}
                         </Label>
                         <div className="flex gap-1 mt-1">
-                          <Input
-                            value={inputValues[iv.name] ?? ""}
-                            onChange={(e) => setInputValues({ ...inputValues, [iv.name]: e.target.value })}
-                            className="font-mono text-[11px] flex-1"
-                            placeholder={iv.default || "${ENV_VAR} ou valeur littérale"}
-                          />
+                          <div className="flex-1 flex flex-col">
+                            <Input
+                              value={inputValues[iv.name] ?? ""}
+                              onChange={(e) => setInputValues({ ...inputValues, [iv.name]: e.target.value })}
+                              className={`font-mono text-[11px] ${varMissing ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                              placeholder={iv.default || "${ENV_VAR} ou valeur littérale"}
+                            />
+                            {!varMissing && origin !== "missing" && (
+                              <p className="text-[9px] text-muted-foreground mt-0.5">
+                                {t(`projects.var_origin_${origin}`)}
+                              </p>
+                            )}
+                          </div>
                           <select
                             value={s}
                             onChange={(e) => setInputStatuses({ ...inputStatuses, [iv.name]: e.target.value as InputStatus })}

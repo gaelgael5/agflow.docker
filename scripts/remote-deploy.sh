@@ -44,8 +44,17 @@ else
     exit 1
 fi
 
+LOG_LINES="${LOG_LINES:-80}"
+
 echo "==> ${REMOTE_USER}@${REMOTE_HOST}"
 
 # shellcheck disable=SC2086
-$SSH_BIN "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" \
-    /opt/agflow.docker/dev-deploy.sh
+$SSH_BIN "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" bash <<REMOTE
+set -euo pipefail
+/opt/agflow.docker/dev-deploy.sh
+
+echo ""
+echo "--- logs initiaux (${LOG_LINES} lignes) ---"
+sleep 3
+docker compose -f /opt/agflow.docker/docker-compose.dev.yml logs --tail=${LOG_LINES} --no-color
+REMOTE

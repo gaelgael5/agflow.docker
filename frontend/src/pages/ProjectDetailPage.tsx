@@ -39,6 +39,7 @@ import { GroupVariablesSection } from "@/components/projects/GroupVariablesSecti
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useProjectEnvVarsCheck } from "@/hooks/useInfraEnvVars";
+import { useGroupAvailableVars } from "@/hooks/useGroupAvailableVars";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1041,12 +1042,6 @@ function VarRow({ v, values, statuses, sources, onUpdate, onUpdateStatus, t }: {
 
 /* ── Instance Row with expandable variables ───────────── */
 
-/** Sources vides : utilisées par défaut jusqu'à ce que la tâche 6 câble les vraies sources. */
-const emptySources: VarSources = {
-  globalVarNames: new Set(),
-  groupVarNames: new Set(),
-  beforeOutputNames: new Set(),
-};
 import type { QueryClient } from "@tanstack/react-query";
 
 function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t }: {
@@ -1071,7 +1066,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
   );
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-
+  const sources = useGroupAvailableVars(instance.group_id);
 
   function toggle() {
     if (!expanded && productVars === null) {
@@ -1167,7 +1162,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                 <CollapsibleSection title={t("projects.section_variables")} count={productVars.filter((v) => v.type === "variable").length}>
                   <div className="space-y-2">
                     {productVars.filter((v) => v.type === "variable").map((v) => (
-                      <VarRow key={v.name} v={v} values={values} statuses={statuses} sources={emptySources} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
+                      <VarRow key={v.name} v={v} values={values} statuses={statuses} sources={sources} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
                     ))}
                   </div>
                 </CollapsibleSection>
@@ -1178,7 +1173,7 @@ function InstanceRow({ instance, productName: pName, projectId, onDelete, qc, t 
                 <CollapsibleSection title={t("projects.section_secrets")} count={productVars.filter((v) => v.type === "secret").length}>
                   <div className="space-y-2">
                     {productVars.filter((v) => v.type === "secret").map((v) => (
-                      <VarRow key={v.name} v={v} values={values} statuses={statuses} sources={emptySources} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
+                      <VarRow key={v.name} v={v} values={values} statuses={statuses} sources={sources} onUpdate={updateValue} onUpdateStatus={updateStatus} t={t} />
                     ))}
                   </div>
                 </CollapsibleSection>

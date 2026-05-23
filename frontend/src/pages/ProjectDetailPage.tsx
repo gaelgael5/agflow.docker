@@ -44,6 +44,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-zinc-500 text-white",
@@ -1039,8 +1040,6 @@ function VarRow({ v, values, statuses, sources, onUpdate, onUpdateStatus, t }: {
 }
 
 /* ── Instance Row with expandable variables ───────────── */
-
-import { Input } from "@/components/ui/input";
 
 /** Sources vides : utilisées par défaut jusqu'à ce que la tâche 6 câble les vraies sources. */
 const emptySources: VarSources = {

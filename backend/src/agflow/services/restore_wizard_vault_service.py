@@ -7,20 +7,18 @@ from __future__ import annotations
 
 import asyncio
 from functools import partial
+from typing import Any
 
-import structlog
 from harpocrate import VaultClient
 
 from agflow.schemas.restore_wizard import VaultSecretItem
-
-_log = structlog.get_logger(__name__)
 
 
 class InvalidVaultCredentialsError(Exception):
     """API key ou URL invalide."""
 
 
-async def _run_sync(fn, *args, **kwargs):
+async def _run_sync(fn: Any, *args: Any, **kwargs: Any) -> Any:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
 
@@ -31,7 +29,7 @@ def _make_client(url: str, api_key: str) -> VaultClient:
 
 async def test_vault_connection(url: str, api_key: str) -> None:
     """Teste la connexion au vault. Lève InvalidVaultCredentialsError si invalide."""
-    from harpocrate.exceptions import VaultHttpError  # noqa: PLC0415
+    from harpocrate.exceptions import VaultHttpError
 
     client = _make_client(url, api_key)
     try:

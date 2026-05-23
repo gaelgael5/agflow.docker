@@ -18,7 +18,7 @@ class _FakeSecretItem:
 
 
 class _FakeSecretsClient:
-    def list_secrets(self, limit: int = 200):
+    def list_secrets(self, limit: int = 200):  # noqa: ARG002
         result = MagicMock()
         result.secrets = [
             _FakeSecretItem("certificates/id_prod", ["prod", "ssh"]),
@@ -27,21 +27,23 @@ class _FakeSecretsClient:
         ]
         return result
 
+    def get(self, name: str) -> str:
+        return f"secret-value-for-{name}"
+
 
 @pytest.mark.asyncio
-async def test_test_vault_connection_ok(monkeypatch):
+async def test_test_vault_connection_ok():
     fake_client = MagicMock()
     fake_client.secrets = _FakeSecretsClient()
     with patch(
         "agflow.services.restore_wizard_vault_service.VaultClient",
         return_value=fake_client,
     ):
-        # Ne doit pas lever d'exception
         await test_vault_connection("https://vault.example.com", "valid-key")
 
 
 @pytest.mark.asyncio
-async def test_test_vault_connection_invalid_key(monkeypatch):
+async def test_test_vault_connection_invalid_key():
     from harpocrate.exceptions import VaultHttpError
 
     fake_client = MagicMock()
@@ -51,13 +53,12 @@ async def test_test_vault_connection_invalid_key(monkeypatch):
     with patch(
         "agflow.services.restore_wizard_vault_service.VaultClient",
         return_value=fake_client,
-    ):
-        with pytest.raises(InvalidVaultCredentialsError):
-            await test_vault_connection("https://vault.example.com", "bad-key")
+    ), pytest.raises(InvalidVaultCredentialsError):
+        await test_vault_connection("https://vault.example.com", "bad-key")
 
 
 @pytest.mark.asyncio
-async def test_list_vault_secrets_by_prefix_filters_correctly(monkeypatch):
+async def test_list_vault_secrets_by_prefix_filters_correctly():
     fake_client = MagicMock()
     fake_client.secrets = _FakeSecretsClient()
     with patch(
@@ -73,7 +74,7 @@ async def test_list_vault_secrets_by_prefix_filters_correctly(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_list_vault_secrets_by_prefix_returns_all_when_prefix_empty(monkeypatch):
+async def test_list_vault_secrets_by_prefix_returns_all_when_prefix_empty():
     fake_client = MagicMock()
     fake_client.secrets = _FakeSecretsClient()
     with patch(
@@ -84,3 +85,19 @@ async def test_list_vault_secrets_by_prefix_returns_all_when_prefix_empty(monkey
             "https://vault.example.com", "valid-key", ""
         )
     assert len(items) == 3
+
+
+@pytest.mark.asyncio
+async def test_get_vault_secret_value():
+    from agflow.services.restore_wizard_vault_service import get_vault_secret_value
+
+    fake_client = MagicMock()
+    fake_client.secrets = _FakeSecretsClient()
+    with patch(
+        "agflow.services.restore_wizard_vault_service.VaultClient",
+        return_value=fake_client,
+    ):
+        value = await get_vault_secret_value(
+            "https://vault.example.com", "valid-key", "certificates/id_prod"
+        )
+    assert value == "secret-value-for-certificates/id_prod"

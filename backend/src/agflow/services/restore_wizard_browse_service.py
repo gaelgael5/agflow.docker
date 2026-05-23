@@ -3,12 +3,10 @@ from __future__ import annotations
 import stat as stat_mod
 from datetime import datetime, timezone
 
-import structlog
+import asyncssh
 
 from agflow.schemas.restore_wizard import RemoteEntry
 from agflow.services.remote_backup_providers.factory import get_provider
-
-_log = structlog.get_logger(__name__)
 
 
 async def browse_remote(
@@ -32,8 +30,6 @@ async def _browse_sftp(
     credentials: dict[str, str | None],
     path: str,
 ) -> list[RemoteEntry]:
-    import asyncssh
-
     host = config["host"]
     port = int(config.get("port", "22"))
     username = credentials.get("username", "")
@@ -41,16 +37,14 @@ async def _browse_sftp(
     private_key_str = credentials.get("private_key")
     passphrase = credentials.get("passphrase")
 
-    connect_kwargs: dict = {
+    connect_kwargs: dict[str, object] = {
         "host": host,
         "port": port,
         "username": username,
         "known_hosts": None,
     }
     if private_key_str:
-        import asyncssh as _ssh
-
-        pkey = _ssh.import_private_key(
+        pkey = asyncssh.import_private_key(
             private_key_str,
             passphrase=passphrase.encode() if passphrase else None,
         )
@@ -66,7 +60,7 @@ async def _browse_sftp(
     for entry in raw:
         if entry.filename in (".", ".."):
             continue
-        perms = getattr(entry.attrs, "permissions", None) or 0
+        perms = getattr(entry.attrs, "permissions", 0) or 0
         is_dir = stat_mod.S_ISDIR(perms)
         mtime = getattr(entry.attrs, "mtime", None)
         size = getattr(entry.attrs, "size", None)

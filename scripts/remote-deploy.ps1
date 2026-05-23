@@ -1,17 +1,17 @@
-# remote-deploy.ps1 — Lance /opt/agflow.docker/dev-deploy.sh sur une machine de test
+# remote-deploy.ps1 - Lance /opt/agflow.docker/dev-deploy.sh sur une machine de test
 #
 # Usage : .\scripts\remote-deploy.ps1 <machine_id>
 #   ex  : .\scripts\remote-deploy.ps1 302
 #
 # Lit la configuration dans scripts\.env.<machine_id>.remote-deploy
-# Nécessite le client SSH Windows (intégré depuis Windows 10 1809).
-# Auth par clé SSH ou par mot de passe via plink (PuTTY).
+# Necessite le client SSH Windows (integre depuis Windows 10 1809).
+# Auth par cle SSH ou par mot de passe via plink (PuTTY).
 
 param(
     [Parameter(Mandatory)]
     [string]$MachineId,
 
-    [int]$LogLines = 0   # 0 = utilise la valeur du .env (défaut 80)
+    [int]$LogLines = 0
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -43,15 +43,13 @@ $lines      = if ($LogLines -gt 0) { $LogLines } `
 if (-not $remoteHost) { Write-Error 'REMOTE_HOST requis'; exit 1 }
 if (-not $remoteUser) { Write-Error 'REMOTE_USER requis'; exit 1 }
 
-# Commande à exécuter sur la machine distante
-$remoteCmd = @"
-set -euo pipefail
-/opt/agflow.docker/dev-deploy.sh
-echo ''
-echo '--- logs initiaux ($lines lignes) ---'
-sleep 3
-docker compose -f /opt/agflow.docker/docker-compose.dev.yml logs --tail=$lines --no-color
-"@
+$branch = if ($cfg['BRANCH']) { $cfg['BRANCH'] } else { 'dev' }
+
+# Commande passee en argument ssh (pas de pipe = pas de BOM)
+$remoteCmd = "/opt/agflow.docker/dev-deploy.sh $branch && " +
+             "echo '--- logs ($lines lignes) ---' && " +
+             "sleep 3 && " +
+             "docker compose -f /opt/agflow.docker/docker-compose.dev.yml logs --tail=$lines"
 
 Write-Host "==> [CT${MachineId}] ${remoteUser}@${remoteHost}"
 
@@ -61,16 +59,16 @@ if ($remoteKey) {
         Write-Error "Cle SSH introuvable : $keyPath"
         exit 1
     }
-    $remoteCmd | ssh -o StrictHostKeyChecking=no -p $remotePort -i $keyPath "${remoteUser}@${remoteHost}" "bash -s"
+    ssh -o StrictHostKeyChecking=no -p $remotePort -i $keyPath "${remoteUser}@${remoteHost}" $remoteCmd
 
 } elseif ($remotePwd) {
     if (-not (Get-Command plink -ErrorAction SilentlyContinue)) {
-        Write-Error "plink requis pour l'auth par mot de passe — winget install PuTTY.PuTTY"
+        Write-Error "plink requis pour auth par mot de passe - winget install PuTTY.PuTTY"
         exit 1
     }
-    $remoteCmd | plink -batch -pw $remotePwd -P $remotePort "${remoteUser}@${remoteHost}" "bash -s"
+    plink -batch -pw $remotePwd -P $remotePort "${remoteUser}@${remoteHost}" $remoteCmd
 
 } else {
-    Write-Error "REMOTE_KEY ou REMOTE_PASSWORD doit etre defini dans $EnvFile"
+    Write-Error "REMOTE_KEY ou REMOTE_PASSWORD requis dans $EnvFile"
     exit 1
 }

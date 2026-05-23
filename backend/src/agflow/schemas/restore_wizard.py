@@ -1,21 +1,22 @@
-# backend/src/agflow/schemas/restore_wizard.py
+"""Schémas Pydantic pour le wizard de restauration en 4 étapes.
+
+Flux : connexion vault → sélection connexion distante → navigation fichiers → restauration.
+Les credentials vault sont transmis inline à chaque requête (pas de session persistée).
+"""
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class VaultRef(BaseModel):
-    url: str
-    api_key: str
+    """Credentials d'accès au vault Harpocrate (URL + API key)."""
 
-
-class VaultTestRequest(BaseModel):
-    url: str
-    api_key: str
+    url: str = Field(min_length=1, max_length=2048)
+    api_key: str = Field(min_length=1, max_length=1024)
 
 
 class VaultSecretItem(BaseModel):
@@ -24,11 +25,13 @@ class VaultSecretItem(BaseModel):
 
 
 class RemoteBrowseRequest(BaseModel):
+    """Requête de navigation dans un répertoire distant."""
+
     connection_type: Literal["sftp", "s3", "ftps", "gdrive"]
     manual_fields: dict[str, str]
     vault_mappings: dict[str, str]  # field_name → vault secret name
     vault: VaultRef
-    path: str = "/"
+    path: str = Field(default="/", min_length=1, max_length=4096)
 
 
 class RemoteEntry(BaseModel):
@@ -40,6 +43,8 @@ class RemoteEntry(BaseModel):
 
 
 class RestoreExecuteRequest(BaseModel):
+    """Requête de restauration : télécharge le fichier distant et l'injecte dans Postgres."""
+
     connection_type: Literal["sftp", "s3", "ftps", "gdrive"]
     manual_fields: dict[str, str]
     vault_mappings: dict[str, str]

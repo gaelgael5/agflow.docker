@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RestoreTimelineItem } from "@/components/restore/RestoreTimelineItem";
 import { VaultConnectStep } from "@/components/restore/VaultConnectStep";
+import { RemoteConnectionStep } from "@/components/restore/RemoteConnectionStep";
 import type { VaultSecretItem } from "@/lib/restoreApi";
 
 export interface RestoreWizardState {
@@ -54,7 +55,22 @@ export function RestorePage(): JSX.Element {
       </RestoreTimelineItem>
 
       <RestoreTimelineItem step={2} title={t("restore.step_connection")} status={stepStatus(2)}>
-        <p className="text-sm text-muted-foreground">étape 2 — à implémenter</p>
+        {state.vault && (
+          <RemoteConnectionStep
+            vaultUrl={state.vault.url}
+            vaultApiKey={state.vault.apiKey}
+            secrets={state.secrets}
+            onDone={(cfg) =>
+              setState((s) => ({
+                ...s,
+                step: 3,
+                connectionType: cfg.type,
+                manualFields: cfg.manual,
+                vaultMappings: cfg.vault,
+              }))
+            }
+          />
+        )}
       </RestoreTimelineItem>
 
       <RestoreTimelineItem step={3} title={t("restore.step_browse")} status={stepStatus(3)}>

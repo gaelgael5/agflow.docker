@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardPaste, Copy, Pencil, Plus, Save, Trash2 } from "lucide-react";
@@ -193,12 +193,19 @@ function VariableRow({
   const isProtected = PROTECTED_NAMES.has(variable.name);
   const [draftValue, setDraftValue] = useState(variable.value);
   const [saving, setSaving] = useState(false);
+  const [pasteMode, setPasteMode] = useState(false);
+  const pasteInputRef = useRef<HTMLInputElement>(null);
   const isDirty = draftValue !== variable.value;
 
   // Si la valeur change côté serveur (autre tab, autre user), on resynchronise.
   useEffect(() => {
     setDraftValue(variable.value);
   }, [variable.value]);
+
+  // Focus l'input de paste dès qu'il apparaît
+  useEffect(() => {
+    if (pasteMode) pasteInputRef.current?.focus();
+  }, [pasteMode]);
 
   const hasValue = Boolean(draftValue.trim());
 
@@ -254,22 +261,32 @@ function VariableRow({
           </p>
         )}
       </div>
-      <button
-        type="button"
-        title={t("projects.group_variables_paste")}
-        className="p-1 shrink-0 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors self-start mt-0.5"
-        disabled={saving}
-        onClick={async () => {
-          try {
-            const text = await navigator.clipboard.readText();
+      {/* Bouton coller : ouvre un mini-input, l'utilisateur fait Ctrl+V */}
+      {pasteMode ? (
+        <input
+          ref={pasteInputRef}
+          className="w-36 h-8 shrink-0 self-start rounded-md border border-input bg-background px-2 text-[11px] font-mono text-muted-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+          placeholder="Ctrl+V…"
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text");
             setDraftValue(text);
-          } catch {
-            toast.error(t("projects.group_variables_paste_error"));
-          }
-        }}
-      >
-        <ClipboardPaste className="w-3.5 h-3.5" />
-      </button>
+            setPasteMode(false);
+            e.preventDefault();
+          }}
+          onBlur={() => setPasteMode(false)}
+          onKeyDown={(e) => { if (e.key === "Escape") setPasteMode(false); }}
+        />
+      ) : (
+        <button
+          type="button"
+          title={t("projects.group_variables_paste")}
+          className="p-1 shrink-0 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors self-start mt-0.5"
+          disabled={saving}
+          onClick={() => setPasteMode(true)}
+        >
+          <ClipboardPaste className="w-3.5 h-3.5" />
+        </button>
+      )}
       <Input
         value={draftValue}
         onChange={(e) => setDraftValue(e.target.value)}

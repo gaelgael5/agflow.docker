@@ -2043,7 +2043,22 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
                       className="h-7 w-7 shrink-0"
                       title={t("scripts.copy_var_ref")}
                       onClick={() => {
-                        navigator.clipboard.writeText(`\${${ov.name}}`);
+                        const text = `\${${ov.name}}`;
+                        if (navigator.clipboard) {
+                          navigator.clipboard.writeText(text).catch(() => {
+                            const el = Object.assign(document.createElement("textarea"), { value: text });
+                            document.body.appendChild(el);
+                            el.select();
+                            document.execCommand("copy");
+                            el.remove();
+                          });
+                        } else {
+                          const el = Object.assign(document.createElement("textarea"), { value: text });
+                          document.body.appendChild(el);
+                          el.select();
+                          document.execCommand("copy");
+                          el.remove();
+                        }
                         toast.success(t("scripts.copy_var_ref_done", { name: ov.name }));
                       }}
                     >

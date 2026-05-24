@@ -2042,14 +2042,16 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
                       size="icon"
                       className="h-7 w-7 shrink-0"
                       title={t("scripts.copy_var_ref")}
-                      onClick={() => {
+                      onClick={(e) => {
                         const text = `\${${ov.name}}`;
-                        const fallback = () => {
+                        const copyViaExecCommand = () => {
+                          // Insérer dans le dialog (pas body) pour rester dans le focus trap Radix
+                          const container = (e.currentTarget as HTMLElement).closest('[role="dialog"]') ?? document.body;
                           const el = document.createElement("textarea");
                           el.value = text;
                           el.setAttribute("readonly", "");
-                          el.style.cssText = "position:fixed;top:0;left:0;width:2em;height:2em;opacity:0";
-                          document.body.appendChild(el);
+                          el.style.cssText = "position:absolute;top:0;left:0;width:1px;height:1px;opacity:0;overflow:hidden";
+                          container.appendChild(el);
                           el.focus();
                           el.select();
                           document.execCommand("copy");
@@ -2059,9 +2061,9 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
                         if (navigator.clipboard) {
                           navigator.clipboard.writeText(text)
                             .then(() => toast.success(t("scripts.copy_var_ref_done", { name: ov.name })))
-                            .catch(fallback);
+                            .catch(copyViaExecCommand);
                         } else {
-                          fallback();
+                          copyViaExecCommand();
                         }
                       }}
                     >

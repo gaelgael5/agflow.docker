@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json as _json
 import re
 import secrets
 import shlex
@@ -10,12 +12,18 @@ from uuid import UUID
 import structlog
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
 
 from agflow.auth.dependencies import require_operator as require_admin
-from agflow.schemas.products import DeploymentCreate, DeploymentSummary, DeploymentUpdate
+from agflow.schemas.products import (
+    DeploymentCreate,
+    DeploymentSummary,
+    DeploymentUpdate,
+    GenerateRequest,
+)
 from agflow.services import (
     compose_renderer_service,
+    deployment_executor,
     group_scripts_service,
     groups_service,
     image_registries_service,
@@ -40,6 +48,9 @@ from agflow.services.deployment_env_helpers import (
     resolve_input_value as _resolve_input_value,
     ssh_kwargs_for_machine as _ssh_kwargs_for_machine,
     substitute_script_placeholders as _substitute_script_placeholders,
+)
+from agflow.services.deployment_log_bus import (  # noqa: E402
+    log_bus,
 )
 
 _log = structlog.get_logger(__name__)
@@ -95,16 +106,13 @@ async def update_deployment(deployment_id: UUID, payload: DeploymentUpdate):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-class GenerateRequest(BaseModel):
-    user_secrets: dict[str, str] = {}
-
-
 @router.post("/{deployment_id}/generate", response_model=DeploymentSummary, dependencies=_admin)
 async def generate_deployment(deployment_id: UUID, payload: GenerateRequest | None = None):
     try:
         return await project_deployments_service.generate(
             deployment_id,
             user_secrets=payload.user_secrets if payload else None,
+            group_vars=payload.group_vars if payload else None,
         )
     except project_deployments_service.DeploymentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -633,6 +641,289 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
         "collected_env_keys": list(collected_env.keys()),
         "project_runtime_id": str(project_runtime_id),
     }
+
+
+@router.post("/{deployment_id}/execute-step", dependencies=_admin, status_code=202)
+async def execute_step_endpoint(deployment_id: UUID) -> dict[str, str]:
+    """Lance l'exécution du step courant en tâche asyncio. Retourne 202 immédiatement."""
+    try:
+        deployment = await project_deployments_service.get_by_id(deployment_id)
+    except project_deployments_service.DeploymentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    allowed = {"generated", "step_complete"}
+    if deployment.status not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot execute step from status '{deployment.status}'. Expected: {allowed}",
+        )
+
+    await project_deployments_service.set_status(deployment_id, "executing_step")
+    _task = asyncio.create_task(deployment_executor.execute_step(deployment_id))
+    _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+    return {"status": "accepted"}
+
+
+@router.post("/{deployment_id}/retry-step", dependencies=_admin, status_code=202)
+async def retry_step_endpoint(deployment_id: UUID) -> dict[str, str]:
+    """Réessaie le step courant (status doit être step_failed)."""
+    try:
+        deployment = await project_deployments_service.get_by_id(deployment_id)
+    except project_deployments_service.DeploymentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if deployment.status != "step_failed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot retry from status '{deployment.status}'. Expected: step_failed",
+        )
+
+    await project_deployments_service.reset_to_executing(deployment_id)
+    _task = asyncio.create_task(deployment_executor.execute_step(deployment_id))
+    _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+    return {"status": "accepted"}
+
+
+@router.get("/{deployment_id}/stream", dependencies=_admin)
+async def stream_deployment_logs(deployment_id: UUID) -> StreamingResponse:
+    """SSE : stream des logs du step en cours.
+
+    Format des events :
+      data: {"type": "log", "line": "...", "stream": "stdout"}
+      data: {"type": "step_complete", "step_index": 0, "output_vars": {...}}
+      data: {"type": "step_failed", "step_index": 0, "exit_code": 1}
+      data: {"type": "before_complete"}
+    """
+    try:
+        await project_deployments_service.get_by_id(deployment_id)
+    except project_deployments_service.DeploymentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    q = log_bus.subscribe(deployment_id)
+
+    async def event_generator():
+        try:
+            while True:
+                event = await asyncio.wait_for(q.get(), timeout=30.0)
+                if event is None:
+                    break
+                yield f"data: {_json.dumps(event)}\n\n"
+        except TimeoutError:
+            yield 'data: {"type": "keepalive"}\n\n'
+        except asyncio.CancelledError:
+            pass
+        finally:
+            log_bus.unsubscribe(deployment_id, q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/{deployment_id}/deploy")
+async def deploy_endpoint(deployment_id: UUID, user_id: UUID = Depends(_get_user_id)):
+    """Déploiement final SSH (docker-compose / stack) après before_complete.
+
+    Reprend la logique de push mais part de accumulated_env déjà construit
+    par les before-scripts.
+    """
+    try:
+        deployment = await project_deployments_service.get_by_id(deployment_id)
+    except project_deployments_service.DeploymentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if deployment.status != "before_complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot deploy from status '{deployment.status}'. Expected: before_complete",
+        )
+
+    await project_deployments_service.set_status(deployment_id, "deploying")
+
+    # Env final = generated_env + accumulated_env (accumulé par les before-scripts)
+    accumulated = {k: str(v) for k, v in deployment.accumulated_env.items()}
+    env_text = _merge_env_with_values(deployment.generated_env or "", accumulated)
+
+    project = await projects_service.get_by_id(deployment.project_id)
+    project_slug = project.display_name.lower().replace(" ", "-")
+
+    results: list[dict[str, Any]] = []
+
+    # Créer project_runtime + group_runtimes
+    collected_env: dict[str, str] = {**accumulated}
+    project_runtime_id, project_runtime_seq = await project_runtimes_service.upsert_project_runtime(
+        project_id=deployment.project_id,
+        deployment_id=deployment.id,
+        user_id=user_id,
+    )
+    collected_env["PROJECT_RUNTIME_SEQ"] = str(project_runtime_seq)
+
+    project_groups = await groups_service.list_by_project(deployment.project_id)
+    groups_by_id = {str(g.id): g for g in project_groups}
+    group_runtime_ids: dict[str, Any] = {}
+    for gid_str, mid_str in deployment.group_servers.items():
+        try:
+            gid = UUID(gid_str)
+            mid = UUID(mid_str) if mid_str else None
+        except Exception:
+            continue
+        runtime_id = await project_runtimes_service.upsert_group_runtime(
+            project_runtime_id=project_runtime_id, group_id=gid, machine_id=mid,
+        )
+        group_runtime_ids[gid_str] = runtime_id
+        group = groups_by_id.get(gid_str)
+        if group:
+            slug = re.sub(r"[^A-Z0-9]", "_", (group.name or "").upper())
+            collected_env[f"{slug}_RUNTIME_ID"] = str(runtime_id)
+
+    env_text = _merge_env_with_values(env_text, collected_env)
+
+    machine_ids = set(deployment.group_servers.values())
+    for machine_id_str in machine_ids:
+        machine_id = UUID(machine_id_str)
+        try:
+            machine = await infra_machines_service.get_by_id(machine_id)
+            creds = await infra_machines_service.get_credentials(machine_id)
+        except Exception as exc:
+            results.append({"server": machine_id_str, "success": False, "error": str(exc)})
+            continue
+
+        private_key = None
+        passphrase = None
+        if creds.get("certificate_id"):
+            cert = await infra_certificates_service.get_decrypted(creds["certificate_id"])
+            private_key = cert.get("private_key")
+            passphrase = cert.get("passphrase")
+
+        remote_dir = f"~/agflow.docker/projects/{project_slug}-{project_runtime_seq}"
+        group_ids_on_machine = [
+            UUID(gid) for gid, mid in deployment.group_servers.items()
+            if mid == str(machine_id)
+        ]
+        compose_fragments: list[str] = []
+        render_failed: str | None = None
+        for gid in group_ids_on_machine:
+            try:
+                fragment = await compose_renderer_service.render_group_compose(deployment.generated_data, gid)
+            except compose_renderer_service.ComposeRenderError as exc:
+                render_failed = str(exc)
+                break
+            compose_fragments.append(fragment)
+        if render_failed is not None:
+            results.append({
+                "server": machine.name or machine.host,
+                "machine_id": str(machine_id),
+                "success": False,
+                "error": render_failed,
+            })
+            continue
+        compose_content = "\n".join(compose_fragments)
+
+        try:
+            login_steps = await _build_registry_login_steps(compose_content, _parse_env_map(env_text))
+        except RegistryCredentialError as exc:
+            results.append({
+                "server": machine.name or machine.host,
+                "machine_id": str(machine_id),
+                "success": False,
+                "error": str(exc),
+            })
+            continue
+
+        stack_name = f"agflow-proj-{project_slug}-{project_runtime_seq}"
+        steps = swarm_deploy_steps.build_deploy_steps(
+            remote_dir=remote_dir, compose_content=compose_content,
+            env_content=env_text, stack_name=stack_name,
+            extra_steps_before_deploy=login_steps,
+        )
+        ssh_kwargs = {
+            "host": creds["host"], "port": creds["port"],
+            "username": creds["username"], "password": creds["password"],
+            "private_key": private_key, "passphrase": passphrase,
+        }
+
+        step_result: dict[str, Any] = {}
+        failed_step: str | None = None
+        try:
+            for step_name, cmd, stdin in steps:
+                step_result = await ssh_executor.exec_command(**ssh_kwargs, command=cmd, input=stdin)
+                if step_result.get("exit_code") != 0:
+                    failed_step = step_name
+                    break
+        except Exception as exc:
+            results.append({"server": machine.name or machine.host, "success": False, "error": str(exc)})
+            continue
+
+        results.append({
+            "server": machine.name or machine.host,
+            "machine_id": str(machine_id),
+            "success": failed_step is None,
+            "step": failed_step,
+        })
+
+        for gid_str, mid_str in deployment.group_servers.items():
+            if mid_str != str(machine_id):
+                continue
+            rid = group_runtime_ids.get(gid_str)
+            if rid is None:
+                continue
+            await project_runtimes_service.update_group_runtime_push(
+                runtime_id=rid, env_text=env_text, compose_yaml=compose_content,
+                remote_path=remote_dir,
+                status="deployed" if failed_step is None else "failed",
+                error_message=None if failed_step is None else f"failed at step {failed_step}",
+            )
+
+    # After-scripts
+    group_ids_in_deploy = [UUID(gid) for gid in deployment.group_servers]
+    after_links: list[Any] = []
+    for gid in group_ids_in_deploy:
+        for link in await group_scripts_service.list_by_group(gid):
+            if link.timing == "after":
+                after_links.append(link)
+    after_links.sort(key=lambda lnk: lnk.position)
+    for link in after_links:
+        try:
+            script = await scripts_service.get_by_id(link.script_id)
+            await _run_group_script(link, script.content, env_text=env_text)
+        except Exception:
+            pass
+
+    all_ok = all(r.get("success") for r in results)
+    final_status = "deployed" if all_ok else "failed"
+    await project_deployments_service.set_status(deployment_id, final_status)
+    await project_runtimes_service.update_project_runtime_status(
+        project_runtime_id, final_status,
+        error_message=None if all_ok else "one or more machines failed",
+    )
+
+    return {"results": results, "status": final_status}
+
+
+@router.get("/{deployment_id}/before-steps", dependencies=_admin)
+async def get_before_steps(deployment_id: UUID) -> list[dict[str, Any]]:
+    """Retourne les group_scripts before ordonnés, avec machine et input vars."""
+    try:
+        await project_deployments_service.get_by_id(deployment_id)
+    except project_deployments_service.DeploymentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    links = await project_deployments_service.get_ordered_before_scripts(deployment_id)
+    return [
+        {
+            "script_name": link.script_name,
+            "machine_name": link.machine_name,
+            "position": link.position,
+            "timing": link.timing,
+            "input_variables": [
+                {"name": k, "resolved": bool(v)}
+                for k, v in (link.input_values or {}).items()
+            ],
+        }
+        for link in links
+    ]
 
 
 @router.delete("/{deployment_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_admin)

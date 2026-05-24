@@ -155,7 +155,11 @@ async def delete(deployment_id: UUID) -> None:
 # ── Generation ──────────────────────────────────────────────
 
 
-async def generate(deployment_id: UUID, user_secrets: dict[str, str] | None = None) -> DeploymentSummary:
+async def generate(
+    deployment_id: UUID,
+    user_secrets: dict[str, str] | None = None,
+    group_vars: dict[str, str] | None = None,
+) -> DeploymentSummary:
     """Generate docker-compose YAML and .env for this deployment.
 
     user_secrets: decrypted user secrets from the frontend vault (highest priority).
@@ -259,10 +263,13 @@ async def generate(deployment_id: UUID, user_secrets: dict[str, str] | None = No
         platform_secrets_map = await platform_secrets_service.resolve_all()
         for g in groups:
             for var in await group_variables_service.list_by_group(g.id):
-                resolved = platform_secrets_service.resolve_platform_refs(
-                    var.value, platform_secrets_map,
-                )
-                env_vars[var.name] = resolved
+                if group_vars and var.name in group_vars:
+                    env_vars[var.name] = group_vars[var.name]
+                else:
+                    resolved = platform_secrets_service.resolve_platform_refs(
+                        var.value, platform_secrets_map,
+                    )
+                    env_vars[var.name] = resolved
     except Exception as exc:
         _log.warning("deployments.group_variables_inject_failed", error=str(exc))
 

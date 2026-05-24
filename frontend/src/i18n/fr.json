@@ -1134,6 +1134,8 @@
     "group_variables_created": "Variable créée",
     "group_variables_updated": "Variable mise à jour",
     "group_variables_deleted": "Variable supprimée",
+    "group_variables_copy": "Copier la référence",
+    "group_variables_copied": "Copié : {{name}}",
     "group_variables_delete_title": "Supprimer la variable",
     "group_variables_delete_description": "Supprimer la variable « {{name}} » ? Cette action est définitive.",
     "group_server": "Serveur cible",

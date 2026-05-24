@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -20,6 +20,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+
+function copyViaExec(text: string, container: Element, onDone: () => void) {
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.setAttribute("readonly", "");
+  el.style.cssText = "position:absolute;top:0;left:0;width:1px;height:1px;opacity:0;overflow:hidden";
+  container.appendChild(el);
+  el.focus();
+  el.select();
+  document.execCommand("copy");
+  el.remove();
+  onDone();
+}
 
 export function GroupVariablesSection({ groupId }: { groupId: string }) {
   const { t } = useTranslation();
@@ -191,7 +204,7 @@ function VariableRow({
   return (
     <div className="flex items-start gap-3">
       <div className="w-48 shrink-0 pt-1.5">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <Badge
             variant="outline"
             className={`text-[8px] font-mono ${
@@ -202,6 +215,24 @@ function VariableRow({
           >
             {`\${${variable.name}}`}
           </Badge>
+          <button
+            type="button"
+            title={t("projects.group_variables_copy")}
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            onClick={(e) => {
+              const text = `\${${variable.name}}`;
+              const container = (e.currentTarget as HTMLElement).closest('[role="dialog"]') ?? document.body;
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(text)
+                  .then(() => toast.success(t("projects.group_variables_copied", { name: `\${${variable.name}}` })))
+                  .catch(() => copyViaExec(text, container, () => toast.success(t("projects.group_variables_copied", { name: `\${${variable.name}}` }))));
+              } else {
+                copyViaExec(text, container, () => toast.success(t("projects.group_variables_copied", { name: `\${${variable.name}}` })));
+              }
+            }}
+          >
+            <Copy className="w-3 h-3" />
+          </button>
         </div>
         {variable.description && (
           <p className="text-[10px] text-muted-foreground mt-0.5">

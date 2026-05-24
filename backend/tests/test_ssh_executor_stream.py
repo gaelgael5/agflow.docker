@@ -21,7 +21,11 @@ async def test_exec_command_stream_yields_lines():
         for line in ["line1\n", "line2\n"]:
             yield line
 
+    async def mock_stderr_iter():
+        yield "err1\n"
+
     mock_process.stdout = mock_stdout_iter()
+    mock_process.stderr = mock_stderr_iter()
 
     mock_conn = MagicMock()
     mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -41,3 +45,5 @@ async def test_exec_command_stream_yields_lines():
 
     assert ("stdout", "line1") in lines_received
     assert ("stdout", "line2") in lines_received
+    assert ("stderr", "err1") in lines_received
+    assert ("exit", "0") in lines_received

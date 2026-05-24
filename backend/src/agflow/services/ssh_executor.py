@@ -98,6 +98,8 @@ async def exec_command_stream(
             proc.stdin.write_eof()
         async for raw_line in proc.stdout:
             yield "stdout", raw_line.rstrip("\n")
+        async for raw_line in proc.stderr:
+            yield "stderr", raw_line.rstrip("\n")
         exit_code = proc.exit_status if proc.exit_status is not None else -1
         yield "exit", str(exit_code)
 

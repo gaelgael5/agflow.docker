@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Box, ChevronDown, ChevronRight, Edit2, Eye, FileText, Layers, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, Box, ChevronDown, ChevronRight, Copy, Edit2, Eye, FileText, Layers, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   projectsApi,
@@ -44,6 +44,7 @@ import { useGroupAvailableVars } from "@/hooks/useGroupAvailableVars";
 import { PageHeader, PageShell } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -1755,6 +1756,7 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
   const scriptPosition = initial?.position ?? 999;
   const sources = useGroupAvailableVars(groupId, scriptPosition);
 
+  const [activeTab, setActiveTab] = useState("general");
   const [scriptId, setScriptId] = useState("");
   const [targetKind, setTargetKind] = useState<TargetKind>("fixed_machine");
   const [machineId, setMachineId] = useState("");
@@ -1763,9 +1765,7 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
   const [mappingText, setMappingText] = useState("");
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [inputStatuses, setInputStatuses] = useState<Record<string, InputStatus>>({});
-  const [inputsOpen, setInputsOpen] = useState(true);
   const [triggerRules, setTriggerRules] = useState<TriggerRule[]>([]);
-  const [rulesOpen, setRulesOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const envMachineCheck = useEnvMachineVarCheck(inputValues, machines);
 
@@ -1786,19 +1786,16 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
       setTiming("before"); setPosition("0");
       setMappingText(""); setInputValues({}); setInputStatuses({}); setTriggerRules([]);
     }
-    setInputsOpen(true);
-    setRulesOpen(true);
+    setActiveTab("general");
     setSaving(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // When a script with an execute_on_types_named constraint is selected,
-  // show only machines of that variant. Otherwise show all.
   const selectedScript = scripts.find((s) => s.id === scriptId);
   const requiredTypeId = selectedScript?.execute_on_types_named ?? null;
   const declaredInputs = selectedScript?.input_variables ?? [];
+  const declaredOutputs = selectedScript?.output_variables ?? [];
 
-  // Prefill defaults when picking a script that has declared defaults
   useEffect(() => {
     if (!selectedScript) return;
     setInputValues((prev) => {
@@ -1812,184 +1809,268 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scriptId]);
-  const filteredMachines = requiredTypeId
-    ? machines.filter((m) => m.type_id === requiredTypeId)
-    : machines;
 
-  // If the current machineId is no longer compatible with the new script, reset it.
+  const filteredMachines = useMemo(
+    () => requiredTypeId ? machines.filter((m) => m.type_id === requiredTypeId) : machines,
+    [requiredTypeId, machines],
+  );
+
   useEffect(() => {
     if (!machineId) return;
     if (!filteredMachines.some((m) => m.id === machineId)) setMachineId("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scriptId]);
 
-  const canSubmit =
-    scriptId && (targetKind === "deployment_host" || machineId);
+  const canSubmit = scriptId && (targetKind === "deployment_host" || machineId);
+
+  async function handleSubmit() {
+    setSaving(true);
+    try {
+      const mapping: Record<string, string> = {};
+      for (const raw of mappingText.split("\n")) {
+        const line = raw.trim();
+        if (!line) continue;
+        const eq = line.indexOf("=");
+        if (eq < 0) continue;
+        const k = line.slice(0, eq).trim();
+        const v = line.slice(eq + 1).trim();
+        if (k && v) mapping[k] = v;
+      }
+      await onSubmit({
+        script_id: scriptId,
+        target_kind: targetKind,
+        machine_id: targetKind === "deployment_host" ? null : machineId,
+        timing,
+        position: parseInt(position || "0", 10),
+        env_mapping: mapping,
+        input_values: inputValues,
+        input_statuses: inputStatuses,
+        trigger_rules: triggerRules.filter((r) => r.variable.trim()),
+      }, initial?.id);
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[900px] h-[600px] flex flex-col" aria-describedby={undefined}>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{initial ? t("scripts.group_edit_title") : t("scripts.group_add_title")}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label className="text-[11px]">{t("scripts.group_script")}</Label>
-            <select value={scriptId} onChange={(e) => setScriptId(e.target.value)}
-              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
-              <option value="">—</option>
-              {scripts.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                  {s.execute_on_types_named_name ? ` [${s.execute_on_types_named_name}]` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("scripts.group_target_kind")}</Label>
-            <select
-              value={targetKind}
-              onChange={(e) => setTargetKind(e.target.value as TargetKind)}
-              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-            >
-              <option value="fixed_machine">{t("scripts.group_target_kind_fixed")}</option>
-              <option value="deployment_host">{t("scripts.group_target_kind_deployment_host")}</option>
-            </select>
-          </div>
-          {targetKind === "fixed_machine" ? (
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+          <TabsList className="shrink-0 w-full justify-start">
+            <TabsTrigger value="general">{t("scripts.group_tab_general")}</TabsTrigger>
+            <TabsTrigger value="inputs">
+              {t("scripts.group_tab_inputs")}
+              {declaredInputs.length > 0 && (
+                <span className="ml-1 text-[10px] text-muted-foreground">({declaredInputs.length})</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="outputs">
+              {t("scripts.group_tab_outputs")}
+              {declaredOutputs.length > 0 && (
+                <span className="ml-1 text-[10px] text-muted-foreground">({declaredOutputs.length})</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="rules">
+              {t("scripts.group_tab_rules")}
+              {triggerRules.length > 0 && (
+                <span className="ml-1 text-[10px] text-muted-foreground">({triggerRules.length})</span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ── Onglet 1 : Général ── */}
+          <TabsContent value="general" className="flex-1 overflow-y-auto mt-0 pt-3 space-y-3">
             <div>
-              <Label className="text-[11px]">{t("scripts.group_machine")}</Label>
-              <select value={machineId} onChange={(e) => setMachineId(e.target.value)}
+              <Label className="text-[11px]">{t("scripts.group_script")}</Label>
+              <select value={scriptId} onChange={(e) => setScriptId(e.target.value)}
                 className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
                 <option value="">—</option>
-                {filteredMachines.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name || m.host}</option>
+                {scripts.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {s.execute_on_types_named_name ? ` [${s.execute_on_types_named_name}]` : ""}
+                  </option>
                 ))}
               </select>
-              {requiredTypeId && filteredMachines.length === 0 && (
-                <p className="text-[10px] text-orange-600 mt-1">{t("scripts.group_no_matching_machine")}</p>
-              )}
             </div>
-          ) : (
-            <p className="text-[11px] text-muted-foreground italic">
-              {t("scripts.group_target_kind_deployment_host_hint")}
-            </p>
-          )}
-          <div>
-            <Label className="text-[11px]">{t("scripts.group_timing")}</Label>
-            <select value={timing} onChange={(e) => setTiming(e.target.value as ScriptTiming)}
-              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
-              <option value="before">{t("scripts.group_timing_before")}</option>
-              <option value="after">{t("scripts.group_timing_after")}</option>
-            </select>
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("scripts.group_position")}</Label>
-            <Input type="number" value={position} onChange={(e) => setPosition(e.target.value)} className="mt-1 w-24 font-mono" />
-          </div>
-          <div>
-            <Label className="text-[11px]">{t("scripts.group_env_mapping")}</Label>
-            <textarea
-              value={mappingText}
-              onChange={(e) => setMappingText(e.target.value)}
-              className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-[11px] font-mono"
-              rows={3}
-              placeholder="ip=MACHINE_IP&#10;user=SSH_USER"
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">{t("scripts.group_env_mapping_hint")}</p>
-          </div>
+            <div>
+              <Label className="text-[11px]">{t("scripts.group_target_kind")}</Label>
+              <select value={targetKind} onChange={(e) => setTargetKind(e.target.value as TargetKind)}
+                className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                <option value="fixed_machine">{t("scripts.group_target_kind_fixed")}</option>
+                <option value="deployment_host">{t("scripts.group_target_kind_deployment_host")}</option>
+              </select>
+            </div>
+            {targetKind === "fixed_machine" ? (
+              <div>
+                <Label className="text-[11px]">{t("scripts.group_machine")}</Label>
+                <select value={machineId} onChange={(e) => setMachineId(e.target.value)}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  <option value="">—</option>
+                  {filteredMachines.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name || m.host}</option>
+                  ))}
+                </select>
+                {requiredTypeId && filteredMachines.length === 0 && (
+                  <p className="text-[10px] text-orange-600 mt-1">{t("scripts.group_no_matching_machine")}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground italic">
+                {t("scripts.group_target_kind_deployment_host_hint")}
+              </p>
+            )}
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <Label className="text-[11px]">{t("scripts.group_timing")}</Label>
+                <select value={timing} onChange={(e) => setTiming(e.target.value as ScriptTiming)}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  <option value="before">{t("scripts.group_timing_before")}</option>
+                  <option value="after">{t("scripts.group_timing_after")}</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-[11px]">{t("scripts.group_position")}</Label>
+                <Input type="number" value={position} onChange={(e) => setPosition(e.target.value)} className="mt-1 w-24 font-mono" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-[11px]">{t("scripts.group_env_mapping")}</Label>
+              <textarea
+                value={mappingText}
+                onChange={(e) => setMappingText(e.target.value)}
+                className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-[11px] font-mono"
+                rows={4}
+                placeholder="ip=MACHINE_IP&#10;user=SSH_USER"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">{t("scripts.group_env_mapping_hint")}</p>
+            </div>
+          </TabsContent>
 
-          {declaredInputs.length > 0 && (
-            <div className="border-t pt-3">
-              <button
-                type="button"
-                className="flex items-center gap-1 text-[11px] font-semibold w-full text-left"
-                onClick={() => setInputsOpen((v) => !v)}
-              >
-                {inputsOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                {t("scripts.group_inputs_title", { count: String(declaredInputs.length) })}
-              </button>
-              {inputsOpen && (
-                <div className="mt-2 space-y-2">
-                  {declaredInputs.map((iv) => {
-                    const s = inputStatuses[iv.name] ?? "keep";
-                    const val = inputValues[iv.name] ?? "";
-                    const envRef = parseEnvMachineRef(val);
-                    const isEnvMachineRef = envRef !== null && envRef.machine !== "<machine>";
-                    const isEnvMachinePlaceholder = envRef !== null && envRef.machine === "<machine>";
-                    const envMachineStatus = isEnvMachineRef
-                      ? (envMachineCheck.get(`${envRef.machine}:${envRef.varName}`) ?? null)
-                      : null;
-                    const effectiveMissing = isEnvMachineRef
-                      ? (envMachineStatus !== null && envMachineStatus !== "ok")
-                      : !isEnvMachinePlaceholder && isMissing(iv.name, val, sources);
-                    const origin = isEnvMachineRef && envMachineStatus === "ok"
+          {/* ── Onglet 2 : Variables d'entrée ── */}
+          <TabsContent value="inputs" className="flex-1 overflow-y-auto mt-0 pt-3">
+            {declaredInputs.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground italic">{t("scripts.group_no_inputs")}</p>
+            ) : (
+              <div className="space-y-3">
+                {declaredInputs.map((iv) => {
+                  const s = inputStatuses[iv.name] ?? "keep";
+                  const val = inputValues[iv.name] ?? "";
+                  const envRef = parseEnvMachineRef(val);
+                  const isEnvMachineRef = envRef !== null && envRef.machine !== "<machine>";
+                  const isEnvMachinePlaceholder = envRef !== null && envRef.machine === "<machine>";
+                  const envMachineStatus = isEnvMachineRef
+                    ? (envMachineCheck.get(`${envRef.machine}:${envRef.varName}`) ?? null)
+                    : null;
+                  const effectiveMissing = isEnvMachineRef
+                    ? (envMachineStatus !== null && envMachineStatus !== "ok")
+                    : !isEnvMachinePlaceholder && isMissing(iv.name, val, sources);
+                  const origin = isEnvMachineRef && envMachineStatus === "ok"
+                    ? "env_machine"
+                    : isEnvMachinePlaceholder
                       ? "env_machine"
-                      : isEnvMachinePlaceholder
-                        ? "env_machine"
-                        : getOrigin(iv.name, val, sources);
-                    return (
-                      <div key={iv.name}>
-                        <Label className={`text-[10px] ${effectiveMissing ? "text-red-500" : ""}`}>
-                          <span className="font-mono">{iv.name}</span>
-                          {iv.description && <span className="text-muted-foreground ml-1">— {iv.description}</span>}
-                        </Label>
-                        <div className="flex gap-1 mt-1">
-                          <div className="flex-1 flex flex-col">
-                            <Input
-                              value={inputValues[iv.name] ?? ""}
-                              onChange={(e) => setInputValues({ ...inputValues, [iv.name]: e.target.value })}
-                              className={`font-mono text-[11px] ${effectiveMissing ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-                              placeholder={iv.default || "${ENV_VAR} ou valeur littérale"}
-                            />
-                            {!effectiveMissing && origin !== "missing" && (
-                              <p className="text-[9px] text-muted-foreground mt-0.5">
-                                {t(`projects.var_origin_${origin}`)}
-                              </p>
-                            )}
-                          </div>
-                          <select
-                            value={s}
-                            onChange={(e) => setInputStatuses({ ...inputStatuses, [iv.name]: e.target.value as InputStatus })}
-                            className="h-9 text-[11px] rounded-md border border-input bg-background px-2"
-                            title={t(`scripts.inputs_status_${s}_tooltip`)}
-                          >
-                            <option value="keep">{t("scripts.inputs_status_keep")}</option>
-                            <option value="clean">{t("scripts.inputs_status_clean")}</option>
-                            <option value="replace">{t("scripts.inputs_status_replace")}</option>
-                          </select>
+                      : getOrigin(iv.name, val, sources);
+                  return (
+                    <div key={iv.name}>
+                      <Label className={`text-[10px] ${effectiveMissing ? "text-red-500" : ""}`}>
+                        <span className="font-mono">{iv.name}</span>
+                        {iv.description && <span className="text-muted-foreground ml-1">— {iv.description}</span>}
+                      </Label>
+                      <div className="flex gap-1 mt-1">
+                        <div className="flex-1 flex flex-col">
+                          <Input
+                            value={val}
+                            onChange={(e) => setInputValues({ ...inputValues, [iv.name]: e.target.value })}
+                            className={`font-mono text-[11px] ${effectiveMissing ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                            placeholder={iv.default || "${ENV_VAR} ou valeur littérale"}
+                          />
+                          {!effectiveMissing && origin !== "missing" && (
+                            <p className="text-[9px] text-muted-foreground mt-0.5">
+                              {t(`projects.var_origin_${origin}`)}
+                            </p>
+                          )}
                         </div>
+                        <select
+                          value={s}
+                          onChange={(e) => setInputStatuses({ ...inputStatuses, [iv.name]: e.target.value as InputStatus })}
+                          className="h-9 text-[11px] rounded-md border border-input bg-background px-2"
+                          title={t(`scripts.inputs_status_${s}_tooltip`)}
+                        >
+                          <option value="keep">{t("scripts.inputs_status_keep")}</option>
+                          <option value="clean">{t("scripts.inputs_status_clean")}</option>
+                          <option value="replace">{t("scripts.inputs_status_replace")}</option>
+                        </select>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
 
-          <div className="border-t pt-3">
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                className="flex items-center gap-1 text-[11px] font-semibold"
-                onClick={() => setRulesOpen((v) => !v)}
+          {/* ── Onglet 3 : Variables de sortie ── */}
+          <TabsContent value="outputs" className="flex-1 overflow-y-auto mt-0 pt-3">
+            {declaredOutputs.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground italic">{t("scripts.group_no_outputs")}</p>
+            ) : (
+              <div className="space-y-2">
+                {declaredOutputs.map((ov) => (
+                  <div key={ov.name} className="flex items-start gap-2 rounded-md border px-3 py-2 bg-muted/30">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[12px] font-medium">{ov.name}</span>
+                        {ov.via_env && (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1">env</Badge>
+                        )}
+                        {ov.path && (
+                          <span className="text-[10px] text-muted-foreground font-mono">{ov.path}</span>
+                        )}
+                      </div>
+                      {ov.description && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{ov.description}</p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      title={t("scripts.copy_var_ref")}
+                      onClick={() => {
+                        navigator.clipboard.writeText(`\${${ov.name}}`);
+                        toast.success(t("scripts.copy_var_ref_done", { name: ov.name }));
+                      }}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ── Onglet 4 : Règles de déclenchement ── */}
+          <TabsContent value="rules" className="flex-1 overflow-y-auto mt-0 pt-3">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] text-muted-foreground">{t("scripts.group_rules_hint")}</p>
+              <Button
+                type="button" size="sm" variant="outline" className="h-7 text-[11px] shrink-0"
+                onClick={() => setTriggerRules([...triggerRules, { variable: "", op: "equals", value: "" }])}
               >
-                {rulesOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                {t("scripts.group_rules_title", { count: String(triggerRules.length) })}
-              </button>
-              {rulesOpen && (
-                <Button
-                  type="button" size="sm" variant="outline" className="h-6 text-[10px]"
-                  onClick={() => setTriggerRules([...triggerRules, { variable: "", op: "equals", value: "" }])}
-                >
-                  <Plus className="w-3 h-3" />
-                  {t("scripts.group_rules_add")}
-                </Button>
-              )}
+                <Plus className="w-3 h-3 mr-1" />
+                {t("scripts.group_rules_add")}
+              </Button>
             </div>
-            {rulesOpen && triggerRules.length > 0 && (
-              <div className="mt-2 space-y-1">
+            {triggerRules.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground italic">{t("scripts.group_no_rules")}</p>
+            ) : (
+              <div className="space-y-1">
                 {triggerRules.map((r, idx) => (
                   <div key={idx} className="grid grid-cols-[1fr_auto_1fr_auto] gap-1 items-center">
                     <Input
@@ -2036,46 +2117,12 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
                 ))}
               </div>
             )}
-            {rulesOpen && (
-              <p className="text-[10px] text-muted-foreground mt-1">{t("scripts.group_rules_hint")}</p>
-            )}
-          </div>
-        </div>
-        <DialogFooter>
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
-          <Button
-            disabled={!canSubmit || saving}
-            onClick={async () => {
-              setSaving(true);
-              try {
-                const mapping: Record<string, string> = {};
-                for (const raw of mappingText.split("\n")) {
-                  const line = raw.trim();
-                  if (!line) continue;
-                  const eq = line.indexOf("=");
-                  if (eq < 0) continue;
-                  const k = line.slice(0, eq).trim();
-                  const v = line.slice(eq + 1).trim();
-                  if (k && v) mapping[k] = v;
-                }
-                await onSubmit({
-                  script_id: scriptId,
-                  target_kind: targetKind,
-                  machine_id: targetKind === "deployment_host" ? null : machineId,
-                  timing,
-                  position: parseInt(position || "0", 10),
-                  env_mapping: mapping,
-                  input_values: inputValues,
-                  input_statuses: inputStatuses,
-                  trigger_rules: triggerRules.filter((r) => r.variable.trim()),
-                }, initial?.id);
-              } catch (e) {
-                toast.error(String(e));
-              } finally {
-                setSaving(false);
-              }
-            }}
-          >
+          <Button disabled={!canSubmit || saving} onClick={handleSubmit}>
             {saving ? "..." : t("common.confirm")}
           </Button>
         </DialogFooter>

@@ -99,7 +99,16 @@
     "tab_commands": "Commandes",
     "commands_add": "Ajouter",
     "commands_empty": "Aucune commande. Cliquez sur Ajouter pour en créer une.",
-    "commands_name_placeholder": "a"
+    "commands_name_placeholder": "a",
+    "group_tab_general": "Général",
+    "group_tab_inputs": "Variables d'entrée",
+    "group_tab_outputs": "Variables de sortie",
+    "group_tab_rules": "Déclenchement",
+    "group_no_inputs": "Aucune variable d'entrée déclarée pour ce script.",
+    "group_no_outputs": "Aucune variable de sortie déclarée pour ce script.",
+    "group_no_rules": "Aucune règle de déclenchement configurée.",
+    "copy_var_ref": "Copier la référence",
+    "copy_var_ref_done": "Copié : {{name}}"
   },
   "assistant": {
     "not_configured": "Aucun agent n'est configuré comme assistant. Désignez-en un dans l'éditeur d'agent.",

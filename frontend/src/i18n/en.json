@@ -99,7 +99,16 @@
     "tab_commands": "Commands",
     "commands_add": "Add",
     "commands_empty": "No commands. Click Add to create one.",
-    "commands_name_placeholder": "a"
+    "commands_name_placeholder": "a",
+    "group_tab_general": "General",
+    "group_tab_inputs": "Input Variables",
+    "group_tab_outputs": "Output Variables",
+    "group_tab_rules": "Triggers",
+    "group_no_inputs": "No input variables declared for this script.",
+    "group_no_outputs": "No output variables declared for this script.",
+    "group_no_rules": "No trigger rules configured.",
+    "copy_var_ref": "Copy reference",
+    "copy_var_ref_done": "Copied: {{name}}"
   },
   "assistant": {
     "not_configured": "No agent is configured as assistant. Designate one in the agent editor.",

@@ -327,6 +327,21 @@ async def advance_step(
     return await get_by_id(deployment_id)
 
 
+async def fail_step(deployment_id: UUID, step_log: dict[str, Any]) -> None:
+    """Persiste le log d'échec et bascule en step_failed en une requête atomique."""
+    await execute(
+        """
+        UPDATE project_deployments
+        SET status = 'step_failed',
+            step_logs = step_logs || $1::jsonb,
+            updated_at = now()
+        WHERE id = $2
+        """,
+        json.dumps([step_log]), deployment_id,
+    )
+    _log.info("deployments.fail_step", id=str(deployment_id))
+
+
 async def reset_to_executing(deployment_id: UUID) -> DeploymentSummary:
     """Retry : repasse à executing_step sans changer current_step_index."""
     await execute(

@@ -68,19 +68,18 @@ async def test_execute_step_success_transitions_to_before_complete():
 
 @pytest.mark.asyncio
 async def test_execute_step_failure_sets_step_failed():
-    """Quand le script échoue, on passe à step_failed."""
+    """Quand le script échoue, fail_step est appelé de manière atomique."""
     dep = _make_deployment()
     link = _make_link()
 
     with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
          patch("agflow.services.deployment_executor.scripts_service") as mock_scripts, \
          patch("agflow.services.deployment_executor._run_script_streaming", new_callable=AsyncMock) as mock_run, \
-         patch("agflow.services.deployment_executor.log_bus") as mock_bus, \
-         patch("agflow.services.deployment_executor.db_execute", new_callable=AsyncMock):
+         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
 
         mock_svc.get_by_id = AsyncMock(return_value=dep)
         mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[link])
-        mock_svc.set_status = AsyncMock()
+        mock_svc.fail_step = AsyncMock()
         mock_scripts.get_by_id = AsyncMock(return_value=MagicMock(content="exit 1"))
         mock_scripts.ScriptNotFoundError = Exception
 
@@ -91,7 +90,108 @@ async def test_execute_step_failure_sets_step_failed():
         from agflow.services.deployment_executor import execute_step
         await execute_step(dep.id)
 
-        mock_svc.set_status.assert_any_await(dep.id, "step_failed")
+        mock_svc.fail_step.assert_awaited_once()
+        call_args = mock_svc.fail_step.call_args
+        assert call_args.args[0] == dep.id
+        step_log = call_args.args[1]
+        assert step_log["exit_code"] == 1
+        mock_bus.close.assert_awaited_once_with(dep.id)
+
+
+@pytest.mark.asyncio
+async def test_execute_step_script_not_found():
+    """Quand ScriptNotFoundError est levée, fail_step est appelé et le bus est fermé."""
+    dep = _make_deployment()
+    link = _make_link()
+
+    class ScriptNotFoundError(Exception):
+        pass
+
+    with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
+         patch("agflow.services.deployment_executor.scripts_service") as mock_scripts, \
+         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
+
+        mock_svc.get_by_id = AsyncMock(return_value=dep)
+        mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[link])
+        mock_svc.fail_step = AsyncMock()
+        mock_scripts.get_by_id = AsyncMock(side_effect=ScriptNotFoundError("not found"))
+        mock_scripts.ScriptNotFoundError = ScriptNotFoundError
+        mock_bus.publish = AsyncMock()
+        mock_bus.close = AsyncMock()
+
+        from agflow.services.deployment_executor import execute_step
+        await execute_step(dep.id)
+
+        mock_svc.fail_step.assert_awaited_once()
+        call_args = mock_svc.fail_step.call_args
+        assert call_args.args[0] == dep.id
+        step_log = call_args.args[1]
+        assert step_log["exit_code"] == -1
+        mock_bus.close.assert_awaited_once_with(dep.id)
+
+
+@pytest.mark.asyncio
+async def test_execute_step_step_complete_when_not_last():
+    """Quand il y a 2 scripts et step_index=0, le succès → step_complete (pas before_complete)."""
+    dep = _make_deployment(step_index=0)
+    link0 = _make_link(position=0)
+    link1 = _make_link(position=1)
+
+    with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
+         patch("agflow.services.deployment_executor.scripts_service") as mock_scripts, \
+         patch("agflow.services.deployment_executor._run_script_streaming", new_callable=AsyncMock) as mock_run, \
+         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
+
+        mock_svc.get_by_id = AsyncMock(return_value=dep)
+        mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[link0, link1])
+        mock_svc.advance_step = AsyncMock(return_value=dep)
+        mock_scripts.get_by_id = AsyncMock(return_value=MagicMock(content="echo '{}'"))
+        mock_scripts.ScriptNotFoundError = Exception
+
+        mock_run.return_value = {
+            "success": True, "exit_code": 0,
+            "stdout": "{}", "stderr": "",
+        }
+        mock_bus.publish = AsyncMock()
+        mock_bus.close = AsyncMock()
+
+        from agflow.services.deployment_executor import execute_step
+        await execute_step(dep.id)
+
+        mock_svc.advance_step.assert_awaited_once()
+        call_kwargs = mock_svc.advance_step.call_args.kwargs
+        assert call_kwargs["next_status"] == "step_complete"
+        mock_bus.close.assert_awaited_once_with(dep.id)
+
+
+@pytest.mark.asyncio
+async def test_execute_step_trigger_skip():
+    """Quand evaluate_trigger_rules retourne False, advance_step est appelé avec le bon next_status."""
+    dep = _make_deployment(step_index=0)
+    link = _make_link(position=0)
+    link.trigger_rules = [{"variable": "SKIP_FLAG", "op": "equals", "value": "yes"}]
+
+    with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
+         patch("agflow.services.deployment_executor.scripts_service") as mock_scripts, \
+         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
+
+        mock_svc.get_by_id = AsyncMock(return_value=dep)
+        mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[link])
+        mock_svc.advance_step = AsyncMock(return_value=dep)
+        mock_scripts.get_by_id = AsyncMock(return_value=MagicMock(content="echo hello"))
+        mock_scripts.ScriptNotFoundError = Exception
+        mock_bus.publish = AsyncMock()
+        mock_bus.close = AsyncMock()
+
+        from agflow.services.deployment_executor import execute_step
+        await execute_step(dep.id)
+
+        # SKIP_FLAG n'est pas dans le .env (VAR=val), donc la règle échoue → skip
+        mock_svc.advance_step.assert_awaited_once()
+        call_kwargs = mock_svc.advance_step.call_args.kwargs
+        # Seul 1 script → step_index + 1 == len(before_scripts) → before_complete
+        assert call_kwargs["next_status"] == "before_complete"
+        mock_bus.close.assert_awaited_once_with(dep.id)
 
 
 @pytest.mark.asyncio

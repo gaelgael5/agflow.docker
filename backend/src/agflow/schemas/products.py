@@ -97,6 +97,7 @@ class ProjectSummary(BaseModel):
 
 # ── Groups (logique) ────────────────────────────────────
 
+
 class GroupCreate(BaseModel):
     project_id: UUID
     name: str = Field(min_length=1, max_length=200)
@@ -164,9 +165,15 @@ class InstanceSummary(BaseModel):
 # ── Project Deployments ──────────────────────────────────
 
 DeploymentStatus = Literal[
-    "draft", "generated",
-    "executing_step", "step_complete", "step_failed", "before_complete",
-    "deploying", "deployed", "failed",
+    "draft",
+    "generated",
+    "executing_step",
+    "step_complete",
+    "step_failed",
+    "before_complete",
+    "deploying",
+    "deployed",
+    "failed",
 ]
 
 
@@ -184,7 +191,9 @@ class ExecuteStepRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     user_secrets: dict[str, str] = {}
-    group_vars: dict[str, str] = {}  # override des valeurs de variables de groupe au moment du generate
+    group_vars: dict[
+        str, str
+    ] = {}  # override des valeurs de variables de groupe au moment du generate
 
 
 class DeploymentCreate(BaseModel):

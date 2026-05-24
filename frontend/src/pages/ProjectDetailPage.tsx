@@ -990,13 +990,13 @@ function VarRow({ v, values, statuses, sources, onUpdate, onUpdateStatus, t }: {
     (ref) => !sources.globalVarNames.has(ref) && !sources.groupVarNames.has(ref) && !sources.beforeOutputNames.has(ref),
   );
   const inputTextClass = valueHasBrokenRef ? "text-red-500" : "";
-  const badgeColorClass = isUndeclared
-    ? "border-red-500 text-red-500"
-    : (isResolved || !missing)
-      ? "border-green-500 text-green-600"
-      : v.required
-        ? "border-red-500 text-red-500"
-        : "border-orange-400 text-orange-500";
+  // Undeclared + valeur fournie = vert (la valeur résout le problème)
+  // Undeclared + aucune valeur = rouge (ni déclaré ni renseigné)
+  const badgeColorClass = (isResolved || !missing || (isUndeclared && hasValue))
+    ? "border-green-500 text-green-600"
+    : (isUndeclared || v.required)
+      ? "border-red-500 text-red-500"
+      : "border-orange-400 text-orange-500";
   return (
     <div className="flex items-start gap-3">
       <div className="w-48 shrink-0 pt-1.5">
@@ -1005,7 +1005,11 @@ function VarRow({ v, values, statuses, sources, onUpdate, onUpdateStatus, t }: {
             {displayedSyntax}
           </Badge>
           {v.required && <span className="text-destructive text-[10px]">*</span>}
-          {isUndeclared && <span className="text-[9px] text-red-500">{t("projects.undeclared")}</span>}
+          {isUndeclared && (
+            <span className={`text-[9px] ${missing ? "text-red-500" : "text-muted-foreground"}`}>
+              {t("projects.undeclared")}
+            </span>
+          )}
         </div>
         {v.description && (
           <p className="text-[10px] text-muted-foreground mt-0.5">{v.description}</p>

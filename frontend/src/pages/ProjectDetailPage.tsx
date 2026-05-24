@@ -34,7 +34,7 @@ import {
 import { api } from "@/lib/api";
 import { productsApi, type ProductVariable, type ProductConnector, type ProductComputed, type ProductApiDef, type ProductService, type SharedDep } from "@/lib/productsApi";
 import { templatesApi } from "@/lib/templatesApi";
-import { isMissing, getOrigin, type VarSources } from "@/lib/missingVars";
+import { isMissing, getOrigin, extractRefs, type VarSources } from "@/lib/missingVars";
 import { GroupVariablesSection } from "@/components/projects/GroupVariablesSection";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -983,6 +983,11 @@ function VarRow({ v, values, statuses, sources, onUpdate, onUpdateStatus, t }: {
   const currentValue = values[v.name] ?? "";
   const missing = isMissing(v.name, currentValue, sources);
   const origin = getOrigin(v.name, currentValue, sources);
+  const valueRefs = extractRefs(currentValue);
+  const valueHasBrokenRef = valueRefs.length > 0 && valueRefs.some(
+    (ref) => !sources.globalVarNames.has(ref) && !sources.groupVarNames.has(ref) && !sources.beforeOutputNames.has(ref),
+  );
+  const inputTextClass = valueHasBrokenRef ? "text-red-500" : "";
   const badgeColorClass = isUndeclared
     ? "border-red-500 text-red-500"
     : (isResolved || !missing)
@@ -1016,7 +1021,7 @@ function VarRow({ v, values, statuses, sources, onUpdate, onUpdateStatus, t }: {
             value={values[v.name] ?? ""}
             onChange={(e) => onUpdate(v.name, e.target.value)}
             placeholder={v.default || v.name}
-            className={`font-mono text-[12px] w-full h-8 ${v.type === "secret" ? "text-orange-500" : ""}`}
+            className={`font-mono text-[12px] w-full h-8 ${inputTextClass}`}
           />
           {!missing && origin !== "missing" && (
             <p className="text-[9px] text-muted-foreground mt-0.5">

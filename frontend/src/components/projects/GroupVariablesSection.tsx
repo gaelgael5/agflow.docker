@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardPaste, Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { ClipboardPaste, Copy, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -193,6 +193,7 @@ function VariableRow({
   const isProtected = PROTECTED_NAMES.has(variable.name);
   const [draftValue, setDraftValue] = useState(variable.value);
   const [saving, setSaving] = useState(false);
+  const isDirty = draftValue !== variable.value;
 
   // Si la valeur change côté serveur (autre tab, autre user), on resynchronise.
   useEffect(() => {
@@ -200,6 +201,19 @@ function VariableRow({
   }, [variable.value]);
 
   const hasValue = Boolean(draftValue.trim());
+
+  const handleSave = async () => {
+    if (!isDirty) return;
+    setSaving(true);
+    try {
+      await onUpdateValue(draftValue);
+    } catch (e) {
+      setDraftValue(variable.value);
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="flex items-start gap-3">
@@ -262,20 +276,20 @@ function VariableRow({
         placeholder={variable.name}
         className="font-mono text-[12px] flex-1 h-8"
         disabled={saving}
-        onBlur={async () => {
-          if (draftValue === variable.value) return;
-          setSaving(true);
-          try {
-            await onUpdateValue(draftValue);
-          } catch (e) {
-            // Restore + bubble up
-            setDraftValue(variable.value);
-            toast.error(e instanceof Error ? e.message : String(e));
-          } finally {
-            setSaving(false);
-          }
-        }}
+        onBlur={handleSave}
       />
+      {isDirty && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 text-green-600 hover:text-green-700"
+          onClick={handleSave}
+          disabled={saving}
+          title={t("common.save")}
+        >
+          <Save className="w-3.5 h-3.5" />
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon"

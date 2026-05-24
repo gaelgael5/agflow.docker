@@ -1856,7 +1856,7 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-[900px] h-[600px] flex flex-col" aria-describedby={undefined}>
+      <DialogContent className="sm:max-w-[900px] h-[790px] flex flex-col" aria-describedby={undefined}>
         <DialogHeader className="shrink-0">
           <DialogTitle>{initial ? t("scripts.group_edit_title") : t("scripts.group_add_title")}</DialogTitle>
         </DialogHeader>

@@ -38,7 +38,7 @@
     "group_empty": "No scripts linked to this group",
     "group_add": "+ Link a script",
     "group_add_title": "Link a script to the group",
-    "group_edit_title": "Edit link",
+    "group_edit_title": "Edit script",
     "group_script": "Script",
     "group_target_kind": "Target",
     "group_target_kind_fixed": "Fixed machine",

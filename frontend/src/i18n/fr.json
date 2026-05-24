@@ -38,7 +38,7 @@
     "group_empty": "Aucun script lié à ce groupe",
     "group_add": "+ Lier un script",
     "group_add_title": "Lier un script au groupe",
-    "group_edit_title": "Modifier la liaison",
+    "group_edit_title": "Modifier le script",
     "group_script": "Script",
     "group_target_kind": "Cible",
     "group_target_kind_fixed": "Machine fixe",

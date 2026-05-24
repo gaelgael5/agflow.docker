@@ -1128,6 +1128,8 @@
     "group_variables_updated": "Variable updated",
     "group_variables_deleted": "Variable deleted",
     "group_variables_copy": "Copy reference",
+    "group_variables_paste": "Paste",
+    "group_variables_paste_error": "Cannot read clipboard (permission denied)",
     "group_variables_copied": "Copied: {{name}}",
     "group_variables_delete_title": "Delete variable",
     "group_variables_delete_description": "Delete variable \"{{name}}\"? This is permanent.",

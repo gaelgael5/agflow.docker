@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Box, ChevronDown, ChevronRight, Copy, Edit2, Eye, FileText, Layers, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, Edit2, Eye, FileText, Layers, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   projectsApi,
@@ -1022,18 +1022,33 @@ function VarRow({ v, values, statuses, sources, onUpdate, onUpdateStatus, t }: {
           className="font-mono text-[12px] flex-1 h-8 opacity-60 bg-muted"
         />
       ) : (
-        <div className="flex-1">
-          <Input
-            value={values[v.name] ?? ""}
-            onChange={(e) => onUpdate(v.name, e.target.value)}
-            placeholder={v.default || v.name}
-            className={`font-mono text-[12px] w-full h-8 ${inputTextClass}`}
-          />
-          {!missing && origin !== "missing" && (
-            <p className="text-[9px] text-muted-foreground mt-0.5">
-              {t(`projects.var_origin_${origin}`)}
-            </p>
+        <div className="flex items-start gap-1 flex-1">
+          {window.location.protocol === "https:" && (
+            <button
+              type="button"
+              title={t("projects.var_paste")}
+              className="p-1 shrink-0 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors mt-0.5"
+              onClick={async () => {
+                const text = await navigator.clipboard.readText();
+                onUpdate(v.name, text);
+              }}
+            >
+              <ClipboardPaste className="w-3.5 h-3.5" />
+            </button>
           )}
+          <div className="flex-1">
+            <Input
+              value={values[v.name] ?? ""}
+              onChange={(e) => onUpdate(v.name, e.target.value)}
+              placeholder={v.default || v.name}
+              className={`font-mono text-[12px] w-full h-8 ${inputTextClass}`}
+            />
+            {!missing && origin !== "missing" && (
+              <p className="text-[9px] text-muted-foreground mt-0.5">
+                {t(`projects.var_origin_${origin}`)}
+              </p>
+            )}
+          </div>
         </div>
       )}
       <select

@@ -1207,6 +1207,7 @@
     "section_services": "Services",
     "requires": "dépend de",
     "env_vars_missing_banner": "{{count}} variable(s) d'environnement manquante(s) pour ce projet",
+    "var_paste": "Coller depuis le presse-papier",
     "var_origin_global": "Variables globales",
     "var_origin_group": "Variables du groupe",
     "var_origin_before_script": "Scripts exécutés avant",

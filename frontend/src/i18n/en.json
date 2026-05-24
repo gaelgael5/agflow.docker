@@ -1200,6 +1200,7 @@
     "section_services": "Services",
     "requires": "requires",
     "env_vars_missing_banner": "{{count}} missing environment variable(s) for this project",
+    "var_paste": "Paste from clipboard",
     "var_origin_global": "Global variables",
     "var_origin_group": "Group variables",
     "var_origin_before_script": "Pre-deployment scripts",

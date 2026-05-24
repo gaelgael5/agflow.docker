@@ -11,7 +11,7 @@ from uuid import UUID
 import structlog
 
 from agflow.db.pool import execute, fetch_all, fetch_one
-from agflow.schemas.products import DeploymentSummary
+from agflow.schemas.products import DeploymentSummary, DeploymentStatus, StepLog
 from agflow.services import (
     compose_renderer_service,
     groups_service,
@@ -39,7 +39,23 @@ def _generate_secret_value(method: str) -> str:
     return ""
 
 
-_COLS = "id, project_id, user_id, group_servers, status, generated_compose, generated_env, generated_secrets, nullable_secrets, generated_data, created_at, updated_at"
+_COLS = (
+    "id, project_id, user_id, group_servers, status, current_step_index, "
+    "accumulated_env, step_logs, generated_compose, generated_env, "
+    "generated_secrets, nullable_secrets, generated_data, created_at, updated_at"
+)
+
+
+def _json_field(row: dict, key: str, default: Any) -> Any:
+    v = row.get(key)
+    if v is None:
+        return default
+    if isinstance(v, (dict, list)):
+        return v
+    try:
+        return json.loads(v)
+    except (json.JSONDecodeError, TypeError):
+        return default
 
 
 class DeploymentNotFoundError(Exception):
@@ -48,28 +64,20 @@ class DeploymentNotFoundError(Exception):
 
 def _to_summary(row: dict[str, Any]) -> DeploymentSummary:
     gs = row.get("group_servers") or {}
-    if isinstance(gs, str):
-        gs = json.loads(gs)
-    gen_sec = row.get("generated_secrets") or {}
-    if isinstance(gen_sec, str):
-        gen_sec = json.loads(gen_sec)
-    null_sec = row.get("nullable_secrets") or []
-    if isinstance(null_sec, str):
-        null_sec = json.loads(null_sec)
-    gen_data = row.get("generated_data") or {}
-    if isinstance(gen_data, str):
-        gen_data = json.loads(gen_data)
     return DeploymentSummary(
         id=row["id"],
         project_id=row["project_id"],
         user_id=row["user_id"],
-        group_servers=gs,
-        status=row["status"],
+        group_servers=gs if isinstance(gs, dict) else json.loads(gs or "{}"),
+        status=row.get("status") or "draft",
+        current_step_index=row.get("current_step_index") or 0,
+        accumulated_env=_json_field(row, "accumulated_env", {}),
+        step_logs=[StepLog(**s) for s in _json_field(row, "step_logs", [])],
         generated_compose=row.get("generated_compose"),
         generated_env=row.get("generated_env"),
-        generated_secrets=gen_sec,
-        nullable_secrets=null_sec,
-        generated_data=gen_data,
+        generated_secrets=_json_field(row, "generated_secrets", {}),
+        nullable_secrets=_json_field(row, "nullable_secrets", []),
+        generated_data=_json_field(row, "generated_data", {}),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -273,3 +281,60 @@ async def generate(deployment_id: UUID, user_secrets: dict[str, str] | None = No
         groups=len(generated_data.get("groups", [])),
     )
     return await get_by_id(deployment_id)
+
+
+# ── Wizard helpers ───────────────────────────────────────────
+
+
+async def set_status(deployment_id: UUID, new_status: DeploymentStatus) -> None:
+    await execute(
+        "UPDATE project_deployments SET status = $1, updated_at = now() WHERE id = $2",
+        new_status, deployment_id,
+    )
+
+
+async def advance_step(
+    deployment_id: UUID,
+    new_accumulated_env: dict[str, Any],
+    new_log: dict[str, Any],
+    next_status: DeploymentStatus,
+) -> DeploymentSummary:
+    """Ajoute un step_log, met à jour accumulated_env, avance current_step_index."""
+    current = await get_by_id(deployment_id)
+    logs = [s.model_dump() for s in current.step_logs] + [new_log]
+    merged_env = {**current.accumulated_env, **new_accumulated_env}
+    await execute(
+        """
+        UPDATE project_deployments
+        SET status = $1,
+            current_step_index = current_step_index + 1,
+            accumulated_env = $2::jsonb,
+            step_logs = $3::jsonb,
+            updated_at = now()
+        WHERE id = $4
+        """,
+        next_status, json.dumps(merged_env), json.dumps(logs), deployment_id,
+    )
+    return await get_by_id(deployment_id)
+
+
+async def reset_to_executing(deployment_id: UUID) -> DeploymentSummary:
+    """Retry : repasse à executing_step sans changer current_step_index."""
+    await execute(
+        "UPDATE project_deployments SET status = 'executing_step', updated_at = now() WHERE id = $1",
+        deployment_id,
+    )
+    return await get_by_id(deployment_id)
+
+
+async def get_ordered_before_scripts(deployment_id: UUID) -> list[Any]:
+    """Retourne les group_scripts timing='before' triés par position."""
+    from agflow.services import group_scripts_service
+    deployment = await get_by_id(deployment_id)
+    group_ids = [UUID(gid) for gid in deployment.group_servers.keys()]
+    links: list[Any] = []
+    for gid in group_ids:
+        for link in await group_scripts_service.list_by_group(gid):
+            if link.timing == "before":
+                links.append(link)
+    return sorted(links, key=lambda l: l.position)

@@ -1135,8 +1135,6 @@
     "group_variables_updated": "Variable mise à jour",
     "group_variables_deleted": "Variable supprimée",
     "group_variables_copy": "Copier la référence",
-    "group_variables_paste": "Coller",
-    "group_variables_paste_error": "Impossible de lire le presse-papier (permission refusée)",
     "group_variables_copied": "Copié : {{name}}",
     "group_variables_delete_title": "Supprimer la variable",
     "group_variables_delete_description": "Supprimer la variable « {{name}} » ? Cette action est définitive.",

@@ -985,15 +985,11 @@ function VarRow({ v, values, statuses, sources, onUpdate, onUpdateStatus, t }: {
   const origin = getOrigin(v.name, currentValue, sources);
   const badgeColorClass = isUndeclared
     ? "border-red-500 text-red-500"
-    : isResolved
+    : (isResolved || !missing)
       ? "border-green-500 text-green-600"
-      : missing
-        ? v.required
-          ? "border-red-500 text-red-500"
-          : "border-orange-400 text-orange-500"
-        : v.type === "secret"
-          ? "border-orange-400 text-orange-500"
-          : "border-blue-400 text-blue-500";
+      : v.required
+        ? "border-red-500 text-red-500"
+        : "border-orange-400 text-orange-500";
   return (
     <div className="flex items-start gap-3">
       <div className="w-48 shrink-0 pt-1.5">

@@ -17,6 +17,7 @@ _log = structlog.get_logger(__name__)
 class DeploymentLogBus:
     def __init__(self) -> None:
         self._queues: dict[UUID, list[asyncio.Queue[Any]]] = {}
+        self._closed: set[UUID] = set()
 
     def subscribe(self, deployment_id: UUID) -> asyncio.Queue[Any]:
         """Crée et enregistre une queue pour un consommateur SSE."""
@@ -32,12 +33,16 @@ class DeploymentLogBus:
             self._queues.pop(deployment_id, None)
 
     async def publish(self, deployment_id: UUID, event: dict[str, Any]) -> None:
-        for q in self._queues.get(deployment_id, []):
+        listeners = list(self._queues.get(deployment_id, []))
+        for q in listeners:
             await q.put(event)
 
     async def close(self, deployment_id: UUID) -> None:
         """Envoie le sentinel None à tous les abonnés puis supprime le canal."""
-        for q in self._queues.get(deployment_id, []):
+        if deployment_id in self._closed:
+            return
+        self._closed.add(deployment_id)
+        for q in list(self._queues.get(deployment_id, [])):
             await q.put(None)
         self._queues.pop(deployment_id, None)
 

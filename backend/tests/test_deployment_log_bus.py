@@ -46,3 +46,18 @@ async def test_unsubscribe_removes_queue():
 
     # Queue should be empty (no event received)
     assert q.empty()
+
+
+@pytest.mark.asyncio
+async def test_close_is_idempotent():
+    bus = DeploymentLogBus()
+    dep_id = uuid4()
+    q = bus.subscribe(dep_id)
+
+    await bus.close(dep_id)
+    await bus.close(dep_id)  # Should not raise or send extra None
+
+    # Only one sentinel should be received
+    sentinel = await asyncio.wait_for(q.get(), timeout=1.0)
+    assert sentinel is None
+    assert q.empty()  # No second None sent

@@ -32,7 +32,7 @@ const selectClass = "mt-1 flex h-9 w-full rounded-md border border-input bg-back
  * Aplatit un JSON arbitraire en liste de variables de sortie.
  *
  * Chaque feuille (valeur non-objet, ou tableau) du JSON donne une entrée :
- *   - `path` : dot-path complet (ex: "result.hostname")
+ *   - `path` : JSONPath complet (ex: "$.result.hostname")
  *   - `name` : dernier segment, normalisé UPPER_SNAKE_CASE
  *
  * Les tableaux sont traités comme des feuilles : on ne descend pas dedans.
@@ -50,7 +50,7 @@ function flattenJsonToVariables(json: unknown): ScriptOutputVariable[] {
     if (!path) return;
     const lastSegment = path.split(".").pop() ?? path;
     const name = lastSegment.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-    out.push({ name, description: "", path, via_env: false });
+    out.push({ name, description: "", path: `$.${path}`, via_env: false });
   };
   recurse(json, "");
   return out;

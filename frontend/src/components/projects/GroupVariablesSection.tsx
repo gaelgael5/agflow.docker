@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { ClipboardPaste, Copy, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -254,6 +254,20 @@ function VariableRow({
           </p>
         )}
       </div>
+      {window.location.protocol === "https:" && (
+        <button
+          type="button"
+          title={t("projects.group_variables_paste")}
+          className="p-1 shrink-0 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors self-start mt-0.5"
+          disabled={saving}
+          onClick={async () => {
+            const text = await navigator.clipboard.readText();
+            setDraftValue(text);
+          }}
+        >
+          <ClipboardPaste className="w-3.5 h-3.5" />
+        </button>
+      )}
       <Input
         value={draftValue}
         onChange={(e) => setDraftValue(e.target.value)}

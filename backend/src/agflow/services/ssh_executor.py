@@ -4,9 +4,8 @@ Provides connect + exec helpers for servers and machines.
 """
 from __future__ import annotations
 
-from typing import Any
-
 import asyncio
+from typing import Any
 
 import asyncssh
 import structlog
@@ -41,7 +40,7 @@ async def test_connection(
         async with conn:
             result = await conn.run("echo ok", check=True)
             return {"success": True, "message": f"Connected — {result.stdout.strip()}"}
-    except asyncio.TimeoutError:
+    except TimeoutError:
         msg = f"Connection timed out after {connect_timeout:.0f}s"
         _log.warning("ssh.test_timeout", host=host, port=port, timeout=connect_timeout)
         return {"success": False, "message": msg}
@@ -76,6 +75,31 @@ async def exec_command(
             }
     except Exception as exc:
         raise SSHConnectionError(str(exc)) from exc
+
+
+async def exec_command_stream(
+    host: str,
+    port: int,
+    username: str | None,
+    password: str | None,
+    private_key: str | None,
+    passphrase: str | None,
+    command: str,
+    input: str | None = None,
+):
+    """Execute a command via SSH, yielding (stream_type, line) tuples.
+
+    stream_type is 'stdout', 'stderr', or 'exit' (last tuple carries exit code as str).
+    """
+    conn = await _connect(host, port, username, password, private_key, passphrase)
+    async with conn, conn.create_process(command) as proc:
+        if input is not None:
+            proc.stdin.write(input)
+            proc.stdin.write_eof()
+        async for raw_line in proc.stdout:
+            yield "stdout", raw_line.rstrip("\n")
+        exit_code = proc.exit_status if proc.exit_status is not None else -1
+        yield "exit", str(exit_code)
 
 
 async def _connect(

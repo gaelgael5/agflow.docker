@@ -161,9 +161,30 @@ class InstanceSummary(BaseModel):
     updated_at: datetime
 
 
-# ── Project Deployments ────���────────────────────────────
+# ── Project Deployments ──────────────────────────────────
 
-DeploymentStatus = Literal["draft", "generated", "deployed"]
+DeploymentStatus = Literal[
+    "draft", "generated",
+    "executing_step", "step_complete", "step_failed", "before_complete",
+    "deploying", "deployed", "failed",
+]
+
+
+class StepLog(BaseModel):
+    step_index: int
+    lines: list[str] = Field(default_factory=list)
+    exit_code: int = -1
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+
+
+class ExecuteStepRequest(BaseModel):
+    pass  # état courant lu depuis la DB
+
+
+class GenerateRequest(BaseModel):
+    user_secrets: dict[str, str] = {}
+    group_vars: dict[str, str] = {}  # override des valeurs de variables de groupe au moment du generate
 
 
 class DeploymentCreate(BaseModel):
@@ -181,6 +202,9 @@ class DeploymentSummary(BaseModel):
     user_id: UUID
     group_servers: dict[str, str] = Field(default_factory=dict)
     status: DeploymentStatus = "draft"
+    current_step_index: int = 0
+    accumulated_env: dict[str, Any] = Field(default_factory=dict)
+    step_logs: list[StepLog] = Field(default_factory=list)
     generated_compose: str | None = None
     generated_env: str | None = None
     generated_secrets: dict[str, str] = Field(default_factory=dict)

@@ -48,7 +48,7 @@ _COLS = (
 
 def _json_field(row: dict, key: str, default: Any) -> Any:
     v = row.get(key)
-    if v is None:
+    if v is None or v == "":
         return default
     if isinstance(v, (dict, list)):
         return v
@@ -64,6 +64,13 @@ class DeploymentNotFoundError(Exception):
 
 def _to_summary(row: dict[str, Any]) -> DeploymentSummary:
     gs = row.get("group_servers") or {}
+    step_logs_raw = _json_field(row, "step_logs", [])
+    step_logs = []
+    for s in step_logs_raw:
+        try:
+            step_logs.append(StepLog(**s))
+        except Exception:
+            _log.warning("deployment.invalid_step_log", step_log=s)
     return DeploymentSummary(
         id=row["id"],
         project_id=row["project_id"],
@@ -72,7 +79,7 @@ def _to_summary(row: dict[str, Any]) -> DeploymentSummary:
         status=row.get("status") or "draft",
         current_step_index=row.get("current_step_index") or 0,
         accumulated_env=_json_field(row, "accumulated_env", {}),
-        step_logs=[StepLog(**s) for s in _json_field(row, "step_logs", [])],
+        step_logs=step_logs,
         generated_compose=row.get("generated_compose"),
         generated_env=row.get("generated_env"),
         generated_secrets=_json_field(row, "generated_secrets", {}),
@@ -291,6 +298,7 @@ async def set_status(deployment_id: UUID, new_status: DeploymentStatus) -> None:
         "UPDATE project_deployments SET status = $1, updated_at = now() WHERE id = $2",
         new_status, deployment_id,
     )
+    _log.info("deployment.set_status", id=str(deployment_id), status=new_status)
 
 
 async def advance_step(
@@ -315,6 +323,7 @@ async def advance_step(
         """,
         next_status, json.dumps(merged_env), json.dumps(logs), deployment_id,
     )
+    _log.info("deployment.advance_step", id=str(deployment_id), step_index=current.current_step_index, status=next_status)
     return await get_by_id(deployment_id)
 
 
@@ -324,6 +333,7 @@ async def reset_to_executing(deployment_id: UUID) -> DeploymentSummary:
         "UPDATE project_deployments SET status = 'executing_step', updated_at = now() WHERE id = $1",
         deployment_id,
     )
+    _log.info("deployment.reset_to_executing", id=str(deployment_id))
     return await get_by_id(deployment_id)
 
 

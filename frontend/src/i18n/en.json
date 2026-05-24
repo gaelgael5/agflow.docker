@@ -2080,5 +2080,8 @@
   "deploy_wizard_deploying": "Deploying…",
   "deploy_wizard_deployed_ok": "Deployment succeeded",
   "deploy_wizard_deployed_fail": "Deployment failed",
-  "deploy_wizard_group_vars_title": "Group variables"
+  "deploy_wizard_group_vars_title": "Group variables",
+  "deploy_wizard_servers_title": "Target servers",
+  "deploy_wizard_generated_ok": "Configuration generated",
+  "deploy_wizard_generate_error": "Error during generation"
 }

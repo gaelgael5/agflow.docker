@@ -1,4 +1,6 @@
-import { useEffect, useState, useMemo } from "react";
+﻿import { useEffect, useState, useMemo } from "react";
+import { DeployWizardDialog } from "@/components/projects/DeployWizardDialog";
+import { groupVariablesApi } from "@/lib/groupVariablesApi";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -113,7 +115,7 @@ export function ProjectDetailPage() {
   const [addInstanceGroup, setAddInstanceGroup] = useState<GroupSummary | null>(null);
   const [editGroup, setEditGroup] = useState<GroupSummary | null>(null);
   const [previewGroup, setPreviewGroup] = useState<GroupSummary | null>(null);
-  const [showDeploy, setShowDeploy] = useState(false);
+  const [wizardDep, setWizardDep] = useState<DeploymentSummary | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GroupSummary | null>(null);
   const [deleteInstance, setDeleteInstance] = useState<InstanceSummary | null>(null);
 
@@ -121,6 +123,36 @@ export function ProjectDetailPage() {
   const groups = groupsQuery.data ?? [];
   const allInstances = instancesQuery.data ?? [];
   const products = productsQuery.data ?? [];
+
+  const groupVarsQuery = useQuery({
+    queryKey: ["group-vars-all", groups.map((g) => g.id)],
+    queryFn: async () => {
+      const results = await Promise.all(groups.map((g) => groupVariablesApi.list(g.id)));
+      return results.flat();
+    },
+    enabled: groups.length > 0,
+    staleTime: 30_000,
+  });
+  const groupVarsForWizard = useMemo(
+    () => (groupVarsQuery.data ?? []).map((v) => ({ name: v.name, value: v.value ?? "" })),
+    [groupVarsQuery.data],
+  );
+
+  const { data: beforeSteps = [] } = useQuery({
+    queryKey: ["deployment-before-steps", wizardDep?.id],
+    queryFn: () => deploymentsApi.getBeforeSteps(wizardDep!.id),
+    enabled: !!wizardDep?.id && wizardDep.status !== "draft",
+    staleTime: 30_000,
+  });
+
+  async function openWizard() {
+    try {
+      const dep = await deploymentsApi.create(projectId!, {});
+      setWizardDep(dep);
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
 
   function instancesForGroup(groupId: string) {
     return allInstances.filter((i) => i.group_id === groupId);
@@ -146,7 +178,7 @@ export function ProjectDetailPage() {
         subtitle={project?.description}
         actions={
           <div className="flex gap-2 items-center">
-            <Button variant="default" onClick={() => setShowDeploy(true)}>
+            <Button variant="default" onClick={() => void openWizard()}>
               <Play className="w-4 h-4" />
               {t("projects.deploy")}
             </Button>
@@ -385,13 +417,16 @@ export function ProjectDetailPage() {
         }}
       />
 
-      {/* Deploy dialog */}
-      {showDeploy && (
-        <DeployDialog
-          projectId={projectId!}
+      {/* Deploy wizard */}
+      {wizardDep !== null && (
+        <DeployWizardDialog
+          open
+          onClose={() => setWizardDep(null)}
+          deployment={wizardDep}
           groups={groups}
-          onClose={() => setShowDeploy(false)}
-          t={t}
+          groupVars={groupVarsForWizard}
+          steps={beforeSteps}
+          projectId={projectId!}
         />
       )}
 
@@ -408,456 +443,13 @@ export function ProjectDetailPage() {
   );
 }
 
-/* ── Deploy Dialog ────────────────────────────────────── */
-
-function DeployDialog({ projectId, groups, onClose, t }: {
-  projectId: string;
-  groups: GroupSummary[];
-  onClose: () => void;
-  t: (key: string, opts?: Record<string, string>) => string;
-}) {
-  const [servers, setServers] = useState<{ id: string; name: string; host: string; parent_id: string | null }[]>([]);
-  const [groupServers, setGroupServers] = useState<Record<string, string>>({});
-  const [deployment, setDeployment] = useState<DeploymentSummary | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [pushing, setPushing] = useState(false);
-  const [tab, setTab] = useState<string>("assign");
-  const composeTabPrefix = "compose-";
-  const activeComposeGroupId = tab.startsWith(composeTabPrefix) ? tab.slice(composeTabPrefix.length) : null;
-
-  useEffect(() => {
-    infraMachinesApi.list().then((list) => {
-      setServers(list.filter((m) => m.parent_id !== null).map((m) => ({
-        id: m.id, name: m.name || m.host, host: m.host, parent_id: m.parent_id,
-      })));
-    });
-  }, []);
-
-  const canGenerate = groups.every((g) => groupServers[g.id]);
-
-  async function handleGenerate() {
-    setGenerating(true);
-    try {
-      // Reveal user secrets from Harpocrate
-      const userSecrets: Record<string, string> = {};
-      try {
-        const { userSecretsApi } = await import("@/lib/userSecretsApi");
-        const secrets = await userSecretsApi.list();
-        for (const s of secrets) {
-          try {
-            const revealed = await userSecretsApi.reveal(s.name);
-            userSecrets[s.name] = revealed.value;
-          } catch {
-            // Skip secrets that fail to reveal
-          }
-        }
-      } catch {
-        // No user secrets or API error
-      }
-
-      const dep = await deploymentsApi.create(projectId, groupServers);
-      const generated = await deploymentsApi.generate(dep.id, userSecrets);
-      setDeployment(generated);
-      setTab("data");
-      toast.success(t("projects.deploy_generated"));
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  // Parse .env to know which secrets have values
-  const resolvedEnvKeys = new Set<string>();
-  const unresolvedEnvKeys = new Set<string>();
-  if (deployment?.generated_env) {
-    for (const line of deployment.generated_env.split("\n")) {
-      const eqIdx = line.indexOf("=");
-      if (eqIdx < 0) continue;
-      const k = line.slice(0, eqIdx);
-      const v = line.slice(eqIdx + 1);
-      if (v) resolvedEnvKeys.add(k);
-      else unresolvedEnvKeys.add(k);
-    }
-  }
-
-  const nullableSet = new Set(deployment?.nullable_secrets ?? []);
-
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-[75vw] h-[85vh] flex flex-col" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>{t("projects.deploy_title")}</DialogTitle>
-        </DialogHeader>
-
-        {/* Tabs */}
-        <div className="flex gap-2 border-b pb-2">
-          <Button size="sm" variant={tab === "assign" ? "default" : "outline"} onClick={() => setTab("assign")}>
-            {t("projects.tab_assign")}
-          </Button>
-          {deployment && (
-            <>
-              <Button size="sm" variant={tab === "data" ? "default" : "outline"} onClick={() => setTab("data")}>
-                {t("projects.tab_data")}
-              </Button>
-              <Button size="sm" variant={tab === "env" ? "default" : "outline"} onClick={() => setTab("env")}>
-                .env
-              </Button>
-              <Button size="sm" variant={tab === "scripts" ? "default" : "outline"} onClick={() => setTab("scripts")}>
-                {t("scripts.deploy_tab_title")}
-              </Button>
-              {groups
-                .filter((g) => g.compose_template_slug)
-                .map((g) => {
-                  const tabKey = `${composeTabPrefix}${g.id}`;
-                  return (
-                    <Button
-                      key={tabKey}
-                      size="sm"
-                      variant={tab === tabKey ? "default" : "outline"}
-                      onClick={() => setTab(tabKey)}
-                    >
-                      {t("projects.tab_compose_group", { name: g.name })}
-                    </Button>
-                  );
-                })}
-            </>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-auto">
-          {tab === "assign" && (
-            <div className="space-y-3 py-2">
-              {groups.map((g) => (
-                <div key={g.id} className="flex items-center gap-3">
-                  <div className="w-48 shrink-0">
-                    <span className="font-medium text-[13px]">{g.name}</span>
-                    <span className="text-[10px] text-muted-foreground ml-2">({g.instance_count} inst.)</span>
-                  </div>
-                  <select
-                    value={groupServers[g.id] ?? ""}
-                    onChange={(e) => setGroupServers((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                    className="flex h-8 flex-1 rounded-md border border-input bg-background px-3 py-1 text-[12px] font-mono shadow-sm"
-                  >
-                    <option value="">— {t("projects.select_server")} —</option>
-                    {servers.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.host})</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {tab === "data" && deployment && (
-            <DeployDataPanel deployment={deployment} t={t} />
-          )}
-
-          {tab === "env" && deployment?.generated_env && (
-            <pre className="p-4 bg-zinc-950 text-zinc-300 rounded-md text-[12px] font-mono whitespace-pre-wrap leading-5 overflow-auto max-h-[60vh]">
-              {deployment.generated_env.split("\n").map((line, i) => {
-                const [k, ...rest] = line.split("=");
-                const v = rest.join("=");
-                const isEmpty = !v;
-                const isNullable = k ? nullableSet.has(k) : false;
-                const valueClass = !isEmpty
-                  ? "text-green-400"
-                  : isNullable
-                    ? "text-yellow-400"
-                    : "text-red-400";
-                return (
-                  <div key={i}>
-                    <span className="text-zinc-500">{k}</span>
-                    <span className="text-zinc-600">=</span>
-                    <span className={valueClass}>{v || "(empty)"}</span>
-                  </div>
-                );
-              })}
-            </pre>
-          )}
-
-          {tab === "scripts" && deployment && (
-            <DeployScriptsPanel
-              groupIds={groups.map((g) => g.id)}
-              envText={deployment.generated_env ?? ""}
-              t={t}
-            />
-          )}
-
-          {activeComposeGroupId && deployment && (
-            <GroupComposePanel
-              deploymentId={deployment.id}
-              groupId={activeComposeGroupId}
-              t={t}
-            />
-          )}
-        </div>
-
-        {/* Liste des clés bloquantes qui empêchent le push (vides et non-nullable).
-            Affichée seulement quand un déploiement "generated" existe ET qu'au moins
-            une clé bloque, pour que l'utilisateur comprenne quoi corriger. */}
-        {deployment?.status === "generated" && (() => {
-          const blockers = [...unresolvedEnvKeys].filter((k) => !nullableSet.has(k));
-          if (blockers.length === 0) return null;
-          return (
-            <div className="border-t pt-3 mb-2">
-              <p className="text-[12px] text-amber-500 font-medium mb-1">
-                {t("projects.deploy_blockers_title", { count: String(blockers.length) })}
-              </p>
-              <ul className="text-[11px] font-mono space-y-0.5 ml-3">
-                {blockers.map((k) => (
-                  <li key={k} className="text-red-400">• {k}</li>
-                ))}
-              </ul>
-              <p className="text-[11px] text-muted-foreground mt-1.5">
-                {t("projects.deploy_blockers_hint")}
-              </p>
-            </div>
-          );
-        })()}
-
-        {/* Footer : bouton Générer toujours dispo, Pousser quand le déploiement est prêt */}
-        {deployment?.status !== "deployed" && (
-          <div className="flex justify-end gap-2 border-t pt-3">
-            <Button
-              variant="outline"
-              disabled={!canGenerate || generating}
-              onClick={handleGenerate}
-            >
-              {generating ? "..." : t("projects.deploy_generate")}
-            </Button>
-            {deployment && deployment.status === "generated" && (
-              <Button
-                disabled={pushing || [...unresolvedEnvKeys].some((k) => !nullableSet.has(k))}
-                onClick={async () => {
-                  setPushing(true);
-                  try {
-                    const res = await deploymentsApi.push(deployment.id);
-                    const allOk = res.results.every((r) => r.success);
-                    if (allOk) {
-                      toast.success(t("projects.deploy_pushed"));
-                      setDeployment({ ...deployment, status: "deployed" });
-                    } else {
-                      for (const r of res.results) {
-                        if (!r.success) toast.error(`${r.server}: ${r.error || r.stderr}`);
-                      }
-                    }
-                  } catch (e) {
-                    toast.error(String(e));
-                  } finally {
-                    setPushing(false);
-                  }
-                }}
-              >
-                <Play className="w-4 h-4" />
-                {pushing ? "..." : t("projects.deploy_push")}
-              </Button>
-            )}
-          </div>
-        )}
-
-        {deployment?.status === "deployed" && (
-          <div className="flex items-center gap-2 border-t pt-3">
-            <Badge variant="default" className="bg-green-600 text-white text-[10px]">
-              {t("projects.deploy_deployed")}
-            </Badge>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ── Deploy : vue Docker Compose rendu par groupe ───── */
-
-function GroupComposePanel({ deploymentId, groupId, t }: {
-  deploymentId: string;
-  groupId: string;
-  t: (key: string, opts?: Record<string, string>) => string;
-}) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["deployment-compose", deploymentId, groupId],
-    queryFn: () => deploymentsApi.groupCompose(deploymentId, groupId),
-    retry: false,
-  });
-
-  if (isLoading) {
-    return <p className="text-[12px] text-muted-foreground italic p-4">{t("common.refresh")}…</p>;
-  }
-  if (error) {
-    const axiosErr = error as { response?: { data?: { detail?: string } }; message?: string };
-    const detail = axiosErr.response?.data?.detail ?? axiosErr.message ?? String(error);
-    return (
-      <pre className="text-[12px] text-red-400 p-4 whitespace-pre-wrap font-mono">
-        {detail}
-      </pre>
-    );
-  }
-  return (
-    <pre className="p-4 bg-zinc-950 text-zinc-300 rounded-md text-[12px] font-mono whitespace-pre leading-5 overflow-auto max-h-[60vh]">
-      {data?.compose ?? ""}
-    </pre>
-  );
-}
-
-
-/* ── Deploy : vue Données (structure pré-résolue) ─────── */
-
-function DeployDataPanel({ deployment, t }: {
-  deployment: DeploymentSummary;
-  t: (key: string, opts?: Record<string, string>) => string;
-}) {
-  const data = deployment.generated_data as DeploymentData | Record<string, never>;
-  const envMap: Record<string, string> = {};
-  for (const line of (deployment.generated_env ?? "").split("\n")) {
-    const s = line.trim();
-    if (!s || s.startsWith("#") || !line.includes("=")) continue;
-    const [k, ...rest] = line.split("=");
-    if (k) envMap[k.trim()] = rest.join("=").trim();
-  }
-  const nullableSet = new Set(deployment.nullable_secrets ?? []);
-
-  function refClass(name: string): string {
-    const v = envMap[name];
-    if (v) return "text-emerald-400";
-    if (nullableSet.has(name)) return "text-amber-400";
-    return "text-red-400";
-  }
-
-  function colorize(value: string): React.ReactNode[] {
-    const parts: React.ReactNode[] = [];
-    // Match both ${VAR} (env ref) and {{VAR}} (system placeholder resolved by renderer)
-    const re = /(\$\{([A-Z_][A-Z0-9_]*)\})|(\{\{([A-Z_][A-Z0-9_]*)\}\})/g;
-    let last = 0;
-    let match;
-    while ((match = re.exec(value)) !== null) {
-      if (match.index > last) parts.push(value.slice(last, match.index));
-      const isEnvRef = Boolean(match[1]);
-      const name = isEnvRef ? match[2]! : match[4]!;
-      const cls = isEnvRef ? refClass(name) : "text-sky-400";
-      parts.push(
-        <span key={match.index} className={cls}>
-          {match[0]}
-        </span>,
-      );
-      last = match.index + match[0].length;
-    }
-    if (last < value.length) parts.push(value.slice(last));
-    return parts;
-  }
-
-  if (!data || !("groups" in data) || !data.groups) {
-    return (
-      <p className="text-[12px] text-muted-foreground italic p-4">
-        {t("projects.deploy_data_empty")}
-      </p>
-    );
-  }
-
-  return (
-    <pre className="p-4 bg-zinc-950 text-zinc-300 rounded-md text-[12px] font-mono whitespace-pre leading-5 overflow-auto max-h-[60vh]">
-      <span className="text-zinc-500"># project: </span>
-      <span>{(data as DeploymentData).project?.name}</span>
-      <span className="text-zinc-500">  network: </span>
-      <span className="text-sky-400">{data.project.network}</span>
-      {"\n"}
-      {data.groups.map((g) => (
-        <div key={g.group.id}>
-          {"\n"}
-          <span className="text-sky-300"># group: {g.group.name}</span>
-          <span className="text-zinc-500"> (slug={g.group_slug})</span>
-          {"\n"}
-          {g.instances.map((inst) => (
-            <div key={inst.id}>
-              <span className="text-zinc-500">  # instance: </span>
-              <span className="text-fuchsia-300">{inst.instance_name}</span>
-              <span className="text-zinc-500">  ({inst.catalog_id})</span>
-              {"\n"}
-              {inst.services.map((svc) => (
-                <div key={svc.container_name}>
-                  <span className="text-amber-300">  {svc.container_name}:</span>
-                  {"\n"}
-                  <span className="text-zinc-500">    image: </span>
-                  {svc.image}{"\n"}
-                  <span className="text-zinc-500">    restart: </span>
-                  {svc.restart}{"\n"}
-                  <span className="text-zinc-500">    networks: </span>
-                  [{svc.networks.join(", ")}]{"\n"}
-                  {svc.ports.length > 0 && (
-                    <>
-                      <span className="text-zinc-500">    ports: </span>
-                      [{svc.ports.join(", ")}]{"\n"}
-                    </>
-                  )}
-                  <span className="text-zinc-500">    labels:</span>{"\n"}
-                  {svc.labels.map((lbl, i) => (
-                    <div key={i}>
-                      <span className="text-zinc-500">      - </span>
-                      {colorize(lbl)}{"\n"}
-                    </div>
-                  ))}
-                  {Object.keys(svc.environment).length > 0 && (
-                    <>
-                      <span className="text-zinc-500">    environment:</span>{"\n"}
-                      {Object.entries(svc.environment).map(([k, v]) => (
-                        <div key={k}>
-                          <span className="text-zinc-500">      {k}: </span>
-                          <span>&quot;{colorize(v)}&quot;</span>{"\n"}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                  {svc.volumes.length > 0 && (
-                    <>
-                      <span className="text-zinc-500">    volumes:</span>{"\n"}
-                      {svc.volumes.map((vol, i) => (
-                        <div key={i}>
-                          <span className="text-zinc-500">      - </span>
-                          {vol.docker_volume || "(empty)"}:{vol.mount}{"\n"}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                  {svc.depends_on.length > 0 && (
-                    <>
-                      <span className="text-zinc-500">    depends_on:</span>{"\n"}
-                      {svc.depends_on.map((d, i) => (
-                        <div key={i}>
-                          <span className="text-zinc-500">      - </span>
-                          {d}{"\n"}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          ))}
-          {g.volumes.length > 0 && (
-            <>
-              <span className="text-zinc-500">  # group volumes:</span>{"\n"}
-              {g.volumes.map((v) => (
-                <div key={v}>
-                  <span className="text-zinc-500">  - </span>
-                  {v}{"\n"}
-                </div>
-              ))}
-            </>
-          )}
-        </div>
-      ))}
-    </pre>
-  );
-}
-
-
 /* ── Preview Dialog ───────────────────────────────────── */
 
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import type { GroupPreview, DeploymentData } from "@/lib/projectsApi";
+import type { GroupPreview } from "@/lib/projectsApi";
 
 function PreviewDialog({ group, onClose, t }: {
   group: GroupSummary;
@@ -1524,122 +1116,6 @@ function RuntimeDetailDialog({ runtimeId, onClose, t }: {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/* ── Deploy preview : Scripts panel ──────────────────── */
-
-function DeployScriptsPanel({ groupIds, envText, t }: {
-  groupIds: string[];
-  envText: string;
-  t: (key: string, opts?: Record<string, string>) => string;
-}) {
-  const linksQueries = useQuery({
-    queryKey: ["deploy-scripts", groupIds.join(",")],
-    queryFn: async () => {
-      const all = await Promise.all(groupIds.map((gid) => groupScriptsApi.list(gid)));
-      return all.flat();
-    },
-  });
-  const scriptsQuery = useQuery({ queryKey: ["scripts"], queryFn: () => scriptsApi.list() });
-
-  const links = linksQueries.data ?? [];
-  const scripts = scriptsQuery.data ?? [];
-
-  // Parse envText into a map
-  const envMap: Record<string, string> = {};
-  for (const line of envText.split("\n")) {
-    const s = line.trim();
-    if (!s || s.startsWith("#") || !line.includes("=")) continue;
-    const [k, ...rest] = line.split("=");
-    envMap[k!.trim()] = rest.join("=").trim();
-  }
-
-  function resolveValue(raw: string, groupName: string): { resolved: string; ok: boolean } {
-    let unresolved = false;
-    const prefix = (groupName || "").toUpperCase().replace(/[^A-Z0-9]/g, "_");
-    const out = raw.replace(/\$\{([A-Z_][A-Z0-9_]*)\}|\$([A-Z_][A-Z0-9_]*)/g, (m, g1, g2) => {
-      const key = g1 || g2;
-      if (!key) { unresolved = true; return m; }
-      if (envMap[key] !== undefined && envMap[key] !== "") return envMap[key];
-      const prefixed = prefix ? `${prefix}_${key}` : key;
-      if (envMap[prefixed] !== undefined && envMap[prefixed] !== "") return envMap[prefixed];
-      unresolved = true;
-      return m;
-    });
-    if (!raw) unresolved = true;
-    return { resolved: out, ok: !unresolved };
-  }
-
-  if (linksQueries.isLoading) {
-    return <p className="p-4 text-[12px] text-muted-foreground">…</p>;
-  }
-  if (links.length === 0) {
-    return (
-      <p className="p-4 text-[12px] text-muted-foreground italic">
-        {t("scripts.deploy_tab_empty")}
-      </p>
-    );
-  }
-
-  const before = links.filter((l) => l.timing === "before").sort((a, b) => a.position - b.position);
-  const after = links.filter((l) => l.timing === "after").sort((a, b) => a.position - b.position);
-
-  return (
-    <div className="p-2 space-y-3 max-h-[60vh] overflow-auto">
-      {[
-        { timing: "before" as const, label: t("scripts.group_timing_before"), items: before },
-        { timing: "after" as const, label: t("scripts.group_timing_after"), items: after },
-      ].map((section) => (
-        section.items.length > 0 && (
-          <div key={section.timing}>
-            <div className="text-[11px] font-semibold uppercase text-muted-foreground mb-1">
-              {section.label}
-            </div>
-            <div className="space-y-2">
-              {section.items.map((l) => {
-                const script = scripts.find((s) => s.id === l.script_id);
-                const declared = script?.input_variables ?? [];
-                return (
-                  <div key={l.id} className="border rounded p-2 bg-zinc-950 text-zinc-300 text-[12px]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono font-semibold">{l.script_name}</span>
-                      <span className="text-[10px] text-zinc-500">→ {l.machine_name}</span>
-                      {l.trigger_rules.length > 0 && (
-                        <span className="text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded">
-                          {l.trigger_rules.length} rule(s)
-                        </span>
-                      )}
-                    </div>
-                    {declared.length === 0 ? (
-                      <p className="text-[10px] text-zinc-500 italic">{t("scripts.deploy_tab_no_inputs")}</p>
-                    ) : (
-                      <div className="space-y-0.5 font-mono">
-                        {declared.map((iv) => {
-                          const raw = l.input_values[iv.name] ?? "";
-                          const { resolved, ok } = resolveValue(raw, l.group_name || "");
-                          const color = ok ? "text-green-400" : "text-red-400";
-                          return (
-                            <div key={iv.name}>
-                              <span className="text-zinc-500">{iv.name}</span>
-                              <span className="text-zinc-600">=</span>
-                              <span className={color}>{resolved || "(empty)"}</span>
-                              {raw !== resolved && (
-                                <span className="text-zinc-600 ml-2 text-[10px]">← {raw}</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )
-      ))}
-    </div>
   );
 }
 

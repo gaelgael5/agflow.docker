@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CheckCircle2, Clock, Loader2, SkipForward, XCircle } from "lucide-react";
 import {
@@ -15,11 +15,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   type DeploymentSummary,
+  type GroupSummary,
   type StepInfo,
   deploymentsApi,
 } from "@/lib/projectsApi";
+import { infraMachinesApi } from "@/lib/infraApi";
 
-interface GroupVar {
+export interface GroupVar {
   name: string;
   value: string;
 }
@@ -28,6 +30,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   deployment: DeploymentSummary;
+  groups: GroupSummary[];
   groupVars: GroupVar[];
   steps: StepInfo[];
   projectId: string;
@@ -45,6 +48,7 @@ export function DeployWizardDialog({
   open,
   onClose,
   deployment,
+  groups,
   groupVars,
   steps,
   projectId,
@@ -55,12 +59,21 @@ export function DeployWizardDialog({
   const [localVars, setLocalVars] = useState<Record<string, string>>(() =>
     Object.fromEntries(groupVars.map((v) => [v.name, v.value])),
   );
+  const [groupServers, setGroupServers] = useState<Record<string, string>>(
+    () => deployment.group_servers ?? {},
+  );
   const [dep, setDep] = useState<DeploymentSummary>(deployment);
   const [logs, setLogs] = useState<string[]>([]);
   const [selectedStepLog, setSelectedStepLog] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
+
+  const { data: machines = [] } = useQuery({
+    queryKey: ["infra-machines"],
+    queryFn: () => infraMachinesApi.list(),
+  });
+  const servers = machines.filter((m) => m.parent_id !== null);
 
   useEffect(() => {
     setDep(deployment);
@@ -113,15 +126,20 @@ export function DeployWizardDialog({
     };
   };
 
+  const canGenerate =
+    dep.status === "draft" && groups.every((g) => !!groupServers[g.id]);
+
   const handleGenerate = async () => {
     try {
+      // Persist server assignment then generate
+      await deploymentsApi.update(dep.id, groupServers);
       const updated = await deploymentsApi.generate(dep.id, {}, localVars);
       setDep(updated);
       void qc.invalidateQueries({ queryKey: ["deployments", projectId] });
       setActiveTab("exec");
-      toast.success(t("deploy_generated"));
+      toast.success(t("deploy_wizard_generated_ok"));
     } catch {
-      toast.error(t("deploy_generate_error") ?? "Erreur lors de la génération");
+      toast.error(t("deploy_wizard_generate_error") ?? "Erreur lors de la génération");
     }
   };
 
@@ -209,6 +227,33 @@ export function DeployWizardDialog({
             value="config"
             className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-1"
           >
+            {/* Server assignment per group */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("deploy_wizard_servers_title")}</p>
+              <div className="grid grid-cols-[1fr_2fr] items-center gap-2">
+                {groups.map((g) => (
+                  <div key={g.id} className="contents">
+                    <Label className="font-medium text-xs">{g.name}</Label>
+                    <select
+                      value={groupServers[g.id] ?? ""}
+                      onChange={(e) =>
+                        setGroupServers((prev) => ({ ...prev, [g.id]: e.target.value }))
+                      }
+                      className="flex h-8 flex-1 rounded-md border border-input bg-background px-3 py-1 text-[12px] font-mono shadow-sm"
+                    >
+                      <option value="">— {t("projects.select_server")} —</option>
+                      {servers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name || s.host} ({s.host})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Group variables */}
             {groupVars.length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">{t("deploy_wizard_group_vars_title")}</p>
@@ -228,8 +273,12 @@ export function DeployWizardDialog({
                 </div>
               </div>
             )}
+
             <div className="mt-auto flex justify-end">
-              <Button onClick={() => void handleGenerate()} disabled={dep.status !== "draft"}>
+              <Button
+                onClick={() => void handleGenerate()}
+                disabled={!canGenerate}
+              >
                 {t("deploy_wizard_next")}
               </Button>
             </div>
@@ -257,7 +306,7 @@ export function DeployWizardDialog({
                   <span className="flex-1 font-medium">{step.script_name}</span>
                   <span className="text-xs text-muted-foreground">{step.machine_name}</span>
                   <span className="text-xs text-muted-foreground">
-                    {t("deploy_wizard_step_count", { current: idx + 1, total: steps.length })}
+                    {t("deploy_wizard_step_count", { current: String(idx + 1), total: String(steps.length) })}
                   </span>
                 </div>
               ))}
@@ -274,6 +323,11 @@ export function DeployWizardDialog({
                 </Button>
               )}
               {canDeploy && (
+                <Button onClick={() => void handleDeploy()}>
+                  {t("deploy_wizard_deploy")}
+                </Button>
+              )}
+              {steps.length === 0 && dep.status === "generated" && (
                 <Button onClick={() => void handleDeploy()}>
                   {t("deploy_wizard_deploy")}
                 </Button>
@@ -295,7 +349,7 @@ export function DeployWizardDialog({
                   className="h-6 text-xs"
                   onClick={() => setSelectedStepLog(sl.step_index)}
                 >
-                  {t("deploy_wizard_step_select", { index: sl.step_index + 1 })}
+                  {t("deploy_wizard_step_select", { index: String(sl.step_index + 1) })}
                 </Button>
               ))}
               {isLive && (

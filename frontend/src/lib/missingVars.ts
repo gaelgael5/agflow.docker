@@ -4,8 +4,21 @@ export type VarOrigin =
   | "global"        // M0 Secrets & env vars
   | "group"         // Variables du groupe
   | "before_script" // Output d'un script timing=before exécuté avant
+  | "env_machine"   // Variable d'environnement lue sur une machine distante
   | "manual"        // Valeur littérale saisie manuellement
   | "missing";      // Non résoluble
+
+/**
+ * Parse une référence ${env-machine://<machine>:<varName>}.
+ * Retourne null si la valeur n'est pas de ce format.
+ * Retourne { machine: "<machine>", varName } si c'est un placeholder non résolu.
+ */
+export function parseEnvMachineRef(
+  value: string,
+): { machine: string; varName: string } | null {
+  const m = /^\$\{env-machine:\/\/([^:}]+):([^}]+)\}$/.exec(value.trim());
+  return m ? { machine: m[1]!, varName: m[2]! } : null;
+}
 
 export interface VarSources {
   globalVarNames: Set<string>;

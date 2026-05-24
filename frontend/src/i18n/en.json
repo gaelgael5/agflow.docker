@@ -1191,6 +1191,7 @@
     "var_origin_global": "Global variables",
     "var_origin_group": "Group variables",
     "var_origin_before_script": "Pre-deployment scripts",
+    "var_origin_env_machine": "Machine variable",
     "var_origin_manual": "Manual entry"
   },
   "instances": {

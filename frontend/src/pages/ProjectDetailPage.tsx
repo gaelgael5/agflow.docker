@@ -34,7 +34,8 @@ import {
 import { api } from "@/lib/api";
 import { productsApi, type ProductVariable, type ProductConnector, type ProductComputed, type ProductApiDef, type ProductService, type SharedDep } from "@/lib/productsApi";
 import { templatesApi } from "@/lib/templatesApi";
-import { isMissing, getOrigin, extractRefs, type VarSources } from "@/lib/missingVars";
+import { isMissing, getOrigin, extractRefs, parseEnvMachineRef, type VarSources } from "@/lib/missingVars";
+import { useEnvMachineVarCheck } from "@/hooks/useEnvMachineVarCheck";
 import { GroupVariablesSection } from "@/components/projects/GroupVariablesSection";
 import { PromptDialog } from "@/components/PromptDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -1766,6 +1767,7 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
   const [triggerRules, setTriggerRules] = useState<TriggerRule[]>([]);
   const [rulesOpen, setRulesOpen] = useState(true);
   const [saving, setSaving] = useState(false);
+  const envMachineCheck = useEnvMachineVarCheck(inputValues, machines);
 
   useEffect(() => {
     if (!open) return;
@@ -1913,11 +1915,23 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
                   {declaredInputs.map((iv) => {
                     const s = inputStatuses[iv.name] ?? "keep";
                     const val = inputValues[iv.name] ?? "";
-                    const varMissing = isMissing(iv.name, val, sources);
-                    const origin = getOrigin(iv.name, val, sources);
+                    const envRef = parseEnvMachineRef(val);
+                    const isEnvMachineRef = envRef !== null && envRef.machine !== "<machine>";
+                    const isEnvMachinePlaceholder = envRef !== null && envRef.machine === "<machine>";
+                    const envMachineStatus = isEnvMachineRef
+                      ? (envMachineCheck.get(`${envRef.machine}:${envRef.varName}`) ?? null)
+                      : null;
+                    const effectiveMissing = isEnvMachineRef
+                      ? (envMachineStatus !== null && envMachineStatus !== "ok")
+                      : !isEnvMachinePlaceholder && isMissing(iv.name, val, sources);
+                    const origin = isEnvMachineRef && envMachineStatus === "ok"
+                      ? "env_machine"
+                      : isEnvMachinePlaceholder
+                        ? "env_machine"
+                        : getOrigin(iv.name, val, sources);
                     return (
                       <div key={iv.name}>
-                        <Label className={`text-[10px] ${varMissing ? "text-red-500" : ""}`}>
+                        <Label className={`text-[10px] ${effectiveMissing ? "text-red-500" : ""}`}>
                           <span className="font-mono">{iv.name}</span>
                           {iv.description && <span className="text-muted-foreground ml-1">— {iv.description}</span>}
                         </Label>
@@ -1926,10 +1940,10 @@ function GroupScriptDialog({ open, initial, groupId, scripts, machines, onClose,
                             <Input
                               value={inputValues[iv.name] ?? ""}
                               onChange={(e) => setInputValues({ ...inputValues, [iv.name]: e.target.value })}
-                              className={`font-mono text-[11px] ${varMissing ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                              className={`font-mono text-[11px] ${effectiveMissing ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                               placeholder={iv.default || "${ENV_VAR} ou valeur littérale"}
                             />
-                            {!varMissing && origin !== "missing" && (
+                            {!effectiveMissing && origin !== "missing" && (
                               <p className="text-[9px] text-muted-foreground mt-0.5">
                                 {t(`projects.var_origin_${origin}`)}
                               </p>

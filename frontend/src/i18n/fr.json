@@ -1198,6 +1198,7 @@
     "var_origin_global": "Variables globales",
     "var_origin_group": "Variables du groupe",
     "var_origin_before_script": "Scripts exécutés avant",
+    "var_origin_env_machine": "Variable de machine",
     "var_origin_manual": "Saisie manuelle"
   },
   "instances": {

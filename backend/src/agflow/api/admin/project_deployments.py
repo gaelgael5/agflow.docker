@@ -655,7 +655,20 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
     }
 
 
-@router.post("/{deployment_id}/execute-step", dependencies=_admin, status_code=202)
+def _log_task_exception(dep_id: UUID, task: asyncio.Task[None]) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        _log.error("step_task_crashed", deployment_id=str(dep_id), exc_info=exc)
+        asyncio.create_task(project_deployments_service.set_status(dep_id, "step_failed"))
+
+
+@router.post(
+    "/{deployment_id}/execute-step",
+    dependencies=_admin,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def execute_step_endpoint(deployment_id: UUID) -> dict[str, str]:
     """Lance l'exécution du step courant en tâche asyncio. Retourne 202 immédiatement."""
     try:
@@ -671,12 +684,16 @@ async def execute_step_endpoint(deployment_id: UUID) -> dict[str, str]:
         )
 
     await project_deployments_service.set_status(deployment_id, "executing_step")
-    _task = asyncio.create_task(deployment_executor.execute_step(deployment_id))
-    _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+    task = asyncio.create_task(deployment_executor.execute_step(deployment_id))
+    task.add_done_callback(lambda t: _log_task_exception(deployment_id, t))
     return {"status": "accepted"}
 
 
-@router.post("/{deployment_id}/retry-step", dependencies=_admin, status_code=202)
+@router.post(
+    "/{deployment_id}/retry-step",
+    dependencies=_admin,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def retry_step_endpoint(deployment_id: UUID) -> dict[str, str]:
     """Réessaie le step courant (status doit être step_failed)."""
     try:
@@ -691,8 +708,8 @@ async def retry_step_endpoint(deployment_id: UUID) -> dict[str, str]:
         )
 
     await project_deployments_service.reset_to_executing(deployment_id)
-    _task = asyncio.create_task(deployment_executor.execute_step(deployment_id))
-    _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+    task = asyncio.create_task(deployment_executor.execute_step(deployment_id))
+    task.add_done_callback(lambda t: _log_task_exception(deployment_id, t))
     return {"status": "accepted"}
 
 
@@ -711,14 +728,13 @@ async def stream_deployment_logs(deployment_id: UUID) -> StreamingResponse:
     except project_deployments_service.DeploymentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    q = log_bus.subscribe(deployment_id)
-
     async def event_generator():
+        q = log_bus.subscribe(deployment_id)
         try:
             while True:
                 try:
                     event = await asyncio.wait_for(q.get(), timeout=30.0)
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     yield 'data: {"type": "keepalive"}\n\n'
                     continue
                 if event is None:

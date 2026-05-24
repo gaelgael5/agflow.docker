@@ -41,17 +41,29 @@ from agflow.services import (
 )
 from agflow.services.deployment_env_helpers import (
     collect_env_from_script as _collect_env_from_script,
+)
+from agflow.services.deployment_env_helpers import (
     evaluate_trigger_rules as _evaluate_trigger_rules,
+)
+from agflow.services.deployment_env_helpers import (
     merge_env_with_values as _merge_env_with_values,
+)
+from agflow.services.deployment_env_helpers import (
     parse_env_map as _parse_env_map,
+)
+from agflow.services.deployment_env_helpers import (
     parse_last_json as _parse_last_json,
+)
+from agflow.services.deployment_env_helpers import (
     resolve_input_value as _resolve_input_value,
+)
+from agflow.services.deployment_env_helpers import (
     ssh_kwargs_for_machine as _ssh_kwargs_for_machine,
+)
+from agflow.services.deployment_env_helpers import (
     substitute_script_placeholders as _substitute_script_placeholders,
 )
-from agflow.services.deployment_log_bus import (  # noqa: E402
-    log_bus,
-)
+from agflow.services.deployment_log_bus import log_bus
 
 _log = structlog.get_logger(__name__)
 
@@ -704,12 +716,14 @@ async def stream_deployment_logs(deployment_id: UUID) -> StreamingResponse:
     async def event_generator():
         try:
             while True:
-                event = await asyncio.wait_for(q.get(), timeout=30.0)
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=30.0)
+                except TimeoutError:
+                    yield 'data: {"type": "keepalive"}\n\n'
+                    continue
                 if event is None:
                     break
                 yield f"data: {_json.dumps(event)}\n\n"
-        except TimeoutError:
-            yield 'data: {"type": "keepalive"}\n\n'
         except asyncio.CancelledError:
             pass
         finally:

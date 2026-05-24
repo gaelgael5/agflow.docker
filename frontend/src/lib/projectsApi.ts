@@ -98,6 +98,27 @@ export interface AvailableService {
 
 // ── Deployments ─────────────────────────────────────────
 
+export interface StepLog {
+  step_index: number;
+  lines: string[];
+  exit_code: number;
+  started_at?: string;
+  ended_at?: string;
+}
+
+export type DeploymentStatus =
+  | "draft" | "generated"
+  | "executing_step" | "step_complete" | "step_failed" | "before_complete"
+  | "deploying" | "deployed" | "failed";
+
+export interface StepInfo {
+  script_name: string;
+  machine_name: string;
+  position: number;
+  timing: string;
+  input_variables: Array<{ name: string; resolved: boolean }>;
+}
+
 export interface DeploymentDataService {
   id: string;
   container_name: string;
@@ -137,7 +158,11 @@ export interface DeploymentSummary {
   project_id: string;
   user_id: string;
   group_servers: Record<string, string>;
-  status: "draft" | "generated" | "deployed";
+  generated_secrets: Record<string, string>;
+  current_step_index: number;
+  accumulated_env: Record<string, string>;
+  step_logs: StepLog[];
+  status: DeploymentStatus;
   generated_compose: string | null;
   generated_env: string | null;
   nullable_secrets: string[];
@@ -159,14 +184,40 @@ export const deploymentsApi = {
   async update(id: string, groupServers: Record<string, string>): Promise<DeploymentSummary> {
     return (await api.put<DeploymentSummary>(`/admin/project-deployments/${id}`, { group_servers: groupServers })).data;
   },
-  async generate(id: string, userSecrets?: Record<string, string>): Promise<DeploymentSummary> {
-    return (await api.post<DeploymentSummary>(`/admin/project-deployments/${id}/generate`, { user_secrets: userSecrets ?? {} })).data;
+  async generate(
+    id: string,
+    userSecrets?: Record<string, string>,
+    groupVars?: Record<string, string>,
+  ): Promise<DeploymentSummary> {
+    return (await api.post<DeploymentSummary>(
+      `/admin/project-deployments/${id}/generate`,
+      { user_secrets: userSecrets ?? {}, group_vars: groupVars ?? {} },
+    )).data;
   },
   async groupCompose(deploymentId: string, groupId: string): Promise<{ compose: string }> {
     return (await api.get<{ compose: string }>(`/admin/project-deployments/${deploymentId}/groups/${groupId}/compose`)).data;
   },
   async push(id: string): Promise<{ results: PushResult[] }> {
     return (await api.post<{ results: PushResult[] }>(`/admin/project-deployments/${id}/push`)).data;
+  },
+  async executeStep(id: string): Promise<void> {
+    await api.post(`/admin/project-deployments/${id}/execute-step`);
+  },
+  async retryStep(id: string): Promise<void> {
+    await api.post(`/admin/project-deployments/${id}/retry-step`);
+  },
+  async deploy(id: string): Promise<{ results: unknown[]; status: string }> {
+    return (await api.post<{ results: unknown[]; status: string }>(
+      `/admin/project-deployments/${id}/deploy`,
+    )).data;
+  },
+  streamLogs(id: string): EventSource {
+    return new EventSource(`/api/admin/project-deployments/${id}/stream`);
+  },
+  async getBeforeSteps(id: string): Promise<StepInfo[]> {
+    return (await api.get<StepInfo[]>(
+      `/admin/project-deployments/${id}/before-steps`,
+    )).data;
   },
   async remove(id: string): Promise<void> {
     await api.delete(`/admin/project-deployments/${id}`);

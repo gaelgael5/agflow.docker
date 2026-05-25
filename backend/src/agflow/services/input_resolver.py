@@ -11,7 +11,6 @@ Voir docs/superpowers/specs/2026-05-25-env-machine-resolver-design.md
 from __future__ import annotations
 
 from typing import Literal
-from uuid import UUID
 
 import structlog
 
@@ -33,7 +32,6 @@ UnresolvedKind = Literal[
     "platform_secret_missing",
     "machine_not_found",
     "env_machine_var_not_found",
-    "env_machine_var_empty",
     "unknown_ref",
 ]
 
@@ -65,7 +63,6 @@ class UnresolvedPlaceholderError(Exception):
 async def resolve_input_values(
     input_values: dict[str, str],
     *,
-    target_machine_id: UUID,
     env_text: str,
     platform_secrets_map: dict[str, str],
 ) -> dict[str, str]:
@@ -174,18 +171,13 @@ async def _substitute_env_machine_sentinel(
             cache[machine_name] = await infra_env_vars_service.resolve_for_machine(machine.id)
 
         env_vars = cache[machine_name]
+        # resolve_for_machine filtre déjà les valeurs vides (cf. infra_env_vars_service:281),
+        # donc une variable vide en DB se présente ici comme "absente" — un seul kind suffit.
         if ref_var not in env_vars:
             raise UnresolvedPlaceholderError(
                 kind="env_machine_var_not_found",
                 ref=m.group(0),
                 detail=f"variable '{ref_var}' absente sur la machine '{machine_name}'",
-                var_name=var_name,
-            )
-        if not env_vars[ref_var]:
-            raise UnresolvedPlaceholderError(
-                kind="env_machine_var_empty",
-                ref=m.group(0),
-                detail=f"variable '{ref_var}' vide sur la machine '{machine_name}'",
                 var_name=var_name,
             )
         sentinel = f"\x00ENV_MACHINE_{idx}\x00"

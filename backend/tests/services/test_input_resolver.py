@@ -14,10 +14,6 @@ from agflow.services.input_resolver import (
     resolve_input_values,
 )
 
-pytestmark = pytest.mark.asyncio
-
-MACHINE_ID = uuid4()
-
 
 class TestUnresolvedPlaceholderError:
     def test_carries_kind_ref_detail_varname(self) -> None:
@@ -34,13 +30,13 @@ class TestUnresolvedPlaceholderError:
 
     def test_str_contains_useful_info(self) -> None:
         err = UnresolvedPlaceholderError(
-            kind="env_machine_var_empty",
+            kind="env_machine_var_not_found",
             ref="${env-machine://m1:VAR}",
-            detail="variable 'VAR' vide sur 'm1'",
+            detail="variable 'VAR' absente sur 'm1'",
             var_name="VAR",
         )
         msg = str(err)
-        assert "env_machine_var_empty" in msg
+        assert "env_machine_var_not_found" in msg
         assert "VAR" in msg
         assert "m1" in msg  # ref content should appear
 
@@ -70,7 +66,8 @@ def mock_resolve_for_machine():
 
 @pytest.fixture
 def mock_get_machine_by_name():
-    """Mock machines_service.get_by_name — lookup machine par nom (cas env-machine://)."""
+    """Mock infra_machines_service.get_by_name. Utilise create=True car la
+    fonction sera ajoutée en T5 — à retirer une fois T5 mergée."""
     with patch(
         "agflow.services.input_resolver.infra_machines_service.get_by_name",
         new_callable=AsyncMock,
@@ -91,10 +88,11 @@ def mock_resolve_for_named_machine():
 
 
 class TestResolveInputValuesFailFast:
+    pytestmark = pytest.mark.asyncio
+
     async def test_literal_value_preserved(self, mock_resolve_for_machine) -> None:
         result = await resolve_input_values(
             input_values={"PORT": "8080"},
-            target_machine_id=MACHINE_ID,
             env_text="",
             platform_secrets_map={},
         )
@@ -103,7 +101,6 @@ class TestResolveInputValuesFailFast:
     async def test_simple_var_resolved_from_env_text(self, mock_resolve_for_machine) -> None:
         result = await resolve_input_values(
             input_values={"HOST": "${MY_HOST}"},
-            target_machine_id=MACHINE_ID,
             env_text="MY_HOST=example.com",
             platform_secrets_map={},
         )
@@ -112,7 +109,6 @@ class TestResolveInputValuesFailFast:
     async def test_env_ref_resolved_from_platform_secrets(self, mock_resolve_for_machine) -> None:
         result = await resolve_input_values(
             input_values={"API_URL": "${env://API_URL}"},
-            target_machine_id=MACHINE_ID,
             env_text="",
             platform_secrets_map={"API_URL": "https://api.example.com"},
         )
@@ -121,7 +117,6 @@ class TestResolveInputValuesFailFast:
     async def test_vault_ref_resolved_from_platform_secrets(self, mock_resolve_for_machine) -> None:
         result = await resolve_input_values(
             input_values={"TOKEN": "${vault://api:GITHUB_TOKEN}"},
-            target_machine_id=MACHINE_ID,
             env_text="",
             platform_secrets_map={"GITHUB_TOKEN": "ghp_xxx"},
         )
@@ -138,7 +133,6 @@ class TestResolveInputValuesFailFast:
 
         result = await resolve_input_values(
             input_values={"KC_ADMIN_PASSWORD": "${env-machine://keycloak1:KC_ADMIN_PASSWORD}"},
-            target_machine_id=MACHINE_ID,
             env_text="",
             platform_secrets_map={},
         )
@@ -149,7 +143,6 @@ class TestResolveInputValuesFailFast:
     async def test_mixed_value_prefix_ref_suffix(self, mock_resolve_for_machine) -> None:
         result = await resolve_input_values(
             input_values={"URL": "https://${HOST}:8080/api"},
-            target_machine_id=MACHINE_ID,
             env_text="HOST=example.com",
             platform_secrets_map={},
         )
@@ -157,11 +150,12 @@ class TestResolveInputValuesFailFast:
 
 
 class TestResolveInputValuesErrors:
+    pytestmark = pytest.mark.asyncio
+
     async def test_empty_value_raises_value_empty(self, mock_resolve_for_machine) -> None:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"PASSWORD": ""},
-                target_machine_id=MACHINE_ID,
                 env_text="",
                 platform_secrets_map={},
             )
@@ -172,7 +166,6 @@ class TestResolveInputValuesErrors:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"HOST": "${MY_HOST}"},
-                target_machine_id=MACHINE_ID,
                 env_text="",
                 platform_secrets_map={},
             )
@@ -184,7 +177,6 @@ class TestResolveInputValuesErrors:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"HOST": "${MY_HOST}"},
-                target_machine_id=MACHINE_ID,
                 env_text="MY_HOST=",
                 platform_secrets_map={},
             )
@@ -197,7 +189,6 @@ class TestResolveInputValuesErrors:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"X": "${env://NO_SUCH}"},
-                target_machine_id=MACHINE_ID,
                 env_text="",
                 platform_secrets_map={},
             )
@@ -210,7 +201,6 @@ class TestResolveInputValuesErrors:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"X": "${vault://api:NO_SUCH}"},
-                target_machine_id=MACHINE_ID,
                 env_text="",
                 platform_secrets_map={},
             )
@@ -225,7 +215,6 @@ class TestResolveInputValuesErrors:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"X": "${env-machine://ghost:VAR}"},
-                target_machine_id=MACHINE_ID,
                 env_text="",
                 platform_secrets_map={},
             )
@@ -242,34 +231,33 @@ class TestResolveInputValuesErrors:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"X": "${env-machine://m1:MISSING}"},
-                target_machine_id=MACHINE_ID,
                 env_text="",
                 platform_secrets_map={},
             )
         assert exc_info.value.kind == "env_machine_var_not_found"
         assert "MISSING" in exc_info.value.detail
 
-    async def test_env_machine_var_empty_raises(
+    async def test_env_machine_var_empty_returns_not_found(
         self,
         mock_get_machine_by_name,
         mock_resolve_for_named_machine,
     ) -> None:
+        # resolve_for_machine filtre les empties — du point de vue d'input_resolver,
+        # une variable vide en DB se présente comme absente. Un seul kind suffit.
         mock_get_machine_by_name.return_value = SimpleNamespace(id=uuid4(), name="m1")
-        mock_resolve_for_named_machine.return_value = {"VAR": ""}
+        mock_resolve_for_named_machine.return_value = {}  # var "VAR" filtrée parce que vide
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"X": "${env-machine://m1:VAR}"},
-                target_machine_id=MACHINE_ID,
                 env_text="",
                 platform_secrets_map={},
             )
-        assert exc_info.value.kind in ("env_machine_var_empty", "env_machine_var_not_found")
+        assert exc_info.value.kind == "env_machine_var_not_found"
 
     async def test_unknown_brace_raises_unknown_ref(self, mock_resolve_for_machine) -> None:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"X": "${foo-bar}"},
-                target_machine_id=MACHINE_ID,
                 env_text="",
                 platform_secrets_map={},
             )
@@ -280,7 +268,6 @@ class TestResolveInputValuesErrors:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(
                 input_values={"FIRST": "${MISSING_A}", "SECOND": "${MISSING_B}"},
-                target_machine_id=MACHINE_ID,
                 env_text="",
                 platform_secrets_map={},
             )
@@ -295,7 +282,6 @@ class TestResolveInputValuesErrors:
         mock_resolve_for_named_machine.return_value = {"VAR": "literal-${OTHER}-value"}
         result = await resolve_input_values(
             input_values={"X": "${env-machine://m1:VAR}"},
-            target_machine_id=MACHINE_ID,
             env_text="",
             platform_secrets_map={},
         )

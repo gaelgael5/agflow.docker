@@ -29,6 +29,8 @@ from agflow.services import (
     image_registries_service,
     infra_certificates_service,
     infra_machines_service,
+    input_resolver,
+    platform_secrets_service,
     product_instances_service,
     project_deployments_service,
     project_runtimes_service,
@@ -55,15 +57,13 @@ from agflow.services.deployment_env_helpers import (
     parse_last_json as _parse_last_json,
 )
 from agflow.services.deployment_env_helpers import (
-    resolve_input_value as _resolve_input_value,
-)
-from agflow.services.deployment_env_helpers import (
     ssh_kwargs_for_machine as _ssh_kwargs_for_machine,
 )
 from agflow.services.deployment_env_helpers import (
     substitute_script_placeholders as _substitute_script_placeholders,
 )
 from agflow.services.deployment_log_bus import log_bus
+from agflow.services.input_resolver import UnresolvedPlaceholderError
 
 _log = structlog.get_logger(__name__)
 
@@ -111,7 +111,8 @@ async def update_deployment(deployment_id: UUID, payload: DeploymentUpdate):
     try:
         if payload.group_servers is not None:
             return await project_deployments_service.update_group_servers(
-                deployment_id, payload.group_servers,
+                deployment_id,
+                payload.group_servers,
             )
         return await project_deployments_service.get_by_id(deployment_id)
     except project_deployments_service.DeploymentNotFoundError as exc:
@@ -142,7 +143,8 @@ async def get_group_compose(deployment_id: UUID, group_id: UUID) -> dict[str, st
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     try:
         rendered = await compose_renderer_service.render_group_compose(
-            deployment.generated_data, group_id,
+            deployment.generated_data,
+            group_id,
         )
     except compose_renderer_service.ComposeRenderError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -286,10 +288,7 @@ async def _build_registry_login_steps(
                 f"Registry '{reg.id}' ({host}) credential has no token part. "
                 f"Expected format: 'username:${{SECRET_NAME}}' (or a literal token)."
             )
-        cmd = (
-            f"docker login {shlex.quote(host)} "
-            f"-u {shlex.quote(user)} --password-stdin"
-        )
+        cmd = f"docker login {shlex.quote(host)} -u {shlex.quote(user)} --password-stdin"
         steps.append((f"docker_login_{host}", cmd, token))
     return steps
 
@@ -307,31 +306,44 @@ async def _run_group_script(link: Any, script_content: str, env_text: str = "") 
         ssh = await _ssh_kwargs_for_machine(target_machine_id)
     except group_scripts_service.GroupScriptNoDeploymentHostError as exc:
         return {
-            "script": link.script_name, "machine": link.machine_name,
-            "timing": link.timing, "success": False, "error": str(exc),
+            "script": link.script_name,
+            "machine": link.machine_name,
+            "timing": link.timing,
+            "success": False,
+            "error": str(exc),
         }
     except Exception as exc:
         return {
-            "script": link.script_name, "machine": link.machine_name,
-            "timing": link.timing, "success": False, "error": str(exc),
+            "script": link.script_name,
+            "machine": link.machine_name,
+            "timing": link.timing,
+            "success": False,
+            "error": str(exc),
         }
 
-    # Résolution en 2 étapes pour chaque input_value :
-    #   1) ${vault://api:path} et ${env://NAME} → via platform_secrets_service
-    #      (qui fait l'appel SDK Harpocrate + lecture table env globale)
-    #   2) ${SIMPLE_NAME} → contre le .env du déploiement (qui contient
-    #      maintenant les variables de groupe injectées au Generate)
-    from agflow.services import platform_secrets_service
+    # Résolution unifiée des 4 syntaxes via input_resolver (fail-fast)
     platform_secrets_map = await platform_secrets_service.resolve_all()
-    resolved_inputs: dict[str, str] = {}
-    for name, raw in (link.input_values or {}).items():
-        # Étape 1 : résoudre les refs déclaratives ${vault://…} / ${env://…}
-        step1 = platform_secrets_service.resolve_platform_refs(
-            raw or "", platform_secrets_map,
+    try:
+        resolved_inputs = await input_resolver.resolve_input_values(
+            input_values=link.input_values or {},
+            env_text=env_text,
+            platform_secrets_map=platform_secrets_map,
         )
-        # Étape 2 : résoudre les ${VAR} simples contre le .env
-        resolved, _ok = _resolve_input_value(step1, env_text)
-        resolved_inputs[name] = resolved
+    except UnresolvedPlaceholderError as exc:
+        msg = f"Variable '{exc.var_name}' non résoluble : {exc.detail}"
+        _log.warning(
+            "group_script.unresolved_placeholder",
+            var_name=exc.var_name,
+            kind=exc.kind,
+            ref=exc.ref,
+        )
+        return {
+            "script": link.script_name,
+            "machine": link.machine_name,
+            "timing": link.timing,
+            "success": False,
+            "error": msg,
+        }
 
     rendered = _substitute_script_placeholders(script_content, resolved_inputs)
 
@@ -342,8 +354,11 @@ async def _run_group_script(link: Any, script_content: str, env_text: str = "") 
         result = await ssh_executor.exec_command(**ssh, command=f"bash {remote_path}")
     except Exception as exc:
         return {
-            "script": link.script_name, "machine": link.machine_name,
-            "timing": link.timing, "success": False, "error": str(exc),
+            "script": link.script_name,
+            "machine": link.machine_name,
+            "timing": link.timing,
+            "success": False,
+            "error": str(exc),
         }
     finally:
         try:
@@ -353,10 +368,14 @@ async def _run_group_script(link: Any, script_content: str, env_text: str = "") 
 
     exit_code = result.get("exit_code", -1)
     return {
-        "script": link.script_name, "machine": link.machine_name,
-        "timing": link.timing, "position": link.position,
-        "success": exit_code == 0, "exit_code": exit_code,
-        "stdout": result.get("stdout", ""), "stderr": result.get("stderr", ""),
+        "script": link.script_name,
+        "machine": link.machine_name,
+        "timing": link.timing,
+        "position": link.position,
+        "success": exit_code == 0,
+        "exit_code": exit_code,
+        "stdout": result.get("stdout", ""),
+        "stderr": result.get("stderr", ""),
     }
 
 
@@ -376,7 +395,9 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     if deployment.status != "generated":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deployment not generated yet")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Deployment not generated yet"
+        )
 
     project = await projects_service.get_by_id(deployment.project_id)
     project_slug = project.display_name.lower().replace(" ", "-")
@@ -407,11 +428,18 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
         current_env_text = _merge_env_with_values(deployment.generated_env or "", collected_env)
         ok, reason = _evaluate_trigger_rules(link.trigger_rules, _parse_env_map(current_env_text))
         if not ok:
-            script_results.append({
-                "script": link.script_name, "machine": link.machine_name,
-                "timing": link.timing, "position": link.position,
-                "skipped": True, "reason": reason, "success": True, "exit_code": 0,
-            })
+            script_results.append(
+                {
+                    "script": link.script_name,
+                    "machine": link.machine_name,
+                    "timing": link.timing,
+                    "position": link.position,
+                    "skipped": True,
+                    "reason": reason,
+                    "success": True,
+                    "exit_code": 0,
+                }
+            )
             continue
         res = await _run_group_script(link, script.content, env_text=current_env_text)
         script_results.append(res)
@@ -419,7 +447,9 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
             parsed = _parse_last_json(res.get("stdout", ""))
             if parsed:
                 for k, v in _collect_env_from_script(
-                    link, parsed, _parse_env_map(current_env_text),
+                    link,
+                    parsed,
+                    _parse_env_map(current_env_text),
                 ).items():
                     collected_env[k] = v
 
@@ -487,27 +517,29 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
         # group's Jinja template. Simple concat for now (one-group-per-machine is
         # the nominal case); proper YAML merge can be added if needed.
         group_ids_on_machine = [
-            UUID(gid) for gid, mid in deployment.group_servers.items()
-            if mid == str(machine_id)
+            UUID(gid) for gid, mid in deployment.group_servers.items() if mid == str(machine_id)
         ]
         compose_fragments: list[str] = []
         render_failed: str | None = None
         for gid in group_ids_on_machine:
             try:
                 fragment = await compose_renderer_service.render_group_compose(
-                    deployment.generated_data, gid,
+                    deployment.generated_data,
+                    gid,
                 )
             except compose_renderer_service.ComposeRenderError as exc:
                 render_failed = str(exc)
                 break
             compose_fragments.append(fragment)
         if render_failed is not None:
-            results.append({
-                "server": machine.name or machine.host,
-                "machine_id": str(machine_id),
-                "success": False,
-                "error": render_failed,
-            })
+            results.append(
+                {
+                    "server": machine.name or machine.host,
+                    "machine_id": str(machine_id),
+                    "success": False,
+                    "error": render_failed,
+                }
+            )
             continue
         compose_content = "\n".join(compose_fragments)
 
@@ -520,12 +552,14 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
                 _parse_env_map(env_text),
             )
         except RegistryCredentialError as exc:
-            results.append({
-                "server": machine.name or machine.host,
-                "machine_id": str(machine_id),
-                "success": False,
-                "error": str(exc),
-            })
+            results.append(
+                {
+                    "server": machine.name or machine.host,
+                    "machine_id": str(machine_id),
+                    "success": False,
+                    "error": str(exc),
+                }
+            )
             continue
         stack_name = f"agflow-proj-{project_slug}-{project_runtime_seq}"
         steps = swarm_deploy_steps.build_deploy_steps(
@@ -537,9 +571,12 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
         )
 
         ssh_kwargs = {
-            "host": creds["host"], "port": creds["port"],
-            "username": creds["username"], "password": creds["password"],
-            "private_key": private_key, "passphrase": passphrase,
+            "host": creds["host"],
+            "port": creds["port"],
+            "username": creds["username"],
+            "password": creds["password"],
+            "private_key": private_key,
+            "passphrase": passphrase,
         }
 
         step_result: dict[str, Any] = {}
@@ -547,23 +584,29 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
         try:
             for step_name, cmd, stdin in steps:
                 step_result = await ssh_executor.exec_command(
-                    **ssh_kwargs, command=cmd, input=stdin,
+                    **ssh_kwargs,
+                    command=cmd,
+                    input=stdin,
                 )
                 if step_result.get("exit_code") != 0:
                     failed_step = step_name
                     break
         except Exception as exc:
-            results.append({"server": machine.name or machine.host, "success": False, "error": str(exc)})
+            results.append(
+                {"server": machine.name or machine.host, "success": False, "error": str(exc)}
+            )
             continue
 
-        results.append({
-            "server": machine.name or machine.host,
-            "machine_id": str(machine_id),
-            "success": failed_step is None,
-            "step": failed_step,
-            "stdout": step_result.get("stdout", ""),
-            "stderr": step_result.get("stderr", ""),
-        })
+        results.append(
+            {
+                "server": machine.name or machine.host,
+                "machine_id": str(machine_id),
+                "success": failed_step is None,
+                "step": failed_step,
+                "stdout": step_result.get("stdout", ""),
+                "stderr": step_result.get("stderr", ""),
+            }
+        )
 
         # Update the runtime rows for all groups assigned to this machine
         for gid_str, mid_str in deployment.group_servers.items():
@@ -578,7 +621,9 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
                 compose_yaml=compose_content,
                 remote_path=remote_dir,
                 status="deployed" if failed_step is None else "failed",
-                error_message=None if failed_step is None else f"failed at step {failed_step}: {step_result.get('stderr', '')[:500]}",
+                error_message=None
+                if failed_step is None
+                else f"failed at step {failed_step}: {step_result.get('stderr', '')[:500]}",
             )
 
     # ─── Phase 3 : after-scripts (logged, no env merge) ────────
@@ -590,11 +635,18 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
             continue
         ok, reason = _evaluate_trigger_rules(link.trigger_rules, _parse_env_map(final_env_text))
         if not ok:
-            script_results.append({
-                "script": link.script_name, "machine": link.machine_name,
-                "timing": link.timing, "position": link.position,
-                "skipped": True, "reason": reason, "success": True, "exit_code": 0,
-            })
+            script_results.append(
+                {
+                    "script": link.script_name,
+                    "machine": link.machine_name,
+                    "timing": link.timing,
+                    "position": link.position,
+                    "skipped": True,
+                    "reason": reason,
+                    "success": True,
+                    "exit_code": 0,
+                }
+            )
             continue
         res = await _run_group_script(link, script.content, env_text=final_env_text)
         script_results.append(res)
@@ -612,8 +664,12 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
             continue
         # Find deploy result for this machine (if any)
         machine_result = next(
-            (r for r in results if r.get("success") is not None
-             and (r.get("server") or "") in {str(machine_uuid), ""}),
+            (
+                r
+                for r in results
+                if r.get("success") is not None
+                and (r.get("server") or "") in {str(machine_uuid), ""}
+            ),
             None,
         )
         success_flag = machine_result.get("success") if machine_result else True
@@ -627,7 +683,11 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
                     (deployment_id, instance_id, machine_id, success, error_message)
                 VALUES ($1, $2, $3, $4, $5)
                 """,
-                deployment_id, inst.id, machine_uuid, success_flag, error_msg,
+                deployment_id,
+                inst.id,
+                machine_uuid,
+                success_flag,
+                error_msg,
             )
 
     # Update status to deployed if all deploy steps + all scripts succeeded
@@ -639,11 +699,13 @@ async def push_deployment(deployment_id: UUID, user_id: UUID = Depends(_get_user
             deployment_id,
         )
         await project_runtimes_service.update_project_runtime_status(
-            project_runtime_id, "deployed",
+            project_runtime_id,
+            "deployed",
         )
     else:
         await project_runtimes_service.update_project_runtime_status(
-            project_runtime_id, "failed",
+            project_runtime_id,
+            "failed",
             error_message="one or more groups or scripts failed",
         )
 
@@ -800,7 +862,9 @@ async def deploy_endpoint(deployment_id: UUID, user_id: UUID = Depends(_get_user
         except Exception:
             continue
         runtime_id = await project_runtimes_service.upsert_group_runtime(
-            project_runtime_id=project_runtime_id, group_id=gid, machine_id=mid,
+            project_runtime_id=project_runtime_id,
+            group_id=gid,
+            machine_id=mid,
         )
         group_runtime_ids[gid_str] = runtime_id
         group = groups_by_id.get(gid_str)
@@ -829,69 +893,87 @@ async def deploy_endpoint(deployment_id: UUID, user_id: UUID = Depends(_get_user
 
         remote_dir = f"~/agflow.docker/projects/{project_slug}-{project_runtime_seq}"
         group_ids_on_machine = [
-            UUID(gid) for gid, mid in deployment.group_servers.items()
-            if mid == str(machine_id)
+            UUID(gid) for gid, mid in deployment.group_servers.items() if mid == str(machine_id)
         ]
         compose_fragments: list[str] = []
         render_failed: str | None = None
         for gid in group_ids_on_machine:
             try:
-                fragment = await compose_renderer_service.render_group_compose(deployment.generated_data, gid)
+                fragment = await compose_renderer_service.render_group_compose(
+                    deployment.generated_data, gid
+                )
             except compose_renderer_service.ComposeRenderError as exc:
                 render_failed = str(exc)
                 break
             compose_fragments.append(fragment)
         if render_failed is not None:
-            results.append({
-                "server": machine.name or machine.host,
-                "machine_id": str(machine_id),
-                "success": False,
-                "error": render_failed,
-            })
+            results.append(
+                {
+                    "server": machine.name or machine.host,
+                    "machine_id": str(machine_id),
+                    "success": False,
+                    "error": render_failed,
+                }
+            )
             continue
         compose_content = "\n".join(compose_fragments)
 
         try:
-            login_steps = await _build_registry_login_steps(compose_content, _parse_env_map(env_text))
+            login_steps = await _build_registry_login_steps(
+                compose_content, _parse_env_map(env_text)
+            )
         except RegistryCredentialError as exc:
-            results.append({
-                "server": machine.name or machine.host,
-                "machine_id": str(machine_id),
-                "success": False,
-                "error": str(exc),
-            })
+            results.append(
+                {
+                    "server": machine.name or machine.host,
+                    "machine_id": str(machine_id),
+                    "success": False,
+                    "error": str(exc),
+                }
+            )
             continue
 
         stack_name = f"agflow-proj-{project_slug}-{project_runtime_seq}"
         steps = swarm_deploy_steps.build_deploy_steps(
-            remote_dir=remote_dir, compose_content=compose_content,
-            env_content=env_text, stack_name=stack_name,
+            remote_dir=remote_dir,
+            compose_content=compose_content,
+            env_content=env_text,
+            stack_name=stack_name,
             extra_steps_before_deploy=login_steps,
         )
         ssh_kwargs = {
-            "host": creds["host"], "port": creds["port"],
-            "username": creds["username"], "password": creds["password"],
-            "private_key": private_key, "passphrase": passphrase,
+            "host": creds["host"],
+            "port": creds["port"],
+            "username": creds["username"],
+            "password": creds["password"],
+            "private_key": private_key,
+            "passphrase": passphrase,
         }
 
         step_result: dict[str, Any] = {}
         failed_step: str | None = None
         try:
             for step_name, cmd, stdin in steps:
-                step_result = await ssh_executor.exec_command(**ssh_kwargs, command=cmd, input=stdin)
+                step_result = await ssh_executor.exec_command(
+                    **ssh_kwargs, command=cmd, input=stdin
+                )
                 if step_result.get("exit_code") != 0:
                     failed_step = step_name
                     break
         except Exception as exc:
-            results.append({"server": machine.name or machine.host, "success": False, "error": str(exc)})
+            results.append(
+                {"server": machine.name or machine.host, "success": False, "error": str(exc)}
+            )
             continue
 
-        results.append({
-            "server": machine.name or machine.host,
-            "machine_id": str(machine_id),
-            "success": failed_step is None,
-            "step": failed_step,
-        })
+        results.append(
+            {
+                "server": machine.name or machine.host,
+                "machine_id": str(machine_id),
+                "success": failed_step is None,
+                "step": failed_step,
+            }
+        )
 
         for gid_str, mid_str in deployment.group_servers.items():
             if mid_str != str(machine_id):
@@ -900,7 +982,9 @@ async def deploy_endpoint(deployment_id: UUID, user_id: UUID = Depends(_get_user
             if rid is None:
                 continue
             await project_runtimes_service.update_group_runtime_push(
-                runtime_id=rid, env_text=env_text, compose_yaml=compose_content,
+                runtime_id=rid,
+                env_text=env_text,
+                compose_yaml=compose_content,
                 remote_path=remote_dir,
                 status="deployed" if failed_step is None else "failed",
                 error_message=None if failed_step is None else f"failed at step {failed_step}",
@@ -925,7 +1009,8 @@ async def deploy_endpoint(deployment_id: UUID, user_id: UUID = Depends(_get_user
     final_status = "deployed" if all_ok else "failed"
     await project_deployments_service.set_status(deployment_id, final_status)
     await project_runtimes_service.update_project_runtime_status(
-        project_runtime_id, final_status,
+        project_runtime_id,
+        final_status,
         error_message=None if all_ok else "one or more machines failed",
     )
 
@@ -948,8 +1033,7 @@ async def get_before_steps(deployment_id: UUID) -> list[dict[str, Any]]:
             "position": link.position,
             "timing": link.timing,
             "input_variables": [
-                {"name": k, "resolved": bool(v)}
-                for k, v in (link.input_values or {}).items()
+                {"name": k, "resolved": bool(v)} for k, v in (link.input_values or {}).items()
             ],
         }
         for link in links

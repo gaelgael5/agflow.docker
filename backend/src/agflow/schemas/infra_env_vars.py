@@ -3,9 +3,11 @@
 
 Cf. migration 121 + service infra_env_vars_service.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -40,6 +42,7 @@ class NamedTypeEnvVarUpdate(BaseModel):
 
 class MachineEnvVarRow(BaseModel):
     """Vue dénormalisée : inclut name + description + is_secret issus du contrat."""
+
     id: UUID
     machine_id: UUID
     named_type_env_var_id: UUID
@@ -53,14 +56,35 @@ class MachineEnvVarRow(BaseModel):
 
 class MachineSecretEntry(BaseModel):
     """Valeur secrète à stocker dans Harpocrate pour une variable de machine."""
+
     vault_name: str
     value: str
 
 
 class MachineEnvVarUpsert(BaseModel):
     """Upsert atomique — valeurs plain + secrets à stocker dans le coffre."""
+
     values: dict[UUID, str] = Field(default_factory=dict)
     secrets: dict[UUID, MachineSecretEntry] = Field(default_factory=dict)
+
+
+class ProjectEnvVarsCheckMissingReason(BaseModel):
+    """Une raison pour laquelle une variable d'input ne peut être résolue.
+
+    `kind` correspond aux `UnresolvedKind` exposés par `input_resolver`.
+    """
+
+    var_name: str
+    kind: Literal[
+        "value_empty",
+        "var_not_in_env",
+        "platform_secret_missing",
+        "machine_not_found",
+        "env_machine_var_not_found",
+        "unknown_ref",
+    ]
+    ref: str
+    detail: str
 
 
 class ProjectEnvVarsCheckMissing(BaseModel):
@@ -72,7 +96,7 @@ class ProjectEnvVarsCheckMissing(BaseModel):
     machine_id: UUID | None
     machine_name: str | None
     target_kind: str
-    missing_env_vars: list[str]
+    missing: list[ProjectEnvVarsCheckMissingReason]
 
 
 class ProjectEnvVarsCheck(BaseModel):

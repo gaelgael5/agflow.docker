@@ -3,6 +3,7 @@
 
 Migration 121. Résolution des refs via platform_secrets_service.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -36,6 +37,7 @@ class EnvVarForeignKeyError(ValueError):
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+
 def _to_nt_row(row: dict[str, Any]) -> NamedTypeEnvVarRow:
     return NamedTypeEnvVarRow(
         id=row["id"],
@@ -64,10 +66,14 @@ def _to_machine_row(row: dict[str, Any]) -> MachineEnvVarRow:
 
 
 async def _upsert_vault_secret(
-    existing_ref: str | None, path: str, new_value: str, vault_name: str,
+    existing_ref: str | None,
+    path: str,
+    new_value: str,
+    vault_name: str,
 ) -> str:
     """Garantit que `path` contient `new_value` dans le coffre ; retourne le vault ref."""
     from agflow.services import vault_client
+
     parsed = vault_client.parse_ref(existing_ref) if existing_ref else None
     if parsed is not None:
         existing_vault, existing_path = parsed
@@ -80,7 +86,8 @@ async def _upsert_vault_secret(
             except Exception:
                 _log.warning(
                     "infra_env_vars.vault_cleanup_failed",
-                    vault=existing_vault, path=existing_path,
+                    vault=existing_vault,
+                    path=existing_path,
                 )
     else:
         await vault_client.create_secret(path, new_value, vault_name=vault_name)
@@ -88,6 +95,7 @@ async def _upsert_vault_secret(
 
 
 # ── named_type env vars CRUD ─────────────────────────────────────────────────
+
 
 async def list_by_named_type(named_type_id: UUID) -> list[NamedTypeEnvVarRow]:
     rows = await fetch_all(
@@ -117,13 +125,18 @@ async def create_env_var(
     is_secret: bool = False,
 ) -> NamedTypeEnvVarRow:
     import asyncpg
+
     try:
         row = await fetch_one(
             "INSERT INTO infra_named_type_env_vars "
             "  (named_type_id, name, description, position, is_secret) "
             "VALUES ($1, $2, $3, $4, $5) "
             "RETURNING id, named_type_id, name, description, position, is_secret, created_at, updated_at",
-            named_type_id, name, description, position, is_secret,
+            named_type_id,
+            name,
+            description,
+            position,
+            is_secret,
         )
     except asyncpg.UniqueViolationError as exc:
         raise EnvVarDuplicateError(
@@ -143,6 +156,7 @@ async def update_env_var(
     is_secret: bool | None = None,
 ) -> NamedTypeEnvVarRow:
     import asyncpg
+
     current = await get_env_var_by_id(env_var_id)
     next_name = name if name is not None else current.name
     next_description = description if description is not None else current.description
@@ -154,12 +168,14 @@ async def update_env_var(
             "SET name = $2, description = $3, position = $4, is_secret = $5 "
             "WHERE id = $1 "
             "RETURNING id, named_type_id, name, description, position, is_secret, created_at, updated_at",
-            env_var_id, next_name, next_description, next_position, next_is_secret,
+            env_var_id,
+            next_name,
+            next_description,
+            next_position,
+            next_is_secret,
         )
     except asyncpg.UniqueViolationError as exc:
-        raise EnvVarDuplicateError(
-            f"another env_var already uses the name {next_name!r}"
-        ) from exc
+        raise EnvVarDuplicateError(f"another env_var already uses the name {next_name!r}") from exc
     assert row is not None  # RETURNING garantit une ligne si pas d'exception
     _log.info("infra_env_vars.update", id=str(env_var_id), name=next_name)
     return _to_nt_row(row)
@@ -168,7 +184,8 @@ async def update_env_var(
 async def delete_env_var(env_var_id: UUID) -> None:
     await get_env_var_by_id(env_var_id)
     result = await execute(
-        "DELETE FROM infra_named_type_env_vars WHERE id = $1", env_var_id,
+        "DELETE FROM infra_named_type_env_vars WHERE id = $1",
+        env_var_id,
     )
     if result.endswith(" 0"):
         raise EnvVarNotFoundError(f"env_var {env_var_id} not found")
@@ -176,6 +193,7 @@ async def delete_env_var(env_var_id: UUID) -> None:
 
 
 # ── machine env vars ─────────────────────────────────────────────────────────
+
 
 async def list_machine_env_vars(machine_id: UUID) -> list[MachineEnvVarRow]:
     """Retourne toutes les env vars du contrat de la machine (valeur vide si non remplie)."""
@@ -240,13 +258,15 @@ async def upsert_machine_env_vars(
         existing_row = await fetch_one(
             "SELECT value FROM infra_machine_env_vars "
             "WHERE machine_id = $1 AND named_type_env_var_id = $2",
-            machine_id, ev_id,
+            machine_id,
+            ev_id,
         )
         existing_ref = existing_row["value"] if existing_row else None
         ref = await _upsert_vault_secret(existing_ref, path, entry.value, entry.vault_name)
         final_values[ev_id] = ref
 
     from agflow.db.pool import get_pool
+
     pool = await get_pool()
     async with pool.acquire() as conn, conn.transaction():
         for ev_id, val in final_values.items():
@@ -258,7 +278,9 @@ async def upsert_machine_env_vars(
                 ON CONFLICT (machine_id, named_type_env_var_id)
                 DO UPDATE SET value = EXCLUDED.value, updated_at = now()
                 """,
-                machine_id, ev_id, val,
+                machine_id,
+                ev_id,
+                val,
             )
 
     _log.info(
@@ -273,6 +295,7 @@ async def upsert_machine_env_vars(
 async def resolve_for_machine(machine_id: UUID) -> dict[str, str]:
     """Retourne {name: valeur_résolue} pour la machine. Exclut les valeurs vides après résolution."""
     from agflow.services import platform_secrets_service
+
     secrets_map = await platform_secrets_service.resolve_all()
     rows = await list_machine_env_vars(machine_id)
     result: dict[str, str] = {}
@@ -285,23 +308,36 @@ async def resolve_for_machine(machine_id: UUID) -> dict[str, str]:
 
 # ── project env vars check ────────────────────────────────────────────────────
 
+
 async def check_project_env_vars(project_id: UUID) -> ProjectEnvVarsCheck:
-    """Vérifie que chaque group_script avec des variables via_env a sa machine complète."""
+    """Pour chaque group_script avec via_env, dry-run du resolver et rapport.
+
+    Utilise input_resolver.resolve_input_values_collect : on n'arrête pas
+    au 1er échec, on accumule toutes les raisons.
+
+    Une via_env var dont l'input_value se résout (ou est couverte par la
+    machine cible / les group_variables) → absente de `missing`.
+    Sinon → entrée dans `missing` avec le `kind` typé.
+    """
+    from agflow.schemas.infra_env_vars import ProjectEnvVarsCheckMissingReason
     from agflow.services import (
         group_scripts_service,
         group_variables_service,
         groups_service,
+        input_resolver,
+        platform_secrets_service,
         scripts_service,
     )
 
     groups = await groups_service.list_by_project(project_id)
+    platform_secrets_map = await platform_secrets_service.resolve_all()
     items: list[ProjectEnvVarsCheckMissing] = []
 
     for group in groups:
-        group_var_names = {
-            r.name for r in await group_variables_service.list_by_group(group.id)
-            if r.value
-        }
+        group_vars = await group_variables_service.list_by_group(group.id)
+        env_text = "\n".join(f"{v.name}={v.value}" for v in group_vars if v.value)
+        group_var_names = {v.name for v in group_vars if v.value}
+
         group_scripts = await group_scripts_service.list_by_group(group.id)
         for gs in group_scripts:
             script = await scripts_service.get_by_id(gs.script_id)
@@ -309,11 +345,9 @@ async def check_project_env_vars(project_id: UUID) -> ProjectEnvVarsCheck:
             if not via_env_vars:
                 continue
 
-            # Résoudre la machine effective
-            # GroupSummary n'a pas machine_id — utiliser resolve_target_machine_id
+            # Résoudre la machine cible (conserve la logique existante)
             machine_id: UUID | None = None
             machine_name: str | None = gs.machine_name or None
-
             if gs.target_kind == "fixed_machine" and gs.machine_id:
                 machine_id = gs.machine_id
             elif gs.target_kind == "deployment_host":
@@ -326,27 +360,55 @@ async def check_project_env_vars(project_id: UUID) -> ProjectEnvVarsCheck:
                         reason=str(exc),
                     )
                     continue
+            if machine_id is None:
+                continue
 
-            env_available: dict[str, str] = {}
-            if machine_id:
-                env_available = await resolve_for_machine(machine_id)
+            # Construire les input_values sur la base des via_env vars du script.
+            # Si l'input_value est absent du group_script, on le considère comme
+            # value_empty (le user n'a rien saisi).
+            via_env_names = {v.name for v in via_env_vars}
+            relevant_inputs = {
+                k: v for k, v in (gs.input_values or {}).items() if k in via_env_names
+            }
+            for v in via_env_vars:
+                if v.name not in relevant_inputs:
+                    relevant_inputs[v.name] = ""
 
-            missing = [v.name for v in via_env_vars if v.name not in env_available and v.name not in group_var_names]
-            if missing:
-                items.append(ProjectEnvVarsCheckMissing(
-                    group_script_id=gs.id,
-                    script_id=script.id,
-                    script_name=script.name,
-                    group_id=group.id,
-                    group_name=group.name,
-                    machine_id=machine_id,
-                    machine_name=machine_name,
-                    target_kind=gs.target_kind,
-                    missing_env_vars=missing,
-                ))
+            _, errors = await input_resolver.resolve_input_values_collect(
+                input_values=relevant_inputs,
+                env_text=env_text,
+                platform_secrets_map=platform_secrets_map,
+            )
+
+            # Filtre : si une via_env var est déjà couverte par une group_variable
+            # non vide, on retire son erreur du rapport.
+            reasons: list[ProjectEnvVarsCheckMissingReason] = [
+                ProjectEnvVarsCheckMissingReason(
+                    var_name=err.var_name or "<unknown>",
+                    kind=err.kind,
+                    ref=err.ref,
+                    detail=err.detail,
+                )
+                for err in errors
+                if (err.var_name or "") not in group_var_names
+            ]
+            if reasons:
+                items.append(
+                    ProjectEnvVarsCheckMissing(
+                        group_script_id=gs.id,
+                        script_id=script.id,
+                        script_name=script.name,
+                        group_id=group.id,
+                        group_name=group.name,
+                        machine_id=machine_id,
+                        machine_name=machine_name,
+                        target_kind=gs.target_kind,
+                        missing=reasons,
+                    )
+                )
 
     return ProjectEnvVarsCheck(
         project_id=project_id,
-        total_missing=sum(len(it.missing_env_vars) for it in items),
+        total_missing=sum(len(it.missing) for it in items),
         items=items,
     )

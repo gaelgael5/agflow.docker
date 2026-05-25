@@ -1,19 +1,28 @@
-import pytest
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from datetime import datetime
+
+import pytest
 
 
 def _make_deployment(status="generated", step_index=0, accumulated_env=None):
-    from agflow.schemas.products import DeploymentSummary, StepLog
+    from agflow.schemas.products import DeploymentSummary
+
     return DeploymentSummary(
-        id=uuid4(), project_id=uuid4(), user_id=uuid4(),
-        status=status, current_step_index=step_index,
+        id=uuid4(),
+        project_id=uuid4(),
+        user_id=uuid4(),
+        status=status,
+        current_step_index=step_index,
         accumulated_env=accumulated_env or {},
-        step_logs=[], group_servers={"grp1": "mach1"},
-        generated_env="VAR=val", generated_secrets={},
-        nullable_secrets=[], generated_data={},
-        created_at=datetime.now(), updated_at=datetime.now(),
+        step_logs=[],
+        group_servers={"grp1": "mach1"},
+        generated_env="VAR=val",
+        generated_secrets={},
+        nullable_secrets=[],
+        generated_data={},
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
     )
 
 
@@ -38,11 +47,14 @@ async def test_execute_step_success_transitions_to_before_complete():
     dep = _make_deployment()
     link = _make_link()
 
-    with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
-         patch("agflow.services.deployment_executor.scripts_service") as mock_scripts, \
-         patch("agflow.services.deployment_executor._run_script_streaming", new_callable=AsyncMock) as mock_run, \
-         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
-
+    with (
+        patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc,
+        patch("agflow.services.deployment_executor.scripts_service") as mock_scripts,
+        patch(
+            "agflow.services.deployment_executor._run_script_streaming", new_callable=AsyncMock
+        ) as mock_run,
+        patch("agflow.services.deployment_executor.log_bus") as mock_bus,
+    ):
         mock_svc.get_by_id = AsyncMock(return_value=dep)
         mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[link])
         mock_svc.set_status = AsyncMock()
@@ -52,13 +64,16 @@ async def test_execute_step_success_transitions_to_before_complete():
         mock_scripts.ScriptNotFoundError = Exception
 
         mock_run.return_value = {
-            "success": True, "exit_code": 0,
-            "stdout": '{"KC_ID": "abc"}', "stderr": "",
+            "success": True,
+            "exit_code": 0,
+            "stdout": '{"KC_ID": "abc"}',
+            "stderr": "",
         }
         mock_bus.publish = AsyncMock()
         mock_bus.close = AsyncMock()
 
         from agflow.services.deployment_executor import execute_step
+
         await execute_step(dep.id)
 
         mock_svc.advance_step.assert_awaited_once()
@@ -72,11 +87,14 @@ async def test_execute_step_failure_sets_step_failed():
     dep = _make_deployment()
     link = _make_link()
 
-    with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
-         patch("agflow.services.deployment_executor.scripts_service") as mock_scripts, \
-         patch("agflow.services.deployment_executor._run_script_streaming", new_callable=AsyncMock) as mock_run, \
-         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
-
+    with (
+        patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc,
+        patch("agflow.services.deployment_executor.scripts_service") as mock_scripts,
+        patch(
+            "agflow.services.deployment_executor._run_script_streaming", new_callable=AsyncMock
+        ) as mock_run,
+        patch("agflow.services.deployment_executor.log_bus") as mock_bus,
+    ):
         mock_svc.get_by_id = AsyncMock(return_value=dep)
         mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[link])
         mock_svc.fail_step = AsyncMock()
@@ -88,6 +106,7 @@ async def test_execute_step_failure_sets_step_failed():
         mock_bus.close = AsyncMock()
 
         from agflow.services.deployment_executor import execute_step
+
         await execute_step(dep.id)
 
         mock_svc.fail_step.assert_awaited_once()
@@ -107,10 +126,11 @@ async def test_execute_step_script_not_found():
     class ScriptNotFoundError(Exception):
         pass
 
-    with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
-         patch("agflow.services.deployment_executor.scripts_service") as mock_scripts, \
-         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
-
+    with (
+        patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc,
+        patch("agflow.services.deployment_executor.scripts_service") as mock_scripts,
+        patch("agflow.services.deployment_executor.log_bus") as mock_bus,
+    ):
         mock_svc.get_by_id = AsyncMock(return_value=dep)
         mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[link])
         mock_svc.fail_step = AsyncMock()
@@ -120,6 +140,7 @@ async def test_execute_step_script_not_found():
         mock_bus.close = AsyncMock()
 
         from agflow.services.deployment_executor import execute_step
+
         await execute_step(dep.id)
 
         mock_svc.fail_step.assert_awaited_once()
@@ -137,11 +158,14 @@ async def test_execute_step_step_complete_when_not_last():
     link0 = _make_link(position=0)
     link1 = _make_link(position=1)
 
-    with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
-         patch("agflow.services.deployment_executor.scripts_service") as mock_scripts, \
-         patch("agflow.services.deployment_executor._run_script_streaming", new_callable=AsyncMock) as mock_run, \
-         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
-
+    with (
+        patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc,
+        patch("agflow.services.deployment_executor.scripts_service") as mock_scripts,
+        patch(
+            "agflow.services.deployment_executor._run_script_streaming", new_callable=AsyncMock
+        ) as mock_run,
+        patch("agflow.services.deployment_executor.log_bus") as mock_bus,
+    ):
         mock_svc.get_by_id = AsyncMock(return_value=dep)
         mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[link0, link1])
         mock_svc.advance_step = AsyncMock(return_value=dep)
@@ -149,13 +173,16 @@ async def test_execute_step_step_complete_when_not_last():
         mock_scripts.ScriptNotFoundError = Exception
 
         mock_run.return_value = {
-            "success": True, "exit_code": 0,
-            "stdout": "{}", "stderr": "",
+            "success": True,
+            "exit_code": 0,
+            "stdout": "{}",
+            "stderr": "",
         }
         mock_bus.publish = AsyncMock()
         mock_bus.close = AsyncMock()
 
         from agflow.services.deployment_executor import execute_step
+
         await execute_step(dep.id)
 
         mock_svc.advance_step.assert_awaited_once()
@@ -171,10 +198,11 @@ async def test_execute_step_trigger_skip():
     link = _make_link(position=0)
     link.trigger_rules = [{"variable": "SKIP_FLAG", "op": "equals", "value": "yes"}]
 
-    with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
-         patch("agflow.services.deployment_executor.scripts_service") as mock_scripts, \
-         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
-
+    with (
+        patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc,
+        patch("agflow.services.deployment_executor.scripts_service") as mock_scripts,
+        patch("agflow.services.deployment_executor.log_bus") as mock_bus,
+    ):
         mock_svc.get_by_id = AsyncMock(return_value=dep)
         mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[link])
         mock_svc.advance_step = AsyncMock(return_value=dep)
@@ -184,6 +212,7 @@ async def test_execute_step_trigger_skip():
         mock_bus.close = AsyncMock()
 
         from agflow.services.deployment_executor import execute_step
+
         await execute_step(dep.id)
 
         # SKIP_FLAG n'est pas dans le .env (VAR=val), donc la règle échoue → skip
@@ -199,9 +228,10 @@ async def test_execute_step_no_scripts_transitions_to_before_complete():
     """Quand il n'y a pas de before-scripts, on passe directement à before_complete."""
     dep = _make_deployment()
 
-    with patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc, \
-         patch("agflow.services.deployment_executor.log_bus") as mock_bus:
-
+    with (
+        patch("agflow.services.deployment_executor.project_deployments_service") as mock_svc,
+        patch("agflow.services.deployment_executor.log_bus") as mock_bus,
+    ):
         mock_svc.get_by_id = AsyncMock(return_value=dep)
         mock_svc.get_ordered_before_scripts = AsyncMock(return_value=[])
         mock_svc.set_status = AsyncMock()
@@ -209,6 +239,76 @@ async def test_execute_step_no_scripts_transitions_to_before_complete():
         mock_bus.close = AsyncMock()
 
         from agflow.services.deployment_executor import execute_step
+
         await execute_step(dep.id)
 
         mock_svc.set_status.assert_awaited_once_with(dep.id, "before_complete")
+
+
+@pytest.mark.asyncio
+async def test_run_script_streaming_fails_on_unresolved_placeholder() -> None:
+    """Si input_resolver lève, le streaming échoue AVANT l'upload SSH."""
+    from types import SimpleNamespace
+
+    from agflow.services import deployment_executor
+    from agflow.services.input_resolver import UnresolvedPlaceholderError
+
+    link = SimpleNamespace(
+        id=uuid4(),
+        input_values={"PWD": "${env-machine://ghost:VAR}"},
+        script_name="dummy",
+        machine_name="target",
+        timing="before",
+    )
+
+    captured_lines: list[tuple[str, str]] = []
+
+    async def on_line(stream: str, line: str) -> None:
+        captured_lines.append((stream, line))
+
+    with (
+        patch(
+            "agflow.services.deployment_executor.group_scripts_service.resolve_target_machine_id",
+            new_callable=AsyncMock,
+            return_value=uuid4(),
+        ),
+        patch(
+            "agflow.services.deployment_executor.ssh_kwargs_for_machine",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "agflow.services.deployment_executor.platform_secrets_service.resolve_all",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "agflow.services.deployment_executor.input_resolver.resolve_input_values",
+            new_callable=AsyncMock,
+            side_effect=UnresolvedPlaceholderError(
+                kind="machine_not_found",
+                ref="${env-machine://ghost:VAR}",
+                detail="machine 'ghost' inconnue",
+                var_name="PWD",
+            ),
+        ),
+        patch(
+            "agflow.services.deployment_executor.ssh_executor.exec_command",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+    ):
+        result = await deployment_executor._run_script_streaming(
+            link=link,
+            script_content="echo {PWD}",
+            env_text="",
+            on_line=on_line,
+        )
+
+    assert result["success"] is False
+    assert result["exit_code"] == -1
+    assert "PWD" in result["stderr"]
+    assert "ghost" in result["stderr"]
+    # Aucun exec_command appelé : on a fail avant l'upload
+    mock_exec.assert_not_called()
+    # Le stderr a été propagé via on_line
+    assert any(s == "stderr" and "ghost" in line for s, line in captured_lines)

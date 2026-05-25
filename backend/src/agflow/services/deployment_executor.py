@@ -4,6 +4,7 @@ Chaque appel à `execute_step` tourne dans une tâche asyncio.
 Il publie ses logs dans le `log_bus` (consommé par le SSE endpoint)
 et met à jour la table `project_deployments` (status, accumulated_env, step_logs).
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -15,18 +16,25 @@ from uuid import UUID
 
 import structlog
 
-from agflow.services import project_deployments_service, scripts_service, ssh_executor
+from agflow.services import (
+    group_scripts_service,
+    input_resolver,
+    platform_secrets_service,
+    project_deployments_service,
+    scripts_service,
+    ssh_executor,
+)
 from agflow.services.deployment_env_helpers import (
     collect_env_from_script,
     evaluate_trigger_rules,
     merge_env_with_values,
     parse_env_map,
     parse_last_json,
-    resolve_input_value,
     ssh_kwargs_for_machine,
     substitute_script_placeholders,
 )
 from agflow.services.deployment_log_bus import log_bus
+from agflow.services.input_resolver import UnresolvedPlaceholderError
 
 _log = structlog.get_logger(__name__)
 
@@ -43,8 +51,6 @@ async def _run_script_streaming(
     Appelle `on_line(stream_type, line)` pour chaque ligne reçue.
     Retourne {success, exit_code, stdout, stderr}.
     """
-    from agflow.services import group_scripts_service, platform_secrets_service
-
     try:
         target_machine_id = await group_scripts_service.resolve_target_machine_id(link.id)
         ssh = await ssh_kwargs_for_machine(target_machine_id)
@@ -53,11 +59,22 @@ async def _run_script_streaming(
         return {"success": False, "exit_code": -1, "stdout": "", "stderr": str(exc)}
 
     platform_secrets_map = await platform_secrets_service.resolve_all()
-    resolved_inputs: dict[str, str] = {}
-    for name, raw in (link.input_values or {}).items():
-        step1 = platform_secrets_service.resolve_platform_refs(raw or "", platform_secrets_map)
-        resolved, _ = resolve_input_value(step1, env_text)
-        resolved_inputs[name] = resolved
+    try:
+        resolved_inputs = await input_resolver.resolve_input_values(
+            input_values=link.input_values or {},
+            env_text=env_text,
+            platform_secrets_map=platform_secrets_map,
+        )
+    except UnresolvedPlaceholderError as exc:
+        msg = f"Variable '{exc.var_name}' non résoluble : {exc.detail}"
+        _log.warning(
+            "deployment_executor.unresolved_placeholder",
+            var_name=exc.var_name,
+            kind=exc.kind,
+            ref=exc.ref,
+        )
+        await on_line("stderr", msg)
+        return {"success": False, "exit_code": -1, "stdout": "", "stderr": msg}
 
     rendered = substitute_script_placeholders(script_content, resolved_inputs)
     remote_path = f"/tmp/agflow-script-{secrets.token_hex(8)}.sh"
@@ -70,7 +87,9 @@ async def _run_script_streaming(
         await ssh_executor.exec_command(**ssh, command=f"cat > {remote_path}", input=rendered)
         await ssh_executor.exec_command(**ssh, command=f"chmod +x {remote_path}")
 
-        async for stream_type, line in ssh_executor.exec_command_stream(**ssh, command=f"bash {remote_path}"):
+        async for stream_type, line in ssh_executor.exec_command_stream(
+            **ssh, command=f"bash {remote_path}"
+        ):
             if stream_type == "exit":
                 exit_code = int(line)
             elif stream_type == "stdout":
@@ -115,16 +134,22 @@ async def execute_step(deployment_id: UUID) -> None:
             script = await scripts_service.get_by_id(link.script_id)
         except scripts_service.ScriptNotFoundError:
             step_log = {
-                "step_index": step_index, "lines": ["script not found"],
+                "step_index": step_index,
+                "lines": ["script not found"],
                 "exit_code": -1,
                 "started_at": datetime.now(UTC).isoformat(),
                 "ended_at": datetime.now(UTC).isoformat(),
             }
             await project_deployments_service.fail_step(deployment_id, step_log)
-            await log_bus.publish(deployment_id, {
-                "type": "step_failed", "step_index": step_index,
-                "exit_code": -1, "error": "script not found",
-            })
+            await log_bus.publish(
+                deployment_id,
+                {
+                    "type": "step_failed",
+                    "step_index": step_index,
+                    "exit_code": -1,
+                    "error": "script not found",
+                },
+            )
             return
 
         # Construire le texte d'env courant = generated_env + accumulated_env
@@ -137,13 +162,18 @@ async def execute_step(deployment_id: UUID) -> None:
         ok, reason = evaluate_trigger_rules(link.trigger_rules, parse_env_map(current_env))
         if not ok:
             skipped_log = {
-                "step_index": step_index, "lines": [f"[skipped] {reason}"],
+                "step_index": step_index,
+                "lines": [f"[skipped] {reason}"],
                 "exit_code": 0,
                 "started_at": datetime.now(UTC).isoformat(),
                 "ended_at": datetime.now(UTC).isoformat(),
             }
-            await log_bus.publish(deployment_id, {"type": "log", "line": f"[skipped] {reason}", "stream": "info"})
-            next_status = "before_complete" if step_index + 1 >= len(before_scripts) else "step_complete"
+            await log_bus.publish(
+                deployment_id, {"type": "log", "line": f"[skipped] {reason}", "stream": "info"}
+            )
+            next_status = (
+                "before_complete" if step_index + 1 >= len(before_scripts) else "step_complete"
+            )
             await project_deployments_service.advance_step(
                 deployment_id,
                 new_accumulated_env={},
@@ -153,7 +183,9 @@ async def execute_step(deployment_id: UUID) -> None:
             if next_status == "before_complete":
                 await log_bus.publish(deployment_id, {"type": "before_complete"})
             else:
-                await log_bus.publish(deployment_id, {"type": "step_complete", "step_index": step_index})
+                await log_bus.publish(
+                    deployment_id, {"type": "step_complete", "step_index": step_index}
+                )
             return
 
         lines: list[str] = []
@@ -161,24 +193,35 @@ async def execute_step(deployment_id: UUID) -> None:
 
         async def on_line(stream_type: str, line: str) -> None:
             lines.append(line)
-            await log_bus.publish(deployment_id, {"type": "log", "line": line, "stream": stream_type})
+            await log_bus.publish(
+                deployment_id, {"type": "log", "line": line, "stream": stream_type}
+            )
 
-        await log_bus.publish(deployment_id, {"type": "step_start", "step_index": step_index, "script": link.script_name})
+        await log_bus.publish(
+            deployment_id,
+            {"type": "step_start", "step_index": step_index, "script": link.script_name},
+        )
         result = await _run_script_streaming(link, script.content, current_env, on_line)
         ended_at = datetime.now(UTC).isoformat()
 
         step_log = {
-            "step_index": step_index, "lines": lines,
+            "step_index": step_index,
+            "lines": lines,
             "exit_code": result["exit_code"],
-            "started_at": started_at, "ended_at": ended_at,
+            "started_at": started_at,
+            "ended_at": ended_at,
         }
 
         if not result["success"]:
             await project_deployments_service.fail_step(deployment_id, step_log)
-            await log_bus.publish(deployment_id, {
-                "type": "step_failed", "step_index": step_index,
-                "exit_code": result["exit_code"],
-            })
+            await log_bus.publish(
+                deployment_id,
+                {
+                    "type": "step_failed",
+                    "step_index": step_index,
+                    "exit_code": result["exit_code"],
+                },
+            )
             return
 
         # Succès : extraire les output vars
@@ -188,7 +231,9 @@ async def execute_step(deployment_id: UUID) -> None:
             env_map = parse_env_map(current_env)
             new_env_values = collect_env_from_script(link, parsed_json, env_map)
 
-        next_status = "before_complete" if step_index + 1 >= len(before_scripts) else "step_complete"
+        next_status = (
+            "before_complete" if step_index + 1 >= len(before_scripts) else "step_complete"
+        )
         await project_deployments_service.advance_step(
             deployment_id,
             new_accumulated_env=new_env_values,
@@ -199,10 +244,14 @@ async def execute_step(deployment_id: UUID) -> None:
         if next_status == "before_complete":
             await log_bus.publish(deployment_id, {"type": "before_complete"})
         else:
-            await log_bus.publish(deployment_id, {
-                "type": "step_complete", "step_index": step_index,
-                "output_vars": new_env_values,
-            })
+            await log_bus.publish(
+                deployment_id,
+                {
+                    "type": "step_complete",
+                    "step_index": step_index,
+                    "output_vars": new_env_values,
+                },
+            )
 
     except Exception as exc:
         _log.exception("deployments.execute_step.error", deployment_id=str(deployment_id))

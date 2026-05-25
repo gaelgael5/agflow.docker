@@ -4,41 +4,12 @@ Ces fonctions sont partagées entre la couche service (deployment_executor)
 et la couche API (project_deployments router). Elles n'ont aucune dépendance
 sur FastAPI ni sur les routers.
 """
+
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 from uuid import UUID
-
-
-def resolve_input_value(raw: str, env_text: str) -> tuple[str, bool]:
-    """Resolve ${VAR} references in `raw` against the deploy's .env text.
-
-    Returns (resolved_value, resolved_ok). resolved_ok is False if any reference
-    could not be resolved (keeps the literal ${VAR} in the value).
-    """
-    env_map: dict[str, str] = {}
-    for line in (env_text or "").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        env_map[k.strip()] = v.strip()
-
-    unresolved = False
-
-    def _repl(match: re.Match) -> str:
-        nonlocal unresolved
-        key = match.group(1) or match.group(2)
-        if key and key in env_map and env_map[key] != "":
-            return env_map[key]
-        unresolved = True
-        return match.group(0)
-
-    # Supports both ${VAR} and $VAR
-    resolved = re.sub(r"\$\{([A-Z_][A-Z0-9_]*)\}|\$([A-Z_][A-Z0-9_]*)", _repl, raw or "")
-    return resolved, not unresolved
 
 
 async def ssh_kwargs_for_machine(machine_id: UUID) -> dict[str, Any]:
@@ -53,9 +24,12 @@ async def ssh_kwargs_for_machine(machine_id: UUID) -> dict[str, Any]:
         private_key = cert.get("private_key")
         passphrase = cert.get("passphrase")
     return {
-        "host": creds["host"], "port": creds["port"],
-        "username": creds["username"], "password": creds["password"],
-        "private_key": private_key, "passphrase": passphrase,
+        "host": creds["host"],
+        "port": creds["port"],
+        "username": creds["username"],
+        "password": creds["password"],
+        "private_key": private_key,
+        "passphrase": passphrase,
     }
 
 
@@ -68,7 +42,9 @@ def substitute_script_placeholders(script_content: str, input_values: dict[str, 
 
 
 def collect_env_from_script(
-    link: Any, parsed_json: dict, env_map: dict[str, str],
+    link: Any,
+    parsed_json: dict,
+    env_map: dict[str, str],
 ) -> dict[str, str]:
     """Extract env values from a script's parsed JSON, respecting env_mapping overrides.
 
@@ -103,7 +79,7 @@ def collect_env_from_script(
 
 def evaluate_trigger_rules(rules: list[Any], env_map: dict[str, str]) -> tuple[bool, str | None]:
     """Return (ok, reason). If any rule fails, ok=False + reason explains which."""
-    for r in (rules or []):
+    for r in rules or []:
         var = getattr(r, "variable", None) if not isinstance(r, dict) else r.get("variable")
         op = getattr(r, "op", None) if not isinstance(r, dict) else r.get("op")
         expected = getattr(r, "value", "") if not isinstance(r, dict) else r.get("value", "")

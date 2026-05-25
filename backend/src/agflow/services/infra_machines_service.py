@@ -3,6 +3,7 @@
 Passwords are stored in Harpocrate vault; a vault ref is persisted in DB.
 Table unifiée (ex-infra_servers + ex-infra_machines depuis la migration 064).
 """
+
 from __future__ import annotations
 
 import json as _json
@@ -87,8 +88,7 @@ def _to_summary(row: dict[str, Any]) -> MachineSummary:
     if isinstance(raw_required, str):
         raw_required = _json.loads(raw_required)
     required = [
-        RequiredActionStatus(name=a["name"], done=bool(a.get("done")))
-        for a in raw_required
+        RequiredActionStatus(name=a["name"], done=bool(a.get("done"))) for a in raw_required
     ]
     return MachineSummary(
         id=row["id"],
@@ -123,6 +123,15 @@ async def get_by_id(machine_id: UUID) -> MachineSummary:
     if row is None:
         raise MachineNotFoundError(f"Machine {machine_id} not found")
     return _to_summary(row)
+
+
+async def get_by_name(name: str) -> MachineSummary | None:
+    """Retourne la machine par son nom (unique en DB), ou None si absente.
+
+    Utilisee par input_resolver pour resoudre ${env-machine://<nom>:VAR}.
+    """
+    row = await fetch_one(_LIST_SQL + " WHERE m.name = $1", name)
+    return _to_summary(row) if row else None
 
 
 async def get_credentials(machine_id: UUID) -> dict[str, Any]:
@@ -172,10 +181,16 @@ async def create(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
         RETURNING id
         """,
-        name, type_id, host, port, username,
-        certificate_id, parent_id,
+        name,
+        type_id,
+        host,
+        port,
+        username,
+        certificate_id,
+        parent_id,
         _json.dumps(metadata or {}),
-        user_id, environment,
+        user_id,
+        environment,
     )
     if row is None:
         raise RuntimeError("INSERT INTO infra_machines returned no row")
@@ -190,7 +205,8 @@ async def create(
             secret_created = True
             await execute(
                 "UPDATE infra_machines SET password = $1 WHERE id = $2",
-                vault_client.build_ref(vault_name, path), machine_id,
+                vault_client.build_ref(vault_name, path),
+                machine_id,
             )
         except Exception:
             if secret_created:
@@ -213,9 +229,7 @@ async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:
 
     new_password: str | None = kwargs.pop("password", None)
     if new_password is not None:
-        pw_row = await fetch_one(
-            "SELECT password FROM infra_machines WHERE id = $1", machine_id
-        )
+        pw_row = await fetch_one("SELECT password FROM infra_machines WHERE id = $1", machine_id)
         existing_ref = pw_row["password"] if pw_row else None
         existing_parsed = vault_client.parse_ref(existing_ref) if existing_ref else None
         if existing_parsed is not None:
@@ -227,7 +241,8 @@ async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:
             await vault_client.create_secret(path, new_password, vault_name=vault_name)
             await execute(
                 "UPDATE infra_machines SET password = $1 WHERE id = $2",
-                vault_client.build_ref(vault_name, path), machine_id,
+                vault_client.build_ref(vault_name, path),
+                machine_id,
             )
 
     updates: dict[str, Any] = {}
@@ -239,7 +254,8 @@ async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:
         sets = [f"{k} = ${i}" for i, k in enumerate(updates, 2)]
         await execute(
             f"UPDATE infra_machines SET {', '.join(sets)} WHERE id = $1",
-            machine_id, *updates.values(),
+            machine_id,
+            *updates.values(),
         )
 
     _log.info("infra_machines.update", id=str(machine_id))
@@ -249,7 +265,8 @@ async def update(machine_id: UUID, **kwargs: Any) -> MachineSummary:
 async def update_status(machine_id: UUID, status: str) -> None:
     await execute(
         "UPDATE infra_machines SET status = $1 WHERE id = $2",
-        status, machine_id,
+        status,
+        machine_id,
     )
     _log.info("infra_machines.status_updated", id=str(machine_id), status=status)
 
@@ -258,19 +275,19 @@ async def merge_metadata(machine_id: UUID, updates: dict) -> None:
     """Merge new keys into the machine's existing metadata JSONB."""
     await execute(
         "UPDATE infra_machines SET metadata = metadata || $2::jsonb WHERE id = $1",
-        machine_id, _json.dumps(updates),
+        machine_id,
+        _json.dumps(updates),
     )
     _log.info("infra_machines.merge_metadata", id=str(machine_id), keys=list(updates.keys()))
 
 
 async def delete(machine_id: UUID) -> None:
-    pw_row = await fetch_one(
-        "SELECT password FROM infra_machines WHERE id = $1", machine_id
-    )
+    pw_row = await fetch_one("SELECT password FROM infra_machines WHERE id = $1", machine_id)
     parsed = vault_client.parse_ref(pw_row["password"] if pw_row else None)
 
     row = await fetch_one(
-        "DELETE FROM infra_machines WHERE id = $1 RETURNING id", machine_id,
+        "DELETE FROM infra_machines WHERE id = $1 RETURNING id",
+        machine_id,
     )
     if row is None:
         raise MachineNotFoundError(f"Machine {machine_id} not found")
@@ -282,7 +299,9 @@ async def delete(machine_id: UUID) -> None:
         except Exception:
             _log.warning(
                 "infra_machines.vault_delete_failed",
-                id=str(machine_id), vault=vname, path=path,
+                id=str(machine_id),
+                vault=vname,
+                path=path,
             )
 
     _log.info("infra_machines.delete", id=str(machine_id))
@@ -292,7 +311,8 @@ async def get_for_user(user_id: UUID, environment: str | None) -> MachineSummary
     """Machine assigned to (user_id, environment), or None. Unique by (user_id, environment) — see migration 085."""
     row = await fetch_one(
         _LIST_SQL + " WHERE m.user_id = $1 AND m.environment IS NOT DISTINCT FROM $2",
-        user_id, environment,
+        user_id,
+        environment,
     )
     if row is None:
         return None

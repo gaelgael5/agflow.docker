@@ -67,12 +67,10 @@ def mock_resolve_for_machine():
 
 @pytest.fixture
 def mock_get_machine_by_name():
-    """Mock infra_machines_service.get_by_name. Utilise create=True car la
-    fonction sera ajoutée en T5 — à retirer une fois T5 mergée."""
+    """Mock infra_machines_service.get_by_name."""
     with patch(
         "agflow.services.input_resolver.infra_machines_service.get_by_name",
         new_callable=AsyncMock,
-        create=True,
     ) as m:
         m.return_value = None  # par défaut : machine inconnue
         yield m

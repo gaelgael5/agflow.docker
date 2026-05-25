@@ -19,7 +19,9 @@ ENV_MACHINE_RE = re.compile(r"\$\{env-machine://([^:}]+):([^}]+)\}")
 VAULT_REF_RE = re.compile(r"\$\{vault://[^:}]+:([^}]+)\}")
 ENV_REF_RE = re.compile(r"\$\{env://([^}]+)\}")
 SIMPLE_VAR_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}|\$([A-Z_][A-Z0-9_]*)")
-# Détecte tout ${...} restant après les 4 substitutions ci-dessus.
+# NOTE: matches ALL ${...}, including the 4 recognized patterns.
+# Only safe to use AFTER the 4 substitutions have been applied
+# in input_resolver._resolve_single.
 UNKNOWN_BRACE_RE = re.compile(r"\$\{([^}]+)\}")
 
 
@@ -27,10 +29,7 @@ def parse_env_machine_ref(value: str | None) -> tuple[str, str] | None:
     """Retourne (machine_name, var_name) si la valeur est entièrement une ref env-machine, sinon None."""
     if not value:
         return None
-    m = re.fullmatch(
-        r"\s*\$\{env-machine://([^:}]+):([^}]+)\}\s*",
-        value,
-    )
+    m = ENV_MACHINE_RE.fullmatch(value.strip())
     return (m.group(1), m.group(2)) if m else None
 
 

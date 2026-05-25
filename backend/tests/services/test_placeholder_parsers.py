@@ -68,3 +68,12 @@ class TestRegexPatterns:
         # Used to detect ${...} that didn't match any of the 4 patterns
         assert UNKNOWN_BRACE_RE.findall("${foo-bar}") == ["foo-bar"]
         assert UNKNOWN_BRACE_RE.findall("${non.standard}") == ["non.standard"]
+
+    def test_unknown_brace_re_also_matches_recognized_patterns(self) -> None:
+        # UNKNOWN_BRACE_RE est un détecteur RÉSIDUEL : il match TOUT ${...}.
+        # Ne l'utiliser qu'APRÈS avoir substitué les 4 patterns reconnus,
+        # sinon il considérera ${vault://…} et autres comme "non reconnus".
+        assert UNKNOWN_BRACE_RE.findall("${env://FOO}") == ["env://FOO"]
+        assert UNKNOWN_BRACE_RE.findall("${vault://api:X}") == ["vault://api:X"]
+        assert UNKNOWN_BRACE_RE.findall("${env-machine://m:V}") == ["env-machine://m:V"]
+        assert UNKNOWN_BRACE_RE.findall("${FOO}") == ["FOO"]

@@ -1206,7 +1206,15 @@
     "section_api": "API",
     "section_services": "Services",
     "requires": "dépend de",
-    "env_vars_missing_banner": "{{count}} variable(s) d'environnement manquante(s) pour ce projet",
+    "env_vars_missing_banner": "{{count}} variable(s) d'environnement non résoluble(s) pour ce projet",
+    "env_vars_reason": {
+      "value_empty": "valeur vide",
+      "var_not_in_env": "variable introuvable dans le .env : {{detail}}",
+      "platform_secret_missing": "secret plateforme introuvable : {{detail}}",
+      "machine_not_found": "machine inconnue : {{detail}}",
+      "env_machine_var_not_found": "variable absente sur la machine : {{detail}}",
+      "unknown_ref": "référence non reconnue : {{detail}}"
+    },
     "var_paste": "Coller depuis le presse-papier",
     "var_origin_global": "Variables globales",
     "var_origin_group": "Variables du groupe",

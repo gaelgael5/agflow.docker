@@ -47,6 +47,21 @@ export interface MachineEnvVarUpsert {
   secrets?: Record<string, MachineSecretEntry>;
 }
 
+export type EnvVarsMissingKind =
+  | "value_empty"
+  | "var_not_in_env"
+  | "platform_secret_missing"
+  | "machine_not_found"
+  | "env_machine_var_not_found"
+  | "unknown_ref";
+
+export interface ProjectEnvVarsCheckMissingReason {
+  var_name: string;
+  kind: EnvVarsMissingKind;
+  ref: string;
+  detail: string;
+}
+
 export interface ProjectEnvVarsCheckMissing {
   group_script_id: string;
   script_id: string;
@@ -56,7 +71,7 @@ export interface ProjectEnvVarsCheckMissing {
   machine_id: string | null;
   machine_name: string | null;
   target_kind: string;
-  missing_env_vars: string[];
+  missing: ProjectEnvVarsCheckMissingReason[];
 }
 
 export interface ProjectEnvVarsCheck {

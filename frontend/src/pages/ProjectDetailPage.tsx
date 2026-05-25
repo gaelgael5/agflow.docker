@@ -195,15 +195,25 @@ export function ProjectDetailPage() {
           <p className="font-medium text-destructive">
             {t("projects.env_vars_missing_banner", { count: envVarsCheck.data.total_missing })}
           </p>
-          <ul className="mt-2 space-y-1">
+          <ul className="mt-2 space-y-2">
             {envVarsCheck.data.items.map((item) => (
-              <li key={item.group_script_id} className="text-xs text-muted-foreground">
-                <span className="font-mono">{item.script_name}</span>
-                {" — "}
-                {item.missing_env_vars.join(", ")}
-                {" ("}
-                {item.group_name}
-                {")"}
+              <li key={item.group_script_id} className="text-xs">
+                <div className="text-muted-foreground">
+                  <span className="font-mono">{item.script_name}</span>
+                  {" — "}
+                  <span>{item.group_name}</span>
+                </div>
+                <ul className="ml-4 mt-0.5 space-y-0.5">
+                  {item.missing.map((m) => (
+                    <li key={m.var_name} className="text-muted-foreground">
+                      <span className="font-mono">{m.var_name}</span>
+                      {" : "}
+                      <span>
+                        {t(`projects.env_vars_reason.${m.kind}`, { detail: m.detail })}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
           </ul>

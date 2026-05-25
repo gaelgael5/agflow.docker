@@ -1199,7 +1199,15 @@
     "section_api": "API",
     "section_services": "Services",
     "requires": "requires",
-    "env_vars_missing_banner": "{{count}} missing environment variable(s) for this project",
+    "env_vars_missing_banner": "{{count}} unresolved environment variable(s) for this project",
+    "env_vars_reason": {
+      "value_empty": "empty value",
+      "var_not_in_env": "variable not found in .env: {{detail}}",
+      "platform_secret_missing": "platform secret not found: {{detail}}",
+      "machine_not_found": "unknown machine: {{detail}}",
+      "env_machine_var_not_found": "variable absent on machine: {{detail}}",
+      "unknown_ref": "unrecognized reference: {{detail}}"
+    },
     "var_paste": "Paste from clipboard",
     "var_origin_global": "Global variables",
     "var_origin_group": "Group variables",

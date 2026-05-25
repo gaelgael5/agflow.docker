@@ -9,24 +9,8 @@ from agflow.services.placeholder_parsers import (
     SIMPLE_VAR_RE,
     UNKNOWN_BRACE_RE,
     VAULT_REF_RE,
-    parse_env_machine_ref,
     parse_env_text,
 )
-
-
-class TestEnvMachineRef:
-    def test_parses_machine_and_var(self) -> None:
-        result = parse_env_machine_ref("${env-machine://keycloak1:KC_ADMIN_PASSWORD}")
-        assert result == ("keycloak1", "KC_ADMIN_PASSWORD")
-
-    def test_returns_none_for_non_machine_ref(self) -> None:
-        assert parse_env_machine_ref("${env://NAME}") is None
-        assert parse_env_machine_ref("plain value") is None
-        assert parse_env_machine_ref("") is None
-
-    def test_strips_surrounding_whitespace(self) -> None:
-        result = parse_env_machine_ref("  ${env-machine://m1:VAR}  ")
-        assert result == ("m1", "VAR")
 
 
 class TestEnvText:

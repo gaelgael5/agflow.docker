@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from typing import Literal
 
-import structlog
-
 from agflow.services import infra_env_vars_service, infra_machines_service
 from agflow.services.placeholder_parsers import (
     ENV_MACHINE_RE,
@@ -23,8 +21,6 @@ from agflow.services.placeholder_parsers import (
     VAULT_REF_RE,
     parse_env_text,
 )
-
-_log = structlog.get_logger(__name__)
 
 UnresolvedKind = Literal[
     "value_empty",

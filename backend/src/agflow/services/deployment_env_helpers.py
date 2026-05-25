@@ -132,15 +132,13 @@ def merge_env_with_values(env_text: str, values: dict[str, str]) -> str:
 
 
 def parse_env_map(env_text: str) -> dict[str, str]:
-    """Parse a .env text into a dict of key=value pairs."""
-    env_map: dict[str, str] = {}
-    for line in (env_text or "").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        env_map[k.strip()] = v.strip()
-    return env_map
+    """Parse a .env text into a dict of key=value pairs.
+
+    Delegates to placeholder_parsers.parse_env_text — canonical implementation.
+    """
+    from agflow.services.placeholder_parsers import parse_env_text
+
+    return parse_env_text(env_text)
 
 
 def parse_last_json(stdout: str) -> dict | None:

@@ -263,6 +263,20 @@ class TestResolveInputValuesErrors:
         assert exc_info.value.kind == "unknown_ref"
         assert "foo-bar" in exc_info.value.detail
 
+    async def test_mixed_recognized_and_unknown_raises_unknown_ref(
+        self,
+        mock_resolve_for_machine,
+    ) -> None:
+        """Une valeur mixte avec un pattern reconnu + un ${typo} doit lever unknown_ref."""
+        with pytest.raises(UnresolvedPlaceholderError) as exc_info:
+            await resolve_input_values(
+                input_values={"X": "${env://OK}-${typo}"},
+                env_text="",
+                platform_secrets_map={"OK": "value"},
+            )
+        assert exc_info.value.kind == "unknown_ref"
+        assert "typo" in exc_info.value.detail
+
     async def test_fail_fast_stops_at_first_error(self, mock_resolve_for_machine) -> None:
         with pytest.raises(UnresolvedPlaceholderError) as exc_info:
             await resolve_input_values(

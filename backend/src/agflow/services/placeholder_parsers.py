@@ -25,14 +25,6 @@ SIMPLE_VAR_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}|\$([A-Z_][A-Z0-9_]*)")
 UNKNOWN_BRACE_RE = re.compile(r"\$\{([^}]+)\}")
 
 
-def parse_env_machine_ref(value: str | None) -> tuple[str, str] | None:
-    """Retourne (machine_name, var_name) si la valeur est entièrement une ref env-machine, sinon None."""
-    if not value:
-        return None
-    m = ENV_MACHINE_RE.fullmatch(value.strip())
-    return (m.group(1), m.group(2)) if m else None
-
-
 def parse_env_text(env_text: str | None) -> dict[str, str]:
     """Parse un .env text vers dict[name, value]. Ignore blanks et commentaires."""
     result: dict[str, str] = {}

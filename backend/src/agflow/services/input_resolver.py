@@ -82,6 +82,36 @@ async def resolve_input_values(
     return resolved
 
 
+async def resolve_input_values_collect(
+    input_values: dict[str, str],
+    *,
+    env_text: str,
+    platform_secrets_map: dict[str, str],
+) -> tuple[dict[str, str], list[UnresolvedPlaceholderError]]:
+    """Resolution collect-all : accumule les erreurs au lieu de lever.
+
+    Utilisee par check_project_env_vars pour rapporter TOUTES les
+    variables non resolubles dans une seule reponse API.
+    """
+    env_map = parse_env_text(env_text)
+    env_machine_cache: dict[str, dict[str, str]] = {}
+
+    resolved: dict[str, str] = {}
+    errors: list[UnresolvedPlaceholderError] = []
+    for var_name, raw in input_values.items():
+        try:
+            resolved[var_name] = await _resolve_single(
+                var_name=var_name,
+                raw=raw,
+                env_map=env_map,
+                platform_secrets_map=platform_secrets_map,
+                env_machine_cache=env_machine_cache,
+            )
+        except UnresolvedPlaceholderError as exc:
+            errors.append(exc)
+    return resolved, errors
+
+
 def _detect_unknown_refs(value: str, var_name: str) -> None:
     """Detecte les ${...} qui ne matchent aucun des 4 patterns connus. Leve si trouve."""
     for m in UNKNOWN_BRACE_RE.finditer(value):

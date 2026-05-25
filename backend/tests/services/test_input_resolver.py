@@ -12,6 +12,7 @@ import pytest
 from agflow.services.input_resolver import (
     UnresolvedPlaceholderError,
     resolve_input_values,
+    resolve_input_values_collect,
 )
 
 
@@ -286,3 +287,49 @@ class TestResolveInputValuesErrors:
             platform_secrets_map={},
         )
         assert result == {"X": "literal-${OTHER}-value"}
+
+
+class TestResolveInputValuesCollect:
+    pytestmark = pytest.mark.asyncio
+
+    async def test_returns_resolved_and_errors(self, mock_resolve_for_machine) -> None:
+        resolved, errors = await resolve_input_values_collect(
+            input_values={
+                "OK": "${HOST}",
+                "KO1": "${MISSING}",
+                "KO2": "",
+            },
+            env_text="HOST=example.com",
+            platform_secrets_map={},
+        )
+        assert resolved == {"OK": "example.com"}
+        kinds = sorted([(e.var_name, e.kind) for e in errors])
+        assert kinds == [("KO1", "var_not_in_env"), ("KO2", "value_empty")]
+
+    async def test_empty_inputs(self, mock_resolve_for_machine) -> None:
+        resolved, errors = await resolve_input_values_collect(
+            input_values={},
+            env_text="",
+            platform_secrets_map={},
+        )
+        assert resolved == {}
+        assert errors == []
+
+    async def test_all_errors_collected(self, mock_resolve_for_machine) -> None:
+        resolved, errors = await resolve_input_values_collect(
+            input_values={
+                "A": "${env://NO_A}",
+                "B": "${vault://api:NO_B}",
+                "C": "${MISSING}",
+            },
+            env_text="",
+            platform_secrets_map={},
+        )
+        assert resolved == {}
+        assert len(errors) == 3
+        kinds = {e.var_name: e.kind for e in errors}
+        assert kinds == {
+            "A": "platform_secret_missing",
+            "B": "platform_secret_missing",
+            "C": "var_not_in_env",
+        }

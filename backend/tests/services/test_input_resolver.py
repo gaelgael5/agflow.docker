@@ -29,3 +29,16 @@ class TestUnresolvedPlaceholderError:
         msg = str(err)
         assert "env_machine_var_empty" in msg
         assert "VAR" in msg
+        assert "m1" in msg  # ref content should appear
+
+    def test_str_without_var_name(self) -> None:
+        err = UnresolvedPlaceholderError(
+            kind="value_empty",
+            ref="",
+            detail="valeur vide",
+        )
+        msg = str(err)
+        assert "value_empty" in msg
+        assert "valeur vide" in msg
+        assert "None" not in msg  # var_name=None must NOT leak as literal
+        assert "var=" not in msg  # var_name was None so var= section omitted

@@ -42,4 +42,6 @@ class UnresolvedPlaceholderError(Exception):
         self.ref = ref
         self.detail = detail
         self.var_name = var_name
-        super().__init__(f"{kind}: {detail} (var={var_name}, ref={ref})")
+        var_part = f", var={var_name}" if var_name is not None else ""
+        ref_part = f", ref={ref}" if ref else ""
+        super().__init__(f"{kind}: {detail}{var_part}{ref_part}")

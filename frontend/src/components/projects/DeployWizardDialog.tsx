@@ -229,75 +229,56 @@ export function DeployWizardDialog({
           </TabsList>
 
           {/* ── Configuration ── */}
-          <TabsContent
-            value="config"
-            className="flex flex-col gap-4 p-1"
-          >
-            {/* Server assignment per group */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{t("deploy_wizard_servers_title")}</p>
-              <div className="grid grid-cols-[1fr_2fr] items-center gap-2">
-                {groups.map((g) => (
-                  <div key={g.id} className="contents">
-                    <Label className="font-medium text-xs">{g.name}</Label>
-                    <select
-                      value={groupServers[g.id] ?? ""}
-                      onChange={(e) =>
-                        setGroupServers((prev) => ({ ...prev, [g.id]: e.target.value }))
-                      }
-                      className="flex h-8 flex-1 rounded-md border border-input bg-background px-3 py-1 text-[12px] font-mono shadow-sm"
-                    >
-                      <option value="">— {t("projects.select_server")} —</option>
-                      {servers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name || s.host} ({s.host})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Group variables */}
-            {groupVars.length > 0 && (
+          <TabsContent value="config" className="overflow-auto p-1">
+            <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-sm font-medium">{t("deploy_wizard_group_vars_title")}</p>
+                <p className="text-sm font-medium">{t("deploy_wizard_servers_title")}</p>
                 <div className="grid grid-cols-[1fr_2fr] items-center gap-2">
-                  {groupVars.map((v) => (
-                    <div key={v.name} className="contents">
-                      <Label className="font-mono text-xs">{v.name}</Label>
-                      <Input
-                        value={localVars[v.name] ?? ""}
+                  {groups.map((g) => (
+                    <div key={g.id} className="contents">
+                      <Label className="font-medium text-xs">{g.name}</Label>
+                      <select
+                        value={groupServers[g.id] ?? ""}
                         onChange={(e) =>
-                          setLocalVars((prev) => ({ ...prev, [v.name]: e.target.value }))
+                          setGroupServers((prev) => ({ ...prev, [g.id]: e.target.value }))
                         }
-                        className="h-7 font-mono text-xs"
-                      />
+                        className="flex h-8 flex-1 rounded-md border border-input bg-background px-3 py-1 text-[12px] font-mono shadow-sm"
+                      >
+                        <option value="">— {t("projects.select_server")} —</option>
+                        {servers.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name || s.host} ({s.host})
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   ))}
                 </div>
               </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={onClose}>
-                {t("common.cancel")}
-              </Button>
-              <Button
-                onClick={() => void handleGenerate()}
-                disabled={!canGenerate}
-              >
-                {t("deploy_wizard_next")}
-              </Button>
+              {groupVars.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">{t("deploy_wizard_group_vars_title")}</p>
+                  <div className="grid grid-cols-[1fr_2fr] items-center gap-2">
+                    {groupVars.map((v) => (
+                      <div key={v.name} className="contents">
+                        <Label className="font-mono text-xs">{v.name}</Label>
+                        <Input
+                          value={localVars[v.name] ?? ""}
+                          onChange={(e) =>
+                            setLocalVars((prev) => ({ ...prev, [v.name]: e.target.value }))
+                          }
+                          className="h-7 font-mono text-xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </TabsContent>
 
           {/* ── Exécution ── */}
-          <TabsContent
-            value="exec"
-            className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-1"
-          >
+          <TabsContent value="exec" className="min-h-0 flex-1 overflow-auto p-1">
             {steps.length === 0 && (
               <p className="text-sm text-muted-foreground">{t("deploy_wizard_no_steps")}</p>
             )}
@@ -306,9 +287,7 @@ export function DeployWizardDialog({
                 <div key={step.position}>
                   <div
                     className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm ${
-                      idx === currentIdx
-                        ? "border-primary/40 bg-primary/5"
-                        : "border-border"
+                      idx === currentIdx ? "border-primary/40 bg-primary/5" : "border-border"
                     }`}
                     onClick={() => setExpandedStep(expandedStep === idx ? null : idx)}
                   >
@@ -339,38 +318,10 @@ export function DeployWizardDialog({
                 </div>
               ))}
             </div>
-            <div className="mt-auto flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={onClose}>
-                {t("common.cancel")}
-              </Button>
-              {canRetry && (
-                <Button variant="outline" onClick={() => void handleRetry()}>
-                  {t("deploy_wizard_retry")}
-                </Button>
-              )}
-              {canExecute && (
-                <Button onClick={() => void handleExecuteStep()}>
-                  {t("deploy_wizard_execute")}
-                </Button>
-              )}
-              {canDeploy && (
-                <Button onClick={() => void handleDeploy()}>
-                  {t("deploy_wizard_deploy")}
-                </Button>
-              )}
-              {steps.length === 0 && dep.status === "generated" && (
-                <Button onClick={() => void handleDeploy()}>
-                  {t("deploy_wizard_deploy")}
-                </Button>
-              )}
-            </div>
           </TabsContent>
 
           {/* ── Logs ── */}
-          <TabsContent
-            value="logs"
-            className="flex min-h-[400px] flex-1 flex-col gap-2 p-1"
-          >
+          <TabsContent value="logs" className="flex min-h-0 flex-1 flex-col gap-2 p-1">
             <div className="flex shrink-0 items-center gap-2">
               {dep.step_logs.map((sl) => (
                 <Button
@@ -398,7 +349,7 @@ export function DeployWizardDialog({
                 </Button>
               )}
             </div>
-            <div className="min-h-[340px] flex-1 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs text-zinc-200">
+            <div className="min-h-0 flex-1 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs text-zinc-200">
               {displayedLogs.map((line, i) => (
                 <div key={i}>{line || " "}</div>
               ))}
@@ -406,6 +357,33 @@ export function DeployWizardDialog({
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* ── Footer fixe — toujours visible en bas ── */}
+        <div className="flex shrink-0 justify-end gap-2 border-t pt-3">
+          <Button variant="outline" onClick={onClose}>
+            {t("common.cancel")}
+          </Button>
+          {activeTab === "config" && (
+            <Button onClick={() => void handleGenerate()} disabled={!canGenerate}>
+              {t("deploy_wizard_next")}
+            </Button>
+          )}
+          {activeTab === "exec" && canRetry && (
+            <Button variant="outline" onClick={() => void handleRetry()}>
+              {t("deploy_wizard_retry")}
+            </Button>
+          )}
+          {activeTab === "exec" && canExecute && (
+            <Button onClick={() => void handleExecuteStep()}>
+              {t("deploy_wizard_execute")}
+            </Button>
+          )}
+          {activeTab === "exec" && (canDeploy || (steps.length === 0 && dep.status === "generated")) && (
+            <Button onClick={() => void handleDeploy()}>
+              {t("deploy_wizard_deploy")}
+            </Button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

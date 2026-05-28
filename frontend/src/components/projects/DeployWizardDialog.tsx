@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import {
   type DeploymentSummary,
   type GroupSummary,
+  BearerEventSource,
   deploymentsApi,
 } from "@/lib/projectsApi";
 import { infraMachinesApi } from "@/lib/infraApi";
@@ -65,7 +66,7 @@ export function DeployWizardDialog({
   const [selectedStepLog, setSelectedStepLog] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const esRef = useRef<EventSource | null>(null);
+  const esRef = useRef<BearerEventSource | null>(null);
 
   const { data: machines = [] } = useQuery({
     queryKey: ["infra-machines"],

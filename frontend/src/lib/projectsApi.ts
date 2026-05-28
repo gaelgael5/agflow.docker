@@ -1,5 +1,52 @@
 import { api } from "./api";
 
+const STORAGE_KEY = "agflow_token";
+
+/** EventSource-compatible wrapper utilisant fetch pour pouvoir envoyer le header Authorization. */
+export class BearerEventSource {
+  onmessage: ((ev: { data: string }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  private controller = new AbortController();
+
+  constructor(url: string) {
+    const token = localStorage.getItem(STORAGE_KEY) ?? "";
+    void this.start(url, token);
+  }
+
+  private async start(url: string, token: string) {
+    try {
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: this.controller.signal,
+      });
+      if (!response.ok || !response.body) {
+        this.onerror?.();
+        return;
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
+          if (dataLine) this.onmessage?.({ data: dataLine.slice(6) });
+        }
+      }
+    } catch {
+      if (!this.controller.signal.aborted) this.onerror?.();
+    }
+  }
+
+  close() {
+    this.controller.abort();
+  }
+}
+
 // ── Projects ────────────────────────────────────────────
 
 export interface ProjectSummary {
@@ -211,11 +258,8 @@ export const deploymentsApi = {
       `/admin/project-deployments/${id}/deploy`,
     )).data;
   },
-  streamLogs(id: string): EventSource {
-    const token = localStorage.getItem("agflow_token") ?? "";
-    return new EventSource(
-      `/api/admin/project-deployments/${id}/stream?token=${encodeURIComponent(token)}`,
-    );
+  streamLogs(id: string): BearerEventSource {
+    return new BearerEventSource(`/api/admin/project-deployments/${id}/stream`);
   },
   async getBeforeSteps(id: string): Promise<StepInfo[]> {
     return (await api.get<StepInfo[]>(

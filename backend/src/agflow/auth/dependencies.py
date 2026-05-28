@@ -18,6 +18,11 @@ def _extract_role(payload: dict) -> str:
     return role if role in VALID_ROLES else "viewer"
 
 
+def is_operator_or_admin(payload: dict) -> bool:
+    """True si le payload JWT a le rôle admin ou operator."""
+    return _extract_role(payload) in ("admin", "operator")
+
+
 async def _get_jwt_payload(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),  # noqa: B008
 ) -> dict:

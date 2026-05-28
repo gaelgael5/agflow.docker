@@ -212,7 +212,7 @@ export function DeployWizardDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[960px]">
+      <DialogContent className="flex h-[600px] flex-col sm:max-w-[960px]">
         <DialogHeader>
           <DialogTitle>{t("deploy_title")}</DialogTitle>
         </DialogHeader>
@@ -280,7 +280,10 @@ export function DeployWizardDialog({
               </div>
             )}
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={onClose}>
+                {t("common.cancel")}
+              </Button>
               <Button
                 onClick={() => void handleGenerate()}
                 disabled={!canGenerate}
@@ -293,7 +296,7 @@ export function DeployWizardDialog({
           {/* ── Exécution ── */}
           <TabsContent
             value="exec"
-            className="flex flex-col gap-3 p-1"
+            className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-1"
           >
             {steps.length === 0 && (
               <p className="text-sm text-muted-foreground">{t("deploy_wizard_no_steps")}</p>
@@ -336,7 +339,10 @@ export function DeployWizardDialog({
                 </div>
               ))}
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="mt-auto flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={onClose}>
+                {t("common.cancel")}
+              </Button>
               {canRetry && (
                 <Button variant="outline" onClick={() => void handleRetry()}>
                   {t("deploy_wizard_retry")}

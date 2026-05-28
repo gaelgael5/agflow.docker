@@ -2074,6 +2074,7 @@
   "deploy_wizard_retry": "Retry",
   "deploy_wizard_deploy": "Deploy",
   "deploy_wizard_step_count": "Step {{current}}/{{total}}",
+  "deploy_wizard_step_inputs": "Input variables",
   "deploy_wizard_step_waiting": "Waiting",
   "deploy_wizard_step_running": "Running…",
   "deploy_wizard_step_done": "Done",

@@ -56,6 +56,7 @@ export function DeployWizardDialog({
   const [localVars, setLocalVars] = useState<Record<string, string>>(() =>
     Object.fromEntries(groupVars.map((v) => [v.name, v.value])),
   );
+  const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [groupServers, setGroupServers] = useState<Record<string, string>>(
     () => deployment.group_servers ?? {},
   );
@@ -298,20 +299,39 @@ export function DeployWizardDialog({
             )}
             <div className="space-y-2">
               {steps.map((step, idx) => (
-                <div
-                  key={step.position}
-                  className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${
-                    idx === currentIdx
-                      ? "border-primary/40 bg-primary/5"
-                      : "border-border"
-                  }`}
-                >
-                  <StepStatusIcon status={stepStatus(idx)} />
-                  <span className="flex-1 font-medium">{step.script_name}</span>
-                  <span className="text-xs text-muted-foreground">{step.machine_name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {t("deploy_wizard_step_count", { current: String(idx + 1), total: String(steps.length) })}
-                  </span>
+                <div key={step.position}>
+                  <div
+                    className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm ${
+                      idx === currentIdx
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border"
+                    }`}
+                    onClick={() => setExpandedStep(expandedStep === idx ? null : idx)}
+                  >
+                    <StepStatusIcon status={stepStatus(idx)} />
+                    <span className="flex-1 font-medium">{step.script_name}</span>
+                    <span className="text-xs text-muted-foreground">{step.machine_name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("deploy_wizard_step_count", { current: String(idx + 1), total: String(steps.length) })}
+                    </span>
+                  </div>
+                  {expandedStep === idx && step.input_variables.length > 0 && (
+                    <div className="mt-1 rounded-md border border-border bg-muted/30 px-3 py-2">
+                      <p className="mb-1 text-xs font-medium text-muted-foreground">
+                        {t("deploy_wizard_step_inputs")}
+                      </p>
+                      <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5">
+                        {step.input_variables.map((v) => (
+                          <div key={v.name} className="contents">
+                            <span className="font-mono text-xs">{v.name}</span>
+                            <span className={`text-xs font-medium ${v.resolved ? "text-green-600" : "text-red-500"}`}>
+                              {v.resolved ? "✓" : "✗"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -39,7 +39,7 @@
 - Create: `backend/src/agflow/services/placeholder_parsers.py`
 - Create: `backend/tests/services/test_placeholder_parsers.py`
 
-- [ ] **Step 1 : Écrire le test rouge — patterns de détection**
+- [x] **Step 1 : Écrire le test rouge — patterns de détection**
 
 Créer `backend/tests/services/test_placeholder_parsers.py` :
 
@@ -115,12 +115,12 @@ class TestRegexPatterns:
         assert UNKNOWN_BRACE_RE.findall("${non.standard}") == ["non.standard"]
 ```
 
-- [ ] **Step 2 : Run test to verify it fails**
+- [x] **Step 2 : Run test to verify it fails**
 
 Run: `cd backend && uv run pytest tests/services/test_placeholder_parsers.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'agflow.services.placeholder_parsers'`
 
-- [ ] **Step 3 : Implémenter placeholder_parsers.py**
+- [x] **Step 3 : Implémenter placeholder_parsers.py**
 
 Créer `backend/src/agflow/services/placeholder_parsers.py` :
 
@@ -172,17 +172,17 @@ def parse_env_text(env_text: str | None) -> dict[str, str]:
     return result
 ```
 
-- [ ] **Step 4 : Run tests to verify they pass**
+- [x] **Step 4 : Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/services/test_placeholder_parsers.py -v`
 Expected: PASS — 9 tests
 
-- [ ] **Step 5 : Lint + format**
+- [x] **Step 5 : Lint + format**
 
 Run: `cd backend && uv run ruff check src/agflow/services/placeholder_parsers.py tests/services/test_placeholder_parsers.py && uv run ruff format src/agflow/services/placeholder_parsers.py tests/services/test_placeholder_parsers.py`
 Expected: no errors
 
-- [ ] **Step 6 : Commit**
+- [x] **Step 6 : Commit**
 
 ```bash
 git add backend/src/agflow/services/placeholder_parsers.py backend/tests/services/test_placeholder_parsers.py
@@ -197,7 +197,7 @@ git commit -m "feat(resolver): placeholder_parsers — regex + parsers purs"
 - Create: `backend/src/agflow/services/input_resolver.py`
 - Create: `backend/tests/services/test_input_resolver.py`
 
-- [ ] **Step 1 : Écrire le test rouge — exception**
+- [x] **Step 1 : Écrire le test rouge — exception**
 
 Créer `backend/tests/services/test_input_resolver.py` :
 
@@ -236,12 +236,12 @@ class TestUnresolvedPlaceholderError:
         assert "VAR" in msg
 ```
 
-- [ ] **Step 2 : Run test — fails (module missing)**
+- [x] **Step 2 : Run test — fails (module missing)**
 
 Run: `cd backend && uv run pytest tests/services/test_input_resolver.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3 : Créer input_resolver.py avec l'exception**
+- [x] **Step 3 : Créer input_resolver.py avec l'exception**
 
 Créer `backend/src/agflow/services/input_resolver.py` :
 
@@ -292,12 +292,12 @@ class UnresolvedPlaceholderError(Exception):
         super().__init__(f"{kind}: {detail} (var={var_name}, ref={ref})")
 ```
 
-- [ ] **Step 4 : Run tests to verify they pass**
+- [x] **Step 4 : Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/services/test_input_resolver.py -v`
 Expected: PASS — 2 tests
 
-- [ ] **Step 5 : Commit**
+- [x] **Step 5 : Commit**
 
 ```bash
 git add backend/src/agflow/services/input_resolver.py backend/tests/services/test_input_resolver.py
@@ -312,7 +312,7 @@ git commit -m "feat(resolver): UnresolvedPlaceholderError + squelette input_reso
 - Modify: `backend/src/agflow/services/input_resolver.py`
 - Modify: `backend/tests/services/test_input_resolver.py`
 
-- [ ] **Step 1 : Écrire les tests rouges — résolution OK**
+- [x] **Step 1 : Écrire les tests rouges — résolution OK**
 
 Ajouter à `backend/tests/services/test_input_resolver.py` :
 
@@ -431,7 +431,7 @@ class TestResolveInputValuesFailFast:
         assert result == {"URL": "https://example.com:8080/api"}
 ```
 
-- [ ] **Step 2 : Écrire les tests rouges — résolution KO**
+- [x] **Step 2 : Écrire les tests rouges — résolution KO**
 
 Ajouter à la suite :
 
@@ -580,12 +580,12 @@ class TestResolveInputValuesErrors:
         assert result == {"X": "literal-${OTHER}-value"}
 ```
 
-- [ ] **Step 3 : Run tests — fails (resolve_input_values undefined)**
+- [x] **Step 3 : Run tests — fails (resolve_input_values undefined)**
 
 Run: `cd backend && uv run pytest tests/services/test_input_resolver.py -v`
 Expected: FAIL with ImportError on `resolve_input_values`
 
-- [ ] **Step 4 : Implémenter `resolve_input_values` (fail-fast)**
+- [x] **Step 4 : Implémenter `resolve_input_values` (fail-fast)**
 
 Ajouter à `backend/src/agflow/services/input_resolver.py` (après `UnresolvedPlaceholderError`) :
 
@@ -761,17 +761,17 @@ def _substitute_simple_var(value: str, var_name: str, env_map: dict[str, str]) -
     return out
 ```
 
-- [ ] **Step 5 : Run tests to verify they pass**
+- [x] **Step 5 : Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/services/test_input_resolver.py -v`
 Expected: PASS — toutes les classes TestResolveInputValues* doivent être vertes (16 tests)
 
-- [ ] **Step 6 : Lint + format**
+- [x] **Step 6 : Lint + format**
 
 Run: `cd backend && uv run ruff check src/agflow/services/input_resolver.py tests/services/test_input_resolver.py && uv run ruff format src/agflow/services/input_resolver.py tests/services/test_input_resolver.py`
 Expected: no errors
 
-- [ ] **Step 7 : Commit**
+- [x] **Step 7 : Commit**
 
 ```bash
 git add backend/src/agflow/services/input_resolver.py backend/tests/services/test_input_resolver.py
@@ -786,7 +786,7 @@ git commit -m "feat(resolver): resolve_input_values fail-fast — 4 syntaxes + 7
 - Modify: `backend/src/agflow/services/input_resolver.py`
 - Modify: `backend/tests/services/test_input_resolver.py`
 
-- [ ] **Step 1 : Écrire les tests rouges**
+- [x] **Step 1 : Écrire les tests rouges**
 
 Ajouter à `backend/tests/services/test_input_resolver.py` :
 
@@ -841,12 +841,12 @@ class TestResolveInputValuesCollect:
         }
 ```
 
-- [ ] **Step 2 : Run tests — fails (function undefined)**
+- [x] **Step 2 : Run tests — fails (function undefined)**
 
 Run: `cd backend && uv run pytest tests/services/test_input_resolver.py::TestResolveInputValuesCollect -v`
 Expected: FAIL with ImportError
 
-- [ ] **Step 3 : Implémenter `resolve_input_values_collect`**
+- [x] **Step 3 : Implémenter `resolve_input_values_collect`**
 
 Ajouter à `backend/src/agflow/services/input_resolver.py` :
 
@@ -882,17 +882,17 @@ async def resolve_input_values_collect(
     return resolved, errors
 ```
 
-- [ ] **Step 4 : Run tests to verify they pass**
+- [x] **Step 4 : Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/services/test_input_resolver.py -v`
 Expected: PASS — toute la suite (~19 tests)
 
-- [ ] **Step 5 : Lint + format**
+- [x] **Step 5 : Lint + format**
 
 Run: `cd backend && uv run ruff check src/agflow/services/input_resolver.py && uv run ruff format src/agflow/services/input_resolver.py`
 Expected: no errors
 
-- [ ] **Step 6 : Commit**
+- [x] **Step 6 : Commit**
 
 ```bash
 git add backend/src/agflow/services/input_resolver.py backend/tests/services/test_input_resolver.py
@@ -905,12 +905,12 @@ git commit -m "feat(resolver): resolve_input_values_collect — variante collect
 
 **Why:** `input_resolver` dépend de cette fonction. Si elle n'existe pas, l'ajouter ou adapter.
 
-- [ ] **Step 1 : Vérifier l'existence**
+- [x] **Step 1 : Vérifier l'existence**
 
 Run: `cd backend && uv run python -c "from agflow.services import infra_machines_service; print(hasattr(infra_machines_service, 'get_by_name'))"`
 Expected: `True` ou `False`.
 
-- [ ] **Step 2 (si False) : Écrire le test rouge**
+- [x] **Step 2 (si False) : Écrire le test rouge**
 
 Ajouter à `backend/tests/services/test_infra_machines_service.py` (créer le fichier si absent) :
 
@@ -959,7 +959,7 @@ async def test_get_by_name_returns_none_for_unknown(fresh_db) -> None:
     assert await svc.get_by_name("does-not-exist") is None
 ```
 
-- [ ] **Step 3 (si False) : Implémenter `get_by_name`**
+- [x] **Step 3 (si False) : Implémenter `get_by_name`**
 
 Localiser `infra_machines_service.get_by_id` dans `backend/src/agflow/services/infra_machines_service.py`, ajouter en dessous :
 
@@ -975,7 +975,7 @@ async def get_by_name(name: str):
 
 (Le helper `_row_to_machine` doit déjà exister pour `get_by_id` — sinon adapter.)
 
-- [ ] **Step 4 (si False) : Run + commit**
+- [x] **Step 4 (si False) : Run + commit**
 
 Run: `cd backend && uv run pytest tests/services/test_infra_machines_service.py::test_get_by_name_returns_machine tests/services/test_infra_machines_service.py::test_get_by_name_returns_none_for_unknown -v`
 Expected: PASS
@@ -985,7 +985,7 @@ git add backend/src/agflow/services/infra_machines_service.py backend/tests/serv
 git commit -m "feat(infra): infra_machines_service.get_by_name — lookup par nom unique"
 ```
 
-- [ ] **Step 5 (si True) : Skip — passer à Task 6**
+- [x] **Step 5 (si True) : Skip — passer à Task 6**
 
 ---
 
@@ -995,7 +995,7 @@ git commit -m "feat(infra): infra_machines_service.get_by_name — lookup par no
 - Modify: `backend/src/agflow/services/deployment_executor.py:46-62`
 - Modify: `backend/tests/test_deployment_executor.py`
 
-- [ ] **Step 1 : Écrire le test rouge — step échoue si placeholder KO**
+- [x] **Step 1 : Écrire le test rouge — step échoue si placeholder KO**
 
 Ajouter à `backend/tests/test_deployment_executor.py` :
 
@@ -1066,12 +1066,12 @@ async def test_run_script_streaming_fails_on_unresolved_placeholder(monkeypatch)
     assert any(s == "stderr" and "ghost" in line for s, line in captured_lines)
 ```
 
-- [ ] **Step 2 : Run test — fails (import resolve_input_value, behavior incorrect)**
+- [x] **Step 2 : Run test — fails (import resolve_input_value, behavior incorrect)**
 
 Run: `cd backend && uv run pytest tests/test_deployment_executor.py::test_run_script_streaming_fails_on_unresolved_placeholder -v`
 Expected: FAIL (either import error or wrong behavior — `ssh_executor.exec_command` est appelé)
 
-- [ ] **Step 3 : Migrer `_run_script_streaming`**
+- [x] **Step 3 : Migrer `_run_script_streaming`**
 
 Dans `backend/src/agflow/services/deployment_executor.py` :
 
@@ -1138,17 +1138,17 @@ Par :
         return {"success": False, "exit_code": -1, "stdout": "", "stderr": msg}
 ```
 
-- [ ] **Step 4 : Run test to verify it passes**
+- [x] **Step 4 : Run test to verify it passes**
 
 Run: `cd backend && uv run pytest tests/test_deployment_executor.py -v`
 Expected: PASS — y compris les tests existants (régression check)
 
-- [ ] **Step 5 : Lint + format**
+- [x] **Step 5 : Lint + format**
 
 Run: `cd backend && uv run ruff check src/agflow/services/deployment_executor.py && uv run ruff format src/agflow/services/deployment_executor.py`
 Expected: no errors
 
-- [ ] **Step 6 : Commit**
+- [x] **Step 6 : Commit**
 
 ```bash
 git add backend/src/agflow/services/deployment_executor.py backend/tests/test_deployment_executor.py
@@ -1163,7 +1163,7 @@ git commit -m "feat(deployment): _run_script_streaming utilise input_resolver �
 - Modify: `backend/src/agflow/api/admin/project_deployments.py:297-336`
 - Modify: tests existants si applicable
 
-- [ ] **Step 1 : Écrire le test rouge**
+- [x] **Step 1 : Écrire le test rouge**
 
 Ajouter à `backend/tests/api/admin/test_project_deployments.py` (créer si absent), ou à un fichier de tests existant qui couvre `_run_group_script` :
 
@@ -1221,12 +1221,12 @@ async def test_run_group_script_fails_on_unresolved_placeholder() -> None:
     mock_exec.assert_not_called()
 ```
 
-- [ ] **Step 2 : Run test — fails**
+- [x] **Step 2 : Run test — fails**
 
 Run: `cd backend && uv run pytest tests/api/admin/test_project_deployments.py::test_run_group_script_fails_on_unresolved_placeholder -v`
 Expected: FAIL
 
-- [ ] **Step 3 : Migrer `_run_group_script`**
+- [x] **Step 3 : Migrer `_run_group_script`**
 
 Dans `backend/src/agflow/api/admin/project_deployments.py` :
 
@@ -1285,17 +1285,17 @@ Par :
         }
 ```
 
-- [ ] **Step 4 : Run test to verify it passes**
+- [x] **Step 4 : Run test to verify it passes**
 
 Run: `cd backend && uv run pytest tests/api/admin/test_project_deployments.py -v`
 Expected: PASS — y compris tests existants
 
-- [ ] **Step 5 : Lint + format**
+- [x] **Step 5 : Lint + format**
 
 Run: `cd backend && uv run ruff check src/agflow/api/admin/project_deployments.py && uv run ruff format src/agflow/api/admin/project_deployments.py`
 Expected: no errors
 
-- [ ] **Step 6 : Commit**
+- [x] **Step 6 : Commit**
 
 ```bash
 git add backend/src/agflow/api/admin/project_deployments.py backend/tests/api/admin/test_project_deployments.py
@@ -1309,7 +1309,7 @@ git commit -m "feat(deployment): _run_group_script utilise input_resolver — fa
 **Files:**
 - Modify: `backend/src/agflow/schemas/infra_env_vars.py:66-81`
 
-- [ ] **Step 1 : Écrire le test rouge — round-trip Pydantic**
+- [x] **Step 1 : Écrire le test rouge — round-trip Pydantic**
 
 Ajouter à `backend/tests/services/test_input_resolver.py` (ou créer `tests/schemas/test_infra_env_vars_schemas.py`) :
 
@@ -1340,12 +1340,12 @@ def test_project_env_vars_check_missing_reason_round_trip() -> None:
     assert dumped["missing"][0]["var_name"] == "KC_ADMIN_PASSWORD"
 ```
 
-- [ ] **Step 2 : Run test — fails**
+- [x] **Step 2 : Run test — fails**
 
 Run: `cd backend && uv run pytest tests/services/test_input_resolver.py::test_project_env_vars_check_missing_reason_round_trip -v`
 Expected: FAIL with ImportError on `ProjectEnvVarsCheckMissingReason`
 
-- [ ] **Step 3 : Modifier le schéma**
+- [x] **Step 3 : Modifier le schéma**
 
 Dans `backend/src/agflow/schemas/infra_env_vars.py:66-81`, remplacer :
 
@@ -1414,12 +1414,12 @@ Ajouter l'import `Literal` en haut du fichier si absent :
 from typing import Literal
 ```
 
-- [ ] **Step 4 : Run test to verify it passes**
+- [x] **Step 4 : Run test to verify it passes**
 
 Run: `cd backend && uv run pytest tests/services/test_input_resolver.py::test_project_env_vars_check_missing_reason_round_trip -v`
 Expected: PASS
 
-- [ ] **Step 5 : Run all backend tests — quels tests sont cassés par le breaking change ?**
+- [x] **Step 5 : Run all backend tests — quels tests sont cassés par le breaking change ?**
 
 Run: `cd backend && uv run pytest -v 2>&1 | tail -50`
 Expected: certains tests vont casser sur `missing_env_vars` — c'est normal, on les fixe au Task 9.
@@ -1434,7 +1434,7 @@ Expected: certains tests vont casser sur `missing_env_vars` — c'est normal, on
 - Modify: `backend/src/agflow/services/infra_env_vars_service.py:286-352`
 - Create: `backend/tests/services/test_check_project_env_vars.py`
 
-- [ ] **Step 1 : Écrire les tests rouges (intégration, DB réelle)**
+- [x] **Step 1 : Écrire les tests rouges (intégration, DB réelle)**
 
 Créer `backend/tests/services/test_check_project_env_vars.py` :
 
@@ -1673,12 +1673,12 @@ async def test_check_aggregates_multiple_reasons_in_one_script(fresh_db) -> None
     assert result.items[0].missing[0].kind == "value_empty"
 ```
 
-- [ ] **Step 2 : Run tests — fails**
+- [x] **Step 2 : Run tests — fails**
 
 Run: `cd backend && uv run pytest tests/services/test_check_project_env_vars.py -v`
 Expected: FAIL — tous les tests, car `check_project_env_vars` retourne encore `missing_env_vars`
 
-- [ ] **Step 3 : Refondre `check_project_env_vars`**
+- [x] **Step 3 : Refondre `check_project_env_vars`**
 
 Dans `backend/src/agflow/services/infra_env_vars_service.py:286-352`, remplacer toute la fonction `check_project_env_vars` :
 
@@ -1797,24 +1797,24 @@ from agflow.schemas.infra_env_vars import (
 )
 ```
 
-- [ ] **Step 4 : Run tests to verify they pass**
+- [x] **Step 4 : Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/services/test_check_project_env_vars.py -v`
 Expected: PASS — 5 tests verts
 
-- [ ] **Step 5 : Run all backend tests — vérifier qu'aucune régression ailleurs**
+- [x] **Step 5 : Run all backend tests — vérifier qu'aucune régression ailleurs**
 
 Run: `cd backend && uv run pytest -v 2>&1 | tail -30`
 Expected: tous les tests verts (sauf ceux qui assertent encore `missing_env_vars` — à mettre à jour si présents)
 
 S'il reste des tests cassés, les corriger pour utiliser `missing` au lieu de `missing_env_vars`.
 
-- [ ] **Step 6 : Lint + format**
+- [x] **Step 6 : Lint + format**
 
 Run: `cd backend && uv run ruff check src/agflow/services/infra_env_vars_service.py src/agflow/schemas/infra_env_vars.py tests/services/test_check_project_env_vars.py && uv run ruff format src/agflow/services/infra_env_vars_service.py src/agflow/schemas/infra_env_vars.py tests/services/test_check_project_env_vars.py`
 Expected: no errors
 
-- [ ] **Step 7 : Commit**
+- [x] **Step 7 : Commit**
 
 ```bash
 git add backend/src/agflow/services/infra_env_vars_service.py backend/src/agflow/schemas/infra_env_vars.py backend/tests/services/test_check_project_env_vars.py
@@ -1831,7 +1831,7 @@ git commit -m "feat(check): check_project_env_vars utilise input_resolver — ra
 - Modify: `frontend/src/i18n/fr.json` (clé `projects.env_vars_*`)
 - Modify: `frontend/src/i18n/en.json` (idem)
 
-- [ ] **Step 1 : Mettre à jour les types TS**
+- [x] **Step 1 : Mettre à jour les types TS**
 
 Dans `frontend/src/lib/infraEnvVarsApi.ts:50-60`, remplacer :
 
@@ -1881,7 +1881,7 @@ export interface ProjectEnvVarsCheckMissing {
 }
 ```
 
-- [ ] **Step 2 : Mettre à jour la bannière dans ProjectDetailPage**
+- [x] **Step 2 : Mettre à jour la bannière dans ProjectDetailPage**
 
 Dans `frontend/src/pages/ProjectDetailPage.tsx:193-211`, remplacer :
 
@@ -1941,7 +1941,7 @@ Par :
       )}
 ```
 
-- [ ] **Step 3 : Mettre à jour les clés i18n FR**
+- [x] **Step 3 : Mettre à jour les clés i18n FR**
 
 Dans `frontend/src/i18n/fr.json`, dans la section `"projects"`, remplacer la ligne `"env_vars_missing_banner"` et ajouter le bloc `env_vars_reason` :
 
@@ -1958,7 +1958,7 @@ Dans `frontend/src/i18n/fr.json`, dans la section `"projects"`, remplacer la lig
     },
 ```
 
-- [ ] **Step 4 : Mettre à jour les clés i18n EN**
+- [x] **Step 4 : Mettre à jour les clés i18n EN**
 
 Dans `frontend/src/i18n/en.json`, miroir du précédent :
 
@@ -1975,7 +1975,7 @@ Dans `frontend/src/i18n/en.json`, miroir du précédent :
     },
 ```
 
-- [ ] **Step 5 : TS strict + lint**
+- [x] **Step 5 : TS strict + lint**
 
 Run: `cd frontend && npx tsc --noEmit`
 Expected: no errors
@@ -1983,12 +1983,12 @@ Expected: no errors
 Run: `cd frontend && npm run lint`
 Expected: no errors
 
-- [ ] **Step 6 : Tests frontend (Vitest)**
+- [x] **Step 6 : Tests frontend (Vitest)**
 
 Run: `cd frontend && npm test -- --run`
 Expected: PASS — y compris les tests existants de ProjectDetailPage s'ils existent. Si un test casse sur `missing_env_vars`, le mettre à jour pour utiliser le nouveau format.
 
-- [ ] **Step 7 : Commit**
+- [x] **Step 7 : Commit**
 
 ```bash
 git add frontend/src/lib/infraEnvVarsApi.ts frontend/src/pages/ProjectDetailPage.tsx frontend/src/i18n/fr.json frontend/src/i18n/en.json
@@ -2003,16 +2003,16 @@ git commit -m "feat(ui): bannière env-vars avec raisons typées par variable"
 - Modify: `backend/src/agflow/services/deployment_env_helpers.py:15-41`
 - Modify: `backend/src/agflow/api/admin/project_deployments.py` (import)
 
-- [ ] **Step 1 : Vérifier qu'il n'y a plus aucun callsite**
+- [x] **Step 1 : Vérifier qu'il n'y a plus aucun callsite**
 
 Run grep via tool : `Grep pattern="resolve_input_value" path="E:\srcs\agflow.docker\backend"`
 Expected: **0 hit** dans `src/` (sauf la définition elle-même). Si d'autres callsites apparaissent, les migrer d'abord vers `input_resolver`.
 
-- [ ] **Step 2 : Supprimer la fonction**
+- [x] **Step 2 : Supprimer la fonction**
 
 Dans `backend/src/agflow/services/deployment_env_helpers.py`, supprimer entièrement la fonction `resolve_input_value` (lignes 15-41 dans le fichier d'origine). Vérifier que les imports `re` restent utilisés ailleurs dans le fichier — si non, les retirer.
 
-- [ ] **Step 3 : Nettoyer l'import dans project_deployments.py**
+- [x] **Step 3 : Nettoyer l'import dans project_deployments.py**
 
 Dans `backend/src/agflow/api/admin/project_deployments.py:57-58`, retirer :
 
@@ -2024,22 +2024,22 @@ from agflow.services.deployment_env_helpers import (
 
 (garder les autres imports `deployment_env_helpers` si utilisés)
 
-- [ ] **Step 4 : Vérification finale par grep**
+- [x] **Step 4 : Vérification finale par grep**
 
 Run grep : `Grep pattern="resolve_input_value" path="E:\srcs\agflow.docker\backend"`
 Expected: 0 hit dans `src/` ; vérifier qu'il n'y a pas de tests orphelins dans `tests/` qui importeraient encore la fonction.
 
-- [ ] **Step 5 : Run all tests pour confirmer absence de régression**
+- [x] **Step 5 : Run all tests pour confirmer absence de régression**
 
 Run: `cd backend && uv run pytest -v 2>&1 | tail -10`
 Expected: all green
 
-- [ ] **Step 6 : Lint + format**
+- [x] **Step 6 : Lint + format**
 
 Run: `cd backend && uv run ruff check src/ tests/ && uv run ruff format src/ tests/`
 Expected: no errors
 
-- [ ] **Step 7 : Commit**
+- [x] **Step 7 : Commit**
 
 ```bash
 git add backend/src/agflow/services/deployment_env_helpers.py backend/src/agflow/api/admin/project_deployments.py
@@ -2052,18 +2052,18 @@ git commit -m "chore(cleanup): supprimer deployment_env_helpers.resolve_input_va
 
 **Why:** Selon CLAUDE.md, validation end-to-end uniquement après deploy LXC. Le poste local n'a pas de stack qui tourne.
 
-- [ ] **Step 1 : Push de la branche**
+- [x] **Step 1 : Push de la branche**
 
 ```bash
 git push origin dev
 ```
 
-- [ ] **Step 2 : Lancer le test fresh via run-test.sh**
+- [x] **Step 2 : Lancer le test fresh via run-test.sh**
 
 Run: `./scripts/run-test.sh`
 Expected: LXC créé, déploiement réussi, 8 assertions vertes + pytest backend complet vert.
 
-- [ ] **Step 3 : Vérification manuelle sur l'instance créée**
+- [x] **Step 3 : Vérification manuelle sur l'instance créée**
 
 Une fois le LXC monté par le script :
 1. Ouvrir l'UI dans le navigateur (URL fournie par le script).
@@ -2073,11 +2073,11 @@ Une fois le LXC monté par le script :
 5. Mettre un input_value vide → la bannière doit afficher : `… : valeur vide`.
 6. Cliquer sur "Pousser" → le wizard doit s'ouvrir, et le step ayant l'input non résoluble doit échouer avec un message explicite dans les logs SSE.
 
-- [ ] **Step 4 : Cleanup du LXC de test**
+- [x] **Step 4 : Cleanup du LXC de test**
 
 Run: `CLEANUP=1 ./scripts/run-test.sh` (ou `pct destroy <id>` sur l'hôte Proxmox).
 
-- [ ] **Step 5 : Si tout est OK, commit du PR ou merge**
+- [x] **Step 5 : Si tout est OK, commit du PR ou merge**
 
 (Selon préférence user — voir `superpowers:finishing-a-development-branch`.)
 

@@ -292,7 +292,7 @@ export function DeployWizardDialog({
           {/* ── Exécution ── */}
           <TabsContent
             value="exec"
-            className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-1"
+            className="flex min-h-[300px] flex-1 flex-col gap-3 overflow-auto p-1"
           >
             {steps.length === 0 && (
               <p className="text-sm text-muted-foreground">{t("deploy_wizard_no_steps")}</p>
@@ -362,7 +362,7 @@ export function DeployWizardDialog({
           {/* ── Logs ── */}
           <TabsContent
             value="logs"
-            className="flex min-h-0 flex-1 flex-col gap-2 p-1"
+            className="flex min-h-[400px] flex-1 flex-col gap-2 p-1"
           >
             <div className="flex shrink-0 items-center gap-2">
               {dep.step_logs.map((sl) => (
@@ -391,7 +391,7 @@ export function DeployWizardDialog({
                 </Button>
               )}
             </div>
-            <div className="min-h-0 flex-1 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs text-zinc-200">
+            <div className="min-h-[340px] flex-1 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs text-zinc-200">
               {displayedLogs.map((line, i) => (
                 <div key={i}>{line || " "}</div>
               ))}

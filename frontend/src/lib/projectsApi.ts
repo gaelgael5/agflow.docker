@@ -212,7 +212,10 @@ export const deploymentsApi = {
     )).data;
   },
   streamLogs(id: string): EventSource {
-    return new EventSource(`/api/admin/project-deployments/${id}/stream`);
+    const token = localStorage.getItem("agflow_token") ?? "";
+    return new EventSource(
+      `/api/admin/project-deployments/${id}/stream?token=${encodeURIComponent(token)}`,
+    );
   },
   async getBeforeSteps(id: string): Promise<StepInfo[]> {
     return (await api.get<StepInfo[]>(

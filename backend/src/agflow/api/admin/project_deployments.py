@@ -11,10 +11,11 @@ from uuid import UUID
 
 import structlog
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from agflow.auth.dependencies import require_operator as require_admin
+from agflow.auth.jwt import InvalidTokenError, decode_token
 from agflow.schemas.products import (
     DeploymentCreate,
     DeploymentSummary,
@@ -775,9 +776,15 @@ async def retry_step_endpoint(deployment_id: UUID) -> dict[str, str]:
     return {"status": "accepted"}
 
 
-@router.get("/{deployment_id}/stream", dependencies=_admin)
-async def stream_deployment_logs(deployment_id: UUID) -> StreamingResponse:
+@router.get("/{deployment_id}/stream")
+async def stream_deployment_logs(
+    deployment_id: UUID,
+    request: Request,
+    token: str | None = Query(default=None),
+) -> StreamingResponse:
     """SSE : stream des logs du step en cours.
+
+    Auth : Bearer header OU query param ?token= (EventSource ne supporte pas les headers custom).
 
     Format des events :
       data: {"type": "log", "line": "...", "stream": "stdout"}
@@ -785,6 +792,18 @@ async def stream_deployment_logs(deployment_id: UUID) -> StreamingResponse:
       data: {"type": "step_failed", "step_index": 0, "exit_code": 1}
       data: {"type": "before_complete"}
     """
+    auth_header = request.headers.get("Authorization", "")
+    bearer = (
+        auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer ") else None
+    )
+    raw_token = bearer or token
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    try:
+        decode_token(raw_token)
+    except InvalidTokenError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
     try:
         await project_deployments_service.get_by_id(deployment_id)
     except project_deployments_service.DeploymentNotFoundError as exc:

@@ -293,7 +293,7 @@ export function DeployWizardDialog({
           {/* ── Exécution ── */}
           <TabsContent
             value="exec"
-            className="flex min-h-[300px] flex-1 flex-col gap-3 overflow-auto p-1"
+            className="flex flex-col gap-3 p-1"
           >
             {steps.length === 0 && (
               <p className="text-sm text-muted-foreground">{t("deploy_wizard_no_steps")}</p>
@@ -336,7 +336,7 @@ export function DeployWizardDialog({
                 </div>
               ))}
             </div>
-            <div className="mt-auto flex justify-end gap-2">
+            <div className="flex justify-end gap-2 pt-2">
               {canRetry && (
                 <Button variant="outline" onClick={() => void handleRetry()}>
                   {t("deploy_wizard_retry")}

@@ -135,7 +135,10 @@ export function ProjectDetailPage() {
     staleTime: 30_000,
   });
   const groupVarsForWizard = useMemo(
-    () => (groupVarsQuery.data ?? []).map((v) => ({ name: v.name, value: v.value ?? "" })),
+    () =>
+      (groupVarsQuery.data ?? [])
+        .filter((v) => String(v.value ?? "").trim() !== "")
+        .map((v) => ({ name: v.name, value: v.value ?? "" })),
     [groupVarsQuery.data],
   );
 

@@ -294,13 +294,24 @@ async def upsert_machine_env_vars(
 
 async def resolve_for_machine(machine_id: UUID) -> dict[str, str]:
     """Retourne {name: valeur_résolue} pour la machine. Exclut les valeurs vides après résolution."""
-    from agflow.services import platform_secrets_service
+    from agflow.services import platform_secrets_service, vault_client
 
     secrets_map = await platform_secrets_service.resolve_all()
     rows = await list_machine_env_vars(machine_id)
     result: dict[str, str] = {}
     for row in rows:
-        resolved = platform_secrets_service.resolve_platform_refs(row.value, secrets_map)
+        value = row.value
+        if not value:
+            continue
+        parsed = vault_client.parse_ref(value)
+        if parsed:
+            vault_name, path = parsed
+            try:
+                resolved: str | None = await vault_client.get_secret(path, vault_name=vault_name)
+            except Exception:
+                resolved = None
+        else:
+            resolved = platform_secrets_service.resolve_platform_refs(value, secrets_map) or None
         if resolved:
             result[row.name] = resolved
     return result

@@ -181,3 +181,33 @@ async def test_resolve_for_machine_excludes_empty(fresh_db: None) -> None:
     await svc.create_env_var(nt_id, name="EMPTY_HOST")
     resolved = await svc.resolve_for_machine(m_id)
     assert "EMPTY_HOST" not in resolved
+
+
+async def test_resolve_for_machine_resolves_vault_secret(
+    fresh_db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Une env var machine dont la valeur est un vault ref doit être résolue via vault_client."""
+    from unittest.mock import AsyncMock
+
+    from agflow.services import vault_client as vc
+
+    nt_id = await _create_named_type()
+    m_id = await _create_machine(nt_id)
+    ev = await svc.create_env_var(nt_id, name="KC_ADMIN_PASSWORD", is_secret=True)
+
+    # Stocker un vault ref directement en DB (comme le ferait upsert_machine_env_vars pour un secret)
+    vault_ref = f"${{vault://default:env-vars/{m_id}/{ev.id}}}"
+    await execute(
+        "INSERT INTO infra_machine_env_vars (machine_id, named_type_env_var_id, value) "
+        "VALUES ($1, $2, $3)",
+        m_id,
+        ev.id,
+        vault_ref,
+    )
+
+    monkeypatch.setattr(vc, "get_secret", AsyncMock(return_value="s3cr3t"))
+
+    resolved = await svc.resolve_for_machine(m_id)
+
+    assert resolved == {"KC_ADMIN_PASSWORD": "s3cr3t"}
+    vc.get_secret.assert_called_once_with(f"env-vars/{m_id}/{ev.id}", vault_name="default")

@@ -206,7 +206,7 @@ export function DeployWizardDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="flex h-[820px] flex-col sm:max-w-[960px]">
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[960px]">
         <DialogHeader>
           <DialogTitle>{t("deploy_title")}</DialogTitle>
         </DialogHeader>
@@ -214,7 +214,7 @@ export function DeployWizardDialog({
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
-          className="flex min-h-0 flex-1 flex-col"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
           <TabsList className="shrink-0">
             <TabsTrigger value="config">{t("deploy_wizard_tab_config")}</TabsTrigger>
@@ -225,7 +225,7 @@ export function DeployWizardDialog({
           {/* ── Configuration ── */}
           <TabsContent
             value="config"
-            className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-1"
+            className="flex flex-col gap-4 p-1"
           >
             {/* Server assignment per group */}
             <div className="space-y-2">
@@ -274,7 +274,7 @@ export function DeployWizardDialog({
               </div>
             )}
 
-            <div className="mt-auto flex justify-end">
+            <div className="flex justify-end pt-2">
               <Button
                 onClick={() => void handleGenerate()}
                 disabled={!canGenerate}

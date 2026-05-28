@@ -142,13 +142,6 @@ export function ProjectDetailPage() {
     [groupVarsQuery.data],
   );
 
-  const { data: beforeSteps = [] } = useQuery({
-    queryKey: ["deployment-before-steps", wizardDep?.id],
-    queryFn: () => deploymentsApi.getBeforeSteps(wizardDep!.id),
-    enabled: !!wizardDep?.id && wizardDep.status !== "draft",
-    staleTime: 30_000,
-  });
-
   async function openWizard() {
     try {
       const dep = await deploymentsApi.create(projectId!, {});
@@ -413,7 +406,6 @@ export function ProjectDetailPage() {
           deployment={wizardDep}
           groups={groups}
           groupVars={groupVarsForWizard}
-          steps={beforeSteps}
           projectId={projectId!}
         />
       )}

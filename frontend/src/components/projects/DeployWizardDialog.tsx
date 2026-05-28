@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label";
 import {
   type DeploymentSummary,
   type GroupSummary,
-  type StepInfo,
   deploymentsApi,
 } from "@/lib/projectsApi";
 import { infraMachinesApi } from "@/lib/infraApi";
@@ -32,7 +31,6 @@ interface Props {
   deployment: DeploymentSummary;
   groups: GroupSummary[];
   groupVars: GroupVar[];
-  steps: StepInfo[];
   projectId: string;
 }
 
@@ -50,7 +48,6 @@ export function DeployWizardDialog({
   deployment,
   groups,
   groupVars,
-  steps,
   projectId,
 }: Props) {
   const { t } = useTranslation();
@@ -74,6 +71,13 @@ export function DeployWizardDialog({
     queryFn: () => infraMachinesApi.list(),
   });
   const servers = machines.filter((m) => m.parent_id !== null);
+
+  const { data: steps = [] } = useQuery({
+    queryKey: ["deployment-before-steps", dep.id],
+    queryFn: () => deploymentsApi.getBeforeSteps(dep.id),
+    enabled: dep.status !== "draft",
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
     setDep(deployment);
